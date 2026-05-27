@@ -1,9 +1,11 @@
+import { Permission } from '@gaming-cafe/contracts';
 import { Providers } from '@gaming-cafe/providers';
 import { local } from '@gaming-cafe/utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useReducer } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
+import RequirePermission from './components/RequirePermission';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/auth/LoginPage';
@@ -61,37 +63,61 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
               </Route>
               <Route element={<DashboardLayout />}>
-                <Route path="/" element={<DashboardPage />} />
+                <Route element={<RequirePermission permission={Permission.StatsRead} />}>
+                  <Route path="/" element={<DashboardPage />} />
+                </Route>
                 <Route path="/players" element={<PlayersPage />} />
-                <Route path="/players/new" element={<PlayerNewPage />} />
+                <Route element={<RequirePermission permission={Permission.PlayersWrite} />}>
+                  <Route path="/players/new" element={<PlayerNewPage />} />
+                </Route>
                 <Route path="/players/:id" element={<PlayerDetailPage />} />
                 <Route path="/devices" element={<DevicesPage />} />
-                <Route path="/devices/new" element={<DeviceNewPage />} />
+                <Route element={<RequirePermission permission={Permission.DevicesWrite} />}>
+                  <Route path="/devices/new" element={<DeviceNewPage />} />
+                </Route>
                 <Route path="/devices/:id" element={<DeviceDetailPage />} />
                 <Route path="/games" element={<GamesPage />} />
-                <Route path="/games/new" element={<GameNewPage />} />
+                <Route element={<RequirePermission permission={Permission.GamesWrite} />}>
+                  <Route path="/games/new" element={<GameNewPage />} />
+                </Route>
                 <Route path="/games/:id" element={<GameDetailPage />} />
                 <Route path="/device-games" element={<DeviceGamesPage />} />
-                <Route path="/device-games/new" element={<DeviceGameNewPage />} />
+                <Route element={<RequirePermission permission={Permission.DeviceGamesWrite} />}>
+                  <Route path="/device-games/new" element={<DeviceGameNewPage />} />
+                </Route>
                 <Route path="/device-games/:id" element={<DeviceGameDetailPage />} />
                 <Route path="/plans" element={<PlansPage />} />
-                <Route path="/plans/new" element={<PlanNewPage />} />
+                <Route element={<RequirePermission permission={Permission.PlansWrite} />}>
+                  <Route path="/plans/new" element={<PlanNewPage />} />
+                </Route>
                 <Route path="/plans/:id" element={<PlanDetailPage />} />
                 <Route path="/plan-transactions" element={<PlanTransactionsPage />} />
-                <Route path="/plan-transactions/new" element={<PlanTransactionNewPage />} />
+                <Route element={<RequirePermission permission={Permission.PlayerPlansWrite} />}>
+                  <Route path="/plan-transactions/new" element={<PlanTransactionNewPage />} />
+                </Route>
                 <Route path="/plan-transactions/:id" element={<PlanTransactionDetailPage />} />
                 <Route path="/sessions" element={<SessionsPage />} />
-                <Route path="/sessions/new" element={<SessionNewPage />} />
+                <Route element={<RequirePermission permission={Permission.SessionsWrite} />}>
+                  <Route path="/sessions/new" element={<SessionNewPage />} />
+                </Route>
                 <Route path="/sessions/:id" element={<SessionDetailPage />} />
                 <Route path="/products" element={<ProductsPage />} />
-                <Route path="/products/new" element={<ProductNewPage />} />
+                <Route element={<RequirePermission permission={Permission.ProductsWrite} />}>
+                  <Route path="/products/new" element={<ProductNewPage />} />
+                </Route>
                 <Route path="/products/:id" element={<ProductDetailPage />} />
                 <Route path="/product-transactions" element={<ProductTransactionsPage />} />
-                <Route path="/product-transactions/new" element={<ProductTransactionNewPage />} />
+                <Route element={<RequirePermission permission={Permission.TransactionsWrite} />}>
+                  <Route path="/product-transactions/new" element={<ProductTransactionNewPage />} />
+                </Route>
                 <Route path="/units" element={<UnitsPage />} />
-                <Route path="/units/new" element={<UnitNewPage />} />
+                <Route element={<RequirePermission permission={Permission.UnitsWrite} />}>
+                  <Route path="/units/new" element={<UnitNewPage />} />
+                </Route>
                 <Route path="/units/:id" element={<UnitDetailPage />} />
-                <Route path="/media/upload" element={<MediaUploadPage />} />
+                <Route element={<RequirePermission permission={Permission.FilesWrite} />}>
+                  <Route path="/media/upload" element={<MediaUploadPage />} />
+                </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

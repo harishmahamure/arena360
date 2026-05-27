@@ -144,7 +144,7 @@ impl UnitRepository {
 
     pub async fn soft_delete(&self, id: Uuid) -> Result<(), AppError> {
         let result = sqlx::query(
-            r#"UPDATE units SET "deletedAt" = NOW() WHERE id = $1 AND "deletedAt" IS NULL"#,
+            r#"UPDATE units SET "isActive" = false, "updatedAt" = NOW() WHERE id = $1 AND "deletedAt" IS NULL"#,
         )
         .bind(id)
         .execute(&self.pool)

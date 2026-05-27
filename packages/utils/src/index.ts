@@ -1,17 +1,18 @@
 // HTTP client
-export {
-  ApiError,
-  createHttpClient,
-  http,
-  isApiError,
-  unwrapEnvelope,
-} from './http';
+
 export type {
   CreateHttpClientOptions,
   ErrorEnvelope,
   HttpClient,
   HttpRequestConfig,
   SuccessEnvelope,
+} from './http';
+export {
+  ApiError,
+  createHttpClient,
+  http,
+  isApiError,
+  unwrapEnvelope,
 } from './http';
 
 // Forms

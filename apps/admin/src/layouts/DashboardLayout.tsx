@@ -6,7 +6,9 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { adminNavItems } from '../constants/navItems';
 import { useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
+import { usePermissions } from '../hooks/usePermissions';
 import { getSessions } from '../services/sessions/list';
+import { filterNavItemsByPermission } from '../utils/filterNavItems';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -23,26 +25,31 @@ export default function DashboardLayout() {
   const countDownData = useMemo<CountdownConfig[]>(() => {
     if (!data?.data || isLoading) return [];
 
-    return data.data.map((session) => {
-      const remainingTimeCredits = session.playerPlan.remainingTimeCredits;
-      const startTime = new Date(session.startTime).getTime();
-      const expectedEndTime = startTime + remainingTimeCredits * 60 * 1000;
-      const remainingTime = (expectedEndTime - Date.now()) / 1000;
+    return data.data
+      .filter((session) => session.playerPlan?.remainingTimeCredits != null)
+      .map((session) => {
+        const remainingTimeCredits = session.playerPlan?.remainingTimeCredits ?? 0;
+        const startTime = new Date(session.startTime).getTime();
+        const expectedEndTime = startTime + remainingTimeCredits * 60 * 1000;
+        const remainingTime = (expectedEndTime - Date.now()) / 1000;
 
-      return {
-        id: session.id,
-        remainingTime,
-        sessionDetails: {
-          playerName: session.playerPlan.player.username,
-          deviceName: session.device.name,
-        },
-      };
-    });
+        return {
+          id: session.id,
+          remainingTime,
+          sessionDetails: {
+            playerName: session.playerPlan?.player?.username ?? 'Unknown',
+            deviceName: session.device?.name ?? 'Unknown',
+          },
+        };
+      });
   }, [data?.data, isLoading]);
 
   useMultipleCountdowns(countDownData);
 
   const { email, firstName, lastName, role } = useSelector((state) => state.auth);
+  const { can } = usePermissions();
+
+  const filteredNavItems = useMemo(() => filterNavItemsByPermission(adminNavItems, can), [can]);
 
   useEffect(() => {
     const accessToken = local.get('accessToken');
@@ -53,7 +60,7 @@ export default function DashboardLayout() {
 
   return (
     <BaseDashboardLayout
-      navItems={adminNavItems}
+      navItems={filteredNavItems}
       user={{ name: `${firstName} ${lastName}`, email, role }}
     >
       <Outlet />

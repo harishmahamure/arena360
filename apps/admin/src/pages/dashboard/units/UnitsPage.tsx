@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deleteUnit } from '../../../services/units/delete';
 import { getUnits, type UnitResponse } from '../../../services/units/list';
 
@@ -16,6 +17,8 @@ export default function UnitsPage() {
   const isActiveFilter = searchParams.get('active');
 
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.UnitsWrite);
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -91,14 +94,14 @@ export default function UnitsPage() {
     },
   ];
 
-  const handleDeleteUnit = useCallback(
+  const handleDeactivateUnit = useCallback(
     async (id: string) => {
       try {
         await deleteUnit(id);
-        toast.success('Unit deleted successfully');
+        toast.success('Unit deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to delete unit');
+        toast.error('Failed to deactivate unit');
       }
     },
     [refetch],
@@ -112,8 +115,8 @@ export default function UnitsPage() {
     },
     {
       icon: <Delete color="error" />,
-      label: 'Delete Unit',
-      onClick: (row) => handleDeleteUnit(row.id),
+      label: 'Deactivate Unit',
+      onClick: (row) => handleDeactivateUnit(row.id),
     },
   ];
 
@@ -124,12 +127,12 @@ export default function UnitsPage() {
         description="Manage your product measurement units here."
         data={data?.data || []}
         columns={columns}
-        actions={actions}
+        actions={canWrite ? actions : []}
         isLoading={isLoading}
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAddNewUnit}
+        onAddClick={canWrite ? handleAddNewUnit : undefined}
         addButtonLabel="Add Unit"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

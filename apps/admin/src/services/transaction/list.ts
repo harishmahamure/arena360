@@ -25,18 +25,20 @@ export interface Transaction {
   id: string;
   createdAt: string;
   updatedAt: string;
-  deletedAt: null;
+  deletedAt?: string | null;
   playerId: string;
   transactionType: string;
-  planId: null;
-  amount: string;
+  planId?: string | null;
+  amount: number;
+  cashAmount?: number | null;
+  onlineAmount?: number | null;
   paymentMethod: string;
   paymentStatus: string;
-  notes: null | string;
+  notes?: string | null;
   transactionDate: string;
-  transactionProducts: TransactionProduct[];
-  player: Player;
-  plan: null;
+  transactionProducts?: TransactionProduct[];
+  player?: Player;
+  plan?: null;
 }
 
 export type TransactionResponse = Transaction;

@@ -61,6 +61,13 @@ pub struct CreateDeviceGameDto {
     pub is_active: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDeviceGameDto {
+    pub installation_date: Option<DateTime<Utc>>,
+    pub is_active: Option<bool>,
+}
+
 #[derive(Debug, Deserialize, Default, Clone, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceGameFilterDto {

@@ -6,6 +6,6 @@ export type {
   ErrorEnvelope,
   HttpClient,
   HttpRequestConfig,
-  SuccessEnvelope
+  SuccessEnvelope,
 } from './types';
 export { unwrapEnvelope } from './unwrapEnvelope';

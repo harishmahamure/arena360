@@ -19,6 +19,10 @@ import {
   type EndSessionFormData,
   endSessionSchema,
 } from '../../../containers/sessions/schemas/session-schema';
+import { getDeviceById } from '../../../services/devices/getById';
+import { getPlanById } from '../../../services/plans/getById';
+import { getPlayerPlanById } from '../../../services/player-plans/getById';
+import { getPlayerById } from '../../../services/players/getById';
 import { getSessionById } from '../../../services/sessions/getById';
 import { endSession } from '../../../services/sessions/update';
 
@@ -44,23 +48,55 @@ export default function ViewSessionPage() {
     queryKey: ['session', id],
     queryFn: () => getSessionById(id as string),
     enabled: !!id,
-    staleTime: 1000 * 30, // 30 seconds
+    staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     refetchOnReconnect: true,
   });
 
-  const {
-    startTime,
-    endTime,
-    durationMinutes,
-    timeCreditsConsumed,
-    playerPlan,
-    device,
-    game,
-    createdAt,
-    updatedAt,
-  } = session?.data || {};
+  const { data: playerPlanRecord } = useQuery({
+    queryKey: ['player-plan', session?.playerPlanId],
+    queryFn: () => getPlayerPlanById(session?.playerPlanId),
+    enabled: !!session?.playerPlanId && !session?.playerPlan,
+  });
+
+  const { data: deviceRecord } = useQuery({
+    queryKey: ['device', session?.deviceId],
+    queryFn: () => getDeviceById(session?.deviceId),
+    enabled: !!session?.deviceId && !session?.device,
+  });
+
+  const playerId = session?.playerPlan?.playerId ?? playerPlanRecord?.playerId;
+  const planId = session?.playerPlan?.planId ?? playerPlanRecord?.planId;
+
+  const { data: playerRecord } = useQuery({
+    queryKey: ['player', playerId],
+    queryFn: () => getPlayerById(playerId!),
+    enabled: !!playerId && !session?.playerPlan?.player,
+  });
+
+  const { data: planRecord } = useQuery({
+    queryKey: ['plan', planId],
+    queryFn: () => getPlanById(planId!),
+    enabled: !!planId && !session?.playerPlan?.plan,
+  });
+
+  const startTime = session?.startTime;
+  const endTime = session?.endTime;
+  const durationMinutes = session?.durationMinutes;
+  const timeCreditsConsumed = session?.timeCreditsConsumed;
+  const createdAt = session?.createdAt;
+  const updatedAt = session?.updatedAt;
+  const playerPlan =
+    session?.playerPlan ??
+    (playerPlanRecord
+      ? {
+          ...playerPlanRecord,
+          player: playerRecord,
+          plan: planRecord,
+        }
+      : undefined);
+  const device = session?.device ?? deviceRecord;
 
   const isActive = !endTime;
 
@@ -283,7 +319,7 @@ export default function ViewSessionPage() {
                     variant="body1"
                     sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}
                   >
-                    {device.serialNumber || 'N/A'}
+                    {(device as { serialNumber?: string }).serialNumber ?? 'N/A'}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
@@ -291,38 +327,6 @@ export default function ViewSessionPage() {
                     Status
                   </Typography>
                   <Typography variant="body1">{device.status || 'N/A'}</Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Game Information */}
-        {game && (
-          <Card variant="outlined" sx={{ mb: 4 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-                Game Information
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Game Title
-                  </Typography>
-                  <Typography variant="body1">{game.title || 'N/A'}</Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Genre
-                  </Typography>
-                  <Typography variant="body1">{game.genre || 'N/A'}</Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">
-                    Description
-                  </Typography>
-                  <Typography variant="body1">{game.description || 'N/A'}</Typography>
                 </Grid>
               </Grid>
             </CardContent>

@@ -7,8 +7,10 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::models::{CreateSessionDto, EndSessionDto, SessionFilterDto, UsageSession};
-use crate::openapi::responses::{ErrorEnvelope, SessionEnvelope, SessionPaginationEnvelope};
+use crate::models::{CreateSessionDto, EndSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse};
+use crate::openapi::responses::{
+    ErrorEnvelope, SessionEnvelope, SessionFlatEnvelope, SessionPaginationEnvelope,
+};
 
 #[utoipa::path(
     get,
@@ -25,7 +27,7 @@ use crate::openapi::responses::{ErrorEnvelope, SessionEnvelope, SessionPaginatio
 pub async fn list_sessions(
     State(state): State<Arc<AppState>>,
     Query(filters): Query<SessionFilterDto>,
-) -> ApiResult<crate::dto::PaginationResult<UsageSession>> {
+) -> ApiResult<crate::dto::PaginationResult<UsageSessionResponse>> {
     let result = state.sessions.list(filters).await?;
     ok(result)
 }
@@ -43,7 +45,7 @@ pub async fn list_sessions(
 )]
 pub async fn list_active_sessions(
     State(state): State<Arc<AppState>>,
-) -> ApiResult<crate::dto::PaginationResult<UsageSession>> {
+) -> ApiResult<crate::dto::PaginationResult<UsageSessionResponse>> {
     let result = state.sessions.list_active().await?;
     ok(result)
 }
@@ -66,7 +68,7 @@ pub async fn list_active_sessions(
 pub async fn get_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
-) -> ApiResult<UsageSession> {
+) -> ApiResult<UsageSessionResponse> {
     let session = state.sessions.get_by_id(id).await?;
     ok(session)
 }
@@ -76,7 +78,7 @@ pub async fn get_session(
     path = "/sessions",
     request_body = CreateSessionDto,
     responses(
-        (status = 201, description = "Create session", body = SessionEnvelope),
+        (status = 201, description = "Create session", body = SessionFlatEnvelope),
         (status = 400, description = "Bad request", body = ErrorEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 500, description = "Internal server error", body = ErrorEnvelope),
@@ -100,7 +102,7 @@ pub async fn create_session(
     ),
     request_body = EndSessionDto,
     responses(
-        (status = 200, description = "End session", body = SessionEnvelope),
+        (status = 200, description = "End session", body = SessionFlatEnvelope),
         (status = 400, description = "Bad request", body = ErrorEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),

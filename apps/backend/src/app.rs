@@ -1,6 +1,6 @@
 use axum::{
     middleware,
-    routing::{delete, get, patch, post, put},
+    routing::{get, patch, post, put},
     Router,
 };
 use sqlx::PgPool;
@@ -84,9 +84,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/live", get(handlers::health::live_check))
         .route("/health/ready", get(handlers::health::ready_check))
         .route("/auth/login/admin", post(handlers::auth::login_admin))
+        .route("/auth/login/staff", post(handlers::auth::login_staff))
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/verify-otp", post(handlers::auth::verify_otp))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))
+        .route("/stats/staff-dashboard", get(handlers::stats::staff_dashboard_stats))
         .route(
             "/stats/revenue/by-payment-method",
             get(handlers::stats::revenue_by_payment_method),
@@ -169,7 +171,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/device-games/{id}",
-            delete(handlers::device_games::delete_device_game),
+            get(handlers::device_games::get_device_game)
+                .patch(handlers::device_games::update_device_game)
+                .delete(handlers::device_games::delete_device_game),
         )
         .route(
             "/sessions",
@@ -191,7 +195,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/transactions/{id}",
-            get(handlers::transactions::get_transaction),
+            get(handlers::transactions::get_transaction)
+                .patch(handlers::transactions::update_transaction),
         )
         .route(
             "/products",

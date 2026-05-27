@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { useEnrichedSessions } from '../../../hooks/useEnrichedSessions';
 import { getSessions, type SessionResponse } from '../../../services/sessions/list';
 import { endSession } from '../../../services/sessions/update';
 
@@ -131,6 +132,8 @@ export default function SessionsPage() {
       }),
   });
 
+  const enrichedSessions = useEnrichedSessions(data?.data);
+
   const navigate = useNavigate();
 
   const debouncedSetSearch = useRef(
@@ -203,7 +206,7 @@ export default function SessionsPage() {
         minWidth: 120,
         format: (value) => {
           const id = value as SessionResponse['id'];
-          const session = data?.data.find((session) => session.id === id);
+          const session = enrichedSessions.find((session) => session.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
           if (endTime) {
@@ -218,10 +221,17 @@ export default function SessionsPage() {
         minWidth: 100,
         format: (value) => {
           const id = value as SessionResponse['id'];
-          const session = data?.data.find((session) => session.id === id);
+          const session = enrichedSessions.find((session) => session.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
-          const remainingTimeCredits = session?.playerPlan.remainingTimeCredits || 0;
+          const remainingTimeCredits = session?.playerPlan?.remainingTimeCredits ?? 0;
+
+          if (!session?.playerPlan || !startTime) {
+            if (endTime) {
+              return formatTimeAgo(endTime);
+            }
+            return 'N/A';
+          }
 
           const expectedEndTime = new Date(
             new Date(startTime || '').getTime() + remainingTimeCredits * 60 * 1000,
@@ -264,7 +274,7 @@ export default function SessionsPage() {
         ),
       },
     ],
-    [data, handleEndSession],
+    [enrichedSessions, handleEndSession],
   );
 
   const handleIncreaseSessionTime = useCallback(() => {
@@ -296,7 +306,7 @@ export default function SessionsPage() {
       <ListViewPage<SessionResponse>
         title="Usage Sessions"
         description="Manage player gaming sessions and usage tracking here."
-        data={data?.data || []}
+        data={enrichedSessions}
         columns={columns}
         actions={actions}
         isLoading={isLoading}

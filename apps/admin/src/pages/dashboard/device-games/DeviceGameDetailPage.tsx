@@ -57,9 +57,7 @@ export default function EditDeviceGamePage() {
   const { control, handleSubmit } = useForm({
     resolver: yupResolver(editDeviceGameSchema),
     values: {
-      installationDate: deviceGame?.installationDate
-        ? new Date(deviceGame.installationDate)
-        : null,
+      installationDate: deviceGame?.installationDate ? new Date(deviceGame.installationDate) : null,
       isActive: deviceGame?.isActive ?? true,
     },
   });
@@ -175,8 +173,7 @@ export default function EditDeviceGamePage() {
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       {deviceGame?.device?.deviceType || '-'}
-                      {deviceGame?.device?.location &&
-                        ` • ${deviceGame.device.location}`}
+                      {deviceGame?.device?.location && ` • ${deviceGame.device.location}`}
                     </Typography>
                   </Box>
                 </Box>

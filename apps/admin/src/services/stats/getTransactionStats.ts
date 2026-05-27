@@ -1,16 +1,12 @@
-import { http } from '@gaming-cafe/utils';
+import { getDashboardStats } from './getDashboardStats';
 import type { StatsQueryDto, TransactionStatsDto } from './types';
 
 /**
- * Fetches transaction statistics
- *
- * @param filters - Optional date filters (startDate, endDate)
- * @returns Transaction counts and average transaction amount
+ * Fetches transaction statistics for the current period from dashboard stats
  */
-export const getTransactionStats = async (filters?: StatsQueryDto) => {
-  return http.get<TransactionStatsDto>('/stats/transactions', {
-    params: {
-      ...filters,
-    },
-  });
+export const getTransactionStats = async (
+  filters?: StatsQueryDto,
+): Promise<TransactionStatsDto> => {
+  const dashboard = await getDashboardStats(filters);
+  return dashboard.transactions.current;
 };

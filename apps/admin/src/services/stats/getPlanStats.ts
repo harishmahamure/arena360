@@ -1,16 +1,10 @@
-import { http } from '@gaming-cafe/utils';
+import { getDashboardStats } from './getDashboardStats';
 import type { PlanStatsDto, StatsQueryDto } from './types';
 
 /**
- * Fetches plan statistics including active/expired plans and breakdown by type
- *
- * @param filters - Optional date filters (startDate, endDate)
- * @returns Plan counts and revenue breakdown by plan type
+ * Fetches plan statistics from dashboard stats
  */
-export const getPlanStats = async (filters?: StatsQueryDto) => {
-  return http.get<PlanStatsDto>('/stats/plans', {
-    params: {
-      ...filters,
-    },
-  });
+export const getPlanStats = async (filters?: StatsQueryDto): Promise<PlanStatsDto> => {
+  const dashboard = await getDashboardStats(filters);
+  return dashboard.plans;
 };

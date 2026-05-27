@@ -7,6 +7,7 @@ import {
   type CreateProductFormData,
   createProductSchema,
 } from '../../../containers/products/schemas/product-schema';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getProductById } from '../../../services/product/getById';
 import type { ProductCategory } from '../../../services/product/list';
 import { updateProduct } from '../../../services/product/update';
@@ -15,6 +16,8 @@ import { productFormFields } from './ProductNewPage';
 export default function EditProductPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.ProductsWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,14 +102,14 @@ export default function EditProductPage() {
           stockQuantity: product?.stockQuantity,
           isActive: product?.isActive,
         }}
-        mode="edit"
+        mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={isSubmitting}
         error={error}
         success={success}
-        showCancel
-        showReset
+        showCancel={canWrite}
+        showReset={canWrite}
         submitLabel="Update Product"
         cancelLabel="Cancel"
         buttonAlign="right"

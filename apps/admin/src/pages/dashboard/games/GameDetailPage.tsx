@@ -10,6 +10,7 @@ import {
   type GameCategoryType,
   type GamePlatformType,
 } from '../../../containers/games/schemas/game-schema';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getGameById } from '../../../services/games/getById';
 import { updateGame } from '../../../services/games/update';
 import { gameFormFields } from './GameNewPage';
@@ -17,6 +18,8 @@ import { gameFormFields } from './GameNewPage';
 export default function EditGamePage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.GamesWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -110,14 +113,14 @@ export default function EditGamePage() {
           minPlayers: game?.minPlayers || 1,
           maxPlayers: game?.maxPlayers || 1,
         }}
-        mode="edit"
+        mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={isSubmitting}
         error={error}
         success={success}
-        showCancel
-        showReset
+        showCancel={canWrite}
+        showReset={canWrite}
         submitLabel="Update Game"
         cancelLabel="Cancel"
         buttonAlign="right"

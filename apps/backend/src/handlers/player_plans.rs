@@ -7,12 +7,13 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::{AdminUser, AuthUser};
+use crate::middleware::{AdminOrStaff, AuthUser};
 use crate::models::{
-    status, AssignPlanDto, PlayerPlan, PlayerPlanFilterDto, ValidationResult,
+    status, AssignPlanDto, PlayerPlan, PlayerPlanFilterDto, ValidationResult, PlayerPlanResponse,
 };
 use crate::openapi::responses::{
-    ErrorEnvelope, PlayerPlanEnvelope, PlayerPlanPaginationEnvelope, ValidationResultEnvelope,
+    ErrorEnvelope, PlayerPlanEnvelope, PlayerPlanFlatEnvelope, PlayerPlanPaginationEnvelope,
+    ValidationResultEnvelope,
 };
 use crate::services::PlayerPlanService;
 
@@ -32,11 +33,11 @@ pub async fn list_player_plans(
     AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<PlayerPlanFilterDto>,
-) -> ApiResult<crate::dto::PaginationResult<PlayerPlan>> {
+) -> ApiResult<crate::dto::PaginationResult<PlayerPlanResponse>> {
     let filters = PlayerPlanService::enforce_player_scope(
         filters,
         &claims.userId,
-        claims.is_admin(),
+        claims.is_admin_or_staff(),
     )?;
     let result = state.player_plans.list(filters).await?;
     ok(result)
@@ -57,7 +58,7 @@ pub async fn list_my_active_plans(
     AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Query(mut filters): Query<PlayerPlanFilterDto>,
-) -> ApiResult<crate::dto::PaginationResult<PlayerPlan>> {
+) -> ApiResult<crate::dto::PaginationResult<PlayerPlanResponse>> {
     let user_uuid = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::Unauthorized("Authentication required".to_string()))?;
     filters.player_id = Some(user_uuid);
@@ -70,7 +71,7 @@ pub async fn list_my_active_plans(
     get,
     path = "/player-plans/best-plan",
     responses(
-        (status = 200, description = "Get best active player plan", body = PlayerPlanEnvelope),
+        (status = 200, description = "Get best active player plan", body = PlayerPlanFlatEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),
         (status = 500, description = "Internal server error", body = ErrorEnvelope),
@@ -93,7 +94,7 @@ pub async fn get_best_plan(
     path = "/player-plans",
     request_body = AssignPlanDto,
     responses(
-        (status = 201, description = "Assign plan to player", body = PlayerPlanEnvelope),
+        (status = 201, description = "Assign plan to player", body = PlayerPlanFlatEnvelope),
         (status = 400, description = "Bad request", body = ErrorEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 403, description = "Forbidden", body = ErrorEnvelope),
@@ -103,7 +104,7 @@ pub async fn get_best_plan(
     tag = "player-plans"
 )]
 pub async fn assign_plan(
-    AdminUser(_claims): AdminUser,
+    AdminOrStaff(_claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<AssignPlanDto>,
 ) -> ApiResult<PlayerPlan> {
@@ -131,9 +132,13 @@ pub async fn get_player_plan(
     AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
-) -> ApiResult<PlayerPlan> {
+) -> ApiResult<PlayerPlanResponse> {
     let player_plan = state.player_plans.get_by_id(id).await?;
-    PlayerPlanService::ensure_owner_or_admin(&claims.userId, claims.is_admin(), &player_plan)?;
+    PlayerPlanService::ensure_owner_or_admin(
+        &claims.userId,
+        claims.is_admin_or_staff(),
+        player_plan.player_id,
+    )?;
     ok(player_plan)
 }
 
@@ -159,7 +164,11 @@ pub async fn validate_access(
     Path(id): Path<Uuid>,
 ) -> ApiResult<ValidationResult> {
     let player_plan = state.player_plans.get_by_id(id).await?;
-    PlayerPlanService::ensure_owner_or_admin(&claims.userId, claims.is_admin(), &player_plan)?;
+    PlayerPlanService::ensure_owner_or_admin(
+        &claims.userId,
+        claims.is_admin_or_staff(),
+        player_plan.player_id,
+    )?;
     let result = state.player_plans.validate_plan_access(id, None).await?;
     ok(result)
 }

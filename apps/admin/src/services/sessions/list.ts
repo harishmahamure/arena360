@@ -1,10 +1,51 @@
 import { http } from '@gaming-cafe/utils';
 
-export interface GetSessionsResponse {
-  success: boolean;
-  statusCode: number;
-  timestamp: string;
-  data: GetSessionsResponseData;
+export interface SessionPlayerSummary {
+  id: string;
+  username: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+export interface SessionPlanSummary {
+  id: string;
+  name: string;
+  planType: string;
+  timeCredits: number;
+}
+
+export interface SessionPlayerPlanSummary {
+  id: string;
+  playerId: string;
+  planId: string;
+  status: string;
+  remainingTimeCredits?: number | null;
+  player?: SessionPlayerSummary | null;
+  plan?: SessionPlanSummary | null;
+}
+
+export interface SessionDeviceSummary {
+  id: string;
+  name: string;
+  deviceType: string;
+  location?: string | null;
+  status: string;
+}
+
+export interface SessionResponse {
+  id: string;
+  playerPlanId: string;
+  deviceId: string;
+  gameId?: string | null;
+  startTime: string;
+  endTime?: string | null;
+  durationMinutes?: number | null;
+  timeCreditsConsumed?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  playerPlan?: SessionPlayerPlanSummary | null;
+  device?: SessionDeviceSummary | null;
 }
 
 export interface GetSessionsResponseData {
@@ -15,88 +56,7 @@ export interface GetSessionsResponseData {
   totalPages: number;
 }
 
-export interface SessionResponse {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
-  playerPlanId: string;
-  deviceId: string;
-  gameId: null;
-  startTime: string;
-  endTime: string;
-  durationMinutes: number;
-  timeCreditsConsumed: number;
-  playerPlan: PlayerPlan;
-  device: Device;
-  game: null;
-}
-
-interface Device {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
-  name: string;
-  serialNumber: string;
-  localIpAddress: null;
-  deviceType: string;
-  location: string;
-  status: string;
-}
-
-interface PlayerPlan {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
-  playerId: string;
-  planId: string;
-  purchaseDate: string;
-  activationDate: string;
-  expiryDate: string;
-  remainingUsageCount: null;
-  remainingTimeCredits: number;
-  status: string;
-  player: Player;
-  plan: Plan;
-}
-
-interface Plan {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
-  name: string;
-  description: string;
-  price: string;
-  planType: string;
-  durationMinutes: number;
-  validityDays: number;
-  timeWindowStart: null;
-  timeWindowEnd: null;
-  timeCredits: number;
-  perMinuteRate: string;
-  maxSessions: null;
-  isActive: boolean;
-}
-
-interface Player {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
-  email: string;
-  username: string;
-  isActive: boolean;
-  firstName: string;
-  lastName: string;
-  role: string;
-  sessionOtpId: null;
-  sessionOtp: string;
-}
-
-export const getSessions = async (filters: any = {}) => {
+export const getSessions = async (filters: Record<string, unknown> = {}) => {
   return http.get<GetSessionsResponseData>('/sessions', {
     params: {
       ...filters,

@@ -1,15 +1,17 @@
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
 import { Box, Paper, Typography } from '@mui/material';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  adminCreateRoleOptions,
   type CreatePlayerFormData,
   createPlayerDefaultValues,
   createPlayerSchema,
 } from '../../../../src/containers/players/schemas/player-schema';
+import { usePermissions } from '../../../hooks/usePermissions';
 import { addPlayer } from '../../../services/players/add';
 
-export const playerFormFields: FieldConfig<CreatePlayerFormData>[] = [
+const basePlayerFormFields: FieldConfig<CreatePlayerFormData>[] = [
   {
     name: 'username',
     label: 'Username',
@@ -66,9 +68,28 @@ export const playerFormFields: FieldConfig<CreatePlayerFormData>[] = [
 
 export default function AddNewPlayerPage() {
   const navigate = useNavigate();
+  const { isAdmin } = usePermissions();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
+
+  const playerFormFields = useMemo<FieldConfig<CreatePlayerFormData>[]>(() => {
+    if (!isAdmin) {
+      return basePlayerFormFields;
+    }
+
+    return [
+      ...basePlayerFormFields,
+      {
+        name: 'role',
+        label: 'Role',
+        type: 'select',
+        gridCols: 6,
+        options: adminCreateRoleOptions,
+        helperText: 'Only admins can create staff accounts',
+      },
+    ];
+  }, [isAdmin]);
 
   const handleSubmit = async (data: CreatePlayerFormData) => {
     setLoading(true);
@@ -76,7 +97,7 @@ export default function AddNewPlayerPage() {
     setSuccess(undefined);
 
     if (!data.username || !data.password) {
-      setError('Email, username, and password are required');
+      setError('Username and password are required');
       setLoading(false);
       return;
     }
@@ -88,6 +109,7 @@ export default function AddNewPlayerPage() {
         password: data.password,
         firstName: data.firstName || undefined,
         lastName: data.lastName || undefined,
+        role: isAdmin ? data.role : 'player',
       });
 
       setSuccess('Player created successfully!');

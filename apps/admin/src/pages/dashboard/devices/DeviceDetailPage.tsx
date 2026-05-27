@@ -10,6 +10,7 @@ import {
   deviceStatusOptions,
   deviceTypeOptions,
 } from '../../../containers/devices/schemas/device-schema';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getDeviceById } from '../../../services/devices/getById';
 import { DeviceStatus } from '../../../services/devices/list';
 import { updateDevice } from '../../../services/devices/update';
@@ -122,6 +123,8 @@ const getStatusLabel = (status: DeviceStatus) => {
 export default function EditDevicePage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.DevicesWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -226,14 +229,14 @@ export default function EditDevicePage() {
           location: deviceData?.location || '',
           status: deviceData?.status || DeviceStatus.OPERATIONAL,
         }}
-        mode="edit"
+        mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={isSubmitting}
         error={error}
         success={success}
-        showCancel
-        showReset
+        showCancel={canWrite}
+        showReset={canWrite}
         submitLabel="Update Device"
         cancelLabel="Cancel"
         buttonAlign="right"

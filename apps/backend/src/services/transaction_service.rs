@@ -4,7 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::{AssignPlanDto, CreateTransactionDto, Transaction, TransactionFilterDto};
+use crate::models::{AssignPlanDto, CreateTransactionDto, Transaction, TransactionFilterDto, UpdateTransactionDto};
 use crate::repositories::TransactionRepository;
 use crate::services::{EventService, PlayerPlanService};
 
@@ -96,5 +96,19 @@ impl TransactionService {
             .publish_transaction_created(&transaction.id.to_string());
 
         Ok(transaction)
+    }
+
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateTransactionDto,
+    ) -> Result<Transaction, AppError> {
+        if dto.payment_status.is_none() && dto.notes.is_none() {
+            return Err(AppError::BadRequest(
+                "At least one of paymentStatus or notes must be provided".to_string(),
+            ));
+        }
+
+        self.repo.update(id, &dto).await
     }
 }

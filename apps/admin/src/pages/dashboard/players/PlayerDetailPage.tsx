@@ -1,72 +1,80 @@
+import type { UserRole } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  adminCreateRoleOptions,
   type UpdatePlayerFormData,
   updatePlayerSchema,
   userRoleOptions,
 } from '../../../containers/players/schemas/player-schema';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getPlayerById } from '../../../services/players/getById';
-import { UserRole } from '../../../services/players/list';
 import { updatePlayer } from '../../../services/players/update';
-
-const editPlayerFormFields: FieldConfig<UpdatePlayerFormData>[] = [
-  {
-    name: 'email',
-    label: 'Email Address',
-    type: 'text',
-    placeholder: 'e.g., player@example.com',
-    required: false,
-    gridCols: 6,
-    helperText: 'Must be a valid and unique email address',
-  },
-  {
-    name: 'username',
-    label: 'Username',
-    type: 'text',
-    placeholder: 'e.g., johndoe',
-    required: true,
-    gridCols: 6,
-    helperText: '3-50 characters, must be unique',
-  },
-  {
-    name: 'firstName',
-    label: 'First Name',
-    type: 'text',
-    placeholder: 'e.g., John',
-    gridCols: 6,
-    helperText: 'Optional (max 50 characters)',
-  },
-  {
-    name: 'lastName',
-    label: 'Last Name',
-    type: 'text',
-    placeholder: 'e.g., Doe',
-    gridCols: 6,
-    helperText: 'Optional (max 50 characters)',
-  },
-  {
-    name: 'role',
-    label: 'Role',
-    type: 'select',
-    gridCols: 6,
-    options: userRoleOptions,
-    helperText: 'User role in the system',
-  },
-  {
-    name: 'isActive',
-    label: 'Account Active',
-    type: 'switch',
-    gridCols: 6,
-    helperText: 'Toggle to activate/deactivate the account',
-  },
-];
 
 export default function EditPlayerPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { can, isAdmin } = usePermissions();
+  const canWrite = can(Permission.PlayersWrite);
+  const roleOptions = isAdmin ? userRoleOptions : adminCreateRoleOptions;
+
+  const editPlayerFormFields = useMemo<FieldConfig<UpdatePlayerFormData>[]>(
+    () => [
+      {
+        name: 'email',
+        label: 'Email Address',
+        type: 'text',
+        placeholder: 'e.g., player@example.com',
+        required: false,
+        gridCols: 6,
+        helperText: 'Must be a valid and unique email address',
+      },
+      {
+        name: 'username',
+        label: 'Username',
+        type: 'text',
+        placeholder: 'e.g., johndoe',
+        required: true,
+        gridCols: 6,
+        helperText: '3-50 characters, must be unique',
+      },
+      {
+        name: 'firstName',
+        label: 'First Name',
+        type: 'text',
+        placeholder: 'e.g., John',
+        gridCols: 6,
+        helperText: 'Optional (max 50 characters)',
+      },
+      {
+        name: 'lastName',
+        label: 'Last Name',
+        type: 'text',
+        placeholder: 'e.g., Doe',
+        gridCols: 6,
+        helperText: 'Optional (max 50 characters)',
+      },
+      {
+        name: 'role',
+        label: 'Role',
+        type: 'select',
+        gridCols: 6,
+        options: roleOptions,
+        helperText: 'User role in the system',
+      },
+      {
+        name: 'isActive',
+        label: 'Account Active',
+        type: 'switch',
+        gridCols: 6,
+        helperText: 'Toggle to activate/deactivate the account',
+      },
+    ],
+    [roleOptions],
+  );
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -155,17 +163,17 @@ export default function EditPlayerPage() {
           username: playerData?.username || '',
           firstName: playerData?.firstName || '',
           lastName: playerData?.lastName || '',
-          role: playerData?.role || UserRole.PLAYER,
+          role: playerData?.role || 'player',
           isActive: playerData?.isActive ?? true,
         }}
-        mode="edit"
+        mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={isSubmitting}
         error={error}
         success={success}
-        showCancel
-        showReset
+        showCancel={canWrite}
+        showReset={canWrite}
         submitLabel="Update Player"
         cancelLabel="Cancel"
         buttonAlign="right"

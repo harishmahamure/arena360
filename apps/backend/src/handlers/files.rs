@@ -152,7 +152,7 @@ pub async fn update_file(
         ("id" = Uuid, Path, description = "File ID"),
     ),
     responses(
-        (status = 204, description = "Deleted"),
+        (status = 204, description = "Soft-deactivated (status=deleted)"),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 403, description = "Forbidden", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),

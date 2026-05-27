@@ -55,6 +55,27 @@ impl AuthService {
         })
     }
 
+    pub async fn login_staff(&self, dto: LoginDto) -> Result<AuthResponseDto, AppError> {
+        let user = self
+            .user_repo
+            .find_by_username_with_password(&dto.username)
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
+
+        if user.role.as_deref() != Some("staff") {
+            return Err(AppError::Unauthorized("User is not staff".to_string()));
+        }
+
+        self.verify_password(&dto.password, user.password_hash.as_deref())?;
+        self.ensure_active(&user)?;
+
+        let token = self.generate_access_token(&user)?;
+        Ok(AuthResponseDto {
+            accessToken: token,
+            user: user.to_auth_user(),
+        })
+    }
+
     pub async fn verify_otp(&self, dto: VerifyOtpDto) -> Result<AuthResponseDto, AppError> {
         let user = self
             .user_repo

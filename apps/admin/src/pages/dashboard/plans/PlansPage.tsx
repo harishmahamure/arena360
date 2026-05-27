@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlan } from '../../../services/plans/delete';
 import { getPlans, type PlanResponse } from '../../../services/plans/list';
 
@@ -17,6 +18,8 @@ export default function PlansPage() {
   const isActive = searchParams.get('isActive');
 
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.PlansWrite);
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -120,14 +123,14 @@ export default function PlansPage() {
     },
   ];
 
-  const handleDeletePlan = useCallback(
+  const handleDeactivatePlan = useCallback(
     async (id: string) => {
       try {
         await deletePlan(id);
-        toast.success('Plan deleted successfully');
+        toast.success('Plan deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to delete plan');
+        toast.error('Failed to deactivate plan');
       }
     },
     [refetch],
@@ -141,8 +144,8 @@ export default function PlansPage() {
     },
     {
       icon: <Delete color="error" />,
-      label: 'Delete Plan',
-      onClick: (row) => handleDeletePlan(row.id),
+      label: 'Deactivate Plan',
+      onClick: (row) => handleDeactivatePlan(row.id),
     },
   ];
 
@@ -153,12 +156,12 @@ export default function PlansPage() {
         description="Manage your gaming plans and subscriptions here."
         data={data?.data || []}
         columns={columns}
-        actions={actions}
+        actions={canWrite ? actions : []}
         isLoading={isLoading}
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAddNewPlan}
+        onAddClick={canWrite ? handleAddNewPlan : undefined}
         addButtonLabel="Add Plan"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

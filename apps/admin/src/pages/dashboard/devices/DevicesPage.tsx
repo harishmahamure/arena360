@@ -13,6 +13,7 @@ import { Box, Chip, debounce, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { type DeviceResponse, DeviceStatus, getDevices } from '../../../services/devices/list';
 
 const getStatusColor = (status: DeviceStatus) => {
@@ -86,6 +87,8 @@ export default function DevicesPage() {
   const typeFilter = searchParams.get('type');
 
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.DevicesWrite);
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -228,12 +231,12 @@ export default function DevicesPage() {
         description="Manage your game zone devices and stations here."
         data={data?.data || []}
         columns={columns}
-        actions={actions}
+        actions={canWrite ? actions : []}
         isLoading={isLoading}
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAddNewDevice}
+        onAddClick={canWrite ? handleAddNewDevice : undefined}
         addButtonLabel="Add Device"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

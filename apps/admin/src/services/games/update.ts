@@ -13,5 +13,5 @@ export const updateGame = async (id: string, game: CreateGameFormData) => {
       : undefined,
   };
 
-  return http.put(`/games/${id}`, payload);
+  return http.patch(`/games/${id}`, payload);
 };

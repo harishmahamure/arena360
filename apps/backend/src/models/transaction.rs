@@ -38,6 +38,13 @@ pub struct CreateTransactionDto {
     pub online_amount: Option<f64>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTransactionDto {
+    pub payment_status: Option<String>,
+    pub notes: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionFilterDto {

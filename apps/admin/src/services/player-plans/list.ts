@@ -3,6 +3,8 @@ import { http } from '@gaming-cafe/utils';
 export enum PlayerPlanStatus {
   ACTIVE = 'active',
   EXPIRED = 'expired',
+  EXHAUSTED = 'exhausted',
+  CANCELLED = 'cancelled',
   SUSPENDED = 'suspended',
 }
 
@@ -10,29 +12,31 @@ export interface PlayerPlanResponse {
   id: string;
   playerId: string;
   planId: string;
-  status: PlayerPlanStatus;
-  remainingTimeCredits?: number;
-  expiresAt?: string;
+  purchaseDate: string;
+  activationDate?: string | null;
+  expiryDate: string;
+  remainingUsageCount?: number | null;
+  remainingTimeCredits?: number | null;
+  status: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
   player?: {
     id: string;
-    email: string;
     username: string;
-    firstName?: string;
-    lastName?: string;
-  };
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
   plan?: {
     id: string;
     name: string;
-    description?: string;
     planType: string;
-    price: string;
-    timeCredits?: number;
-  };
+    price: number;
+    timeCredits: number;
+  } | null;
 }
 
-interface GetPlayerPlansResponse {
+export interface GetPlayerPlansResponse {
   data: PlayerPlanResponse[];
   total: number;
   page: number;
@@ -43,7 +47,7 @@ interface GetPlayerPlansResponse {
 export interface GetPlayerPlansFilters {
   playerId?: string;
   planId?: string;
-  status?: PlayerPlanStatus;
+  status?: PlayerPlanStatus | string;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -54,9 +58,9 @@ export const getPlayerPlans = async (filters: GetPlayerPlansFilters = {}) => {
   return http.get<GetPlayerPlansResponse>('/player-plans', {
     params: {
       ...filters,
-      sortBy: filters.sortBy || 'createdAt',
+      sortBy: filters.sortBy || 'purchaseDate',
       sortOrder: filters.sortOrder || 'DESC',
-      limit: filters.limit || 100, // Get more for dropdown
+      limit: filters.limit || 100,
       page: filters.page || 1,
     },
   });

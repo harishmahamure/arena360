@@ -6,6 +6,18 @@ export interface StatsQueryDto {
   endDate?: string;
 }
 
+export interface StaffStatsQueryDto extends StatsQueryDto {
+  shiftStart?: string;
+}
+
+/**
+ * Current vs previous period pair (revenue, usage stats endpoints)
+ */
+export interface PeriodPair<T> {
+  current: T;
+  previous: T;
+}
+
 /**
  * Revenue breakdown by payment method
  */
@@ -141,4 +153,36 @@ export interface DashboardStatsDto {
   devices: DeviceStatsDto;
   topPerformers: TopPerformersDto;
   revenueTrend: RevenueTrendDto[];
+}
+
+export interface StaffPlayerStatsDto {
+  activePlayers: number;
+  newPlayersInPeriod: number;
+}
+
+export interface StaffDeviceStatsDto {
+  total: number;
+  available: number;
+  inUse: number;
+}
+
+export interface StaffDashboardStatsDto {
+  period: {
+    startDate: string;
+    endDate: string;
+    label: string;
+    previousLabel: string;
+  };
+  shift?: {
+    startDate: string;
+    endDate: string;
+    label: string;
+    previousLabel: string;
+  } | null;
+  sessions: UsageStatsDto;
+  transactions: TransactionStatsDto;
+  revenue: RevenueByPaymentMethodDto;
+  shiftRevenue?: RevenueByPaymentMethodDto | null;
+  players: StaffPlayerStatsDto;
+  devices: StaffDeviceStatsDto;
 }

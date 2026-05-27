@@ -11,7 +11,7 @@ export interface UpdateDeviceRequest {
 }
 
 export const updateDevice = async (id: string, device: UpdateDeviceRequest) => {
-  return http.put(`/devices/${id}`, device);
+  return http.patch(`/devices/${id}`, device);
 };
 
 export interface UpdateDeviceStatusRequest {

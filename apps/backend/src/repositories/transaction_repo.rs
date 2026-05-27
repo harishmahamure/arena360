@@ -182,6 +182,44 @@ impl TransactionRepository {
         Ok(transaction)
     }
 
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: &crate::models::UpdateTransactionDto,
+    ) -> Result<Transaction, AppError> {
+        let transaction = sqlx::query_as::<_, Transaction>(
+            r#"
+            UPDATE transactions SET
+                "paymentStatus" = COALESCE($2::transactions_paymentstatus_enum, "paymentStatus"),
+                notes = COALESCE($3, notes),
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL
+            RETURNING id,
+                      "playerId" as player_id,
+                      "transactionType"::text as transaction_type,
+                      "planId" as plan_id,
+                      amount::float8 as amount,
+                      "cashAmount"::float8 as cash_amount,
+                      "onlineAmount"::float8 as online_amount,
+                      "paymentMethod"::text as payment_method,
+                      "paymentStatus"::text as payment_status,
+                      notes,
+                      "transactionDate" as transaction_date,
+                      "createdAt" as created_at,
+                      "updatedAt" as updated_at,
+                      "deletedAt" as deleted_at
+            "#,
+        )
+        .bind(id)
+        .bind(&dto.payment_status)
+        .bind(&dto.notes)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;
+
+        Ok(transaction)
+    }
+
     pub async fn plan_price(&self, plan_id: Uuid) -> Result<Option<f64>, AppError> {
         let row: Option<(f64,)> = sqlx::query_as(
             r#"SELECT price::float8 FROM plans WHERE id = $1 AND "deletedAt" IS NULL"#,

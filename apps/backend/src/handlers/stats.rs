@@ -5,9 +5,10 @@ use utoipa::ToSchema;
 
 use crate::app::AppState;
 use crate::dto::ok;
-use crate::middleware::AdminUser;
+use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::openapi::responses::{
-    DashboardStatsEnvelope, ErrorEnvelope, RevenueByPaymentMethodEnvelope, UsageStatsEnvelope,
+    DashboardStatsEnvelope, ErrorEnvelope, RevenueByPaymentMethodEnvelope,
+    StaffDashboardStatsEnvelope, UsageStatsEnvelope,
 };
 use crate::services::stats_service::{PeriodPair, RevenueByPaymentMethodDto, UsageStatsDto};
 
@@ -16,6 +17,14 @@ use crate::services::stats_service::{PeriodPair, RevenueByPaymentMethodDto, Usag
 pub struct StatsQuery {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default, ToSchema, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffStatsQuery {
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub shift_start: Option<String>,
 }
 
 #[utoipa::path(
@@ -40,6 +49,32 @@ pub async fn dashboard_stats(
     let stats = state
         .stats
         .get_dashboard_stats(query.start_date, query.end_date)
+        .await?;
+    ok(stats)
+}
+
+#[utoipa::path(
+    get,
+    path = "/stats/staff-dashboard",
+    params(StaffStatsQuery),
+    responses(
+        (status = 200, description = "Staff dashboard statistics", body = StaffDashboardStatsEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "stats"
+)]
+pub async fn staff_dashboard_stats(
+    AdminOrStaff(_claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<StaffStatsQuery>,
+) -> crate::dto::ApiResult<crate::services::stats_service::StaffDashboardStatsDto> {
+    let stats = state
+        .stats
+        .get_staff_dashboard_stats(query.start_date, query.end_date, query.shift_start)
         .await?;
     ok(stats)
 }

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deleteGame } from '../../../services/games/delete';
 import { type GameResponse, getGames } from '../../../services/games/list';
 
@@ -19,6 +20,8 @@ export default function GamesPage() {
   const isMultiplayer = searchParams.get('multiplayer') === 'true' ? 1 : undefined;
 
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.GamesWrite);
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -119,14 +122,14 @@ export default function GamesPage() {
     },
   ];
 
-  const handleDeleteGame = useCallback(
+  const handleDeactivateGame = useCallback(
     async (id: string) => {
       try {
         await deleteGame(id);
-        toast.success('Game deleted successfully');
+        toast.success('Game deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to delete game');
+        toast.error('Failed to deactivate game');
       }
     },
     [refetch],
@@ -140,8 +143,8 @@ export default function GamesPage() {
     },
     {
       icon: <Delete color="error" />,
-      label: 'Delete Game',
-      onClick: (row) => handleDeleteGame(row.id),
+      label: 'Deactivate Game',
+      onClick: (row) => handleDeactivateGame(row.id),
     },
   ];
 
@@ -152,12 +155,12 @@ export default function GamesPage() {
         description="Manage your game zone Games here."
         data={data?.data || []}
         columns={columns}
-        actions={actions}
+        actions={canWrite ? actions : []}
         isLoading={isLoading}
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAddNewGame}
+        onAddClick={canWrite ? handleAddNewGame : undefined}
         addButtonLabel="Add Game"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

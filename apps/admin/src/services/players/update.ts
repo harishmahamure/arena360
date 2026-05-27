@@ -1,5 +1,5 @@
+import type { UserRole } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
-import type { UserRole } from './list';
 
 export interface UpdatePlayerRequest {
   email?: string;

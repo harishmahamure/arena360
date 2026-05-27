@@ -50,6 +50,9 @@ importers:
       '@fontsource/roboto':
         specifier: ^5.2.9
         version: 5.2.10
+      '@gaming-cafe/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@gaming-cafe/providers':
         specifier: workspace:*
         version: link:../../packages/providers

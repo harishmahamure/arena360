@@ -78,6 +78,66 @@
         }
       }
     },
+    "/auth/login/staff": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "login_staff",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/register": {
       "post": {
         "tags": [
@@ -476,6 +536,71 @@
       }
     },
     "/device-games/{id}": {
+      "get": {
+        "tags": [
+          "device-games"
+        ],
+        "operationId": "get_device_game",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device game ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get device game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceGameEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
       "delete": {
         "tags": [
           "device-games"
@@ -495,7 +620,102 @@
         ],
         "responses": {
           "204": {
-            "description": "Deleted"
+            "description": "Soft-deactivated (isActive=false)"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "device-games"
+        ],
+        "operationId": "update_device_game",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device game ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeviceGameDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Update device game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceGameEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",
@@ -758,7 +978,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Deleted"
+            "description": "Soft-deactivated (deletedAt set)"
           },
           "401": {
             "description": "Unauthorized",
@@ -1383,7 +1603,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Deleted"
+            "description": "Soft-deactivated (status=deleted)"
           },
           "401": {
             "description": "Unauthorized",
@@ -1888,7 +2108,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Deleted"
+            "description": "Soft-deactivated (isActive=false)"
           },
           "401": {
             "description": "Unauthorized",
@@ -2371,7 +2591,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Deleted"
+            "description": "Soft-deactivated (isActive=false)"
           },
           "401": {
             "description": "Unauthorized",
@@ -2591,7 +2811,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPlanEnvelope"
+                  "$ref": "#/components/schemas/PlayerPlanFlatEnvelope"
                 }
               }
             }
@@ -2656,7 +2876,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPlanEnvelope"
+                  "$ref": "#/components/schemas/PlayerPlanFlatEnvelope"
                 }
               }
             }
@@ -3111,7 +3331,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Delete product",
+            "description": "Soft-deactivated (isActive=false)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3338,7 +3558,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionEnvelope"
+                  "$ref": "#/components/schemas/SessionFlatEnvelope"
                 }
               }
             }
@@ -3527,7 +3747,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionEnvelope"
+                  "$ref": "#/components/schemas/SessionFlatEnvelope"
                 }
               }
             }
@@ -3758,6 +3978,106 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RevenueByPaymentMethodEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/stats/staff-dashboard": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "operationId": "staff_dashboard_stats",
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "shiftStart",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Staff dashboard statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffDashboardStatsEnvelope"
                 }
               }
             }
@@ -4307,6 +4627,101 @@
             "bearer_auth": []
           }
         ]
+      },
+      "patch": {
+        "tags": [
+          "transactions"
+        ],
+        "operationId": "update_transaction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Transaction ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTransactionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Update transaction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/units": {
@@ -4617,7 +5032,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Deleted"
+            "description": "Soft-deactivated (isActive=false)"
           },
           "401": {
             "description": "Unauthorized",
@@ -7858,7 +8273,7 @@
         ],
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/PlayerPlan"
+            "$ref": "#/components/schemas/PlayerPlanResponse"
           },
           "statusCode": {
             "type": "integer",
@@ -7980,6 +8395,31 @@
           }
         }
       },
+      "PlayerPlanFlatEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PlayerPlan"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "PlayerPlanPaginationEnvelope": {
         "type": "object",
         "required": [
@@ -8018,7 +8458,7 @@
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PlayerPlan"
+              "$ref": "#/components/schemas/PlayerPlanResponse"
             }
           },
           "limit": {
@@ -8036,6 +8476,172 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "PlayerPlanPlanSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "planType",
+          "price",
+          "timeCredits"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "planType": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "timeCredits": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PlayerPlanPlayerSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "username"
+        ],
+        "properties": {
+          "firstName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "PlayerPlanResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "planId",
+          "purchaseDate",
+          "expiryDate",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "activationDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expiryDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "movedCreditsCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "movedToPlanId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlayerPlanPlanSummary"
+              }
+            ]
+          },
+          "planId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "player": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlayerPlanPlayerSummary"
+              }
+            ]
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purchaseDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "remainingTimeCredits": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "remainingUsageCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -8373,6 +8979,12 @@
           "password": {
             "type": "string"
           },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "username": {
             "type": "string"
           }
@@ -8502,6 +9114,36 @@
           }
         }
       },
+      "SessionDeviceSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "deviceType",
+          "status"
+        ],
+        "properties": {
+          "deviceType": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "SessionEnvelope": {
         "type": "object",
         "required": [
@@ -8512,7 +9154,7 @@
         ],
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/UsageSession"
+            "$ref": "#/components/schemas/UsageSessionResponse"
           },
           "statusCode": {
             "type": "integer",
@@ -8607,6 +9249,31 @@
           }
         }
       },
+      "SessionFlatEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/UsageSession"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "SessionPaginationEnvelope": {
         "type": "object",
         "required": [
@@ -8645,7 +9312,7 @@
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/UsageSession"
+              "$ref": "#/components/schemas/UsageSessionResponse"
             }
           },
           "limit": {
@@ -8663,6 +9330,250 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "SessionPlanSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "planType",
+          "timeCredits"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "planType": {
+            "type": "string"
+          },
+          "timeCredits": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "SessionPlayerPlanSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "planId",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionPlanSummary"
+              }
+            ]
+          },
+          "planId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "player": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionPlayerSummary"
+              }
+            ]
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "remainingTimeCredits": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "SessionPlayerSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "username"
+        ],
+        "properties": {
+          "firstName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "StaffDashboardStatsDto": {
+        "type": "object",
+        "required": [
+          "period",
+          "sessions",
+          "transactions",
+          "revenue",
+          "players",
+          "devices"
+        ],
+        "properties": {
+          "devices": {
+            "$ref": "#/components/schemas/StaffDeviceStatsDto"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodDto"
+          },
+          "players": {
+            "$ref": "#/components/schemas/StaffPlayerStatsDto"
+          },
+          "revenue": {
+            "$ref": "#/components/schemas/RevenueByPaymentMethodDto"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/UsageStatsDto"
+          },
+          "shift": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PeriodDto"
+              }
+            ]
+          },
+          "shiftRevenue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RevenueByPaymentMethodDto"
+              }
+            ]
+          },
+          "transactions": {
+            "$ref": "#/components/schemas/TransactionStatsDto"
+          }
+        }
+      },
+      "StaffDashboardStatsEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StaffDashboardStatsDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "StaffDeviceStatsDto": {
+        "type": "object",
+        "required": [
+          "total",
+          "available",
+          "inUse"
+        ],
+        "properties": {
+          "available": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "inUse": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "StaffPlayerStatsDto": {
+        "type": "object",
+        "required": [
+          "activePlayers",
+          "newPlayersInPeriod"
+        ],
+        "properties": {
+          "activePlayers": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "newPlayersInPeriod": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "StaffStatsQuery": {
+        "type": "object",
+        "properties": {
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shiftStart": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startDate": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -9299,6 +10210,24 @@
           }
         }
       },
+      "UpdateDeviceGameDto": {
+        "type": "object",
+        "properties": {
+          "installationDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateDeviceStatusDto": {
         "type": "object",
         "required": [
@@ -9654,6 +10583,23 @@
           }
         }
       },
+      "UpdateTransactionDto": {
+        "type": "object",
+        "properties": {
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paymentStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateUnitDto": {
         "type": "object",
         "properties": {
@@ -9780,6 +10726,98 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "playerPlanId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeCreditsConsumed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UsageSessionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerPlanId",
+          "deviceId",
+          "startTime",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "device": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionDeviceSummary"
+              }
+            ]
+          },
+          "deviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "durationMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "endTime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "gameId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerPlan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionPlayerPlanSummary"
+              }
+            ]
           },
           "playerPlanId": {
             "type": "string",

@@ -111,10 +111,10 @@ export const deleteFile = async (id: string): Promise<void> => {
 };
 
 /**
- * Bulk delete files
+ * Bulk delete files (sequential deletes; no bulk endpoint on backend)
  */
 export const bulkDeleteFiles = async (ids: string[]): Promise<void> => {
-  await http.post(`${BASE_URL}/bulk-delete`, { ids });
+  await Promise.all(ids.map((id) => deleteFile(id)));
 };
 
 /**
@@ -132,24 +132,26 @@ export const activateFile = async (id: string): Promise<FileRecord> => {
 };
 
 /**
- * Restore deleted file
+ * Restore deleted file (maps to activate on backend)
  */
 export const restoreFile = async (id: string): Promise<FileRecord> => {
-  return http.put<FileRecord>(`${BASE_URL}/${id}/restore`, {});
+  return http.put<FileRecord>(`${BASE_URL}/${id}/activate`, {});
 };
 
 /**
  * Get files by category
  */
 export const getFilesByCategory = async (category: FileCategory): Promise<FileRecord[]> => {
-  return http.get<FileRecord[]>(`${BASE_URL}/category/${category}`);
+  const result = await listFiles({ category, limit: 100 });
+  return result.data;
 };
 
 /**
  * Get files by uploader
  */
 export const getFilesByUploader = async (uploaderId: string): Promise<FileRecord[]> => {
-  return http.get<FileRecord[]>(`${BASE_URL}/uploader/${uploaderId}`);
+  const result = await listFiles({ uploadedBy: uploaderId, limit: 100 });
+  return result.data;
 };
 
 /**
@@ -159,7 +161,12 @@ export const getFilesByRelatedEntity = async (
   entityType: string,
   entityId: string,
 ): Promise<FileRecord[]> => {
-  return http.get<FileRecord[]>(`${BASE_URL}/related/${entityType}/${entityId}`);
+  const result = await listFiles({
+    relatedEntityType: entityType,
+    relatedEntityId: entityId,
+    limit: 100,
+  });
+  return result.data;
 };
 
 /**
@@ -170,11 +177,10 @@ export const getStorageStats = async (): Promise<StorageStats> => {
 };
 
 /**
- * Cleanup expired files
+ * Cleanup expired files (not supported by backend; returns 0)
  */
 export const cleanupExpiredFiles = async (): Promise<number> => {
-  const result = await http.post<{ deletedCount: number }>(`${BASE_URL}/cleanup-expired`, {});
-  return result.deletedCount;
+  return 0;
 };
 
 /**

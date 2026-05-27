@@ -1,8 +1,4 @@
-import axios, {
-  type AxiosError,
-  type AxiosInstance,
-  type InternalAxiosRequestConfig,
-} from 'axios';
+import axios, { type AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { ApiError } from './ApiError';
 import type { CreateHttpClientOptions, HttpClient, HttpRequestConfig } from './types';
 import { unwrapEnvelope } from './unwrapEnvelope';
@@ -32,10 +28,7 @@ function mapAxiosError(error: AxiosError): ApiError {
   });
 }
 
-async function request<T>(
-  client: AxiosInstance,
-  config: HttpRequestConfig,
-): Promise<T> {
+async function request<T>(client: AxiosInstance, config: HttpRequestConfig): Promise<T> {
   const response = await client.request<unknown>(config);
   return unwrapEnvelope<T>(response.data);
 }

@@ -1,10 +1,5 @@
+import type { UserRole } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
-
-// Enums for player
-export enum UserRole {
-  ADMIN = 'admin',
-  PLAYER = 'player',
-}
 
 export interface PlayerResponse {
   id: string;

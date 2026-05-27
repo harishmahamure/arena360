@@ -1,18 +1,16 @@
+import { isUserRole, type UserRole } from '@gaming-cafe/contracts';
 import { validationMessages } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
-// Enum values
-export const UserRoleValues = {
-  ADMIN: 'admin',
-  PLAYER: 'player',
-} as const;
+export const userRoleOptions: { value: UserRole; label: string }[] = [
+  { value: 'player', label: 'Player' },
+  { value: 'staff', label: 'Staff' },
+  { value: 'admin', label: 'Admin' },
+];
 
-export type UserRoleType = (typeof UserRoleValues)[keyof typeof UserRoleValues];
-
-// Options for select fields
-export const userRoleOptions = [
-  { value: UserRoleValues.ADMIN, label: 'Admin' },
-  { value: UserRoleValues.PLAYER, label: 'Player' },
+export const adminCreateRoleOptions: { value: UserRole; label: string }[] = [
+  { value: 'player', label: 'Player' },
+  { value: 'staff', label: 'Staff' },
 ];
 
 export const isActiveOptions = [
@@ -42,6 +40,8 @@ export const createPlayerSchema = yup.object({
   firstName: yup.string().max(50, 'First name must not exceed 50 characters').optional().nullable(),
 
   lastName: yup.string().max(50, 'Last name must not exceed 50 characters').optional().nullable(),
+
+  role: yup.string().oneOf(['player', 'staff'], 'Please select a valid role').default('player'),
 });
 
 export type CreatePlayerFormData = yup.InferType<typeof createPlayerSchema>;
@@ -53,9 +53,9 @@ export const createPlayerDefaultValues: CreatePlayerFormData = {
   firstName: '',
   lastName: '',
   email: '',
+  role: 'player',
 };
 
-// Update player schema (no password fields)
 export const updatePlayerSchema = yup.object({
   email: yup.string().email('Please enter a valid email address').optional().nullable(),
 
@@ -69,7 +69,10 @@ export const updatePlayerSchema = yup.object({
 
   lastName: yup.string().max(50, 'Last name must not exceed 50 characters').optional().nullable(),
 
-  role: yup.string().oneOf(Object.values(UserRoleValues), 'Please select a valid role').optional(),
+  role: yup
+    .string()
+    .test('valid-role', 'Please select a valid role', (value) => (value ? isUserRole(value) : true))
+    .optional(),
 
   isActive: yup.boolean().optional(),
 });

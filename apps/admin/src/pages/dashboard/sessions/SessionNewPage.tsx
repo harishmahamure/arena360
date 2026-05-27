@@ -10,8 +10,8 @@ import {
   startSessionDefaultValues,
   startSessionSchema,
 } from '../../../containers/sessions/schemas/session-schema';
+import { useEnrichedPlayerPlans } from '../../../hooks/useEnrichedSessions';
 import { DeviceStatus, getDevices } from '../../../services/devices/list';
-import { getPlayerPlans, PlayerPlanStatus } from '../../../services/player-plans/list';
 import { getPlayers } from '../../../services/players/list';
 import { startSession } from '../../../services/sessions/add';
 
@@ -22,16 +22,9 @@ export default function NewSessionPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<SearchOption | null>(null);
 
-  const { data: playerPlansData } = useQuery({
-    queryKey: ['player-plans-active', selectedPlayer?.id],
-    queryFn: () =>
-      getPlayerPlans({
-        status: PlayerPlanStatus.ACTIVE,
-        limit: 100,
-        playerId: selectedPlayer?.id as string,
-      }),
-    enabled: !!selectedPlayer?.id,
-  });
+  const { data: enrichedPlayerPlans } = useEnrichedPlayerPlans(
+    selectedPlayer ? String(selectedPlayer.id) : undefined,
+  );
 
   const { data: devicesData } = useQuery({
     queryKey: ['devices-operational'],
@@ -44,7 +37,7 @@ export default function NewSessionPage() {
   });
 
   useEffect(() => {
-    if (playerPlansData?.data.length === 0)
+    if (selectedPlayer?.id && enrichedPlayerPlans.length === 0)
       toastUtils.error(
         'No active player plans found for this player. Please purchase a plan first. Please click on the button below to purchase a plan.',
         {
@@ -59,10 +52,10 @@ export default function NewSessionPage() {
           },
         },
       );
-  }, [playerPlansData, navigate]);
+  }, [enrichedPlayerPlans, selectedPlayer?.id, navigate]);
 
   const playerPlanOptions =
-    playerPlansData?.data?.map((pp) => ({
+    enrichedPlayerPlans.map((pp) => ({
       value: pp.id,
       label: `${pp.plan?.name || 'Unknown'} - ${
         pp.player?.username || 'Unknown Plan'

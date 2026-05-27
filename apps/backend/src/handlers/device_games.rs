@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::AdminUser;
-use crate::models::{CreateDeviceGameDto, DeviceGameFilterDto, DeviceGameResponse};
+use crate::models::{CreateDeviceGameDto, DeviceGameFilterDto, DeviceGameResponse, UpdateDeviceGameDto};
 use crate::openapi::responses::{
     DeviceGameEnvelope, DeviceGamePaginationEnvelope, ErrorEnvelope,
 };
@@ -106,13 +106,64 @@ pub async fn create_device_game(
 }
 
 #[utoipa::path(
+    get,
+    path = "/device-games/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Device game ID"),
+    ),
+    responses(
+        (status = 200, description = "Get device game", body = DeviceGameEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "device-games"
+)]
+pub async fn get_device_game(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<DeviceGameResponse> {
+    let device_game = state.device_games.get_by_id(id).await?;
+    ok(device_game)
+}
+
+#[utoipa::path(
+    patch,
+    path = "/device-games/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Device game ID"),
+    ),
+    request_body = UpdateDeviceGameDto,
+    responses(
+        (status = 200, description = "Update device game", body = DeviceGameEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "device-games"
+)]
+pub async fn update_device_game(
+    AdminUser(_claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(dto): Json<UpdateDeviceGameDto>,
+) -> ApiResult<DeviceGameResponse> {
+    let device_game = state.device_games.update(id, dto).await?;
+    ok(device_game)
+}
+
+#[utoipa::path(
     delete,
     path = "/device-games/{id}",
     params(
         ("id" = Uuid, Path, description = "Device game ID"),
     ),
     responses(
-        (status = 204, description = "Deleted"),
+        (status = 204, description = "Soft-deactivated (isActive=false)"),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 403, description = "Forbidden", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),

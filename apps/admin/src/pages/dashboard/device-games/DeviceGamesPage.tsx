@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { removeGameFromDevice } from '../../../services/device-games/delete';
 import { type DeviceGameResponse, getDeviceGames } from '../../../services/device-games/list';
 import { toggleDeviceGameActive } from '../../../services/device-games/update';
@@ -19,6 +20,8 @@ export default function DeviceGamesPage() {
   const isActive = searchParams.get('active') === 'false' ? 0 : undefined;
 
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.DeviceGamesWrite);
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -164,14 +167,14 @@ export default function DeviceGamesPage() {
     },
   ];
 
-  const handleRemoveAssignment = useCallback(
+  const handleDeactivateAssignment = useCallback(
     async (id: string) => {
       try {
         await removeGameFromDevice(id);
-        toast.success('Game removed from device successfully');
+        toast.success('Assignment deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to remove game from device');
+        toast.error('Failed to deactivate assignment');
       }
     },
     [refetch],
@@ -210,8 +213,8 @@ export default function DeviceGamesPage() {
     },
     {
       icon: <Delete color="error" />,
-      label: 'Remove Assignment',
-      onClick: (row) => handleRemoveAssignment(row.id),
+      label: 'Deactivate Assignment',
+      onClick: (row) => handleDeactivateAssignment(row.id),
     },
   ];
 
@@ -222,12 +225,12 @@ export default function DeviceGamesPage() {
         description="Manage game assignments to devices. Assign games to specific devices and track installations."
         data={data?.data || []}
         columns={columns}
-        actions={actions}
+        actions={canWrite ? actions : []}
         isLoading={isLoading}
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAssignGame}
+        onAddClick={canWrite ? handleAssignGame : undefined}
         addButtonLabel="Assign Game"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

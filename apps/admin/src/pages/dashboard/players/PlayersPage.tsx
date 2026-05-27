@@ -1,3 +1,4 @@
+import type { UserRole } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
 import { Block, CheckCircle, Delete, Edit } from '@mui/icons-material';
 import { Avatar, Box, Chip, debounce, Pagination, Typography } from '@mui/material';
@@ -5,18 +6,32 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlayer } from '../../../services/players/delete';
-import { getPlayers, type PlayerResponse, UserRole } from '../../../services/players/list';
+import { getPlayers, type PlayerResponse } from '../../../services/players/list';
 import { updatePlayer } from '../../../services/players/update';
 
 const getRoleColor = (role: UserRole) => {
   switch (role) {
-    case UserRole.ADMIN:
+    case 'admin':
       return 'error';
-    case UserRole.PLAYER:
+    case 'staff':
+      return 'warning';
+    case 'player':
       return 'primary';
     default:
       return 'default';
+  }
+};
+
+const getAvatarColor = (role: UserRole) => {
+  switch (role) {
+    case 'admin':
+      return 'error.main';
+    case 'staff':
+      return 'warning.main';
+    default:
+      return 'primary.main';
   }
 };
 
@@ -42,6 +57,8 @@ export default function PlayersPage() {
   const activeFilter = searchParams.get('active');
 
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.PlayersWrite);
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -95,7 +112,7 @@ export default function PlayersPage() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Avatar
             sx={{
-              bgcolor: row?.role === UserRole.ADMIN ? 'error.main' : 'primary.main',
+              bgcolor: getAvatarColor(row?.role ?? 'player'),
               width: 36,
               height: 36,
             }}
@@ -155,14 +172,14 @@ export default function PlayersPage() {
     },
   ];
 
-  const handleDeletePlayer = useCallback(
+  const handleDeactivatePlayer = useCallback(
     async (id: string) => {
       try {
         await deletePlayer(id);
-        toast.success('Player deleted successfully');
+        toast.success('Player deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to delete player');
+        toast.error('Failed to deactivate player');
       }
     },
     [refetch],
@@ -201,8 +218,8 @@ export default function PlayersPage() {
     },
     {
       icon: <Delete color="error" />,
-      label: 'Delete Player',
-      onClick: (row) => handleDeletePlayer(row.id),
+      label: 'Deactivate Player',
+      onClick: (row) => handleDeactivatePlayer(row.id),
     },
   ];
 
@@ -213,12 +230,12 @@ export default function PlayersPage() {
         description="Manage your game zone players and admins here."
         data={data?.data || []}
         columns={columns}
-        actions={actions}
+        actions={canWrite ? actions : []}
         isLoading={isLoading}
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAddNewPlayer}
+        onAddClick={canWrite ? handleAddNewPlayer : undefined}
         addButtonLabel="Add Player"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

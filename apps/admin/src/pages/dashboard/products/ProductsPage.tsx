@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deleteProduct } from '../../../services/product/delete';
 import { getProducts, type ProductResponse } from '../../../services/product/list';
 
@@ -18,6 +19,8 @@ export default function ProductsPage() {
   const stockExpiringSoon = searchParams.get('stockExpiringSoon') === 'true' ? 10 : undefined;
 
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.ProductsWrite);
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -101,14 +104,14 @@ export default function ProductsPage() {
     },
   ];
 
-  const handleDeleteProduct = useCallback(
+  const handleDeactivateProduct = useCallback(
     async (id: string) => {
       try {
         await deleteProduct(id);
-        toast.success('Product deleted successfully');
+        toast.success('Product deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to delete product');
+        toast.error('Failed to deactivate product');
       }
     },
     [refetch],
@@ -122,8 +125,8 @@ export default function ProductsPage() {
     },
     {
       icon: <Delete color="error" />,
-      label: 'Delete Product',
-      onClick: (row) => handleDeleteProduct(row.id),
+      label: 'Deactivate Product',
+      onClick: (row) => handleDeactivateProduct(row.id),
     },
   ];
 
@@ -134,12 +137,12 @@ export default function ProductsPage() {
         description="Manage your game zone Products here."
         data={data?.data || []}
         columns={columns}
-        actions={actions}
+        actions={canWrite ? actions : []}
         isLoading={isLoading}
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAddNewProduct}
+        onAddClick={canWrite ? handleAddNewProduct : undefined}
         addButtonLabel="Add Product"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

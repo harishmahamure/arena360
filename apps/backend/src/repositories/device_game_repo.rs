@@ -107,9 +107,39 @@ impl DeviceGameRepository {
         Ok(device_game)
     }
 
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: &crate::models::UpdateDeviceGameDto,
+    ) -> Result<DeviceGame, AppError> {
+        let device_game = sqlx::query_as::<_, DeviceGame>(
+            r#"
+            UPDATE device_games SET
+                "installationDate" = COALESCE($2, "installationDate"),
+                "isActive" = COALESCE($3, "isActive"),
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL
+            RETURNING id, "deviceId" as device_id, "gameId" as game_id,
+                      "installationDate" as installation_date, "isActive" as is_active,
+                      "createdAt" as created_at, "updatedAt" as updated_at,
+                      "deletedAt" as deleted_at
+            "#,
+        )
+        .bind(id)
+        .bind(dto.installation_date)
+        .bind(dto.is_active)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Device-game assignment with ID {id} not found"))
+        })?;
+
+        Ok(device_game)
+    }
+
     pub async fn soft_delete(&self, id: Uuid) -> Result<(), AppError> {
         let result = sqlx::query(
-            r#"UPDATE device_games SET "deletedAt" = NOW() WHERE id = $1 AND "deletedAt" IS NULL"#,
+            r#"UPDATE device_games SET "isActive" = false, "updatedAt" = NOW() WHERE id = $1 AND "deletedAt" IS NULL"#,
         )
         .bind(id)
         .execute(&self.pool)

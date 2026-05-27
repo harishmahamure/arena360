@@ -9,6 +9,7 @@ pub struct RegisterDto {
     pub password: String,
     pub firstName: Option<String>,
     pub lastName: Option<String>,
+    pub role: Option<String>,
 }
 
 #[allow(non_snake_case)]
@@ -89,6 +90,14 @@ pub struct JwtUserClaims {
 impl JwtUserClaims {
     pub fn is_admin(&self) -> bool {
         self.roles.iter().any(|r| r == "admin")
+    }
+
+    pub fn is_staff(&self) -> bool {
+        self.roles.iter().any(|r| r == "staff")
+    }
+
+    pub fn is_admin_or_staff(&self) -> bool {
+        self.is_admin() || self.is_staff()
     }
 }
 

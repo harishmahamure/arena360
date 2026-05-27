@@ -112,7 +112,7 @@ pub async fn update_product(
         ("id" = Uuid, Path, description = "Product ID"),
     ),
     responses(
-        (status = 200, description = "Delete product", body = ProductEnvelope),
+        (status = 200, description = "Soft-deactivated (isActive=false)", body = ProductEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 403, description = "Forbidden", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),

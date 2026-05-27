@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::models::{
     status, AssignPlanDto, Plan, PlayerPlan, PlayerPlanCreateValues, PlayerPlanFilterDto,
-    PlayerPlanUpdateValues, ValidationResult,
+    PlayerPlanResponse, PlayerPlanUpdateValues, ValidationResult,
 };
 use crate::repositories::{PlanRepository, PlayerPlanRepository, UserRepository};
 
@@ -27,15 +27,15 @@ impl PlayerPlanService {
     pub async fn list(
         &self,
         filters: PlayerPlanFilterDto,
-    ) -> Result<crate::dto::PaginationResult<PlayerPlan>, AppError> {
+    ) -> Result<crate::dto::PaginationResult<PlayerPlanResponse>, AppError> {
         let mut result = self.repo.list(&filters).await?;
         self.expire_stale_in_results(&mut result.data).await?;
         Ok(result)
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<PlayerPlan, AppError> {
+    pub async fn get_by_id(&self, id: Uuid) -> Result<PlayerPlanResponse, AppError> {
         self.repo
-            .find_by_id(id)
+            .find_enriched_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Player plan with ID {id} not found")))
     }
@@ -106,7 +106,7 @@ impl PlayerPlanService {
                 ))
             })?;
 
-        Ok(Self::validate_player_plan(&player_plan, &plan, current_time))
+        Ok(Self::validate_player_plan_response(&player_plan, &plan, current_time))
     }
 
     pub async fn deduct_time_credits(
@@ -182,7 +182,11 @@ impl PlayerPlanService {
                 .cmp(&a.remaining_time_credits.unwrap_or(0))
         });
 
-        Ok(result.data.remove(0))
+        let best = result.data.remove(0);
+        self.repo
+            .find_by_id(best.id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Player plan with ID {} not found", best.id)))
     }
 
     pub fn enforce_player_scope(
@@ -214,7 +218,7 @@ impl PlayerPlanService {
     pub fn ensure_owner_or_admin(
         claims_user_id: &str,
         is_admin: bool,
-        player_plan: &PlayerPlan,
+        player_id: Uuid,
     ) -> Result<(), AppError> {
         if is_admin {
             return Ok(());
@@ -223,7 +227,7 @@ impl PlayerPlanService {
         let user_uuid = Uuid::parse_str(claims_user_id)
             .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
 
-        if player_plan.player_id != user_uuid {
+        if player_id != user_uuid {
             return Err(AppError::Forbidden(
                 "You can only access your own player plans".to_string(),
             ));
@@ -232,7 +236,10 @@ impl PlayerPlanService {
         Ok(())
     }
 
-    async fn expire_stale_in_results(&self, player_plans: &mut [PlayerPlan]) -> Result<(), AppError> {
+    async fn expire_stale_in_results(
+        &self,
+        player_plans: &mut [PlayerPlanResponse],
+    ) -> Result<(), AppError> {
         let now = Utc::now();
         for player_plan in player_plans.iter_mut() {
             if player_plan.status == status::ACTIVE && player_plan.expiry_date < now {
@@ -254,8 +261,8 @@ impl PlayerPlanService {
         Ok(())
     }
 
-    fn validate_player_plan(
-        player_plan: &PlayerPlan,
+    fn validate_player_plan_response(
+        player_plan: &PlayerPlanResponse,
         plan: &Plan,
         current_time: Option<DateTime<Utc>>,
     ) -> ValidationResult {

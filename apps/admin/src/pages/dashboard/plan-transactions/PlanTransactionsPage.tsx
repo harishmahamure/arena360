@@ -5,6 +5,7 @@ import { Box, Chip, debounce, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEnrichedTransactions } from '../../../hooks/useEnrichedTransactions';
 import type { PaymentMethod } from '../../../services/transaction/list';
 import {
   getTransactions,
@@ -88,7 +89,7 @@ const columns: Column<TransactionResponse>[] = [
     label: 'Amount',
     minWidth: 100,
     align: 'right',
-    format: (value) => formatCurrency(parseFloat(value as string), 'INR'),
+    format: (value) => formatCurrency(Number(value), 'INR'),
   },
   {
     id: 'paymentMethod',
@@ -151,6 +152,8 @@ export default function PlanTransactionsPage() {
       }),
   });
 
+  const enrichedTransactions = useEnrichedTransactions(data?.data);
+
   const handleSearch = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const query = event.target.value;
@@ -179,7 +182,7 @@ export default function PlanTransactionsPage() {
       <ListViewPage<TransactionResponse>
         title="Plan Transactions"
         description="Manage plan purchase transactions and assignments here."
-        data={data?.data || []}
+        data={enrichedTransactions}
         columns={columns}
         actions={actions}
         isLoading={isLoading}

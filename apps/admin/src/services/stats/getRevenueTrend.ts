@@ -1,16 +1,10 @@
-import { http } from '@gaming-cafe/utils';
+import { getDashboardStats } from './getDashboardStats';
 import type { RevenueTrendDto, StatsQueryDto } from './types';
 
 /**
- * Fetches revenue trend data over time
- *
- * @param filters - Optional date filters (startDate, endDate)
- * @returns Daily revenue trends by payment method
+ * Fetches revenue trend data from dashboard stats
  */
-export const getRevenueTrend = async (filters?: StatsQueryDto) => {
-  return http.get<RevenueTrendDto[]>('/stats/revenue-trend', {
-    params: {
-      ...filters,
-    },
-  });
+export const getRevenueTrend = async (filters?: StatsQueryDto): Promise<RevenueTrendDto[]> => {
+  const dashboard = await getDashboardStats(filters);
+  return dashboard.revenueTrend;
 };

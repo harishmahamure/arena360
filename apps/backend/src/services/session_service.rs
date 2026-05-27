@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::models::{
     CreateSessionDto, EndSessionDto, SessionFilterDto, UpdateDeviceStatusDto, UsageSession,
+    UsageSessionResponse,
 };
 use crate::repositories::{PlanRepository, SessionRepository};
 use crate::services::{DeviceService, EventService, PlayerPlanService};
@@ -37,13 +38,13 @@ impl SessionService {
     pub async fn list(
         &self,
         filters: SessionFilterDto,
-    ) -> Result<crate::dto::PaginationResult<UsageSession>, AppError> {
+    ) -> Result<crate::dto::PaginationResult<UsageSessionResponse>, AppError> {
         self.repo.list(&filters).await
     }
 
     pub async fn list_active(
         &self,
-    ) -> Result<crate::dto::PaginationResult<UsageSession>, AppError> {
+    ) -> Result<crate::dto::PaginationResult<UsageSessionResponse>, AppError> {
         self.repo
             .list(&SessionFilterDto {
                 is_active: Some(1),
@@ -52,9 +53,9 @@ impl SessionService {
             .await
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<UsageSession, AppError> {
+    pub async fn get_by_id(&self, id: Uuid) -> Result<UsageSessionResponse, AppError> {
         self.repo
-            .find_by_id(id)
+            .find_enriched_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
     }

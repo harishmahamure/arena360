@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::dto::PaginationResult;
 use crate::error::AppError;
-use crate::models::{CreateSessionDto, SessionFilterDto, UsageSession};
+use crate::models::{
+    CreateSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse, UsageSessionRow,
+};
 
 pub struct SessionRepository {
     pool: PgPool,
@@ -39,6 +41,34 @@ impl SessionRepository {
         Ok(session)
     }
 
+    pub async fn find_enriched_by_id(&self, id: Uuid) -> Result<Option<UsageSessionResponse>, AppError> {
+        let row = sqlx::query_as::<_, UsageSessionRow>(
+            r#"
+            SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
+                   s."gameId" as game_id, s."startTime" as start_time, s."endTime" as end_time,
+                   s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
+                   s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
+                   pp."playerId" as pp_player_id, pp."planId" as pp_plan_id,
+                   pp."remainingTimeCredits" as pp_remaining_time_credits, pp.status::text as pp_status,
+                   u.username as player_username, u."firstName" as player_first_name,
+                   u."lastName" as player_last_name,
+                   p.name as plan_name, p."planType"::text as plan_type, p."timeCredits" as plan_time_credits,
+                   d.name as device_name, d."deviceType"::text as device_type,
+                   d.location as device_location, d.status::text as device_status
+            FROM usage_sessions s
+            LEFT JOIN player_plans pp ON pp.id = s."playerPlanId" AND pp."deletedAt" IS NULL
+            LEFT JOIN users u ON u.id = pp."playerId" AND u."deletedAt" IS NULL
+            LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL
+            LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
+            WHERE s.id = $1 AND s."deletedAt" IS NULL
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| r.into_response()))
+    }
+
     pub async fn find_active_by_player_plan(
         &self,
         player_plan_id: Uuid,
@@ -54,27 +84,42 @@ impl SessionRepository {
         Ok(sessions)
     }
 
-    pub async fn list(&self, filters: &SessionFilterDto) -> Result<PaginationResult<UsageSession>, AppError> {
+    pub async fn list(
+        &self,
+        filters: &SessionFilterDto,
+    ) -> Result<PaginationResult<UsageSessionResponse>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, \"playerPlanId\" as player_plan_id, \"deviceId\" as device_id, \
-             \"gameId\" as game_id, \"startTime\" as start_time, \"endTime\" as end_time, \
-             \"durationMinutes\" as duration_minutes, \"timeCreditsConsumed\" as time_credits_consumed, \
-             \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
-             FROM usage_sessions WHERE \"deletedAt\" IS NULL",
+            r#"SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
+               s."gameId" as game_id, s."startTime" as start_time, s."endTime" as end_time,
+               s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
+               s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
+               pp."playerId" as pp_player_id, pp."planId" as pp_plan_id,
+               pp."remainingTimeCredits" as pp_remaining_time_credits, pp.status::text as pp_status,
+               u.username as player_username, u."firstName" as player_first_name,
+               u."lastName" as player_last_name,
+               p.name as plan_name, p."planType"::text as plan_type, p."timeCredits" as plan_time_credits,
+               d.name as device_name, d."deviceType"::text as device_type,
+               d.location as device_location, d.status::text as device_status
+               FROM usage_sessions s
+               LEFT JOIN player_plans pp ON pp.id = s."playerPlanId" AND pp."deletedAt" IS NULL
+               LEFT JOIN users u ON u.id = pp."playerId" AND u."deletedAt" IS NULL
+               LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL
+               LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
+               WHERE s."deletedAt" IS NULL"#,
         );
 
-        Self::apply_filters(&mut builder, filters);
+        Self::apply_filters(&mut builder, filters, "s");
 
         let sort_by = filters.sort_by.as_deref().unwrap_or("startTime");
         let sort_col = match sort_by {
-            "endTime" => "\"endTime\"",
-            "durationMinutes" => "\"durationMinutes\"",
-            "createdAt" => "\"createdAt\"",
-            _ => "\"startTime\"",
+            "endTime" => "s.\"endTime\"",
+            "durationMinutes" => "s.\"durationMinutes\"",
+            "createdAt" => "s.\"createdAt\"",
+            _ => "s.\"startTime\"",
         };
         let sort_order = if filters.sort_order.as_deref() == Some("ASC") {
             "ASC"
@@ -86,53 +131,57 @@ impl SessionRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let sessions = builder
-            .build_query_as::<UsageSession>()
+        let rows = builder
+            .build_query_as::<UsageSessionRow>()
             .fetch_all(&self.pool)
             .await?;
 
+        let data = rows.into_iter().map(|r| r.into_response()).collect();
+
         let mut count_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM usage_sessions WHERE \"deletedAt\" IS NULL");
-        Self::apply_filters(&mut count_builder, filters);
+            QueryBuilder::new("SELECT COUNT(*) FROM usage_sessions s WHERE s.\"deletedAt\" IS NULL");
+        Self::apply_filters(&mut count_builder, filters, "s");
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
 
-        Ok(PaginationResult::new(sessions, total.0, page, limit))
+        Ok(PaginationResult::new(data, total.0, page, limit))
     }
 
-    fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &SessionFilterDto) {
+    fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &SessionFilterDto, prefix: &str) {
+        let col = |name: &str| format!("{prefix}.\"{name}\"");
         if let Some(player_plan_id) = filters.player_plan_id {
-            builder.push(" AND \"playerPlanId\" = ");
+            builder.push(format!(" AND {} = ", col("playerPlanId")));
             builder.push_bind(player_plan_id);
         }
         if let Some(device_id) = filters.device_id {
-            builder.push(" AND \"deviceId\" = ");
+            builder.push(format!(" AND {} = ", col("deviceId")));
             builder.push_bind(device_id);
         }
         if let Some(game_id) = filters.game_id {
-            builder.push(" AND \"gameId\" = ");
+            builder.push(format!(" AND {} = ", col("gameId")));
             builder.push_bind(game_id);
         }
         if let Some(player_id) = filters.player_id {
-            builder.push(
-                " AND \"playerPlanId\" IN (SELECT id FROM player_plans WHERE \"playerId\" = ",
-            );
+            builder.push(format!(
+                " AND {} IN (SELECT id FROM player_plans WHERE \"playerId\" = ",
+                col("playerPlanId")
+            ));
             builder.push_bind(player_id);
             builder.push(" AND \"deletedAt\" IS NULL)");
         }
         if let Some(is_active) = filters.is_active {
             if is_active == 1 {
-                builder.push(" AND \"endTime\" IS NULL");
+                builder.push(format!(" AND {} IS NULL", col("endTime")));
             } else {
-                builder.push(" AND \"endTime\" IS NOT NULL");
+                builder.push(format!(" AND {} IS NOT NULL", col("endTime")));
             }
         }
         if let Some(from) = filters.start_time_from {
-            builder.push(" AND \"startTime\" >= ");
+            builder.push(format!(" AND {} >= ", col("startTime")));
             builder.push_bind(from);
         }
         if let Some(to) = filters.start_time_to {
-            builder.push(" AND \"startTime\" <= ");
+            builder.push(format!(" AND {} <= ", col("startTime")));
             builder.push_bind(to);
         }
     }

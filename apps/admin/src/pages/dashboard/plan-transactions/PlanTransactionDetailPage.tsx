@@ -18,6 +18,8 @@ import {
   type UpdatePlanTransactionStatusFormData,
   updatePlanTransactionStatusSchema,
 } from '../../../containers/transactions/schemas/transaction-schema';
+import { getPlanById } from '../../../services/plans/getById';
+import { getPlayerById } from '../../../services/players/getById';
 import { getTransactionById } from '../../../services/transactions/getById';
 import { PaymentStatus } from '../../../services/transactions/list';
 import { updateTransaction } from '../../../services/transactions/update';
@@ -55,21 +57,33 @@ export default function ViewPlanTransactionPage() {
     queryKey: ['transaction', id],
     queryFn: () => getTransactionById(id as string),
     enabled: !!id,
-    staleTime: 1000 * 30, // 30 seconds
+    staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     refetchOnReconnect: true,
   });
 
-  const {
-    amount,
-    paymentMethod,
-    paymentStatus,
-    transactionDate,
-    player: { username } = {},
-    plan: { name: planName = '', planType = '', price = 0 } = {},
-    notes,
-  } = transaction?.data || {};
+  const { data: player } = useQuery({
+    queryKey: ['player', transaction?.playerId],
+    queryFn: () => getPlayerById(transaction?.playerId as string),
+    enabled: !!transaction?.playerId && !transaction?.player,
+  });
+
+  const { data: plan } = useQuery({
+    queryKey: ['plan', transaction?.planId],
+    queryFn: () => getPlanById(transaction?.planId as string),
+    enabled: !!transaction?.planId && !transaction?.plan,
+  });
+
+  const amount = transaction?.amount;
+  const paymentMethod = transaction?.paymentMethod;
+  const paymentStatus = transaction?.paymentStatus;
+  const transactionDate = transaction?.transactionDate;
+  const notes = transaction?.notes;
+  const username = transaction?.player?.username ?? player?.username;
+  const planName = transaction?.plan?.name ?? plan?.name ?? '';
+  const planType = transaction?.plan?.planType ?? plan?.planType ?? '';
+  const price = transaction?.plan?.price ?? (plan ? parseFloat(plan.price) : 0);
 
   const updateStatusFormFields: FieldConfig<UpdatePlanTransactionStatusFormData>[] = [
     {
@@ -158,7 +172,7 @@ export default function ViewPlanTransactionPage() {
                   Amount
                 </Typography>
                 <Typography variant="h6" color="primary">
-                  {formatCurrency(parseFloat(amount || '0'), 'INR')}
+                  {formatCurrency(amount ?? 0, 'INR')}
                 </Typography>
               </Grid>
               <Grid item xs={12} md={6}>

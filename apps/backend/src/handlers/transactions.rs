@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::AdminUser;
-use crate::models::{CreateTransactionDto, Transaction, TransactionFilterDto};
+use crate::middleware::AdminOrStaff;
+use crate::models::{CreateTransactionDto, Transaction, TransactionFilterDto, UpdateTransactionDto};
 use crate::openapi::responses::{
     ErrorEnvelope, TransactionEnvelope, TransactionPaginationEnvelope,
 };
@@ -71,10 +71,38 @@ pub async fn get_transaction(
     tag = "transactions"
 )]
 pub async fn create_transaction(
-    AdminUser(_claims): AdminUser,
+    AdminOrStaff(_claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateTransactionDto>,
 ) -> ApiResult<Transaction> {
     let transaction = state.transactions.create(dto).await?;
     created(transaction)
+}
+
+#[utoipa::path(
+    patch,
+    path = "/transactions/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Transaction ID"),
+    ),
+    request_body = UpdateTransactionDto,
+    responses(
+        (status = 200, description = "Update transaction", body = TransactionEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "transactions"
+)]
+pub async fn update_transaction(
+    AdminOrStaff(_claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(dto): Json<UpdateTransactionDto>,
+) -> ApiResult<Transaction> {
+    let transaction = state.transactions.update(id, dto).await?;
+    ok(transaction)
 }

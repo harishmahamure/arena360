@@ -7,6 +7,7 @@ import {
   type CreateUnitFormData,
   createUnitSchema,
 } from '../../../containers/units/schemas/unit-schema';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getUnitById } from '../../../services/units/getById';
 import type { UnitType } from '../../../services/units/list';
 import { updateUnit } from '../../../services/units/update';
@@ -15,6 +16,8 @@ import { unitFormFields } from './UnitNewPage';
 export default function EditUnitPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.UnitsWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -95,14 +98,14 @@ export default function EditUnitPage() {
           description: unit?.description,
           isActive: unit?.isActive,
         }}
-        mode="edit"
+        mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={isSubmitting}
         error={error}
         success={success}
-        showCancel
-        showReset
+        showCancel={canWrite}
+        showReset={canWrite}
         submitLabel="Update Unit"
         cancelLabel="Cancel"
         buttonAlign="right"

@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::{CreateDeviceGameDto, DeviceGameFilterDto, DeviceGameResponse};
+use crate::models::{CreateDeviceGameDto, DeviceGameFilterDto, DeviceGameResponse, UpdateDeviceGameDto};
 use crate::repositories::DeviceGameRepository;
 
 pub struct DeviceGameService {
@@ -64,6 +64,22 @@ impl DeviceGameService {
             .find_by_id(created.id)
             .await?
             .ok_or_else(|| AppError::Internal("Failed to load created device-game".to_string()))
+    }
+
+    pub async fn get_by_id(&self, id: Uuid) -> Result<DeviceGameResponse, AppError> {
+        self.repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Device-game assignment with ID {id} not found")))
+    }
+
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateDeviceGameDto,
+    ) -> Result<DeviceGameResponse, AppError> {
+        self.repo.update(id, &dto).await?;
+        self.get_by_id(id).await
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {

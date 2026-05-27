@@ -207,26 +207,25 @@ export default function CreateProductTransactionPage() {
       const response = await addTransaction({
         playerId: selectedPlayer.id,
         transactionType: TransactionType.PRODUCT_PURCHASE,
-        productIds: cart.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity,
-        })),
+        amount: total,
         paymentStatus: PaymentStatus.COMPLETED,
         paymentMethod: paymentMethod as PaymentMethodType,
         cashAmount:
-          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? parseFloat(cashAmount) : 0,
+          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? parseFloat(cashAmount) : undefined,
         onlineAmount:
-          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? parseFloat(onlineAmount) : 0,
+          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+            ? parseFloat(onlineAmount)
+            : undefined,
         notes: notes || undefined,
       });
 
-      if (response.data.transaction.paymentStatus === PaymentStatus.COMPLETED) {
+      if (response.paymentStatus === PaymentStatus.COMPLETED) {
         setSuccess('Transaction created successfully!');
         setTimeout(() => {
           navigate('/product-transactions');
         }, 1500);
       } else {
-        setError(response.data.remarks);
+        setError('Transaction was created but payment is not completed.');
       }
     } catch (err: any) {
       setError(err.message ?? 'Failed to create transaction');

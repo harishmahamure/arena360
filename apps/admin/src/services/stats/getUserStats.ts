@@ -1,16 +1,10 @@
-import { http } from '@gaming-cafe/utils';
+import { getDashboardStats } from './getDashboardStats';
 import type { StatsQueryDto, UserStatsDto } from './types';
 
 /**
- * Fetches user and player statistics
- *
- * @param filters - Optional date filters (startDate, endDate)
- * @returns User and player counts including active users and new users in period
+ * Fetches user and player statistics from dashboard stats
  */
-export const getUserStats = async (filters?: StatsQueryDto) => {
-  return http.get<UserStatsDto>('/stats/users', {
-    params: {
-      ...filters,
-    },
-  });
+export const getUserStats = async (filters?: StatsQueryDto): Promise<UserStatsDto> => {
+  const dashboard = await getDashboardStats(filters);
+  return dashboard.users;
 };

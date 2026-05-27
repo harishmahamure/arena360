@@ -5,7 +5,8 @@ use uuid::Uuid;
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{
-    PlayerPlan, PlayerPlanCreateValues, PlayerPlanFilterDto, PlayerPlanUpdateValues,
+    PlayerPlan, PlayerPlanCreateValues, PlayerPlanFilterDto, PlayerPlanResponse, PlayerPlanRow,
+    PlayerPlanUpdateValues,
 };
 
 pub struct PlayerPlanRepository {
@@ -39,6 +40,34 @@ impl PlayerPlanRepository {
             .fetch_optional(&self.pool)
             .await?;
         Ok(player_plan)
+    }
+
+    pub async fn find_enriched_by_id(&self, id: Uuid) -> Result<Option<PlayerPlanResponse>, AppError> {
+        let query = format!(
+            r#"
+            SELECT pp.id, pp."playerId" as player_id, pp."planId" as plan_id,
+                   pp."purchaseDate" as purchase_date, pp."activationDate" as activation_date,
+                   pp."expiryDate" as expiry_date, pp."remainingUsageCount" as remaining_usage_count,
+                   pp."remainingTimeCredits" as remaining_time_credits, pp.status::text as status,
+                   pp."movedToPlanId" as moved_to_plan_id,
+                   pp."movedCreditsCount" as moved_credits_count,
+                   pp."createdAt" as created_at, pp."updatedAt" as updated_at,
+                   pp."deletedAt" as deleted_at,
+                   u.username as player_username, u."firstName" as player_first_name,
+                   u."lastName" as player_last_name,
+                   p.name as plan_name, p."planType"::text as plan_type,
+                   p.price::float8 as plan_price, p."timeCredits" as plan_time_credits
+            FROM player_plans pp
+            LEFT JOIN users u ON u.id = pp."playerId" AND u."deletedAt" IS NULL
+            LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL
+            WHERE pp.id = $1 AND pp."deletedAt" IS NULL
+            "#
+        );
+        let row = sqlx::query_as::<_, PlayerPlanRow>(&query)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.into_response()))
     }
 
     pub async fn create(&self, values: &PlayerPlanCreateValues) -> Result<PlayerPlan, AppError> {
@@ -118,7 +147,7 @@ impl PlayerPlanRepository {
     pub async fn list(
         &self,
         filters: &PlayerPlanFilterDto,
-    ) -> Result<PaginationResult<PlayerPlan>, AppError> {
+    ) -> Result<PaginationResult<PlayerPlanResponse>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
@@ -133,13 +162,15 @@ impl PlayerPlanRepository {
                pp."movedToPlanId" as moved_to_plan_id,
                pp."movedCreditsCount" as moved_credits_count,
                pp."createdAt" as created_at, pp."updatedAt" as updated_at,
-               pp."deletedAt" as deleted_at
-               FROM player_plans pp"#,
+               pp."deletedAt" as deleted_at,
+               u.username as player_username, u."firstName" as player_first_name,
+               u."lastName" as player_last_name,
+               p.name as plan_name, p."planType"::text as plan_type,
+               p.price::float8 as plan_price, p."timeCredits" as plan_time_credits
+               FROM player_plans pp
+               LEFT JOIN users u ON u.id = pp."playerId" AND u."deletedAt" IS NULL
+               LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL"#,
         );
-
-        if join_plan {
-            builder.push(" INNER JOIN plans p ON p.id = pp.\"planId\"");
-        }
 
         builder.push(" WHERE pp.\"deletedAt\" IS NULL");
 
@@ -162,22 +193,22 @@ impl PlayerPlanRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let mut player_plans = builder.build_query_as::<PlayerPlan>().fetch_all(&self.pool).await?;
+        let mut rows = builder.build_query_as::<PlayerPlanRow>().fetch_all(&self.pool).await?;
 
-        Self::apply_post_filters(&mut player_plans, filters);
+        Self::apply_post_filters_rows(&mut rows, filters);
+
+        let data = rows.into_iter().map(|r| r.into_response()).collect();
 
         let mut count_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT COUNT(*) FROM player_plans pp",
+            r#"SELECT COUNT(*) FROM player_plans pp
+               LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL
+               WHERE pp."deletedAt" IS NULL"#,
         );
-        if join_plan {
-            count_builder.push(" INNER JOIN plans p ON p.id = pp.\"planId\"");
-        }
-        count_builder.push(" WHERE pp.\"deletedAt\" IS NULL");
         Self::apply_filters(&mut count_builder, filters, join_plan);
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
 
-        Ok(PaginationResult::new(player_plans, total.0, page, limit))
+        Ok(PaginationResult::new(data, total.0, page, limit))
     }
 
     fn apply_filters<'a>(
@@ -233,16 +264,16 @@ impl PlayerPlanRepository {
         }
     }
 
-    fn apply_post_filters(player_plans: &mut Vec<PlayerPlan>, filters: &PlayerPlanFilterDto) {
+    fn apply_post_filters_rows(rows: &mut Vec<PlayerPlanRow>, filters: &PlayerPlanFilterDto) {
         if let Some(min) = filters.min_remaining_usage_count {
-            player_plans.retain(|pp| {
+            rows.retain(|pp| {
                 pp.remaining_usage_count
                     .map(|count| count >= min)
                     .unwrap_or(false)
             });
         }
         if let Some(min) = filters.min_remaining_time_credits {
-            player_plans.retain(|pp| {
+            rows.retain(|pp| {
                 pp.remaining_time_credits
                     .map(|credits| credits >= min)
                     .unwrap_or(false)
@@ -251,9 +282,9 @@ impl PlayerPlanRepository {
         if let Some(is_expired) = filters.is_expired {
             let now = Utc::now();
             if is_expired {
-                player_plans.retain(|pp| pp.expiry_date < now);
+                rows.retain(|pp| pp.expiry_date < now);
             } else {
-                player_plans.retain(|pp| pp.expiry_date >= now);
+                rows.retain(|pp| pp.expiry_date >= now);
             }
         }
     }

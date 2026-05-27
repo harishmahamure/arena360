@@ -94,6 +94,7 @@ impl UserRepository {
         password_hash: &str,
         first_name: Option<&str>,
         last_name: Option<&str>,
+        role: &str,
     ) -> Result<User, AppError> {
         let user = sqlx::query_as::<_, User>(
             r#"
@@ -103,7 +104,7 @@ impl UserRepository {
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4, $5,
-                'player', true, NOW(), NOW()
+                $6, true, NOW(), NOW()
             )
             RETURNING id, email, username,
                       NULL::varchar as password_hash,
@@ -121,6 +122,7 @@ impl UserRepository {
         .bind(password_hash)
         .bind(first_name)
         .bind(last_name)
+        .bind(role)
         .fetch_one(&self.pool)
         .await?;
 

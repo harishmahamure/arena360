@@ -113,7 +113,7 @@ pub async fn update_game(
         ("id" = Uuid, Path, description = "Game ID"),
     ),
     responses(
-        (status = 204, description = "Deleted"),
+        (status = 204, description = "Soft-deactivated (isActive=false)"),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 403, description = "Forbidden", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),

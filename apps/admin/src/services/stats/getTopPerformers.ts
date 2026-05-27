@@ -1,16 +1,10 @@
-import { http } from '@gaming-cafe/utils';
+import { getDashboardStats } from './getDashboardStats';
 import type { StatsQueryDto, TopPerformersDto } from './types';
 
 /**
- * Fetches top performing plans, games, and players
- *
- * @param filters - Optional date filters (startDate, endDate)
- * @returns Top performers by revenue, session count, and spending
+ * Fetches top performing plans, games, and players from dashboard stats
  */
-export const getTopPerformers = async (filters?: StatsQueryDto) => {
-  return http.get<TopPerformersDto>('/stats/top-performers', {
-    params: {
-      ...filters,
-    },
-  });
+export const getTopPerformers = async (filters?: StatsQueryDto): Promise<TopPerformersDto> => {
+  const dashboard = await getDashboardStats(filters);
+  return dashboard.topPerformers;
 };

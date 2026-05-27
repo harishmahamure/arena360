@@ -145,7 +145,7 @@ pub async fn update_device_status(
         ("id" = Uuid, Path, description = "Device ID"),
     ),
     responses(
-        (status = 204, description = "Deleted"),
+        (status = 204, description = "Soft-deactivated (deletedAt set)"),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 403, description = "Forbidden", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),

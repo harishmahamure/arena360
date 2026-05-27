@@ -9,6 +9,7 @@ import {
   type DeviceSubType,
   type DeviceType,
 } from '../../../containers/plans/schemas/plan.schema';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import type { CreatePlanPayload } from '../../../services/plans/add';
 import { getPlanById } from '../../../services/plans/getById';
 import { PlanType } from '../../../services/plans/list';
@@ -18,6 +19,8 @@ import { planFormFields } from './PlanNewPage';
 export default function EditPlanPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { can } = usePermissions();
+  const canWrite = can(Permission.PlansWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -127,14 +130,14 @@ export default function EditPlanPage() {
           deviceSubType: plan?.deviceSubType as DeviceSubType,
           deviceType: plan?.deviceType as DeviceType,
         }}
-        mode="edit"
+        mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={isSubmitting}
         error={error}
         success={success}
-        showCancel
-        showReset
+        showCancel={canWrite}
+        showReset={canWrite}
         submitLabel="Update Plan"
         cancelLabel="Cancel"
         buttonAlign="right"

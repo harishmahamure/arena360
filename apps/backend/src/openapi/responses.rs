@@ -9,11 +9,12 @@ pub use crate::models::{
     CreatePlanDto, CreateProductDto, CreateSessionDto, CreateTransactionDto, CreateUnitDto,
     Device, DeviceFilterDto, DeviceGameFilterDto, DeviceGameResponse, EndSessionDto, FileFilterDto,
     FileRecord, FileWithDownloadUrlDto, Game, GameFilterDto, GenerateDownloadUrlDto,
-    GenerateUploadUrlDto, Plan, PlanFilterDto, PlayerPlan, PlayerPlanFilterDto, Product,
+    GenerateUploadUrlDto, Plan, PlanFilterDto, PlayerPlan, PlayerPlanFilterDto, PlayerPlanResponse,
+    Product,
     ProductFilterDto, SessionFilterDto, StorageStatsDto, Transaction, TransactionFilterDto, Unit,
     UnitFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto, UpdateFileDto, UpdateGameDto,
-    UpdatePlanDto, UpdateProductDto, UpdateUnitDto, UpdateUserDto, UsageSession, User,
-    UserFilterDto, ValidationResult,
+    UpdatePlanDto, UpdateProductDto, UpdateUnitDto, UpdateUserDto, UsageSession, UsageSessionResponse,
+    User, UserFilterDto, ValidationResult,
 };
 use crate::services::stats_service::{
     DashboardStatsDto, PeriodPairRevenueByPaymentMethod, PeriodPairUsageStats,
@@ -81,17 +82,20 @@ success_envelope!(OtpPendingEnvelope, OtpPendingResponse);
 success_envelope!(AuthResponseEnvelope, AuthResponseDto);
 success_envelope!(RegisterResponseEnvelope, RegisterResponseDto);
 success_envelope!(DashboardStatsEnvelope, DashboardStatsDto);
+success_envelope!(StaffDashboardStatsEnvelope, crate::services::stats_service::StaffDashboardStatsDto);
 success_envelope!(RevenueByPaymentMethodEnvelope, PeriodPairRevenueByPaymentMethod);
 success_envelope!(UsageStatsEnvelope, PeriodPairUsageStats);
 success_envelope!(DeviceEnvelope, Device);
 success_envelope!(GameEnvelope, Game);
 success_envelope!(PlanEnvelope, Plan);
 success_envelope!(ActivePlansEnvelope, Vec<Plan>);
-success_envelope!(PlayerPlanEnvelope, PlayerPlan);
+success_envelope!(PlayerPlanEnvelope, PlayerPlanResponse);
+success_envelope!(PlayerPlanFlatEnvelope, PlayerPlan);
 success_envelope!(ValidationResultEnvelope, ValidationResult);
 success_envelope!(UnitEnvelope, Unit);
 success_envelope!(DeviceGameEnvelope, DeviceGameResponse);
-success_envelope!(SessionEnvelope, UsageSession);
+success_envelope!(SessionEnvelope, UsageSessionResponse);
+success_envelope!(SessionFlatEnvelope, UsageSession);
 success_envelope!(TransactionEnvelope, Transaction);
 success_envelope!(ProductEnvelope, Product);
 success_envelope!(UserEnvelope, User);
@@ -105,10 +109,10 @@ success_envelope!(ListObjectsEnvelope, ListObjectsResponse);
 pagination_envelope!(DevicePaginationEnvelope, DevicePaginationPage, Device);
 pagination_envelope!(GamePaginationEnvelope, GamePaginationPage, Game);
 pagination_envelope!(PlanPaginationEnvelope, PlanPaginationPage, Plan);
-pagination_envelope!(PlayerPlanPaginationEnvelope, PlayerPlanPaginationPage, PlayerPlan);
+pagination_envelope!(PlayerPlanPaginationEnvelope, PlayerPlanPaginationPage, PlayerPlanResponse);
 pagination_envelope!(UnitPaginationEnvelope, UnitPaginationPage, Unit);
 pagination_envelope!(DeviceGamePaginationEnvelope, DeviceGamePaginationPage, DeviceGameResponse);
-pagination_envelope!(SessionPaginationEnvelope, SessionPaginationPage, UsageSession);
+pagination_envelope!(SessionPaginationEnvelope, SessionPaginationPage, UsageSessionResponse);
 pagination_envelope!(TransactionPaginationEnvelope, TransactionPaginationPage, Transaction);
 pagination_envelope!(ProductPaginationEnvelope, ProductPaginationPage, Product);
 pagination_envelope!(UserPaginationEnvelope, UserPaginationPage, User);

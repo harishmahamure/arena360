@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::dto::{PaginationResult, RegisterDto, RegisterResponseDto};
+use crate::dto::{PaginationResult, RegisterDto, RegisterResponseDto, JwtUserClaims};
 use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
 use crate::repositories::UserRepository;
@@ -39,11 +39,32 @@ impl UserService {
         self.repo.update(id, &dto).await
     }
 
-    pub async fn register(&self, dto: RegisterDto) -> Result<RegisterResponseDto, AppError> {
+    pub async fn register(
+        &self,
+        dto: RegisterDto,
+        claims: &JwtUserClaims,
+    ) -> Result<RegisterResponseDto, AppError> {
         if self.repo.username_exists(&dto.username, None).await? {
             return Err(AppError::Conflict(format!(
                 "User with username '{}' already exists",
                 dto.username
+            )));
+        }
+
+        let role = dto.role.as_deref().unwrap_or("player");
+        if role == "admin" {
+            return Err(AppError::BadRequest(
+                "Cannot register users with admin role".to_string(),
+            ));
+        }
+        if role == "staff" && !claims.is_admin() {
+            return Err(AppError::Forbidden(
+                "Only admins can create staff accounts".to_string(),
+            ));
+        }
+        if role != "player" && role != "staff" {
+            return Err(AppError::BadRequest(format!(
+                "Invalid role '{role}'. Allowed values: player, staff"
             )));
         }
 
@@ -57,6 +78,7 @@ impl UserService {
                 &password_hash,
                 dto.firstName.as_deref(),
                 dto.lastName.as_deref(),
+                role,
             )
             .await?;
 

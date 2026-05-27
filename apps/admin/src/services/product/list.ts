@@ -36,7 +36,8 @@ export interface GetProductsFilters {
   maxPrice?: number;
   page?: number;
   limit?: number;
-  sort?: 'asc' | 'desc';
+  sortBy?: string;
+  sortOrder?: 'ASC' | 'DESC';
 }
 
 export const getProducts = async (filters: GetProductsFilters) => {

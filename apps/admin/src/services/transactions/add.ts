@@ -5,10 +5,13 @@ export interface CreateTransactionPayload {
   playerId: string;
   transactionType: TransactionType;
   planId?: string;
+  amount?: number;
   paymentMethod: PaymentMethod;
   paymentStatus?: PaymentStatus;
   notes?: string;
   transactionDate?: string;
+  cashAmount?: number;
+  onlineAmount?: number;
 }
 
 export const addTransaction = async (payload: CreateTransactionPayload) => {

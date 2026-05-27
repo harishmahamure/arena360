@@ -16,6 +16,7 @@ const PUBLIC_EXACT: &[&str] = &[
     "/",
     "/auth/login",
     "/auth/login/admin",
+    "/auth/login/staff",
     "/auth/verify-otp",
     "/health/live",
 ];
@@ -56,6 +57,14 @@ pub fn require_admin(claims: &JwtUserClaims) -> Result<(), AppError> {
         Ok(())
     } else {
         Err(AppError::Forbidden("Admin access required".to_string()))
+    }
+}
+
+pub fn require_admin_or_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
+    if claims.is_admin_or_staff() {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden("Admin or staff access required".to_string()))
     }
 }
 
@@ -135,5 +144,27 @@ where
             .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
         require_admin(&claims)?;
         Ok(AdminUser(claims))
+    }
+}
+
+pub struct AdminOrStaff(pub JwtUserClaims);
+
+impl<S> axum::extract::FromRequestParts<S> for AdminOrStaff
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let claims = parts
+            .extensions
+            .get::<JwtUserClaims>()
+            .cloned()
+            .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
+        require_admin_or_staff(&claims)?;
+        Ok(AdminOrStaff(claims))
     }
 }

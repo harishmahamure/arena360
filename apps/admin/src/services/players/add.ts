@@ -6,6 +6,7 @@ export interface AddPlayerRequest {
   password: string;
   firstName?: string;
   lastName?: string;
+  role?: 'player' | 'staff';
 }
 
 export const addPlayer = async (player: AddPlayerRequest) => {

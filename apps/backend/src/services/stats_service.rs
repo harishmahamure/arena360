@@ -90,6 +90,34 @@ pub struct RevenueTrendDto {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct StaffPlayerStatsDto {
+    pub active_players: i64,
+    pub new_players_in_period: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffDeviceStatsDto {
+    pub total: i64,
+    pub available: i64,
+    pub in_use: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffDashboardStatsDto {
+    pub period: PeriodDto,
+    pub shift: Option<PeriodDto>,
+    pub sessions: UsageStatsDto,
+    pub transactions: TransactionStatsDto,
+    pub revenue: RevenueByPaymentMethodDto,
+    pub shift_revenue: Option<RevenueByPaymentMethodDto>,
+    pub players: StaffPlayerStatsDto,
+    pub devices: StaffDeviceStatsDto,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct DashboardStatsDto {
     pub period: PeriodDto,
     pub revenue: PeriodPair<RevenueByPaymentMethodDto>,
@@ -221,6 +249,67 @@ impl StatsService {
                 top_players: vec![],
             },
             revenue_trend: vec![],
+        })
+    }
+
+    pub async fn get_staff_dashboard_stats(
+        &self,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        shift_start: Option<String>,
+    ) -> Result<StaffDashboardStatsDto, AppError> {
+        let now = Utc::now();
+        let period_start = parse_date_start(start_date.as_deref())
+            .unwrap_or_else(|| start_of_day(now));
+        let period_end = parse_date_end(end_date.as_deref()).unwrap_or(now);
+
+        let revenue = self.revenue_stats(period_start, period_end).await?;
+        let transactions = self.transaction_stats(period_start, period_end).await?;
+        let sessions = self.usage_stats(period_start, period_end).await?;
+        let players = self.staff_player_stats(period_start, period_end).await?;
+        let devices = self.staff_device_stats().await?;
+
+        let (shift, shift_revenue) = if let Some(shift_start_raw) = shift_start {
+            let shift_start_dt = DateTime::parse_from_rfc3339(&shift_start_raw)
+                .map(|d| d.with_timezone(&Utc))
+                .map_err(|_| {
+                    AppError::BadRequest(
+                        "shiftStart must be a valid ISO 8601 datetime".to_string(),
+                    )
+                })?;
+            let shift_end = now;
+            let shift_revenue = self.revenue_stats(shift_start_dt, shift_end).await?;
+            (
+                Some(PeriodDto {
+                    start_date: shift_start_dt.to_rfc3339(),
+                    end_date: shift_end.to_rfc3339(),
+                    label: "Current shift".to_string(),
+                    previous_label: String::new(),
+                }),
+                Some(shift_revenue),
+            )
+        } else {
+            (None, None)
+        };
+
+        Ok(StaffDashboardStatsDto {
+            period: PeriodDto {
+                start_date: period_start.to_rfc3339(),
+                end_date: period_end.to_rfc3339(),
+                label: format!(
+                    "{} - {}",
+                    period_start.format("%Y-%m-%d"),
+                    period_end.format("%Y-%m-%d")
+                ),
+                previous_label: String::new(),
+            },
+            shift,
+            sessions,
+            transactions,
+            revenue,
+            shift_revenue,
+            players,
+            devices,
         })
     }
 
@@ -412,6 +501,79 @@ impl StatsService {
             device_utilization: vec![],
         })
     }
+
+    async fn staff_player_stats(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<StaffPlayerStatsDto, AppError> {
+        let row: (i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                COUNT(*) FILTER (WHERE role = 'player' AND "isActive" = true),
+                COUNT(*) FILTER (WHERE role = 'player' AND "createdAt" BETWEEN $1 AND $2)
+            FROM users
+            WHERE "deletedAt" IS NULL
+            "#,
+        )
+        .bind(start)
+        .bind(end)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(StaffPlayerStatsDto {
+            active_players: row.0,
+            new_players_in_period: row.1,
+        })
+    }
+
+    async fn staff_device_stats(&self) -> Result<StaffDeviceStatsDto, AppError> {
+        let row: (i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                COUNT(*),
+                COUNT(*) FILTER (WHERE status IN ('available', 'operational')),
+                COUNT(*) FILTER (WHERE status = 'in_use')
+            FROM devices
+            WHERE "deletedAt" IS NULL
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(StaffDeviceStatsDto {
+            total: row.0,
+            available: row.1,
+            in_use: row.2,
+        })
+    }
+}
+
+fn parse_date_start(value: Option<&str>) -> Option<DateTime<Utc>> {
+    value.and_then(|s| {
+        DateTime::parse_from_rfc3339(&format!("{s}T00:00:00Z"))
+            .ok()
+            .map(|d| d.with_timezone(&Utc))
+    })
+}
+
+fn parse_date_end(value: Option<&str>) -> Option<DateTime<Utc>> {
+    value.and_then(|s| {
+        DateTime::parse_from_rfc3339(&format!("{s}T23:59:59Z"))
+            .ok()
+            .map(|d| d.with_timezone(&Utc))
+    })
+}
+
+fn start_of_day(dt: DateTime<Utc>) -> DateTime<Utc> {
+    dt.with_hour(0)
+        .unwrap_or(dt)
+        .with_minute(0)
+        .unwrap_or(dt)
+        .with_second(0)
+        .unwrap_or(dt)
+        .with_nanosecond(0)
+        .unwrap_or(dt)
 }
 
 fn start_of_month(dt: DateTime<Utc>) -> DateTime<Utc> {

@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{ok, ApiResult};
-use crate::middleware::AdminUser;
+use crate::middleware::AdminOrStaff;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
 use crate::openapi::responses::{ErrorEnvelope, UserEnvelope, UserPaginationEnvelope};
 
@@ -25,7 +25,7 @@ use crate::openapi::responses::{ErrorEnvelope, UserEnvelope, UserPaginationEnvel
     tag = "users"
 )]
 pub async fn list_users(
-    AdminUser(_claims): AdminUser,
+    AdminOrStaff(_claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<UserFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<User>> {
@@ -75,7 +75,7 @@ pub async fn get_user(
     tag = "users"
 )]
 pub async fn update_user(
-    AdminUser(_claims): AdminUser,
+    AdminOrStaff(_claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUserDto>,

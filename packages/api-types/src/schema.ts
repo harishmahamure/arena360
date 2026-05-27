@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/login/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["login_staff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -107,13 +123,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_device_game"];
         put?: never;
         post?: never;
         delete: operations["delete_device_game"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_device_game"];
         trace?: never;
     };
     "/devices": {
@@ -612,6 +628,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/stats/staff-dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["staff_dashboard_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stats/usage": {
         parameters: {
             query?: never;
@@ -705,7 +737,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_transaction"];
         trace?: never;
     };
     "/units": {
@@ -1574,7 +1606,7 @@ export interface components {
             updatedAt: string;
         };
         PlayerPlanEnvelope: {
-            data: components["schemas"]["PlayerPlan"];
+            data: components["schemas"]["PlayerPlanResponse"];
             /** Format: int32 */
             statusCode: number;
             success: boolean;
@@ -1604,6 +1636,13 @@ export interface components {
             sortOrder?: string | null;
             status?: string | null;
         };
+        PlayerPlanFlatEnvelope: {
+            data: components["schemas"]["PlayerPlan"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         PlayerPlanPaginationEnvelope: {
             data: components["schemas"]["PlayerPlanPaginationPage"];
             /** Format: int32 */
@@ -1612,7 +1651,7 @@ export interface components {
             timestamp: string;
         };
         PlayerPlanPaginationPage: {
-            data: components["schemas"]["PlayerPlan"][];
+            data: components["schemas"]["PlayerPlanResponse"][];
             /** Format: int64 */
             limit: number;
             /** Format: int64 */
@@ -1621,6 +1660,54 @@ export interface components {
             total: number;
             /** Format: int64 */
             totalPages: number;
+        };
+        PlayerPlanPlanSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            planType: string;
+            /** Format: double */
+            price: number;
+            /** Format: int32 */
+            timeCredits: number;
+        };
+        PlayerPlanPlayerSummary: {
+            firstName?: string | null;
+            /** Format: uuid */
+            id: string;
+            lastName?: string | null;
+            username: string;
+        };
+        PlayerPlanResponse: {
+            /** Format: date-time */
+            activationDate?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: date-time */
+            expiryDate: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            movedCreditsCount?: number | null;
+            /** Format: uuid */
+            movedToPlanId?: string | null;
+            plan?: null | components["schemas"]["PlayerPlanPlanSummary"];
+            /** Format: uuid */
+            planId: string;
+            player?: null | components["schemas"]["PlayerPlanPlayerSummary"];
+            /** Format: uuid */
+            playerId: string;
+            /** Format: date-time */
+            purchaseDate: string;
+            /** Format: int32 */
+            remainingTimeCredits?: number | null;
+            /** Format: int32 */
+            remainingUsageCount?: number | null;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         PresignedDownloadUrlEnvelope: {
             data: components["schemas"]["PresignedDownloadUrlResponse"];
@@ -1714,6 +1801,7 @@ export interface components {
             firstName?: string | null;
             lastName?: string | null;
             password: string;
+            role?: string | null;
             username: string;
         };
         RegisterResponseDto: {
@@ -1756,8 +1844,16 @@ export interface components {
             /** Format: int64 */
             transactionCount: number;
         };
+        SessionDeviceSummary: {
+            deviceType: string;
+            /** Format: uuid */
+            id: string;
+            location?: string | null;
+            name: string;
+            status: string;
+        };
         SessionEnvelope: {
-            data: components["schemas"]["UsageSession"];
+            data: components["schemas"]["UsageSessionResponse"];
             /** Format: int32 */
             statusCode: number;
             success: boolean;
@@ -1785,6 +1881,13 @@ export interface components {
             /** Format: date-time */
             startTimeTo?: string | null;
         };
+        SessionFlatEnvelope: {
+            data: components["schemas"]["UsageSession"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         SessionPaginationEnvelope: {
             data: components["schemas"]["SessionPaginationPage"];
             /** Format: int32 */
@@ -1793,7 +1896,7 @@ export interface components {
             timestamp: string;
         };
         SessionPaginationPage: {
-            data: components["schemas"]["UsageSession"][];
+            data: components["schemas"]["UsageSessionResponse"][];
             /** Format: int64 */
             limit: number;
             /** Format: int64 */
@@ -1802,6 +1905,70 @@ export interface components {
             total: number;
             /** Format: int64 */
             totalPages: number;
+        };
+        SessionPlanSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            planType: string;
+            /** Format: int32 */
+            timeCredits: number;
+        };
+        SessionPlayerPlanSummary: {
+            /** Format: uuid */
+            id: string;
+            plan?: null | components["schemas"]["SessionPlanSummary"];
+            /** Format: uuid */
+            planId: string;
+            player?: null | components["schemas"]["SessionPlayerSummary"];
+            /** Format: uuid */
+            playerId: string;
+            /** Format: int32 */
+            remainingTimeCredits?: number | null;
+            status: string;
+        };
+        SessionPlayerSummary: {
+            firstName?: string | null;
+            /** Format: uuid */
+            id: string;
+            lastName?: string | null;
+            username: string;
+        };
+        StaffDashboardStatsDto: {
+            devices: components["schemas"]["StaffDeviceStatsDto"];
+            period: components["schemas"]["PeriodDto"];
+            players: components["schemas"]["StaffPlayerStatsDto"];
+            revenue: components["schemas"]["RevenueByPaymentMethodDto"];
+            sessions: components["schemas"]["UsageStatsDto"];
+            shift?: null | components["schemas"]["PeriodDto"];
+            shiftRevenue?: null | components["schemas"]["RevenueByPaymentMethodDto"];
+            transactions: components["schemas"]["TransactionStatsDto"];
+        };
+        StaffDashboardStatsEnvelope: {
+            data: components["schemas"]["StaffDashboardStatsDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StaffDeviceStatsDto: {
+            /** Format: int64 */
+            available: number;
+            /** Format: int64 */
+            inUse: number;
+            /** Format: int64 */
+            total: number;
+        };
+        StaffPlayerStatsDto: {
+            /** Format: int64 */
+            activePlayers: number;
+            /** Format: int64 */
+            newPlayersInPeriod: number;
+        };
+        StaffStatsQuery: {
+            endDate?: string | null;
+            shiftStart?: string | null;
+            startDate?: string | null;
         };
         StatsQuery: {
             endDate?: string | null;
@@ -1981,6 +2148,11 @@ export interface components {
             serialNumber?: string | null;
             status?: string | null;
         };
+        UpdateDeviceGameDto: {
+            /** Format: date-time */
+            installationDate?: string | null;
+            isActive?: boolean | null;
+        };
         UpdateDeviceStatusDto: {
             status: string;
         };
@@ -2058,6 +2230,10 @@ export interface components {
             /** Format: int32 */
             stockQuantity?: number | null;
         };
+        UpdateTransactionDto: {
+            notes?: string | null;
+            paymentStatus?: string | null;
+        };
         UpdateUnitDto: {
             abbreviation?: string | null;
             description?: string | null;
@@ -2088,6 +2264,32 @@ export interface components {
             gameId?: string | null;
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            playerPlanId: string;
+            /** Format: date-time */
+            startTime: string;
+            /** Format: int32 */
+            timeCreditsConsumed?: number | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        UsageSessionResponse: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            device?: null | components["schemas"]["SessionDeviceSummary"];
+            /** Format: uuid */
+            deviceId: string;
+            /** Format: int32 */
+            durationMinutes?: number | null;
+            /** Format: date-time */
+            endTime?: string | null;
+            /** Format: uuid */
+            gameId?: string | null;
+            /** Format: uuid */
+            id: string;
+            playerPlan?: null | components["schemas"]["SessionPlayerPlanSummary"];
             /** Format: uuid */
             playerPlanId: string;
             /** Format: date-time */
@@ -2230,6 +2432,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OtpPendingEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    login_staff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginDto"];
+            };
+        };
+        responses: {
+            /** @description Authenticated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponseEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -2579,6 +2832,56 @@ export interface operations {
             };
         };
     };
+    get_device_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device game ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get device game */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGameEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     delete_device_game: {
         parameters: {
             query?: never;
@@ -2591,12 +2894,84 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Soft-deactivated (isActive=false) */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_device_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device game ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeviceGameDto"];
+            };
+        };
+        responses: {
+            /** @description Update device game */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGameEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unauthorized */
             401: {
@@ -2805,7 +3180,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Soft-deactivated (deletedAt set) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3300,7 +3675,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Soft-deactivated (status=deleted) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3694,7 +4069,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Soft-deactivated (isActive=false) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4096,7 +4471,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Soft-deactivated (isActive=false) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4279,7 +4654,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlayerPlanEnvelope"];
+                    "application/json": components["schemas"]["PlayerPlanFlatEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -4335,7 +4710,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlayerPlanEnvelope"];
+                    "application/json": components["schemas"]["PlayerPlanFlatEnvelope"];
                 };
             };
             /** @description Unauthorized */
@@ -4692,7 +5067,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Delete product */
+            /** @description Soft-deactivated (isActive=false) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4877,7 +5252,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionEnvelope"];
+                    "application/json": components["schemas"]["SessionFlatEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -5019,7 +5394,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionEnvelope"];
+                    "application/json": components["schemas"]["SessionFlatEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -5179,6 +5554,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevenueByPaymentMethodEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    staff_dashboard_stats: {
+        parameters: {
+            query?: {
+                startDate?: string | null;
+                endDate?: string | null;
+                shiftStart?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Staff dashboard statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDashboardStatsEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -5611,6 +6046,78 @@ export interface operations {
             };
         };
     };
+    update_transaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Transaction ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTransactionDto"];
+            };
+        };
+        responses: {
+            /** @description Update transaction */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_units: {
         parameters: {
             query?: never;
@@ -5852,7 +6359,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deleted */
+            /** @description Soft-deactivated (isActive=false) */
             204: {
                 headers: {
                     [name: string]: unknown;

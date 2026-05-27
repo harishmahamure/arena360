@@ -7,5 +7,5 @@ export interface UpdateTransactionStatusRequest {
 }
 
 export const updateTransactionStatus = async (id: string, data: UpdateTransactionStatusRequest) => {
-  return http.patch(`/transactions/${id}/status`, data);
+  return http.patch(`/transactions/${id}`, data);
 };
