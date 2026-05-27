@@ -20,6 +20,9 @@ pub struct User {
     pub session_otp_id: Option<String>,
     #[serde(skip_serializing)]
     pub session_otp: Option<String>,
+    #[serde(skip_serializing)]
+    pub totp_secret: Option<String>,
+    pub totp_enabled: bool,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -39,6 +42,20 @@ impl User {
             isActive: self.is_active,
         }
     }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyTotpSetupDto {
+    pub code: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TotpSetupResponseDto {
+    pub secret: String,
+    pub otpauthUri: String,
+    pub totpEnabled: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

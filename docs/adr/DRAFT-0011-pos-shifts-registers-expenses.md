@@ -31,16 +31,18 @@ These gaps prevent the system from functioning as a production POS.
 
 We will add the following to the existing Rust Axum backend (ADR-0009):
 
-### New database tables (6)
+### New database tables (8)
 
 1. **`shifts`** — clock-in/clock-out records per staff user
 2. **`cash_registers`** — one per shift, tracks opening/closing balances
    and denomination counts (JSONB)
 3. **`cash_register_entries`** — individual cash-in/cash-out during a shift
-4. **`expense_categories`** — hierarchical expense categories with budgets
-5. **`vendors`** — supplier/vendor directory
-6. **`expenses`** — expense records with approval workflow
-7. **`configurations`** — key-value business settings (JSONB values)
+4. **`cash_deposits`** — staff-initiated cash withdrawals pending admin
+   approval (bank or home destination)
+5. **`expense_categories`** — hierarchical expense categories with budgets
+6. **`vendors`** — supplier/vendor directory
+7. **`expenses`** — expense records with approval workflow
+8. **`configurations`** — key-value business settings (JSONB values)
 
 ### Schema changes to existing tables (11)
 
@@ -50,10 +52,18 @@ existing tables: `users`, `devices`, `games`, `plans`, `player_plans`,
 `units`, `device_games`, `usage_sessions`, `transactions`, `products`,
 `files`. Backfill with the first admin user's ID.
 
-### New API surface (~20 endpoints)
+### Schema changes to users (TOTP)
 
-- `/shifts/*` — clock-in, clock-out, list, get, active
+Add `totpSecret VARCHAR(64)` (nullable) and `totpEnabled BOOLEAN NOT NULL
+DEFAULT false` to `users`. Admins configure RFC 6238 TOTP for staff accounts;
+TOTP is required during shift handover validation.
+
+### New API surface (~30 endpoints)
+
+- `/shifts/*` — clock-in, clock-out, handover, list, get, active
 - `/cash-registers/*` — open, close, entries, get, list
+- `/cash-deposits/*` — initiate, list, get, approve, reject
+- `/users/{id}/totp/*` — setup, verify, delete (admin-only)
 - `/expense-categories/*` — CRUD
 - `/vendors/*` — CRUD
 - `/expenses/*` — CRUD + approve/reject + summary
@@ -76,8 +86,10 @@ offset. Frontend will send IST-aware timestamps instead of bare dates.
 All new code follows the existing layered architecture:
 `handlers/ → services/ → repositories/ → models/`
 
-No new external crates are required. JSONB columns use `serde_json::Value`
-(already a dependency via `sqlx`). Migrations use `sqlx migrate add`.
+One new external crate is required: **`totp-rs`** for RFC 6238 TOTP
+generation and verification (staff handover and admin-managed staff 2FA).
+JSONB columns use `serde_json::Value` (already a dependency via `sqlx`).
+Migrations use `sqlx migrate add`.
 
 ## Consequences
 

@@ -76,7 +76,7 @@ pub async fn get_expense(
     tag = "expenses"
 )]
 pub async fn create_expense(
-    AdminOrStaff(claims): AdminOrStaff,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateExpenseDto>,
 ) -> ApiResult<Expense> {
@@ -104,7 +104,7 @@ pub async fn create_expense(
     tag = "expenses"
 )]
 pub async fn update_expense(
-    AdminOrStaff(claims): AdminOrStaff,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateExpenseDto>,

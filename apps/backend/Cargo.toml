@@ -24,6 +24,7 @@ serde_json = "1"
 # Auth
 jsonwebtoken = "9"
 bcrypt = "0.16"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
 
 # OpenAPI
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }

@@ -1,3 +1,4 @@
+pub mod cash_deposit;
 pub mod cash_register;
 pub mod configuration;
 pub mod device;
@@ -16,6 +17,7 @@ pub mod unit;
 pub mod user;
 pub mod vendor;
 
+pub use cash_deposit::*;
 pub use cash_register::*;
 pub use configuration::*;
 pub use device::*;

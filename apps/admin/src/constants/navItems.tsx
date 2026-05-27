@@ -198,6 +198,17 @@ export const adminNavItems: AdminNavItem[] = [
     requiredPermission: Permission.CashRegistersRead,
   },
   {
+    title: 'Cash Deposits',
+    path: '/cash-deposits',
+    icon: <PointOfSale />,
+    requiredPermission: Permission.CashDepositsRead,
+    children: [
+      { title: 'All Deposits', path: '/cash-deposits' },
+      { title: 'Pending Approval', path: '/cash-deposits?status=pending' },
+      { title: 'Approved', path: '/cash-deposits?status=approved' },
+    ],
+  },
+  {
     title: 'Expenses',
     path: '/expenses',
     icon: <MoneyOff />,

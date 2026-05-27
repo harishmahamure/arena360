@@ -44,6 +44,8 @@ pub struct OtpPendingResponse {
 pub struct AuthResponseDto {
     pub accessToken: String,
     pub user: AuthUserDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shiftId: Option<String>,
 }
 
 #[allow(non_snake_case)]

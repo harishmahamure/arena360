@@ -13,6 +13,7 @@ export interface DashboardLayoutProps {
   children: React.ReactNode;
   navItems?: NavItem[];
   logoText?: string;
+  onLogout?: () => void;
   user?: {
     name: string;
     email: string;
@@ -25,6 +26,7 @@ export default function DashboardLayout({
   children,
   navItems,
   logoText,
+  onLogout,
   user,
 }: DashboardLayoutProps) {
   const theme = useTheme();
@@ -66,6 +68,7 @@ export default function DashboardLayout({
       <AppBar
         onMenuClick={handleDrawerToggle}
         sidebarCollapsed={collapsed}
+        onLogout={onLogout}
         user={user ? { name: user.name, email: user.email, avatar: user.avatar } : undefined}
       />
 

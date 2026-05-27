@@ -1,3 +1,4 @@
+pub mod cash_deposit_repo;
 pub mod cash_register_repo;
 pub mod config_repo;
 pub mod device_game_repo;
@@ -16,6 +17,7 @@ pub mod unit_repo;
 pub mod user_repo;
 pub mod vendor_repo;
 
+pub use cash_deposit_repo::CashDepositRepository;
 pub use cash_register_repo::CashRegisterRepository;
 pub use config_repo::ConfigRepository;
 pub use device_game_repo::DeviceGameRepository;

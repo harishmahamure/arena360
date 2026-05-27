@@ -108,6 +108,34 @@ impl CashRegisterService {
         self.repo.list(&filters).await
     }
 
+    pub async fn get_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
+        self.repo.get_expected_closing(register_id).await
+    }
+
+    pub async fn ensure_open_for_shift(
+        &self,
+        shift_id: Uuid,
+        actor_id: Uuid,
+        opening_balance: f64,
+    ) -> Result<CashRegister, AppError> {
+        if let Some(existing) = self.repo.find_by_shift(shift_id).await? {
+            if existing.status == "open" {
+                return Ok(existing);
+            }
+        }
+
+        self.open(
+            OpenCashRegisterDto {
+                shift_id,
+                opening_balance,
+                opening_denominations: None,
+                notes: Some("Auto-opened for shift".to_string()),
+            },
+            actor_id,
+        )
+        .await
+    }
+
     async fn validate_shift_active(&self, shift_id: Uuid) -> Result<(), AppError> {
         let row: Option<(String,)> = sqlx::query_as(r#"SELECT status FROM shifts WHERE id = $1"#)
             .bind(shift_id)

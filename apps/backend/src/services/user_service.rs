@@ -5,6 +5,7 @@ use crate::dto::{JwtUserClaims, PaginationResult, RegisterDto, RegisterResponseD
 use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
 use crate::repositories::{CreatePlayerParams, UserRepository};
+use crate::services::totp_util::{generate_totp_setup, verify_totp_code};
 
 pub struct UserService {
     repo: UserRepository,
@@ -93,5 +94,77 @@ impl UserService {
         Ok(RegisterResponseDto {
             message: "Created successfully".to_string(),
         })
+    }
+
+    pub async fn setup_totp(&self, user_id: Uuid) -> Result<crate::models::TotpSetupResponseDto, AppError> {
+        let user = self.get_by_id(user_id).await?;
+        if user.role.as_deref() != Some("staff") {
+            return Err(AppError::BadRequest(
+                "TOTP can only be configured for staff users".to_string(),
+            ));
+        }
+
+        let (secret, uri) = generate_totp_setup(&user.username)?;
+        self.repo.set_totp_secret(user_id, &secret).await?;
+
+        Ok(crate::models::TotpSetupResponseDto {
+            secret,
+            otpauthUri: uri,
+            totpEnabled: user.totp_enabled,
+        })
+    }
+
+    pub async fn verify_totp_setup(
+        &self,
+        user_id: Uuid,
+        code: &str,
+    ) -> Result<crate::models::TotpSetupResponseDto, AppError> {
+        let user = self
+            .repo
+            .find_by_id_for_auth(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        let Some(secret) = user.totp_secret.as_deref() else {
+            return Err(AppError::BadRequest(
+                "TOTP has not been set up for this user".to_string(),
+            ));
+        };
+
+        if !verify_totp_code(secret, code, &user.username)? {
+            return Err(AppError::Unauthorized("Invalid TOTP code".to_string()));
+        }
+
+        self.repo.enable_totp(user_id).await?;
+
+        Ok(crate::models::TotpSetupResponseDto {
+            secret: secret.to_string(),
+            otpauthUri: String::new(),
+            totpEnabled: true,
+        })
+    }
+
+    pub async fn disable_totp(&self, user_id: Uuid) -> Result<(), AppError> {
+        self.repo.clear_totp(user_id).await
+    }
+
+    pub async fn verify_staff_totp(&self, user: &User, code: &str) -> Result<(), AppError> {
+        if !user.totp_enabled {
+            return Err(AppError::BadRequest(
+                "Staff member does not have TOTP enabled".to_string(),
+            ));
+        }
+
+        let Some(secret) = user.totp_secret.as_deref() else {
+            return Err(AppError::BadRequest(
+                "Staff member does not have TOTP configured".to_string(),
+            ));
+        };
+
+        if verify_totp_code(secret, code, &user.username)? {
+            Ok(())
+        } else {
+            Err(AppError::Unauthorized("Invalid TOTP code".to_string()))
+        }
     }
 }

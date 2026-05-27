@@ -1,4 +1,5 @@
 pub mod auth_service;
+pub mod cash_deposit_service;
 pub mod cash_register_service;
 pub mod config_service;
 pub mod device_game_service;
@@ -17,12 +18,14 @@ pub mod session_service;
 pub mod shift_service;
 pub mod stats_service;
 pub mod storage_service;
+pub mod totp_util;
 pub mod transaction_service;
 pub mod unit_service;
 pub mod user_service;
 pub mod vendor_service;
 
 pub use auth_service::AuthService;
+pub use cash_deposit_service::CashDepositService;
 pub use cash_register_service::CashRegisterService;
 pub use config_service::ConfigService;
 pub use device_game_service::DeviceGameService;

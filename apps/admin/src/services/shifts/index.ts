@@ -37,3 +37,49 @@ export const getShifts = async (filters: Record<string, unknown> = {}) =>
       page: filters.page || 1,
     },
   });
+
+export interface HandoverDepositInput {
+  amount: number;
+  denominations: Record<string, number>;
+  notes?: string;
+}
+
+export interface ShiftHandoverInput {
+  closingBalance: number;
+  closingDenominations?: Record<string, number>;
+  notes?: string;
+  validatorUsername: string;
+  validatorPassword: string;
+  validatorTotp: string;
+  deposit?: HandoverDepositInput;
+}
+
+export interface ShiftHandoverResponse {
+  closedShift: Shift;
+  cashRegister?: {
+    id: string;
+    variance?: number | null;
+    expectedClosing?: number | null;
+    closingBalance?: number | null;
+  } | null;
+  deposit?: { id: string; status: string; amount: number } | null;
+  newAccessToken: string;
+  newUser: {
+    id: string;
+    username: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    role: string;
+    isActive: boolean;
+  };
+  newShiftId: string;
+}
+
+export const handoverShift = async (input: ShiftHandoverInput) =>
+  http.post<ShiftHandoverResponse>('/shifts/handover', input);
+
+export const getExpectedClosing = async () =>
+  http.get<{ registerId?: string | null; expectedClosing: number; openingBalance: number }>(
+    '/cash-registers/active/expected-closing',
+  );

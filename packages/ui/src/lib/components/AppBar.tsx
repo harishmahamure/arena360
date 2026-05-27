@@ -33,6 +33,7 @@ export interface AppBarProps {
   sidebarCollapsed: boolean;
   drawerWidth?: number;
   collapsedWidth?: number;
+  onLogout?: () => void;
   user?: {
     name: string;
     email: string;
@@ -53,6 +54,7 @@ export default function AppBar({
   sidebarCollapsed,
   drawerWidth = DRAWER_WIDTH,
   collapsedWidth = COLLAPSED_WIDTH,
+  onLogout,
   user = { name: 'John Doe', email: 'john.doe@example.com' },
   notifications: propNotifications,
 }: AppBarProps) {
@@ -76,6 +78,11 @@ export default function AppBar({
   };
 
   const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+      handleClose();
+      return;
+    }
     localStorage.removeItem('accessToken');
     toastUtils.success('Logged out successfully!');
     navigate('/login');

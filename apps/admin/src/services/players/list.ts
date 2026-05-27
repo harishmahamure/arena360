@@ -9,6 +9,7 @@ export interface PlayerResponse {
   lastName?: string;
   role: UserRole;
   isActive: boolean;
+  totpEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }

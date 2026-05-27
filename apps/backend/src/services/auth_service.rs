@@ -13,6 +13,7 @@ use crate::dto::{
 use crate::error::AppError;
 use crate::models::User;
 use crate::repositories::UserRepository;
+use crate::services::totp_util::verify_totp_code;
 use crate::services::{MailService, OtpRateLimiter};
 
 pub struct AuthService {
@@ -56,6 +57,16 @@ impl AuthService {
     }
 
     pub async fn login_staff(&self, dto: LoginDto) -> Result<AuthResponseDto, AppError> {
+        let user = self.authenticate_staff(&dto).await?;
+        let token = self.generate_access_token(&user)?;
+        Ok(AuthResponseDto {
+            accessToken: token,
+            user: user.to_auth_user(),
+            shiftId: None,
+        })
+    }
+
+    pub async fn authenticate_staff(&self, dto: &LoginDto) -> Result<User, AppError> {
         let user = self
             .user_repo
             .find_by_username_with_password(&dto.username)
@@ -68,11 +79,47 @@ impl AuthService {
 
         self.verify_password(&dto.password, user.password_hash.as_deref())?;
         self.ensure_active(&user)?;
+        Ok(user)
+    }
 
-        let token = self.generate_access_token(&user)?;
+    pub async fn authenticate_staff_with_totp(
+        &self,
+        username: &str,
+        password: &str,
+        totp: &str,
+    ) -> Result<User, AppError> {
+        let user = self
+            .authenticate_staff(&LoginDto {
+                username: username.to_string(),
+                password: password.to_string(),
+            })
+            .await?;
+
+        if !user.totp_enabled {
+            return Err(AppError::BadRequest(
+                "Validator does not have TOTP enabled".to_string(),
+            ));
+        }
+
+        let Some(secret) = user.totp_secret.as_deref() else {
+            return Err(AppError::BadRequest(
+                "Validator does not have TOTP configured".to_string(),
+            ));
+        };
+
+        if verify_totp_code(secret, totp, &user.username)? {
+            Ok(user)
+        } else {
+            Err(AppError::Unauthorized("Invalid TOTP code".to_string()))
+        }
+    }
+
+    pub fn issue_auth_response(&self, user: &User) -> Result<AuthResponseDto, AppError> {
+        let token = self.generate_access_token(user)?;
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),
+            shiftId: None,
         })
     }
 
@@ -91,6 +138,7 @@ impl AuthService {
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),
+            shiftId: None,
         })
     }
 

@@ -1,8 +1,9 @@
 import { DashboardLayout as BaseDashboardLayout } from '@gaming-cafe/ui';
 import { local } from '@gaming-cafe/utils';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
+import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
 import { useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
@@ -47,7 +48,8 @@ export default function DashboardLayout() {
   useMultipleCountdowns(countDownData);
 
   const { email, firstName, lastName, role } = useSelector((state) => state.auth);
-  const { can } = usePermissions();
+  const { can, isStaff } = usePermissions();
+  const [handoverOpen, setHandoverOpen] = useState(false);
 
   const filteredNavItems = useMemo(() => filterNavItemsByPermission(adminNavItems, can), [can]);
 
@@ -59,11 +61,17 @@ export default function DashboardLayout() {
   }, [navigate]);
 
   return (
-    <BaseDashboardLayout
-      navItems={filteredNavItems}
-      user={{ name: `${firstName} ${lastName}`, email, role }}
-    >
-      <Outlet />
-    </BaseDashboardLayout>
+    <>
+      <BaseDashboardLayout
+        navItems={filteredNavItems}
+        user={{ name: `${firstName} ${lastName}`, email, role }}
+        onLogout={isStaff ? () => setHandoverOpen(true) : undefined}
+      >
+        <Outlet />
+      </BaseDashboardLayout>
+      {isStaff && (
+        <ShiftHandoverDialog open={handoverOpen} onClose={() => setHandoverOpen(false)} />
+      )}
+    </>
   );
 }

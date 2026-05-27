@@ -1,12 +1,15 @@
 use axum::{extract::State, Json};
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
     created, ok, ApiResult, AuthResponseDto, LoginDto, OtpPendingResponse, RegisterDto,
     RegisterResponseDto, VerifyOtpDto,
 };
+use crate::error::AppError;
 use crate::middleware::AdminOrStaff;
+use crate::models::ClockInDto;
 use crate::openapi::responses::{
     AuthResponseEnvelope, ErrorEnvelope, OtpPendingEnvelope, RegisterResponseEnvelope,
 };
@@ -47,7 +50,39 @@ pub async fn login_staff(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<LoginDto>,
 ) -> ApiResult<AuthResponseDto> {
-    let result = state.auth.login_staff(dto).await?;
+    let mut result = state.auth.login_staff(dto).await?;
+    let user_id: Uuid = result
+        .user
+        .id
+        .parse()
+        .map_err(|_| AppError::Internal("Invalid user ID".to_string()))?;
+
+    let shift = match state
+        .shifts
+        .clock_in(
+            user_id,
+            ClockInDto {
+                notes: Some("Auto-started on login".to_string()),
+            },
+            user_id,
+        )
+        .await
+    {
+        Ok(shift) => shift,
+        Err(AppError::Conflict(_)) => state
+            .shifts
+            .get_active(user_id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Active shift conflict".to_string()))?,
+        Err(error) => return Err(error),
+    };
+
+    let _ = state
+        .cash_registers
+        .ensure_open_for_shift(shift.id, user_id, 0.0)
+        .await;
+
+    result.shiftId = Some(shift.id.to_string());
     ok(result)
 }
 

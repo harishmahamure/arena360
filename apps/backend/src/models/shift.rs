@@ -4,6 +4,10 @@ use sqlx::FromRow;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::dto::AuthUserDto;
+use crate::models::cash_deposit::CashDeposit;
+use crate::models::CashRegister;
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Shift {
@@ -29,6 +33,48 @@ pub struct ClockInDto {
 #[serde(rename_all = "camelCase")]
 pub struct ClockOutDto {
     pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HandoverDepositDto {
+    pub amount: f64,
+    pub denominations: serde_json::Value,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftHandoverDto {
+    pub closing_balance: f64,
+    pub closing_denominations: Option<serde_json::Value>,
+    pub notes: Option<String>,
+    pub validator_username: String,
+    pub validator_password: String,
+    pub validator_totp: String,
+    pub deposit: Option<HandoverDepositDto>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftHandoverResponseDto {
+    pub closedShift: Shift,
+    pub cashRegister: Option<CashRegister>,
+    pub deposit: Option<CashDeposit>,
+    pub newAccessToken: String,
+    pub newUser: AuthUserDto,
+    pub newShiftId: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CashRegisterSummary {
+    pub id: Uuid,
+    pub shift_id: Uuid,
+    pub opening_balance: f64,
+    pub expected_closing: f64,
+    pub status: String,
 }
 
 #[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]

@@ -9,6 +9,7 @@ import RequirePermission from './components/RequirePermission';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/auth/LoginPage';
+import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
 import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import DeviceGameDetailPage from './pages/dashboard/device-games/DeviceGameDetailPage';
@@ -125,6 +126,7 @@ function App() {
                 </Route>
                 <Route path="/shifts" element={<ShiftsPage />} />
                 <Route path="/cash-registers" element={<CashRegistersPage />} />
+                <Route path="/cash-deposits" element={<CashDepositsPage />} />
                 <Route path="/expenses" element={<ExpensesPage />} />
                 <Route path="/vendors" element={<VendorsPage />} />
                 <Route element={<RequirePermission permission={Permission.ConfigRead} />}>

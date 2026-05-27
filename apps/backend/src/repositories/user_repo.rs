@@ -32,6 +32,8 @@ impl UserRepository {
                "phoneNumber" as phone_number, role,
                NULL::varchar as session_otp_id,
                NULL::varchar as session_otp,
+               NULL::varchar as totp_secret,
+               COALESCE("totpEnabled", false) as totp_enabled,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -63,6 +65,8 @@ impl UserRepository {
              \"phoneNumber\" as phone_number, role, \
              NULL::varchar as session_otp_id, \
              NULL::varchar as session_otp, \
+             NULL::varchar as totp_secret, \
+             COALESCE(\"totpEnabled\", false) as totp_enabled, \
              \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \
              \"deletedAt\" as deleted_at \
@@ -117,9 +121,11 @@ impl UserRepository {
                       NULL::varchar as password_hash,
                       "isActive" as is_active,
                       "firstName" as first_name, "lastName" as last_name,
-                      "phoneNumber" as phone_name, role,
+                      "phoneNumber" as phone_number, role,
                       NULL::varchar as session_otp_id,
                       NULL::varchar as session_otp,
+                      NULL::varchar as totp_secret,
+                      COALESCE("totpEnabled", false) as totp_enabled,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -163,6 +169,8 @@ impl UserRepository {
                       "phoneNumber" as phone_number, role,
                       NULL::varchar as session_otp_id,
                       NULL::varchar as session_otp,
+                      NULL::varchar as totp_secret,
+                      COALESCE("totpEnabled", false) as totp_enabled,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -219,6 +227,8 @@ impl UserRepository {
                    "firstName" as first_name, "lastName" as last_name,
                    "phoneNumber" as phone_number, role,
                    "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
+                   "totpSecret" as totp_secret,
+                   COALESCE("totpEnabled", false) as totp_enabled,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at
@@ -243,6 +253,8 @@ impl UserRepository {
                    "firstName" as first_name, "lastName" as last_name,
                    "phoneNumber" as phone_number, role,
                    "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
+                   "totpSecret" as totp_secret,
+                   COALESCE("totpEnabled", false) as totp_enabled,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at
@@ -272,6 +284,75 @@ impl UserRepository {
         )
         .bind(session_otp_id)
         .bind(otp)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn find_by_id_for_auth(&self, id: Uuid) -> Result<Option<User>, AppError> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            SELECT id, email, username, password_hash, "isActive" as is_active,
+                   "firstName" as first_name, "lastName" as last_name,
+                   "phoneNumber" as phone_number, role,
+                   "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
+                   "totpSecret" as totp_secret,
+                   COALESCE("totpEnabled", false) as totp_enabled,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
+                   "createdAt" as created_at, "updatedAt" as updated_at,
+                   "deletedAt" as deleted_at
+            FROM users
+            WHERE id = $1 AND "deletedAt" IS NULL
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    pub async fn set_totp_secret(&self, user_id: Uuid, secret: &str) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET "totpSecret" = $1, "totpEnabled" = false, "updatedAt" = NOW()
+            WHERE id = $2 AND "deletedAt" IS NULL
+            "#,
+        )
+        .bind(secret)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn enable_totp(&self, user_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET "totpEnabled" = true, "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL AND "totpSecret" IS NOT NULL
+            "#,
+        )
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn clear_totp(&self, user_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET "totpSecret" = NULL, "totpEnabled" = false, "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL
+            "#,
+        )
         .bind(user_id)
         .execute(&self.pool)
         .await?;

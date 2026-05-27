@@ -1,6 +1,6 @@
 use axum::{
     middleware,
-    routing::{get, patch, post, put},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use sqlx::PgPool;
@@ -12,7 +12,7 @@ use crate::handlers;
 use crate::middleware::auth_middleware;
 use crate::openapi::ApiDoc;
 use crate::services::{
-    AuthService, CashRegisterService, ConfigService, DeviceGameService, DeviceService,
+    AuthService, CashDepositService, CashRegisterService, ConfigService, DeviceGameService, DeviceService,
     EventService, ExpenseCategoryService, ExpenseService, FileService, GameService, PlanService,
     PlayerPlanService, ProductService, SessionService, ShiftService, StatsService, StorageService,
     TransactionService, UnitService, UserService, VendorService,
@@ -36,6 +36,7 @@ pub struct AppState {
     pub sessions: SessionService,
     pub shifts: ShiftService,
     pub cash_registers: CashRegisterService,
+    pub cash_deposits: CashDepositService,
     pub transactions: TransactionService,
     pub products: ProductService,
     pub expense_categories: ExpenseCategoryService,
@@ -76,6 +77,7 @@ pub async fn build_state() -> Arc<AppState> {
         sessions: SessionService::new(pool.clone(), devices, player_plans.clone(), events.clone()),
         shifts: ShiftService::new(pool.clone()),
         cash_registers: CashRegisterService::new(pool.clone()),
+        cash_deposits: CashDepositService::new(pool.clone()),
         transactions: TransactionService::new(pool.clone(), player_plans, events.clone()),
         products: ProductService::new(pool.clone()),
         expense_categories: ExpenseCategoryService::new(pool.clone()),
@@ -201,6 +203,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .delete(handlers::device_games::delete_device_game),
         )
         .route(
+            "/cash-registers/active/expected-closing",
+            get(handlers::cash_registers::get_active_expected_closing),
+        )
+        .route(
             "/cash-registers/open",
             post(handlers::cash_registers::open_cash_register),
         )
@@ -220,6 +226,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/cash-registers/{id}",
             get(handlers::cash_registers::get_cash_register),
         )
+        .route("/shifts/handover", post(handlers::shifts::handover_shift))
         .route("/shifts/clock-in", post(handlers::shifts::clock_in))
         .route("/shifts/clock-out", patch(handlers::shifts::clock_out))
         .route("/shifts/active", get(handlers::shifts::get_active_shift))
@@ -306,6 +313,32 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .patch(handlers::vendors::update_vendor)
                 .delete(handlers::vendors::delete_vendor),
         )
+        .route(
+            "/cash-deposits",
+            get(handlers::cash_deposits::list_deposits)
+                .post(handlers::cash_deposits::initiate_deposit),
+        )
+        .route(
+            "/cash-deposits/{id}",
+            get(handlers::cash_deposits::get_deposit),
+        )
+        .route(
+            "/cash-deposits/{id}/approve",
+            patch(handlers::cash_deposits::approve_deposit),
+        )
+        .route(
+            "/cash-deposits/{id}/reject",
+            patch(handlers::cash_deposits::reject_deposit),
+        )
+        .route(
+            "/users/{id}/totp/setup",
+            post(handlers::users::setup_totp),
+        )
+        .route(
+            "/users/{id}/totp/verify",
+            post(handlers::users::verify_totp_setup),
+        )
+        .route("/users/{id}/totp", delete(handlers::users::disable_totp))
         .route(
             "/expenses/summary",
             get(handlers::expenses::expense_summary),

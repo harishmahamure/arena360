@@ -174,3 +174,19 @@ pagination_envelope!(VendorPaginationEnvelope, VendorPaginationPage, Vendor);
 success_envelope!(ExpenseEnvelope, Expense);
 success_envelope!(ExpenseSummaryListEnvelope, Vec<ExpenseSummaryDto>);
 pagination_envelope!(ExpensePaginationEnvelope, ExpensePaginationPage, Expense);
+
+success_envelope!(TotpSetupEnvelope, crate::models::TotpSetupResponseDto);
+success_envelope!(ShiftHandoverResponseEnvelope, crate::models::ShiftHandoverResponseDto);
+success_envelope!(
+    ExpectedClosingEnvelope,
+    crate::handlers::cash_registers::ExpectedClosingResponse
+);
+
+use crate::models::CashDeposit;
+
+success_envelope!(CashDepositEnvelope, CashDeposit);
+pagination_envelope!(
+    CashDepositPaginationEnvelope,
+    CashDepositPaginationPage,
+    CashDeposit
+);

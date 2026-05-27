@@ -314,6 +314,10 @@ impl CashRegisterRepository {
         Ok(row.0.unwrap_or(0.0))
     }
 
+    pub async fn get_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
+        self.calculate_expected_closing(register_id).await
+    }
+
     async fn calculate_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
         let register = self.find_by_id(register_id).await?.ok_or_else(|| {
             AppError::NotFound(format!("Cash register with ID {register_id} not found"))
