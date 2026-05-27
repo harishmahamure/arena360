@@ -196,7 +196,7 @@ export default function DevicesPage() {
       align: 'center',
       format: (value) => (
         <Chip
-          icon={getStatusIcon(value as DeviceStatus) || <></>}
+          icon={getStatusIcon(value as DeviceStatus) ?? undefined}
           label={getStatusLabel(value as DeviceStatus)}
           color={getStatusColor(value as DeviceStatus)}
           size="small"

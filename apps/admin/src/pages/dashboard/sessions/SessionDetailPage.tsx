@@ -56,13 +56,25 @@ export default function ViewSessionPage() {
 
   const { data: playerPlanRecord } = useQuery({
     queryKey: ['player-plan', session?.playerPlanId],
-    queryFn: () => getPlayerPlanById(session?.playerPlanId),
+    queryFn: () => {
+      const playerPlanId = session?.playerPlanId;
+      if (!playerPlanId) {
+        throw new Error('Missing player plan ID');
+      }
+      return getPlayerPlanById(playerPlanId);
+    },
     enabled: !!session?.playerPlanId && !session?.playerPlan,
   });
 
   const { data: deviceRecord } = useQuery({
     queryKey: ['device', session?.deviceId],
-    queryFn: () => getDeviceById(session?.deviceId),
+    queryFn: () => {
+      const deviceId = session?.deviceId;
+      if (!deviceId) {
+        throw new Error('Missing device ID');
+      }
+      return getDeviceById(deviceId);
+    },
     enabled: !!session?.deviceId && !session?.device,
   });
 
@@ -71,13 +83,23 @@ export default function ViewSessionPage() {
 
   const { data: playerRecord } = useQuery({
     queryKey: ['player', playerId],
-    queryFn: () => getPlayerById(playerId!),
+    queryFn: () => {
+      if (!playerId) {
+        throw new Error('Missing player ID');
+      }
+      return getPlayerById(playerId);
+    },
     enabled: !!playerId && !session?.playerPlan?.player,
   });
 
   const { data: planRecord } = useQuery({
     queryKey: ['plan', planId],
-    queryFn: () => getPlanById(planId!),
+    queryFn: () => {
+      if (!planId) {
+        throw new Error('Missing plan ID');
+      }
+      return getPlanById(planId);
+    },
     enabled: !!planId && !session?.playerPlan?.plan,
   });
 

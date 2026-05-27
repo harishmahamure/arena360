@@ -32,7 +32,7 @@ const getStatusColor = (status: PaymentStatus) => {
   }
 };
 
-const getPaymentMethodLabel = (method: any) => {
+const getPaymentMethodLabel = (method: PaymentMethodType | string) => {
   switch (method) {
     case PaymentMethodValues.CASH:
       return 'Cash';

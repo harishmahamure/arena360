@@ -7,7 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlan } from '../../../services/plans/delete';
-import { getPlans, type PlanResponse } from '../../../services/plans/list';
+import { getPlans, type PlanResponse, type PlanType } from '../../../services/plans/list';
 
 export default function PlansPage() {
   const [inputValue, setInputValue] = useState<string>('');
@@ -42,7 +42,7 @@ export default function PlansPage() {
       getPlans({
         search: debouncedSearch.length > 2 ? debouncedSearch : undefined,
         page: page,
-        planType: planType as any,
+        planType: planType as PlanType | undefined,
         isActive: isActive === 'true' ? 1 : isActive === 'false' ? 0 : undefined,
       }),
   });

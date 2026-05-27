@@ -227,8 +227,8 @@ export default function CreateProductTransactionPage() {
       } else {
         setError('Transaction was created but payment is not completed.');
       }
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to create transaction');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create transaction');
     } finally {
       setLoading(false);
     }
