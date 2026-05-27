@@ -124,8 +124,6 @@ importers:
         specifier: ^6.0.3
         version: 6.1.1(typescript@5.6.3)(vite@7.3.3(@types/node@20.19.41)(tsx@4.22.3))
 
-  apps/backend: {}
-
   packages/api-types:
     devDependencies:
       '@gaming-cafe/tsconfig':

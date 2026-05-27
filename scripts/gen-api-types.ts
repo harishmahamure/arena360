@@ -18,7 +18,7 @@ function run(cmd: string, cwd = ROOT): void {
 if (!existsSync(BACKEND)) {
   console.error(`apps/backend not found at ${BACKEND}. Skipping spec regeneration.`);
 } else {
-  run('pnpm run openapi:generate', BACKEND);
+  run('cargo run --bin openapi-gen --quiet', BACKEND);
 }
 
 if (!existsSync(SPEC)) {

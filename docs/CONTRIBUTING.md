@@ -93,7 +93,7 @@ pnpm dev        # turbo run dev — starts backend, admin, and shared package wa
 ### Run one workspace at a time
 
 ```bash
-pnpm --filter @gaming-cafe/backend dev
+pnpm backend:dev
 pnpm --filter @gaming-cafe/admin   dev
 pnpm --filter @gaming-cafe/kiosk   tauri:dev
 ```
@@ -129,7 +129,7 @@ pnpm build       # turbo run build — every workspace
 Per-workspace variants follow the same pattern:
 
 ```bash
-pnpm --filter @gaming-cafe/backend test         # jest
+pnpm backend:test         # cargo test
 pnpm --filter @gaming-cafe/admin   test         # vitest
 pnpm --filter @gaming-cafe/kiosk   test         # vitest (React)
 pnpm --filter @gaming-cafe/kiosk   test:rust    # cargo test in src-tauri

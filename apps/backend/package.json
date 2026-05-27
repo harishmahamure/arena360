@@ -1,7 +1,17 @@
 {
   "name": "@gaming-cafe/backend",
   "private": true,
+  "description": "Rust Axum API — not a pnpm workspace. Run scripts from repo root: pnpm backend:build, pnpm backend:dev, etc.",
   "scripts": {
+    "build": "cargo build",
+    "build:release": "cargo build --release",
+    "dev": "cargo run",
+    "run": "cargo run",
+    "test": "cargo test",
+    "clippy": "cargo clippy --all-targets -- -D warnings",
+    "fmt": "cargo fmt",
+    "fmt:check": "cargo fmt -- --check",
+    "clean": "cargo clean",
     "openapi:generate": "cargo run --bin openapi-gen --quiet"
   }
 }

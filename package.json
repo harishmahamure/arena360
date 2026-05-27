@@ -9,7 +9,7 @@
     "pnpm": ">=9.0.0"
   },
   "workspaces": [
-    "apps/*",
+    "apps/admin",
     "packages/*"
   ],
   "scripts": {
@@ -24,7 +24,14 @@
     "gen:api-types": "tsx scripts/gen-api-types.ts",
     "changeset": "changeset",
     "release": "changeset publish",
-    "prepare": "simple-git-hooks"
+    "prepare": "simple-git-hooks",
+    "backend:build": "cargo build --manifest-path apps/backend/Cargo.toml",
+    "backend:build:release": "cargo build --release --manifest-path apps/backend/Cargo.toml",
+    "backend:dev": "cargo run --manifest-path apps/backend/Cargo.toml",
+    "backend:run": "cargo run --manifest-path apps/backend/Cargo.toml",
+    "backend:test": "cargo test --manifest-path apps/backend/Cargo.toml",
+    "backend:clippy": "cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml -- -D warnings",
+    "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml"
   },
   "devDependencies": {
     "@gaming-cafe/biome-config": "workspace:*",

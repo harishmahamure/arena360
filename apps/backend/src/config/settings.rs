@@ -18,7 +18,8 @@ pub struct Settings {
 
 impl Settings {
     pub fn from_env() -> Self {
-        let jwt_secret =
+        
+        let jwt_secret: String =
             std::env::var("JWT_SECRET").expect("JWT_SECRET must be set and >= 32 chars");
         if jwt_secret.len() < 32 {
             panic!("JWT_SECRET must be at least 32 characters");

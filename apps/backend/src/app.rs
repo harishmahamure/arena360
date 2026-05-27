@@ -7,7 +7,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 
-use crate::config::{create_pool, Settings};
+use crate::config::{create_pool, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::auth_middleware;
 use crate::services::{
@@ -41,7 +41,7 @@ pub struct AppState {
 }
 
 pub async fn build_state() -> Arc<AppState> {
-    dotenvy::dotenv().ok();
+    load_dotenv();
     let settings = Arc::new(Settings::from_env());
     let pool = create_pool(settings.as_ref()).await;
     let broadcaster = Broadcaster::new(100);

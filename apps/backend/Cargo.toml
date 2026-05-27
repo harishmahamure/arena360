@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Gaming Cafe Team"]
 description = "Gaming cafe management API - Rust Axum + SQLx backend"
+default-run = "gaming-cafe-api"
 
 [dependencies]
 # Web framework
