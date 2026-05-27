@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug backend (gaming-cafe-api)",
+      "program": "${workspaceFolder}/apps/backend/target/debug/gaming-cafe-api",
+      "cwd": "${workspaceFolder}/apps/backend",
+      "envFile": "${workspaceFolder}/apps/backend/.env",
+      "preLaunchTask": "rust: cargo build"
+    }
+  ]
+}

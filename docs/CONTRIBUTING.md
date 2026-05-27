@@ -18,9 +18,10 @@ You need the following installed locally:
   installing Node. This pins `pnpm` to the version declared in the root
   `package.json` `packageManager` field.
 - **pnpm 9.x** (auto-installed via Corepack on first run).
-- **Rust toolchain** (only if you work on the kiosk):
-  - `rustup` with the stable channel.
-  - Platform Tauri prerequisites — see
+- **Rust toolchain** (for backend and kiosk work):
+  - `rustup` with the stable channel (`apps/backend/rust-toolchain.toml`
+    pins stable + rustfmt + clippy).
+  - Platform Tauri prerequisites for kiosk — see
     <https://tauri.app/start/prerequisites/>.
   - On Windows: WebView2 runtime (ships with Windows 11; install
     manually on Windows 10).
@@ -33,8 +34,31 @@ Verify your setup:
 node -v       # v20.x
 corepack -v   # any
 pnpm -v       # 9.x
-rustc --version  # only needed for kiosk work
+rustc --version  # needed for backend and kiosk work
 ```
+
+---
+
+## IDE setup
+
+Cursor and VS Code share the same config under `.vscode/`:
+
+1. **Extensions** — accept the recommended-extensions prompt on first
+   open (Biome, rust-analyzer, CodeLLDB, Even Better TOML, etc.).
+2. **Settings** — copy the shared preset into your local (gitignored)
+   file:
+   ```bash
+   cp .vscode/settings.recommended.json .vscode/settings.json
+   ```
+   The preset wires Biome for TS/JS and `rust-analyzer.linkedProjects`
+   so the backend crate at `apps/backend/Cargo.toml` is discovered from
+   the monorepo root.
+3. **Rust tasks** — run **Tasks: Run Task** for `rust: cargo build`,
+   `rust: cargo test`, or `rust: cargo clippy` (all run in
+   `apps/backend/`).
+4. **Backend debugging** — create `apps/backend/.env` from
+   `.env.example`, install CodeLLDB, then use **Run and Debug → Debug
+   backend (gaming-cafe-api)**.
 
 ---
 
