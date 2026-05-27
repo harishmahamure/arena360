@@ -7,10 +7,11 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
-use crate::middleware::auth::AdminOrStaff;
+use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::models::{
     CashRegister, CashRegisterEntry, CashRegisterFilterDto, CashRegisterWithEntries,
     CloseCashRegisterDto, CreateCashRegisterEntryDto, OpenCashRegisterDto,
+    ReconcileCashRegisterDto, UpdateOpeningBalanceDto,
 };
 use crate::openapi::responses::{
     CashRegisterEntryEnvelope, CashRegisterEnvelope, CashRegisterPaginationEnvelope,
@@ -74,6 +75,73 @@ pub async fn close_cash_register(
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
     let register = state.cash_registers.close(id, dto, actor_id).await?;
+    ok(register)
+}
+
+#[utoipa::path(
+    patch,
+    path = "/cash-registers/{id}/reconcile",
+    params(
+        ("id" = Uuid, Path, description = "Cash register ID"),
+    ),
+    request_body = ReconcileCashRegisterDto,
+    responses(
+        (status = 200, description = "Cash register reconciled", body = CashRegisterEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "cash-registers"
+)]
+pub async fn reconcile_cash_register(
+    State(state): State<Arc<AppState>>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<Uuid>,
+    Json(dto): Json<ReconcileCashRegisterDto>,
+) -> ApiResult<CashRegister> {
+    let actor_id: Uuid = claims
+        .userId
+        .parse()
+        .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
+    let register = state.cash_registers.reconcile(id, dto, actor_id).await?;
+    ok(register)
+}
+
+#[utoipa::path(
+    patch,
+    path = "/cash-registers/{id}/update-opening",
+    params(
+        ("id" = Uuid, Path, description = "Cash register ID"),
+    ),
+    request_body = UpdateOpeningBalanceDto,
+    responses(
+        (status = 200, description = "Opening balance updated", body = CashRegisterEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "cash-registers"
+)]
+pub async fn update_opening_balance(
+    State(state): State<Arc<AppState>>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<Uuid>,
+    Json(dto): Json<UpdateOpeningBalanceDto>,
+) -> ApiResult<CashRegister> {
+    let actor_id: Uuid = claims
+        .userId
+        .parse()
+        .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
+    let register = state
+        .cash_registers
+        .update_opening_balance(id, dto, actor_id)
+        .await?;
     ok(register)
 }
 
@@ -186,18 +254,11 @@ pub async fn get_active_expected_closing(
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
 
-    let active_shift = state
-        .shifts
-        .get_active(user_id)
-        .await?
-        .ok_or_else(|| {
-            crate::error::AppError::NotFound("No active shift found for current user".to_string())
-        })?;
+    let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
+        crate::error::AppError::NotFound("No active shift found for current user".to_string())
+    })?;
 
-    let register = state
-        .cash_registers
-        .get_by_shift(active_shift.id)
-        .await?;
+    let register = state.cash_registers.get_by_shift(active_shift.id).await?;
 
     let expected = state
         .cash_registers

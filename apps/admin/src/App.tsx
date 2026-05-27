@@ -12,17 +12,12 @@ import LoginPage from './pages/auth/LoginPage';
 import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
 import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
-import DeviceGameDetailPage from './pages/dashboard/device-games/DeviceGameDetailPage';
-import DeviceGameNewPage from './pages/dashboard/device-games/DeviceGameNewPage';
-import DeviceGamesPage from './pages/dashboard/device-games/DeviceGamesPage';
 import DeviceDetailPage from './pages/dashboard/devices/DeviceDetailPage';
 import DeviceNewPage from './pages/dashboard/devices/DeviceNewPage';
 import DevicesPage from './pages/dashboard/devices/DevicesPage';
+import ExpenseDetailPage from './pages/dashboard/expenses/ExpenseDetailPage';
+import ExpenseNewPage from './pages/dashboard/expenses/ExpenseNewPage';
 import ExpensesPage from './pages/dashboard/expenses/ExpensesPage';
-import GameDetailPage from './pages/dashboard/games/GameDetailPage';
-import GameNewPage from './pages/dashboard/games/GameNewPage';
-import GamesPage from './pages/dashboard/games/GamesPage';
-import MediaUploadPage from './pages/dashboard/media/MediaUploadPage';
 import PlanTransactionDetailPage from './pages/dashboard/plan-transactions/PlanTransactionDetailPage';
 import PlanTransactionNewPage from './pages/dashboard/plan-transactions/PlanTransactionNewPage';
 import PlanTransactionsPage from './pages/dashboard/plan-transactions/PlanTransactionsPage';
@@ -32,6 +27,7 @@ import PlansPage from './pages/dashboard/plans/PlansPage';
 import PlayerDetailPage from './pages/dashboard/players/PlayerDetailPage';
 import PlayerNewPage from './pages/dashboard/players/PlayerNewPage';
 import PlayersPage from './pages/dashboard/players/PlayersPage';
+import ProductTransactionDetailPage from './pages/dashboard/product-transactions/ProductTransactionDetailPage';
 import ProductTransactionNewPage from './pages/dashboard/product-transactions/ProductTransactionNewPage';
 import ProductTransactionsPage from './pages/dashboard/product-transactions/ProductTransactionsPage';
 import ProductDetailPage from './pages/dashboard/products/ProductDetailPage';
@@ -45,6 +41,8 @@ import ShiftsPage from './pages/dashboard/shifts/ShiftsPage';
 import UnitDetailPage from './pages/dashboard/units/UnitDetailPage';
 import UnitNewPage from './pages/dashboard/units/UnitNewPage';
 import UnitsPage from './pages/dashboard/units/UnitsPage';
+import VendorDetailPage from './pages/dashboard/vendors/VendorDetailPage';
+import VendorNewPage from './pages/dashboard/vendors/VendorNewPage';
 import VendorsPage from './pages/dashboard/vendors/VendorsPage';
 import { StoreContext } from './store';
 import { PERSIST_KEY } from './store/persistance';
@@ -82,16 +80,6 @@ function App() {
                   <Route path="/devices/new" element={<DeviceNewPage />} />
                 </Route>
                 <Route path="/devices/:id" element={<DeviceDetailPage />} />
-                <Route path="/games" element={<GamesPage />} />
-                <Route element={<RequirePermission permission={Permission.GamesWrite} />}>
-                  <Route path="/games/new" element={<GameNewPage />} />
-                </Route>
-                <Route path="/games/:id" element={<GameDetailPage />} />
-                <Route path="/device-games" element={<DeviceGamesPage />} />
-                <Route element={<RequirePermission permission={Permission.DeviceGamesWrite} />}>
-                  <Route path="/device-games/new" element={<DeviceGameNewPage />} />
-                </Route>
-                <Route path="/device-games/:id" element={<DeviceGameDetailPage />} />
                 <Route path="/plans" element={<PlansPage />} />
                 <Route element={<RequirePermission permission={Permission.PlansWrite} />}>
                   <Route path="/plans/new" element={<PlanNewPage />} />
@@ -116,19 +104,24 @@ function App() {
                 <Route element={<RequirePermission permission={Permission.TransactionsWrite} />}>
                   <Route path="/product-transactions/new" element={<ProductTransactionNewPage />} />
                 </Route>
+                <Route
+                  path="/product-transactions/:id"
+                  element={<ProductTransactionDetailPage />}
+                />
                 <Route path="/units" element={<UnitsPage />} />
                 <Route element={<RequirePermission permission={Permission.UnitsWrite} />}>
                   <Route path="/units/new" element={<UnitNewPage />} />
                 </Route>
                 <Route path="/units/:id" element={<UnitDetailPage />} />
-                <Route element={<RequirePermission permission={Permission.FilesWrite} />}>
-                  <Route path="/media/upload" element={<MediaUploadPage />} />
-                </Route>
                 <Route path="/shifts" element={<ShiftsPage />} />
                 <Route path="/cash-registers" element={<CashRegistersPage />} />
                 <Route path="/cash-deposits" element={<CashDepositsPage />} />
                 <Route path="/expenses" element={<ExpensesPage />} />
+                <Route path="/expenses/new" element={<ExpenseNewPage />} />
+                <Route path="/expenses/:id" element={<ExpenseDetailPage />} />
                 <Route path="/vendors" element={<VendorsPage />} />
+                <Route path="/vendors/new" element={<VendorNewPage />} />
+                <Route path="/vendors/:id" element={<VendorDetailPage />} />
                 <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
                   <Route path="/settings" element={<SettingsPage />} />
                 </Route>

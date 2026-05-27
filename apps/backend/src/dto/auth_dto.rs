@@ -27,6 +27,14 @@ pub struct LoginDto {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct StaffLoginDto {
+    pub username: String,
+    pub password: String,
+    pub totp: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct VerifyOtpDto {
     pub otp: String,
     pub sessionOtpId: String,

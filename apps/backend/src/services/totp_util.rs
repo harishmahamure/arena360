@@ -27,7 +27,9 @@ fn build_totp(secret: &str, account_name: &str) -> Result<TOTP, AppError> {
         6,
         1,
         30,
-        secret.to_bytes().map_err(|e| AppError::Internal(e.to_string()))?,
+        secret
+            .to_bytes()
+            .map_err(|e| AppError::Internal(e.to_string()))?,
         Some(ISSUER.to_string()),
         account_name.to_string(),
     )

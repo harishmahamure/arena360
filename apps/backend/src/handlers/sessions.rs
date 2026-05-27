@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
+use crate::middleware::AdminOrStaff;
 use crate::models::{
     CreateSessionDto, EndSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse,
 };
@@ -89,10 +90,22 @@ pub async fn get_session(
     tag = "sessions"
 )]
 pub async fn create_session(
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Json(dto): Json<CreateSessionDto>,
+    Json(mut dto): Json<CreateSessionDto>,
 ) -> ApiResult<UsageSession> {
-    let session = state.sessions.start(dto, None).await?;
+    let user_id = claims.user_id_uuid().ok_or_else(|| {
+        crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
+    })?;
+
+    // Enforce active shift
+    let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
+        crate::error::AppError::BadRequest("No active shift found for current user".to_string())
+    })?;
+
+    dto.shift_id = Some(active_shift.id);
+
+    let session = state.sessions.start(dto, Some(user_id)).await?;
     created(session)
 }
 

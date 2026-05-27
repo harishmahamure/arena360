@@ -99,7 +99,32 @@ impl CashDepositService {
             ));
         }
 
-        self.repo.reject(id, rejection_reason, admin_id).await
+        let deposit = self.repo.reject(id, rejection_reason, admin_id).await?;
+
+        let register = self
+            .cash_register_repo
+            .find_by_id(deposit.cash_register_id)
+            .await?;
+        if let Some(reg) = register {
+            if reg.status == "open" {
+                let _ = self
+                    .cash_register_repo
+                    .add_entry(
+                        deposit.cash_register_id,
+                        &CreateCashRegisterEntryDto {
+                            entry_type: "cash_in".to_string(),
+                            amount: deposit.amount,
+                            reason: Some(format!("Deposit {} rejected – reversal", deposit.id)),
+                            reference_id: Some(deposit.id),
+                            reference_type: Some("cash_deposit".to_string()),
+                        },
+                        admin_id,
+                    )
+                    .await;
+            }
+        }
+
+        Ok(deposit)
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<CashDeposit, AppError> {

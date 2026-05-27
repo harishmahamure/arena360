@@ -1,0 +1,8 @@
+ALTER TABLE IF EXISTS usage_sessions DROP COLUMN IF EXISTS "gameId";
+
+DROP TABLE IF EXISTS device_games CASCADE;
+DROP TABLE IF EXISTS games CASCADE;
+DROP TABLE IF EXISTS files CASCADE;
+DROP TYPE IF EXISTS files_category_enum;
+DROP TYPE IF EXISTS files_status_enum;
+DROP TYPE IF EXISTS files_visibility_enum;

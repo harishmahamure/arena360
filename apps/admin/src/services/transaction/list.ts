@@ -59,32 +59,20 @@ interface Player {
   sessionOtp: string;
 }
 
-interface TransactionProduct {
+export interface TransactionProduct {
   id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
   transactionId: string;
   productId: string;
   quantity: number;
-  priceAtPurchase: string;
-  subtotal: string;
-  notes: null;
-  product: Product;
+  unitPrice: number;
+  productName: string;
+  productSku?: string | null;
+  productPrice: number;
+  createdAt: string;
 }
 
-interface Product {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
-  name: string;
-  description: string;
-  price: string;
-  category: string;
-  sku: string;
-  stockQuantity: number;
-  isActive: boolean;
+export interface TransactionWithLineItems extends Transaction {
+  lineItems: TransactionProduct[];
 }
 
 export interface GetTransactionsFilters {
@@ -106,4 +94,8 @@ export const getTransactions = async (filters: GetTransactionsFilters) => {
   return http.get<TransactionListResponseData>('/transactions', {
     params: filters,
   });
+};
+
+export const getTransactionById = async (id: string) => {
+  return http.get<TransactionWithLineItems>(`/transactions/${id}`);
 };

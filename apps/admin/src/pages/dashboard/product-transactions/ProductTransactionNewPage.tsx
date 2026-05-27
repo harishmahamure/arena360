@@ -211,12 +211,23 @@ export default function CreateProductTransactionPage() {
         paymentStatus: PaymentStatus.COMPLETED,
         paymentMethod: paymentMethod as PaymentMethodType,
         cashAmount:
-          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? parseFloat(cashAmount) : undefined,
+          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+            ? parseFloat(cashAmount)
+            : paymentMethod === PaymentMethodValues.CASH
+              ? total
+              : undefined,
         onlineAmount:
           paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
             ? parseFloat(onlineAmount)
-            : undefined,
+            : paymentMethod === PaymentMethodValues.ONLINE
+              ? total
+              : undefined,
         notes: notes || undefined,
+        lineItems: cart.map((item) => ({
+          productId: item.id,
+          quantity: item.quantity,
+          unitPrice: item.price,
+        })),
       });
 
       if (response.paymentStatus === PaymentStatus.COMPLETED) {

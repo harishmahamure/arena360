@@ -7,11 +7,12 @@ use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::models::{
-    ClockInDto, ClockOutDto, CloseCashRegisterDto, InitiateDepositDto, Shift, ShiftFilterDto,
-    ShiftHandoverDto, ShiftHandoverResponseDto,
+    ClockInDto, ClockOutDto, CloseCashRegisterDto, InitiateDepositDto, Shift, ShiftCloseDto,
+    ShiftCloseResponseDto, ShiftFilterDto, ShiftHandoverDto, ShiftHandoverResponseDto,
 };
 use crate::openapi::responses::{
-    ErrorEnvelope, ShiftEnvelope, ShiftHandoverResponseEnvelope, ShiftPaginationEnvelope,
+    ErrorEnvelope, ShiftCloseResponseEnvelope, ShiftEnvelope, ShiftHandoverResponseEnvelope,
+    ShiftPaginationEnvelope,
 };
 
 #[utoipa::path(
@@ -213,13 +214,9 @@ pub async fn handover_shift(
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
 
-    let active_shift = state
-        .shifts
-        .get_active(staff_a_id)
-        .await?
-        .ok_or_else(|| {
-            crate::error::AppError::NotFound("No active shift found for current user".to_string())
-        })?;
+    let active_shift = state.shifts.get_active(staff_a_id).await?.ok_or_else(|| {
+        crate::error::AppError::NotFound("No active shift found for current user".to_string())
+    })?;
 
     let validator = state
         .auth
@@ -330,5 +327,104 @@ pub async fn handover_shift(
         newAccessToken: auth_response.accessToken,
         newUser: auth_response.user,
         newShiftId: new_shift.id.to_string(),
+    })
+}
+
+#[utoipa::path(
+    post,
+    path = "/shifts/close",
+    request_body = ShiftCloseDto,
+    responses(
+        (status = 200, description = "Shift closed", body = ShiftCloseResponseEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "No active shift", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "shifts"
+)]
+pub async fn close_shift(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<ShiftCloseDto>,
+) -> ApiResult<ShiftCloseResponseDto> {
+    let staff_id: Uuid = claims
+        .userId
+        .parse()
+        .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
+
+    let active_shift = state.shifts.get_active(staff_id).await?.ok_or_else(|| {
+        crate::error::AppError::NotFound("No active shift found for current user".to_string())
+    })?;
+
+    let register_with_entries = state
+        .cash_registers
+        .get_by_shift(active_shift.id)
+        .await
+        .ok();
+
+    let mut deposit = None;
+    if let (Some(ref register_data), Some(deposit_dto)) =
+        (&register_with_entries, dto.deposit.as_ref())
+    {
+        if register_data.register.status == "open" {
+            deposit = Some(
+                state
+                    .cash_deposits
+                    .initiate(
+                        InitiateDepositDto {
+                            cash_register_id: register_data.register.id,
+                            shift_id: active_shift.id,
+                            amount: deposit_dto.amount,
+                            denominations: deposit_dto.denominations.clone(),
+                            notes: deposit_dto.notes.clone(),
+                        },
+                        staff_id,
+                    )
+                    .await?,
+            );
+        }
+    }
+
+    let closed_register = if let Some(ref register_data) = register_with_entries {
+        if register_data.register.status == "open" {
+            Some(
+                state
+                    .cash_registers
+                    .close(
+                        register_data.register.id,
+                        CloseCashRegisterDto {
+                            closing_balance: dto.closing_balance,
+                            closing_denominations: dto.closing_denominations.clone(),
+                            notes: dto.notes.clone(),
+                        },
+                        staff_id,
+                    )
+                    .await?,
+            )
+        } else {
+            Some(register_data.register.clone())
+        }
+    } else {
+        None
+    };
+
+    let closed_shift = state
+        .shifts
+        .clock_out(
+            staff_id,
+            ClockOutDto {
+                notes: dto.notes.clone(),
+            },
+            staff_id,
+        )
+        .await?;
+
+    ok(ShiftCloseResponseDto {
+        closedShift: closed_shift,
+        cashRegister: closed_register,
+        deposit,
     })
 }

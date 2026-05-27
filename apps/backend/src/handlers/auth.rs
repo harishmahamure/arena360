@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{
     created, ok, ApiResult, AuthResponseDto, LoginDto, OtpPendingResponse, RegisterDto,
-    RegisterResponseDto, VerifyOtpDto,
+    RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
 };
 use crate::error::AppError;
 use crate::middleware::AdminOrStaff;
@@ -37,7 +37,7 @@ pub async fn login_admin(
 #[utoipa::path(
     post,
     path = "/auth/login/staff",
-    request_body = LoginDto,
+    request_body = StaffLoginDto,
     responses(
         (status = 200, description = "Authenticated", body = AuthResponseEnvelope),
         (status = 400, description = "Bad request", body = ErrorEnvelope),
@@ -48,7 +48,7 @@ pub async fn login_admin(
 )]
 pub async fn login_staff(
     State(state): State<Arc<AppState>>,
-    Json(dto): Json<LoginDto>,
+    Json(dto): Json<StaffLoginDto>,
 ) -> ApiResult<AuthResponseDto> {
     let mut result = state.auth.login_staff(dto).await?;
     let user_id: Uuid = result
@@ -79,7 +79,7 @@ pub async fn login_staff(
 
     let _ = state
         .cash_registers
-        .ensure_open_for_shift(shift.id, user_id, 0.0)
+        .carry_forward_balance(user_id, shift.id, user_id)
         .await;
 
     result.shiftId = Some(shift.id.to_string());

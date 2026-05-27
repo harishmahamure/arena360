@@ -18,7 +18,9 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totp, setTotp] = useState('');
   const [loginMode, setLoginMode] = useState<LoginMode>('admin');
+  const [staffLoginStep, setStaffLoginStep] = useState<1 | 2>(1);
   const [otpModalOpen, setOtpModalOpen] = useState(false);
   const [transactionId, setTransactionId] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
@@ -52,13 +54,23 @@ export default function LoginPage() {
         setOtpModalOpen(true);
         toastUtils.success('OTP sent successfully!');
       } else {
-        const response = await loginStaffAPI(username, password);
+        const response = await loginStaffAPI(
+          username,
+          password,
+          staffLoginStep === 2 ? totp : undefined,
+        );
         completeLogin(response.accessToken, response.user);
       }
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
-      toastUtils.error(message);
+
+      if (loginMode === 'staff' && staffLoginStep === 1 && message === 'TOTP code is required') {
+        setStaffLoginStep(2);
+        toastUtils.info('Please enter your authenticator code');
+      } else {
+        toastUtils.error(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -94,6 +106,8 @@ export default function LoginPage() {
           onChange={(_event, value: LoginMode | null) => {
             if (value) {
               setLoginMode(value);
+              setStaffLoginStep(1);
+              setTotp('');
             }
           }}
           sx={{ mb: 3 }}
@@ -102,31 +116,50 @@ export default function LoginPage() {
           <ToggleButton value="staff">Staff</ToggleButton>
         </ToggleButtonGroup>
 
-        <FormTextField
-          fullWidth
-          variant="outlined"
-          label="Username"
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          sx={{ mb: 2.5 }}
-          inputProps={{
-            autoComplete: 'new-password',
-            form: { autoComplete: 'off' },
-          }}
-        />
+        {staffLoginStep === 1 && (
+          <>
+            <FormTextField
+              fullWidth
+              variant="outlined"
+              label="Username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              sx={{ mb: 2.5 }}
+              inputProps={{
+                autoComplete: 'new-password',
+                form: { autoComplete: 'off' },
+              }}
+            />
 
-        <PasswordField
-          fullWidth
-          label="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          sx={{ mb: 1.5 }}
-          inputProps={{
-            autoComplete: 'new-password',
-            form: { autoComplete: 'off' },
-          }}
-        />
+            <PasswordField
+              fullWidth
+              label="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              sx={{ mb: 1.5 }}
+              inputProps={{
+                autoComplete: 'new-password',
+                form: { autoComplete: 'off' },
+              }}
+            />
+          </>
+        )}
+
+        {loginMode === 'staff' && staffLoginStep === 2 && (
+          <FormTextField
+            fullWidth
+            variant="outlined"
+            label="TOTP Code"
+            type="text"
+            value={totp}
+            onChange={(e) => setTotp(e.target.value.replace(/\s+/g, '').slice(0, 6))}
+            sx={{ mb: 1.5 }}
+            inputProps={{
+              autoComplete: 'one-time-code',
+            }}
+          />
+        )}
 
         <FormButton
           type="submit"
@@ -136,8 +169,24 @@ export default function LoginPage() {
           disabled={submitting}
           sx={{ py: 1.5, mb: 3, mt: 2 }}
         >
-          {loginMode === 'admin' ? 'Sign in with OTP' : 'Sign in'}
+          {loginMode === 'admin'
+            ? 'Sign in with OTP'
+            : staffLoginStep === 2
+              ? 'Verify TOTP'
+              : 'Sign in'}
         </FormButton>
+
+        {loginMode === 'staff' && staffLoginStep === 2 && (
+          <FormButton
+            variant="text"
+            fullWidth
+            onClick={() => setStaffLoginStep(1)}
+            disabled={submitting}
+            sx={{ mb: 3 }}
+          >
+            Back to login
+          </FormButton>
+        )}
       </Box>
 
       <OtpModal

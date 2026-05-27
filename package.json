@@ -36,11 +36,12 @@
     "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml"
   },
   "devDependencies": {
-    "@gaming-cafe/biome-config": "workspace:*",
-    "@gaming-cafe/tsconfig": "workspace:*",
     "@biomejs/biome": "^2.4.15",
     "@changesets/cli": "^2.27.10",
+    "@gaming-cafe/biome-config": "workspace:*",
+    "@gaming-cafe/tsconfig": "workspace:*",
     "@types/node": "^20.17.10",
+    "pg": "^8.21.0",
     "rimraf": "^6.0.1",
     "simple-git-hooks": "^2.11.1",
     "tsx": "^4.19.2",

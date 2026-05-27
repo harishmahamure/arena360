@@ -117,9 +117,10 @@ export default function AddNewPlanTransactionPage() {
         paymentMethod: data.paymentMethod as PaymentMethodType,
         paymentStatus: PaymentStatus.COMPLETED,
         notes: data.notes || undefined,
-        cashAmount: data.paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? data.cashAmount : 0,
+        cashAmount:
+          data.paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? data.cashAmount : undefined,
         onlineAmount:
-          data.paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? data.onlineAmount : 0,
+          data.paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? data.onlineAmount : undefined,
         transactionDate: data.transactionDate
           ? new Date(data.transactionDate).toISOString()
           : undefined,

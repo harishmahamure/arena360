@@ -1,11 +1,11 @@
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
-import { Add } from '@mui/icons-material';
-import { Box, Button, Chip, Pagination } from '@mui/material';
+import { Delete, Edit } from '@mui/icons-material';
+import { Alert, Box, Chip, Pagination } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
-import { deleteVendor, getVendors, type Vendor } from '../../../services/expenses';
+import { deleteVendor, getVendors, type Vendor } from '../../../services/vendors';
 import { formatDisplayDate } from '../../../utils/date';
 
 export default function VendorsPage() {
@@ -71,33 +71,42 @@ export default function VendorsPage() {
   ];
 
   const actions: Action<Vendor>[] = [
-    { label: 'Edit', onClick: (row) => navigate(`/vendors/${row.id}`) },
+    {
+      label: 'Edit',
+      icon: <Edit fontSize="small" />,
+      onClick: (row) => navigate(`/vendors/${row.id}`),
+    },
     ...(can(Permission.VendorsWrite)
-      ? [{ label: 'Delete', onClick: (row: Vendor) => handleDelete(row) }]
+      ? [
+          {
+            label: 'Delete',
+            icon: <Delete fontSize="small" />,
+            color: 'error' as const,
+            onClick: (row: Vendor) => handleDelete(row),
+          },
+        ]
       : []),
   ];
 
   return (
-    <Box>
-      <ListViewPage
+    <Box sx={{ px: 4, py: 2 }}>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load vendors
+        </Alert>
+      )}
+      <ListViewPage<Vendor>
         title="Vendors"
-        subtitle="Manage suppliers and vendors"
+        description="Manage suppliers and vendors"
         columns={columns}
         data={data?.data ?? []}
         actions={actions}
         isLoading={isLoading}
-        error={error ? 'Failed to load vendors' : undefined}
-        headerAction={
-          can(Permission.VendorsWrite) ? (
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => navigate('/vendors/new')}
-            >
-              Add Vendor
-            </Button>
-          ) : undefined
-        }
+        inputValue=""
+        handleSearch={() => {}}
+        handleClearSearch={() => {}}
+        onAddClick={can(Permission.VendorsWrite) ? () => navigate('/vendors/new') : undefined}
+        addButtonLabel="Add Vendor"
       />
       {data && data.totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>

@@ -45,6 +45,15 @@ pub struct HandoverDepositDto {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct ShiftCloseDto {
+    pub closing_balance: f64,
+    pub closing_denominations: Option<serde_json::Value>,
+    pub notes: Option<String>,
+    pub deposit: Option<HandoverDepositDto>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ShiftHandoverDto {
     pub closing_balance: f64,
     pub closing_denominations: Option<serde_json::Value>,
@@ -53,6 +62,15 @@ pub struct ShiftHandoverDto {
     pub validator_password: String,
     pub validator_totp: String,
     pub deposit: Option<HandoverDepositDto>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftCloseResponseDto {
+    pub closedShift: Shift,
+    pub cashRegister: Option<CashRegister>,
+    pub deposit: Option<CashDeposit>,
 }
 
 #[allow(non_snake_case)]

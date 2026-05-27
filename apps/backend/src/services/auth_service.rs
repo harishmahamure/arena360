@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::dto::{
-    AuthResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse, RateLimitClaims, VerifyOtpDto,
+    AuthResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse, RateLimitClaims, StaffLoginDto,
+    VerifyOtpDto,
 };
 use crate::error::AppError;
 use crate::models::User;
@@ -56,8 +57,36 @@ impl AuthService {
         })
     }
 
-    pub async fn login_staff(&self, dto: LoginDto) -> Result<AuthResponseDto, AppError> {
-        let user = self.authenticate_staff(&dto).await?;
+    pub async fn login_staff(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
+        let user = match self.authenticate_staff(&dto.username, &dto.password).await {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::error!("authenticate_staff failed: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        if user.totp_enabled {
+            let totp_code = match dto.totp {
+                Some(code) if !code.is_empty() => code,
+                _ => {
+                    tracing::error!("TOTP code is required but not provided or empty");
+                    // Return 400 for missing TOTP code so frontend can transition to step 2
+                    return Err(AppError::BadRequest("TOTP code is required".to_string()));
+                }
+            };
+
+            let secret = user.totp_secret.as_deref().ok_or_else(|| {
+                tracing::error!("User does not have TOTP configured");
+                AppError::BadRequest("User does not have TOTP configured".to_string())
+            })?;
+
+            if !verify_totp_code(secret, &totp_code, &user.username)? {
+                tracing::error!("Invalid TOTP code");
+                return Err(AppError::Unauthorized("Invalid TOTP code".to_string()));
+            }
+        }
+
         let token = self.generate_access_token(&user)?;
         Ok(AuthResponseDto {
             accessToken: token,
@@ -66,19 +95,45 @@ impl AuthService {
         })
     }
 
-    pub async fn authenticate_staff(&self, dto: &LoginDto) -> Result<User, AppError> {
+    pub async fn authenticate_staff(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<User, AppError> {
         let user = self
             .user_repo
-            .find_by_username_with_password(&dto.username)
+            .find_by_username_with_password(username)
             .await?
-            .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
+            .ok_or_else(|| {
+                tracing::error!(
+                    "authenticate_staff failed: User not found for username: {}",
+                    username
+                );
+                AppError::Unauthorized("User not found".to_string())
+            })?;
 
         if user.role.as_deref() != Some("staff") {
+            tracing::error!(
+                "authenticate_staff failed: User {} is not staff (role: {:?})",
+                username,
+                user.role
+            );
             return Err(AppError::Unauthorized("User is not staff".to_string()));
         }
 
-        self.verify_password(&dto.password, user.password_hash.as_deref())?;
-        self.ensure_active(&user)?;
+        if let Err(e) = self.verify_password(password, user.password_hash.as_deref()) {
+            tracing::error!(
+                "authenticate_staff failed: Invalid password for user {}",
+                username
+            );
+            return Err(e);
+        }
+
+        if let Err(e) = self.ensure_active(&user) {
+            tracing::error!("authenticate_staff failed: User {} is not active", username);
+            return Err(e);
+        }
+
         Ok(user)
     }
 
@@ -88,12 +143,7 @@ impl AuthService {
         password: &str,
         totp: &str,
     ) -> Result<User, AppError> {
-        let user = self
-            .authenticate_staff(&LoginDto {
-                username: username.to_string(),
-                password: password.to_string(),
-            })
-            .await?;
+        let user = self.authenticate_staff(username, password).await?;
 
         if !user.totp_enabled {
             return Err(AppError::BadRequest(

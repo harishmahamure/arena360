@@ -4,6 +4,8 @@ use sqlx::FromRow;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use super::transaction_product::TransactionProductResponse;
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
@@ -11,6 +13,7 @@ pub struct Transaction {
     pub player_id: Uuid,
     pub transaction_type: String,
     pub plan_id: Option<Uuid>,
+    pub shift_id: Option<Uuid>,
     pub amount: f64,
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
@@ -25,12 +28,61 @@ pub struct Transaction {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionWithLineItems {
+    pub id: Uuid,
+    pub player_id: Uuid,
+    pub transaction_type: String,
+    pub plan_id: Option<Uuid>,
+    pub shift_id: Option<Uuid>,
+    pub amount: f64,
+    pub cash_amount: Option<f64>,
+    pub online_amount: Option<f64>,
+    pub payment_method: String,
+    pub payment_status: String,
+    pub notes: Option<String>,
+    pub transaction_date: DateTime<Utc>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub line_items: Vec<TransactionProductResponse>,
+}
+
+impl TransactionWithLineItems {
+    pub fn from_parts(t: Transaction, line_items: Vec<TransactionProductResponse>) -> Self {
+        Self {
+            id: t.id,
+            player_id: t.player_id,
+            transaction_type: t.transaction_type,
+            plan_id: t.plan_id,
+            shift_id: t.shift_id,
+            amount: t.amount,
+            cash_amount: t.cash_amount,
+            online_amount: t.online_amount,
+            payment_method: t.payment_method,
+            payment_status: t.payment_status,
+            notes: t.notes,
+            transaction_date: t.transaction_date,
+            created_by: t.created_by,
+            updated_by: t.updated_by,
+            created_at: t.created_at,
+            updated_at: t.updated_at,
+            deleted_at: t.deleted_at,
+            line_items,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTransactionDto {
     pub player_id: Uuid,
     pub transaction_type: String,
     pub plan_id: Option<Uuid>,
+    pub shift_id: Option<Uuid>,
     pub amount: Option<f64>,
     pub payment_method: String,
     pub payment_status: Option<String>,
@@ -38,6 +90,7 @@ pub struct CreateTransactionDto {
     pub transaction_date: Option<DateTime<Utc>>,
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
+    pub line_items: Option<Vec<super::transaction_product::CreateLineItemDto>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -53,6 +106,7 @@ pub struct TransactionFilterDto {
     pub player_id: Option<Uuid>,
     pub transaction_type: Option<String>,
     pub plan_id: Option<Uuid>,
+    pub shift_id: Option<Uuid>,
     pub payment_method: Option<String>,
     pub payment_status: Option<String>,
     pub transaction_date_from: Option<DateTime<Utc>>,

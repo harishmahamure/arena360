@@ -19,10 +19,19 @@ pub struct CashRegister {
     pub variance: Option<f64>,
     pub status: String,
     pub notes: Option<String>,
+    pub reconciled_by: Option<Uuid>,
+    pub reconciled_at: Option<DateTime<Utc>>,
+    pub reconciliation_notes: Option<String>,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[sqlx(default)]
+    pub total_cash_in: Option<f64>,
+    #[sqlx(default)]
+    pub total_cash_out: Option<f64>,
+    #[sqlx(default)]
+    pub total_deposited: Option<f64>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]
@@ -64,6 +73,19 @@ pub struct CreateCashRegisterEntryDto {
     pub reason: Option<String>,
     pub reference_id: Option<Uuid>,
     pub reference_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconcileCashRegisterDto {
+    pub reconciliation_notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateOpeningBalanceDto {
+    pub opening_balance: f64,
+    pub opening_denominations: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]

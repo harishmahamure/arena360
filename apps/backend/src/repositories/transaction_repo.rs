@@ -7,7 +7,7 @@ use crate::error::AppError;
 use crate::models::{CreateTransactionDto, Transaction, TransactionFilterDto};
 
 pub struct TransactionRepository {
-    pool: PgPool,
+    pub(crate) pool: PgPool,
 }
 
 impl TransactionRepository {
@@ -20,6 +20,7 @@ impl TransactionRepository {
                "playerId" as player_id,
                "transactionType"::text as transaction_type,
                "planId" as plan_id,
+               "shiftId" as shift_id,
                amount::float8 as amount,
                "cashAmount"::float8 as cash_amount,
                "onlineAmount"::float8 as online_amount,
@@ -54,7 +55,7 @@ impl TransactionRepository {
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT id, \"playerId\" as player_id, \"transactionType\"::text as transaction_type, \
-             \"planId\" as plan_id, amount::float8 as amount, \"cashAmount\"::float8 as cash_amount, \
+             \"planId\" as plan_id, \"shiftId\" as shift_id, amount::float8 as amount, \"cashAmount\"::float8 as cash_amount, \
              \"onlineAmount\"::float8 as online_amount, \"paymentMethod\"::text as payment_method, \
              \"paymentStatus\"::text as payment_status, notes, \"transactionDate\" as transaction_date, \
              \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
@@ -108,6 +109,10 @@ impl TransactionRepository {
             builder.push(" AND \"planId\" = ");
             builder.push_bind(plan_id);
         }
+        if let Some(shift_id) = filters.shift_id {
+            builder.push(" AND \"shiftId\" = ");
+            builder.push_bind(shift_id);
+        }
         if let Some(payment_method) = filters.payment_method.clone() {
             builder.push(" AND \"paymentMethod\"::text = ");
             builder.push_bind(payment_method);
@@ -145,19 +150,20 @@ impl TransactionRepository {
         let transaction = sqlx::query_as::<_, Transaction>(
             r#"
             INSERT INTO transactions (
-                id, "playerId", "transactionType", "planId", amount,
+                id, "playerId", "transactionType", "planId", "shiftId", amount,
                 "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
                 notes, "transactionDate", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4,
-                $5, $6, $7::transactions_paymentmethod_enum, $8::transactions_paymentstatus_enum,
-                $9, $10, $11, $11, NOW(), NOW()
+                gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
+                $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
+                $10, $11, $12, $12, NOW(), NOW()
             )
             RETURNING id,
                       "playerId" as player_id,
                       "transactionType"::text as transaction_type,
                       "planId" as plan_id,
+                      "shiftId" as shift_id,
                       amount::float8 as amount,
                       "cashAmount"::float8 as cash_amount,
                       "onlineAmount"::float8 as online_amount,
@@ -175,6 +181,7 @@ impl TransactionRepository {
         .bind(dto.player_id)
         .bind(&dto.transaction_type)
         .bind(dto.plan_id)
+        .bind(dto.shift_id)
         .bind(amount)
         .bind(dto.cash_amount)
         .bind(dto.online_amount)
@@ -207,6 +214,7 @@ impl TransactionRepository {
                       "playerId" as player_id,
                       "transactionType"::text as transaction_type,
                       "planId" as plan_id,
+                      "shiftId" as shift_id,
                       amount::float8 as amount,
                       "cashAmount"::float8 as cash_amount,
                       "onlineAmount"::float8 as online_amount,
@@ -228,6 +236,63 @@ impl TransactionRepository {
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;
+
+        Ok(transaction)
+    }
+
+    pub async fn create_in_tx(
+        tx: &mut sqlx::Transaction<'_, Postgres>,
+        dto: &CreateTransactionDto,
+        amount: f64,
+        transaction_date: DateTime<Utc>,
+        payment_status: &str,
+        actor_id: Option<Uuid>,
+    ) -> Result<Transaction, AppError> {
+        let transaction = sqlx::query_as::<_, Transaction>(
+            r#"
+            INSERT INTO transactions (
+                id, "playerId", "transactionType", "planId", "shiftId", amount,
+                "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
+                notes, "transactionDate", "createdBy", "updatedBy", "createdAt", "updatedAt"
+            )
+            VALUES (
+                gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
+                $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
+                $10, $11, $12, $12, NOW(), NOW()
+            )
+            RETURNING id,
+                      "playerId" as player_id,
+                      "transactionType"::text as transaction_type,
+                      "planId" as plan_id,
+                      "shiftId" as shift_id,
+                      amount::float8 as amount,
+                      "cashAmount"::float8 as cash_amount,
+                      "onlineAmount"::float8 as online_amount,
+                      "paymentMethod"::text as payment_method,
+                      "paymentStatus"::text as payment_status,
+                      notes,
+                      "transactionDate" as transaction_date,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
+                      "createdAt" as created_at,
+                      "updatedAt" as updated_at,
+                      "deletedAt" as deleted_at
+            "#,
+        )
+        .bind(dto.player_id)
+        .bind(&dto.transaction_type)
+        .bind(dto.plan_id)
+        .bind(dto.shift_id)
+        .bind(amount)
+        .bind(dto.cash_amount)
+        .bind(dto.online_amount)
+        .bind(&dto.payment_method)
+        .bind(payment_status)
+        .bind(&dto.notes)
+        .bind(transaction_date)
+        .bind(actor_id)
+        .fetch_one(&mut **tx)
+        .await?;
 
         Ok(transaction)
     }

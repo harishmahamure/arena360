@@ -36,7 +36,6 @@ export interface SessionResponse {
   id: string;
   playerPlanId: string;
   deviceId: string;
-  gameId?: string | null;
   startTime: string;
   endTime?: string | null;
   durationMinutes?: number | null;

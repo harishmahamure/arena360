@@ -21,7 +21,7 @@ impl SessionRepository {
         SELECT id,
                "playerPlanId" as player_plan_id,
                "deviceId" as device_id,
-               "gameId" as game_id,
+               "shiftId" as shift_id,
                "startTime" as start_time,
                "endTime" as end_time,
                "durationMinutes" as duration_minutes,
@@ -50,7 +50,7 @@ impl SessionRepository {
         let row = sqlx::query_as::<_, UsageSessionRow>(
             r#"
             SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
-                   s."gameId" as game_id, s."startTime" as start_time, s."endTime" as end_time,
+                   s."shiftId" as shift_id, s."startTime" as start_time, s."endTime" as end_time,
                    s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
                    s."createdBy" as created_by, s."updatedBy" as updated_by,
                    s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
@@ -100,7 +100,7 @@ impl SessionRepository {
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
-               s."gameId" as game_id, s."startTime" as start_time, s."endTime" as end_time,
+               s."shiftId" as shift_id, s."startTime" as start_time, s."endTime" as end_time,
                s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
                s."createdBy" as created_by, s."updatedBy" as updated_by,
                s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
@@ -169,9 +169,9 @@ impl SessionRepository {
             builder.push(format!(" AND {} = ", col("deviceId")));
             builder.push_bind(device_id);
         }
-        if let Some(game_id) = filters.game_id {
-            builder.push(format!(" AND {} = ", col("gameId")));
-            builder.push_bind(game_id);
+        if let Some(shift_id) = filters.shift_id {
+            builder.push(format!(" AND {} = ", col("shiftId")));
+            builder.push_bind(shift_id);
         }
         if let Some(player_id) = filters.player_id {
             builder.push(format!(
@@ -207,14 +207,14 @@ impl SessionRepository {
         let session = sqlx::query_as::<_, UsageSession>(
             r#"
             INSERT INTO usage_sessions (
-                id, "playerPlanId", "deviceId", "gameId", "startTime",
+                id, "playerPlanId", "deviceId", "shiftId", "startTime",
                 "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5, NOW(), NOW())
             RETURNING id,
                       "playerPlanId" as player_plan_id,
                       "deviceId" as device_id,
-                      "gameId" as game_id,
+                      "shiftId" as shift_id,
                       "startTime" as start_time,
                       "endTime" as end_time,
                       "durationMinutes" as duration_minutes,
@@ -228,7 +228,7 @@ impl SessionRepository {
         )
         .bind(dto.player_plan_id)
         .bind(dto.device_id)
-        .bind(dto.game_id)
+        .bind(dto.shift_id)
         .bind(start_time)
         .bind(actor_id)
         .fetch_one(&self.pool)
@@ -257,7 +257,7 @@ impl SessionRepository {
             RETURNING id,
                       "playerPlanId" as player_plan_id,
                       "deviceId" as device_id,
-                      "gameId" as game_id,
+                      "shiftId" as shift_id,
                       "startTime" as start_time,
                       "endTime" as end_time,
                       "durationMinutes" as duration_minutes,

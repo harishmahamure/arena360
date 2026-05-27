@@ -1,6 +1,6 @@
 use axum::{
     middleware,
-    routing::{delete, get, patch, post, put},
+    routing::{delete, get, patch, post},
     Router,
 };
 use sqlx::PgPool;
@@ -12,10 +12,10 @@ use crate::handlers;
 use crate::middleware::auth_middleware;
 use crate::openapi::ApiDoc;
 use crate::services::{
-    AuthService, CashDepositService, CashRegisterService, ConfigService, DeviceGameService, DeviceService,
-    EventService, ExpenseCategoryService, ExpenseService, FileService, GameService, PlanService,
-    PlayerPlanService, ProductService, SessionService, ShiftService, StatsService, StorageService,
-    TransactionService, UnitService, UserService, VendorService,
+    AuthService, CashDepositService, CashRegisterService, ConfigService, DeviceService,
+    EventService, ExpenseCategoryService, ExpenseService, PlanService, PlayerPlanService,
+    ProductService, SessionService, ShiftService, StatsService, TransactionService, UnitService,
+    UserService, VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -28,14 +28,12 @@ pub struct AppState {
     pub config: ConfigService,
     pub users: UserService,
     pub devices: DeviceService,
-    pub games: GameService,
     pub plans: PlanService,
     pub player_plans: Arc<PlayerPlanService>,
     pub units: UnitService,
-    pub device_games: DeviceGameService,
     pub sessions: SessionService,
     pub shifts: ShiftService,
-    pub cash_registers: CashRegisterService,
+    pub cash_registers: Arc<CashRegisterService>,
     pub cash_deposits: CashDepositService,
     pub transactions: TransactionService,
     pub products: ProductService,
@@ -44,8 +42,6 @@ pub struct AppState {
     pub expenses: ExpenseService,
     pub stats: StatsService,
     pub events: EventService,
-    pub storage: Option<StorageService>,
-    pub files: FileService,
 }
 
 pub async fn build_state() -> Arc<AppState> {
@@ -56,12 +52,6 @@ pub async fn build_state() -> Arc<AppState> {
     let events = EventService::new(broadcaster);
 
     let devices = DeviceService::new(pool.clone(), events.clone());
-    let storage = StorageService::try_new(settings.as_ref());
-    let files = FileService::new(
-        pool.clone(),
-        storage.clone(),
-        settings.upload_max_size_bytes,
-    );
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
 
     Arc::new(AppState {
@@ -69,23 +59,28 @@ pub async fn build_state() -> Arc<AppState> {
         config: ConfigService::new(pool.clone()),
         users: UserService::new(pool.clone()),
         devices: devices.clone(),
-        games: GameService::new(pool.clone()),
         plans: PlanService::new(pool.clone()),
         player_plans: player_plans.clone(),
         units: UnitService::new(pool.clone()),
-        device_games: DeviceGameService::new(pool.clone()),
         sessions: SessionService::new(pool.clone(), devices, player_plans.clone(), events.clone()),
-        shifts: ShiftService::new(pool.clone()),
-        cash_registers: CashRegisterService::new(pool.clone()),
+        shifts: {
+            let cash_reg = Arc::new(CashRegisterService::new(pool.clone()));
+            let mut s = ShiftService::new(pool.clone());
+            s.set_cash_registers(cash_reg);
+            s
+        },
+        cash_registers: Arc::new(CashRegisterService::new(pool.clone())),
         cash_deposits: CashDepositService::new(pool.clone()),
         transactions: TransactionService::new(pool.clone(), player_plans, events.clone()),
         products: ProductService::new(pool.clone()),
         expense_categories: ExpenseCategoryService::new(pool.clone()),
         vendors: VendorService::new(pool.clone()),
-        expenses: ExpenseService::new(pool.clone()),
+        expenses: ExpenseService::new(
+            pool.clone(),
+            CashRegisterService::new(pool.clone()),
+            ShiftService::new(pool.clone()),
+        ),
         stats: StatsService::new(pool.clone()),
-        storage,
-        files,
         db: pool,
         settings,
         events,
@@ -131,16 +126,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/devices/{id}/status",
             patch(handlers::devices::update_device_status),
         )
-        .route(
-            "/games",
-            get(handlers::games::list_games).post(handlers::games::create_game),
-        )
-        .route(
-            "/games/{id}",
-            get(handlers::games::get_game)
-                .patch(handlers::games::update_game)
-                .delete(handlers::games::delete_game),
-        )
         .route("/plans/active", get(handlers::plans::get_active_plans))
         .route(
             "/plans",
@@ -184,25 +169,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .delete(handlers::units::delete_unit),
         )
         .route(
-            "/device-games",
-            get(handlers::device_games::list_device_games)
-                .post(handlers::device_games::create_device_game),
-        )
-        .route(
-            "/device-games/device/{device_id}",
-            get(handlers::device_games::list_device_games_by_device),
-        )
-        .route(
-            "/device-games/game/{game_id}",
-            get(handlers::device_games::list_device_games_by_game),
-        )
-        .route(
-            "/device-games/{id}",
-            get(handlers::device_games::get_device_game)
-                .patch(handlers::device_games::update_device_game)
-                .delete(handlers::device_games::delete_device_game),
-        )
-        .route(
             "/cash-registers/active/expected-closing",
             get(handlers::cash_registers::get_active_expected_closing),
         )
@@ -219,6 +185,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             patch(handlers::cash_registers::close_cash_register),
         )
         .route(
+            "/cash-registers/{id}/reconcile",
+            patch(handlers::cash_registers::reconcile_cash_register),
+        )
+        .route(
+            "/cash-registers/{id}/update-opening",
+            patch(handlers::cash_registers::update_opening_balance),
+        )
+        .route(
             "/cash-registers/{id}/entries",
             post(handlers::cash_registers::add_entry),
         )
@@ -227,6 +201,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::cash_registers::get_cash_register),
         )
         .route("/shifts/handover", post(handlers::shifts::handover_shift))
+        .route("/shifts/close", post(handlers::shifts::close_shift))
         .route("/shifts/clock-in", post(handlers::shifts::clock_in))
         .route("/shifts/clock-out", patch(handlers::shifts::clock_out))
         .route("/shifts/active", get(handlers::shifts::get_active_shift))
@@ -267,32 +242,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .delete(handlers::products::delete_product),
         )
         .route(
-            "/storage/upload-url",
-            post(handlers::storage::generate_upload_url),
-        )
-        .route(
-            "/storage/download-url",
-            post(handlers::storage::generate_download_url),
-        )
-        .route("/storage/list", get(handlers::storage::list_objects))
-        .route("/files/stats", get(handlers::files::get_storage_stats))
-        .route(
-            "/files",
-            get(handlers::files::list_files).post(handlers::files::create_file),
-        )
-        .route(
-            "/files/{id}/download-url",
-            get(handlers::files::get_file_download_url),
-        )
-        .route("/files/{id}/archive", put(handlers::files::archive_file))
-        .route("/files/{id}/activate", put(handlers::files::activate_file))
-        .route(
-            "/files/{id}",
-            get(handlers::files::get_file)
-                .put(handlers::files::update_file)
-                .delete(handlers::files::delete_file),
-        )
-        .route(
             "/expense-categories",
             get(handlers::expense_categories::list_expense_categories)
                 .post(handlers::expense_categories::create_expense_category),
@@ -330,10 +279,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/cash-deposits/{id}/reject",
             patch(handlers::cash_deposits::reject_deposit),
         )
-        .route(
-            "/users/{id}/totp/setup",
-            post(handlers::users::setup_totp),
-        )
+        .route("/users/{id}/totp/setup", post(handlers::users::setup_totp))
         .route(
             "/users/{id}/totp/verify",
             post(handlers::users::verify_totp_setup),
@@ -349,7 +295,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/expenses/{id}",
-            get(handlers::expenses::get_expense).patch(handlers::expenses::update_expense),
+            get(handlers::expenses::get_expense)
+                .patch(handlers::expenses::update_expense)
+                .delete(handlers::expenses::delete_expense),
         )
         .route(
             "/expenses/{id}/approve",

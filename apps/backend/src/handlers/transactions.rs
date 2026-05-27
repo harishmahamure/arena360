@@ -9,10 +9,12 @@ use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::AdminOrStaff;
 use crate::models::{
-    CreateTransactionDto, Transaction, TransactionFilterDto, UpdateTransactionDto,
+    CreateTransactionDto, Transaction, TransactionFilterDto, TransactionWithLineItems,
+    UpdateTransactionDto,
 };
 use crate::openapi::responses::{
     ErrorEnvelope, TransactionEnvelope, TransactionPaginationEnvelope,
+    TransactionWithLineItemsEnvelope,
 };
 
 #[utoipa::path(
@@ -42,7 +44,7 @@ pub async fn list_transactions(
         ("id" = Uuid, Path, description = "Transaction ID"),
     ),
     responses(
-        (status = 200, description = "Get transaction", body = TransactionEnvelope),
+        (status = 200, description = "Get transaction with line items", body = TransactionWithLineItemsEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 404, description = "Not found", body = ErrorEnvelope),
         (status = 500, description = "Internal server error", body = ErrorEnvelope),
@@ -53,9 +55,9 @@ pub async fn list_transactions(
 pub async fn get_transaction(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
-) -> ApiResult<Transaction> {
-    let transaction = state.transactions.get_by_id(id).await?;
-    ok(transaction)
+) -> ApiResult<TransactionWithLineItems> {
+    let result = state.transactions.get_by_id_with_items(id).await?;
+    ok(result)
 }
 
 #[utoipa::path(
@@ -75,11 +77,22 @@ pub async fn get_transaction(
 pub async fn create_transaction(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Json(dto): Json<CreateTransactionDto>,
+    Json(mut dto): Json<CreateTransactionDto>,
 ) -> ApiResult<Transaction> {
+    let user_id = claims.user_id_uuid().ok_or_else(|| {
+        crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
+    })?;
+
+    // Enforce active shift
+    let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
+        crate::error::AppError::BadRequest("No active shift found for current user".to_string())
+    })?;
+
+    dto.shift_id = Some(active_shift.id);
+
     let transaction = state
         .transactions
-        .create(dto, claims.user_id_uuid())
+        .create(dto, Some(user_id), &state.cash_registers)
         .await?;
     created(transaction)
 }
@@ -110,7 +123,7 @@ pub async fn update_transaction(
 ) -> ApiResult<Transaction> {
     let transaction = state
         .transactions
-        .update(id, dto, claims.user_id_uuid())
+        .update(id, dto, claims.user_id_uuid(), &state.cash_registers)
         .await?;
     ok(transaction)
 }

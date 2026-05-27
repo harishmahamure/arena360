@@ -61,6 +61,50 @@ impl CashRegisterService {
         self.repo.close_register(id, &dto, actor_id).await
     }
 
+    pub async fn reconcile(
+        &self,
+        id: Uuid,
+        dto: crate::models::ReconcileCashRegisterDto,
+        actor_id: Uuid,
+    ) -> Result<CashRegister, AppError> {
+        let register =
+            self.repo.find_by_id(id).await?.ok_or_else(|| {
+                AppError::NotFound(format!("Cash register with ID {id} not found"))
+            })?;
+
+        if register.status != "closed" {
+            return Err(AppError::BadRequest(
+                "Only closed cash registers can be reconciled".to_string(),
+            ));
+        }
+
+        self.repo
+            .reconcile(id, dto.reconciliation_notes, actor_id)
+            .await
+    }
+
+    pub async fn update_opening_balance(
+        &self,
+        id: Uuid,
+        dto: crate::models::UpdateOpeningBalanceDto,
+        actor_id: Uuid,
+    ) -> Result<CashRegister, AppError> {
+        let register =
+            self.repo.find_by_id(id).await?.ok_or_else(|| {
+                AppError::NotFound(format!("Cash register with ID {id} not found"))
+            })?;
+
+        if register.status != "open" {
+            return Err(AppError::BadRequest(
+                "Only open cash registers can have their opening balance updated".to_string(),
+            ));
+        }
+
+        self.repo
+            .update_opening_balance(id, dto.opening_balance, dto.opening_denominations, actor_id)
+            .await
+    }
+
     pub async fn add_entry(
         &self,
         register_id: Uuid,
@@ -110,6 +154,18 @@ impl CashRegisterService {
 
     pub async fn get_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
         self.repo.get_expected_closing(register_id).await
+    }
+
+    pub async fn carry_forward_balance(
+        &self,
+        user_id: Uuid,
+        new_shift_id: Uuid,
+        actor_id: Uuid,
+    ) -> Result<CashRegister, AppError> {
+        let last_register = self.repo.find_last_closed_by_user(user_id).await?;
+        let opening = last_register.and_then(|r| r.closing_balance).unwrap_or(0.0);
+        self.ensure_open_for_shift(new_shift_id, actor_id, opening)
+            .await
     }
 
     pub async fn ensure_open_for_shift(

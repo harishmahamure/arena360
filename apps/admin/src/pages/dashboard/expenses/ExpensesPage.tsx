@@ -1,16 +1,11 @@
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
-import { Add } from '@mui/icons-material';
-import { Box, Button, Chip, Pagination, Typography } from '@mui/material';
+import { CheckCircleOutline, Clear, Visibility } from '@mui/icons-material';
+import { Alert, Box, Chip, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
-import {
-  approveExpense,
-  type Expense,
-  getExpenses,
-  rejectExpense,
-} from '../../../services/expenses';
+import { approveExpense, type Expense, getExpenses } from '../../../services/expenses';
 import { formatDisplayDate } from '../../../utils/date';
 
 const statusConfig: Record<string, { label: string; color: 'warning' | 'success' | 'error' }> = {
@@ -50,16 +45,8 @@ export default function ExpensesPage() {
     }
   };
 
-  const handleReject = async (expense: Expense) => {
-    const reason = prompt('Rejection reason:');
-    if (!reason) return;
-    try {
-      await rejectExpense(expense.id, reason);
-      toast.success('Expense rejected');
-      refetch();
-    } catch {
-      toast.error('Failed to reject expense');
-    }
+  const handleReject = (expense: Expense) => {
+    navigate(`/expenses/${expense.id}`);
   };
 
   const columns: Column<Expense>[] = [
@@ -95,7 +82,13 @@ export default function ExpensesPage() {
       minWidth: 100,
       format: (value) => {
         const config = statusConfig[value as string] || statusConfig.pending;
-        return <Chip label={config.label} color={config.color} size="small" />;
+        return (
+          <Chip
+            label={config?.label || 'Unknown'}
+            color={config?.color || 'default'}
+            size="small"
+          />
+        );
       },
     },
     {
@@ -109,17 +102,22 @@ export default function ExpensesPage() {
   const actions: Action<Expense>[] = [
     {
       label: 'View',
+      icon: <Visibility fontSize="small" />,
       onClick: (row) => navigate(`/expenses/${row.id}`),
     },
     ...(can(Permission.ExpensesApprove)
       ? [
           {
             label: 'Approve',
+            icon: <CheckCircleOutline fontSize="small" />,
+            color: 'success' as const,
             onClick: (row: Expense) => handleApprove(row),
             disabled: (row: Expense) => row.approvalStatus !== 'pending',
           },
           {
             label: 'Reject',
+            icon: <Clear fontSize="small" />,
+            color: 'error' as const,
             onClick: (row: Expense) => handleReject(row),
             disabled: (row: Expense) => row.approvalStatus !== 'pending',
           },
@@ -128,26 +126,24 @@ export default function ExpensesPage() {
   ];
 
   return (
-    <Box>
-      <ListViewPage
+    <Box sx={{ px: 4, py: 2 }}>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load expenses
+        </Alert>
+      )}
+      <ListViewPage<Expense>
         title="Expenses"
-        subtitle="Track and manage business expenses"
+        description="Track and manage business expenses"
         columns={columns}
         data={data?.data ?? []}
         actions={actions}
         isLoading={isLoading}
-        error={error ? 'Failed to load expenses' : undefined}
-        headerAction={
-          can(Permission.ExpensesWrite) ? (
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => navigate('/expenses/new')}
-            >
-              Add Expense
-            </Button>
-          ) : undefined
-        }
+        inputValue=""
+        handleSearch={() => {}}
+        handleClearSearch={() => {}}
+        onAddClick={can(Permission.ExpensesWrite) ? () => navigate('/expenses/new') : undefined}
+        addButtonLabel="Add Expense"
       />
       {data && data.totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>

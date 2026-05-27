@@ -96,7 +96,10 @@ impl UserService {
         })
     }
 
-    pub async fn setup_totp(&self, user_id: Uuid) -> Result<crate::models::TotpSetupResponseDto, AppError> {
+    pub async fn setup_totp(
+        &self,
+        user_id: Uuid,
+    ) -> Result<crate::models::TotpSetupResponseDto, AppError> {
         let user = self.get_by_id(user_id).await?;
         if user.role.as_deref() != Some("staff") {
             return Err(AppError::BadRequest(

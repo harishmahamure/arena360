@@ -74,7 +74,6 @@ pub struct DeviceStatsDto {
 #[serde(rename_all = "camelCase")]
 pub struct TopPerformersDto {
     pub top_plans: Vec<serde_json::Value>,
-    pub top_games: Vec<serde_json::Value>,
     pub top_players: Vec<serde_json::Value>,
 }
 
@@ -245,7 +244,6 @@ impl StatsService {
             devices,
             top_performers: TopPerformersDto {
                 top_plans: vec![],
-                top_games: vec![],
                 top_players: vec![],
             },
             revenue_trend: vec![],

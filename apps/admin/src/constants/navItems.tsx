@@ -3,9 +3,7 @@ import {
   CardMembership,
   Dashboard,
   Devices,
-  FileUpload,
   Inventory,
-  Link,
   MoneyOff,
   People,
   PlayCircle,
@@ -13,7 +11,6 @@ import {
   Receipt,
   Sell,
   Settings,
-  SportsEsports,
   Store,
   WorkHistory,
 } from '@mui/icons-material';
@@ -147,43 +144,6 @@ export const adminNavItems: AdminNavItem[] = [
       },
       { title: 'Inactive Plans', path: '/plans?isActive=false' },
     ],
-  },
-  {
-    title: 'Games',
-    path: '/games',
-    icon: <SportsEsports />,
-    requiredPermission: Permission.GamesRead,
-    children: [
-      { title: 'All Games', path: '/games' },
-      {
-        title: 'Add Game',
-        path: '/games/new',
-        requiredPermission: Permission.GamesWrite,
-      },
-      { title: 'Multiplayer', path: '/games?multiplayer=true' },
-      { title: 'Inactive Games', path: '/games?deleted=true' },
-    ],
-  },
-  {
-    title: 'Device Games',
-    path: '/device-games',
-    icon: <Link />,
-    requiredPermission: Permission.DeviceGamesRead,
-    children: [
-      { title: 'All Assignments', path: '/device-games' },
-      {
-        title: 'Assign Game',
-        path: '/device-games/new',
-        requiredPermission: Permission.DeviceGamesWrite,
-      },
-      { title: 'Inactive', path: '/device-games?active=false' },
-    ],
-  },
-  {
-    title: 'Upload Videos & Images',
-    path: '/media/upload',
-    icon: <FileUpload />,
-    requiredPermission: Permission.FilesWrite,
   },
   {
     title: 'Shifts',

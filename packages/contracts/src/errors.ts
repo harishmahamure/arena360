@@ -17,7 +17,6 @@ export enum ErrorCode {
 
   // Plan restriction errors
   DEVICE_TYPE_NOT_ALLOWED = 'DEVICE_TYPE_NOT_ALLOWED',
-  GAME_GENRE_NOT_ALLOWED = 'GAME_GENRE_NOT_ALLOWED',
   MAX_SESSIONS_EXCEEDED = 'MAX_SESSIONS_EXCEEDED',
   COOLDOWN_ACTIVE = 'COOLDOWN_ACTIVE',
 
@@ -25,10 +24,6 @@ export enum ErrorCode {
   DEVICE_UNDER_MAINTENANCE = 'DEVICE_UNDER_MAINTENANCE',
   DEVICE_OUT_OF_SERVICE = 'DEVICE_OUT_OF_SERVICE',
   DEVICE_NOT_OPERATIONAL = 'DEVICE_NOT_OPERATIONAL',
-
-  // Game errors
-  GAME_NOT_ACTIVE = 'GAME_NOT_ACTIVE',
-  GAME_NOT_ASSIGNED_TO_DEVICE = 'GAME_NOT_ASSIGNED_TO_DEVICE',
 
   // Session errors
   ACTIVE_SESSION_EXISTS = 'ACTIVE_SESSION_EXISTS',
@@ -53,9 +48,6 @@ export enum ErrorCode {
   AUTH_INSUFFICIENT_PERMISSIONS = 'AUTH_INSUFFICIENT_PERMISSIONS',
   AUTH_EMAIL_ALREADY_EXISTS = 'AUTH_EMAIL_ALREADY_EXISTS',
   AUTH_WEAK_PASSWORD = 'AUTH_WEAK_PASSWORD',
-
-  // File upload errors (US-ADMIN-003)
-  FILE_TOO_LARGE = 'FILE_TOO_LARGE',
 }
 
 export const ErrorMessages: Record<ErrorCode, string> = {
@@ -70,7 +62,6 @@ export const ErrorMessages: Record<ErrorCode, string> = {
     'Current time is outside the allowed time window for this plan',
 
   [ErrorCode.DEVICE_TYPE_NOT_ALLOWED]: 'This device type is not allowed for your plan',
-  [ErrorCode.GAME_GENRE_NOT_ALLOWED]: 'This game genre is not allowed for your plan',
   [ErrorCode.MAX_SESSIONS_EXCEEDED]: 'Maximum concurrent sessions limit exceeded',
   [ErrorCode.COOLDOWN_ACTIVE]:
     'Cooldown period is active, please wait before starting a new session',
@@ -78,9 +69,6 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.DEVICE_UNDER_MAINTENANCE]: 'The device is currently under maintenance',
   [ErrorCode.DEVICE_OUT_OF_SERVICE]: 'The device is out of service',
   [ErrorCode.DEVICE_NOT_OPERATIONAL]: 'The device is not operational',
-
-  [ErrorCode.GAME_NOT_ACTIVE]: 'The game is not currently active',
-  [ErrorCode.GAME_NOT_ASSIGNED_TO_DEVICE]: 'The game is not assigned to this device',
 
   [ErrorCode.ACTIVE_SESSION_EXISTS]: 'An active session already exists for this player plan',
   [ErrorCode.SESSION_NOT_FOUND]: 'Session not found',
@@ -102,8 +90,6 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS]: 'Insufficient permissions to access this resource',
   [ErrorCode.AUTH_EMAIL_ALREADY_EXISTS]: 'An account with this email already exists',
   [ErrorCode.AUTH_WEAK_PASSWORD]: 'Password does not meet security requirements',
-
-  [ErrorCode.FILE_TOO_LARGE]: 'File size exceeds the maximum allowed limit (25 MiB)',
 };
 
 /**

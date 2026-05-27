@@ -421,6 +421,21 @@ impl ExpenseRepository {
         expense.ok_or_else(|| AppError::NotFound(format!("Expense with ID {id} not found")))
     }
 
+    pub async fn set_cash_register_entry_id(
+        &self,
+        expense_id: Uuid,
+        entry_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"UPDATE expenses SET "cashRegisterEntryId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+        )
+        .bind(entry_id)
+        .bind(expense_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn get_summary_by_category(&self) -> Result<Vec<ExpenseSummaryDto>, AppError> {
         let summaries = sqlx::query_as::<_, ExpenseSummaryDto>(
             r#"

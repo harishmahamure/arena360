@@ -4,22 +4,33 @@ use uuid::Uuid;
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{
-    CreateExpenseDto, Expense, ExpenseFilterDto, ExpenseSummaryDto, UpdateExpenseDto,
+    CreateCashRegisterEntryDto, CreateExpenseDto, Expense, ExpenseFilterDto, ExpenseSummaryDto,
+    UpdateExpenseDto,
 };
 use crate::repositories::{ExpenseCategoryRepository, ExpenseRepository, VendorRepository};
+use crate::services::cash_register_service::CashRegisterService;
+use crate::services::shift_service::ShiftService;
 
 pub struct ExpenseService {
     repo: ExpenseRepository,
     category_repo: ExpenseCategoryRepository,
     vendor_repo: VendorRepository,
+    cash_register_service: CashRegisterService,
+    shift_service: ShiftService,
 }
 
 impl ExpenseService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(
+        pool: PgPool,
+        cash_register_service: CashRegisterService,
+        shift_service: ShiftService,
+    ) -> Self {
         Self {
             repo: ExpenseRepository::new(pool.clone()),
             category_repo: ExpenseCategoryRepository::new(pool.clone()),
             vendor_repo: VendorRepository::new(pool),
+            cash_register_service,
+            shift_service,
         }
     }
 
@@ -136,7 +147,41 @@ impl ExpenseService {
             ));
         }
 
-        self.repo.approve(id, approved_by).await
+        let expense = self.repo.approve(id, approved_by).await?;
+
+        if expense.payment_method == "cash" || expense.payment_method == "split_payment" {
+            if let Ok(Some(active_shift)) = self.shift_service.get_active(approved_by).await {
+                if let Ok(register_with_entries) = self
+                    .cash_register_service
+                    .get_by_shift(active_shift.id)
+                    .await
+                {
+                    let entry_dto = CreateCashRegisterEntryDto {
+                        entry_type: "cash_out".to_string(),
+                        amount: expense.amount,
+                        reason: Some(format!(
+                            "Expense: {}",
+                            expense.description.as_deref().unwrap_or("N/A")
+                        )),
+                        reference_id: Some(expense.id),
+                        reference_type: Some("expense".to_string()),
+                    };
+
+                    if let Ok(entry) = self
+                        .cash_register_service
+                        .add_entry(register_with_entries.register.id, entry_dto, approved_by)
+                        .await
+                    {
+                        let _ = self
+                            .repo
+                            .set_cash_register_entry_id(expense.id, entry.id)
+                            .await;
+                    }
+                }
+            }
+        }
+
+        Ok(expense)
     }
 
     pub async fn reject(

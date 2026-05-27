@@ -268,8 +268,10 @@ export default function EditPlayerPage() {
               <TextField
                 label="Verification Code"
                 value={totpCode}
-                onChange={(event) => setTotpCode(event.target.value)}
-                inputProps={{ maxLength: 6 }}
+                onChange={(event) =>
+                  setTotpCode(event.target.value.replace(/\s+/g, '').slice(0, 6))
+                }
+                inputProps={{ autoComplete: 'one-time-code' }}
               />
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button variant="contained" onClick={handleVerifyTotp} disabled={totpLoading}>

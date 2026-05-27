@@ -101,12 +101,6 @@ export interface TopPerformersDto {
     revenue: number;
     purchaseCount: number;
   }[];
-  topGames: {
-    gameId: string;
-    gameName: string;
-    sessionCount: number;
-    totalHours: number;
-  }[];
   topPlayers: {
     playerId: string;
     playerName: string;

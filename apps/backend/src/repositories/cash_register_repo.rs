@@ -30,6 +30,9 @@ impl CashRegisterRepository {
                variance::float8 as variance,
                status,
                notes,
+               "reconciledBy" as reconciled_by,
+               "reconciledAt" as reconciled_at,
+               "reconciliationNotes" as reconciliation_notes,
                "createdBy" as created_by,
                "updatedBy" as updated_by,
                "createdAt" as created_at,
@@ -74,6 +77,9 @@ impl CashRegisterRepository {
                       variance::float8 as variance,
                       status,
                       notes,
+                      "reconciledBy" as reconciled_by,
+                      "reconciledAt" as reconciled_at,
+                      "reconciliationNotes" as reconciliation_notes,
                       "createdBy" as created_by,
                       "updatedBy" as updated_by,
                       "createdAt" as created_at,
@@ -125,6 +131,9 @@ impl CashRegisterRepository {
                       variance::float8 as variance,
                       status,
                       notes,
+                      "reconciledBy" as reconciled_by,
+                      "reconciledAt" as reconciled_at,
+                      "reconciliationNotes" as reconciliation_notes,
                       "createdBy" as created_by,
                       "updatedBy" as updated_by,
                       "createdAt" as created_at,
@@ -138,6 +147,101 @@ impl CashRegisterRepository {
         .bind(variance)
         .bind(actor_id)
         .bind(&dto.notes)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        register
+            .ok_or_else(|| AppError::NotFound(format!("Open cash register with ID {id} not found")))
+    }
+
+    pub async fn reconcile(
+        &self,
+        id: Uuid,
+        notes: Option<String>,
+        actor_id: Uuid,
+    ) -> Result<CashRegister, AppError> {
+        let register = sqlx::query_as::<_, CashRegister>(
+            r#"
+            UPDATE cash_registers SET
+                status = 'reconciled',
+                "reconciledBy" = $2,
+                "reconciledAt" = NOW(),
+                "reconciliationNotes" = COALESCE($3, "reconciliationNotes"),
+                "updatedBy" = $2,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND status = 'closed'
+            RETURNING id,
+                      "shiftId" as shift_id,
+                      "openedBy" as opened_by,
+                      "closedBy" as closed_by,
+                      "openingBalance"::float8 as opening_balance,
+                      "openingDenominations" as opening_denominations,
+                      "closingBalance"::float8 as closing_balance,
+                      "closingDenominations" as closing_denominations,
+                      "expectedClosing"::float8 as expected_closing,
+                      variance::float8 as variance,
+                      status,
+                      notes,
+                      "reconciledBy" as reconciled_by,
+                      "reconciledAt" as reconciled_at,
+                      "reconciliationNotes" as reconciliation_notes,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
+                      "createdAt" as created_at,
+                      "updatedAt" as updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(actor_id)
+        .bind(notes)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        register.ok_or_else(|| {
+            AppError::NotFound(format!("Closed cash register with ID {id} not found"))
+        })
+    }
+
+    pub async fn update_opening_balance(
+        &self,
+        id: Uuid,
+        opening_balance: f64,
+        opening_denominations: Option<serde_json::Value>,
+        actor_id: Uuid,
+    ) -> Result<CashRegister, AppError> {
+        let register = sqlx::query_as::<_, CashRegister>(
+            r#"
+            UPDATE cash_registers SET
+                "openingBalance" = $2,
+                "openingDenominations" = $3,
+                "updatedBy" = $4,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND status = 'open'
+            RETURNING id,
+                      "shiftId" as shift_id,
+                      "openedBy" as opened_by,
+                      "closedBy" as closed_by,
+                      "openingBalance"::float8 as opening_balance,
+                      "openingDenominations" as opening_denominations,
+                      "closingBalance"::float8 as closing_balance,
+                      "closingDenominations" as closing_denominations,
+                      "expectedClosing"::float8 as expected_closing,
+                      variance::float8 as variance,
+                      status,
+                      notes,
+                      "reconciledBy" as reconciled_by,
+                      "reconciledAt" as reconciled_at,
+                      "reconciliationNotes" as reconciliation_notes,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
+                      "createdAt" as created_at,
+                      "updatedAt" as updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(opening_balance)
+        .bind(opening_denominations)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -175,33 +279,39 @@ impl CashRegisterRepository {
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT id,
-                      "shiftId" as shift_id,
-                      "openedBy" as opened_by,
-                      "closedBy" as closed_by,
-                      "openingBalance"::float8 as opening_balance,
-                      "openingDenominations" as opening_denominations,
-                      "closingBalance"::float8 as closing_balance,
-                      "closingDenominations" as closing_denominations,
-                      "expectedClosing"::float8 as expected_closing,
-                      variance::float8 as variance,
-                      status,
-                      notes,
-                      "createdBy" as created_by,
-                      "updatedBy" as updated_by,
-                      "createdAt" as created_at,
-                      "updatedAt" as updated_at
-               FROM cash_registers WHERE 1=1"#,
+            r#"SELECT cr.id,
+                      cr."shiftId" as shift_id,
+                      cr."openedBy" as opened_by,
+                      cr."closedBy" as closed_by,
+                      cr."openingBalance"::float8 as opening_balance,
+                      cr."openingDenominations" as opening_denominations,
+                      cr."closingBalance"::float8 as closing_balance,
+                      cr."closingDenominations" as closing_denominations,
+                      cr."expectedClosing"::float8 as expected_closing,
+                      cr.variance::float8 as variance,
+                      cr.status,
+                      cr.notes,
+                      cr."reconciledBy" as reconciled_by,
+                      cr."reconciledAt" as reconciled_at,
+                      cr."reconciliationNotes" as reconciliation_notes,
+                      cr."createdBy" as created_by,
+                      cr."updatedBy" as updated_by,
+                      cr."createdAt" as created_at,
+                      cr."updatedAt" as updated_at,
+                      (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_in')::float8 as total_cash_in,
+                      (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_out')::float8 as total_cash_out,
+                      (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_out' AND "referenceType" = 'cash_deposit')::float8 as total_deposited
+               FROM cash_registers cr WHERE 1=1"#,
         );
 
         Self::apply_filters(&mut builder, filters);
 
         let sort_by = filters.sort_by.as_deref().unwrap_or("createdAt");
         let sort_col = match sort_by {
-            "openingBalance" => "\"openingBalance\"",
-            "status" => "status",
-            "updatedAt" => "\"updatedAt\"",
-            _ => "\"createdAt\"",
+            "openingBalance" => "cr.\"openingBalance\"",
+            "status" => "cr.status",
+            "updatedAt" => "cr.\"updatedAt\"",
+            _ => "cr.\"createdAt\"",
         };
         let sort_order = if filters.sort_order.as_deref() == Some("ASC") {
             "ASC"
@@ -219,7 +329,7 @@ impl CashRegisterRepository {
             .await?;
 
         let mut count_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM cash_registers WHERE 1=1");
+            QueryBuilder::new("SELECT COUNT(*) FROM cash_registers cr WHERE 1=1");
         Self::apply_filters(&mut count_builder, filters);
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
@@ -229,15 +339,15 @@ impl CashRegisterRepository {
 
     fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &CashRegisterFilterDto) {
         if let Some(shift_id) = filters.shift_id {
-            builder.push(" AND \"shiftId\" = ");
+            builder.push(" AND cr.\"shiftId\" = ");
             builder.push_bind(shift_id);
         }
         if let Some(ref status) = filters.status {
-            builder.push(" AND status = ");
+            builder.push(" AND cr.status = ");
             builder.push_bind(status.clone());
         }
         if let Some(opened_by) = filters.opened_by {
-            builder.push(" AND \"openedBy\" = ");
+            builder.push(" AND cr.\"openedBy\" = ");
             builder.push_bind(opened_by);
         }
     }
@@ -277,6 +387,44 @@ impl CashRegisterRepository {
         .await?;
 
         Ok(entry)
+    }
+
+    pub async fn find_last_closed_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<CashRegister>, AppError> {
+        let register = sqlx::query_as::<_, CashRegister>(
+            r#"
+            SELECT cr.id,
+                   cr."shiftId" as shift_id,
+                   cr."openedBy" as opened_by,
+                   cr."closedBy" as closed_by,
+                   cr."openingBalance"::float8 as opening_balance,
+                   cr."openingDenominations" as opening_denominations,
+                   cr."closingBalance"::float8 as closing_balance,
+                   cr."closingDenominations" as closing_denominations,
+                   cr."expectedClosing"::float8 as expected_closing,
+                   cr.variance::float8 as variance,
+                   cr.status,
+                   cr.notes,
+                   cr."reconciledBy" as reconciled_by,
+                   cr."reconciledAt" as reconciled_at,
+                   cr."reconciliationNotes" as reconciliation_notes,
+                   cr."createdBy" as created_by,
+                   cr."updatedBy" as updated_by,
+                   cr."createdAt" as created_at,
+                   cr."updatedAt" as updated_at
+            FROM cash_registers cr
+            INNER JOIN shifts s ON s.id = cr."shiftId"
+            WHERE s."userId" = $1 AND cr.status IN ('closed', 'reconciled')
+            ORDER BY cr."updatedAt" DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(register)
     }
 
     pub async fn list_entries(

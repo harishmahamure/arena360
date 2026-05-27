@@ -1,6 +1,7 @@
 import { type Column, ListViewPage } from '@gaming-cafe/ui';
 import { formatCurrency, formatTimeAgo } from '@gaming-cafe/utils';
-import { Alert, Box, Chip, debounce, Pagination, Typography } from '@mui/material';
+import { Visibility } from '@mui/icons-material';
+import { Box, Chip, debounce, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -72,23 +73,11 @@ const columns: Column<Transaction>[] = [
     },
   },
   {
-    id: 'transactionProducts',
-    label: 'Products',
-    minWidth: 120,
-    format: (value) => {
-      const products = value as Transaction['transactionProducts'];
-      if (!products || products.length === 0) return 'Total only (line items not stored)';
-      return products.map((product) => product.product.name).join(', ');
-    },
-  },
-  {
     id: 'amount',
     label: 'Amount',
     minWidth: 100,
     align: 'right',
-    format: (value) => {
-      return formatCurrency(parseFloat(value as string), 'INR');
-    },
+    format: (value) => formatCurrency(parseFloat(value as string), 'INR'),
   },
   {
     id: 'paymentMethod',
@@ -163,10 +152,6 @@ export default function TransactionsPage() {
 
   return (
     <Box sx={{ px: 4, py: 2 }}>
-      <Alert severity="info" sx={{ mb: 2 }}>
-        Product transactions currently store the cart total only. Per-product line items are not
-        persisted until the transaction_products schema is approved (see docs/adr/DRAFT-0010).
-      </Alert>
       <ListViewPage<Transaction>
         title="Transactions"
         description="Manage product purchase transactions here."
@@ -177,7 +162,13 @@ export default function TransactionsPage() {
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
         onAddClick={handleAddNewTransaction}
-        actions={[]}
+        actions={[
+          {
+            icon: <Visibility fontSize="small" />,
+            label: 'View',
+            onClick: (row) => navigate(`/product-transactions/${row.id}`),
+          },
+        ]}
         addButtonLabel="Add Transaction"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

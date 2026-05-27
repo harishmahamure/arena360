@@ -76,6 +76,27 @@ export interface ShiftHandoverResponse {
   newShiftId: string;
 }
 
+export interface ShiftCloseInput {
+  closingBalance: number;
+  closingDenominations?: Record<string, number>;
+  notes?: string;
+  deposit?: HandoverDepositInput;
+}
+
+export interface ShiftCloseResponse {
+  closedShift: Shift;
+  cashRegister?: {
+    id: string;
+    variance?: number | null;
+    expectedClosing?: number | null;
+    closingBalance?: number | null;
+  } | null;
+  deposit?: { id: string; status: string; amount: number } | null;
+}
+
+export const closeShift = async (input: ShiftCloseInput) =>
+  http.post<ShiftCloseResponse>('/shifts/close', input);
+
 export const handoverShift = async (input: ShiftHandoverInput) =>
   http.post<ShiftHandoverResponse>('/shifts/handover', input);
 

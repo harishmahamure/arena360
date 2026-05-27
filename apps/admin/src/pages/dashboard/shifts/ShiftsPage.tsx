@@ -1,5 +1,6 @@
 import { type Column, ListViewPage } from '@gaming-cafe/ui';
-import { Box, Chip, Pagination } from '@mui/material';
+import { Visibility } from '@mui/icons-material';
+import { Alert, Box, Chip, Pagination } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getShifts, type Shift } from '../../../services/shifts';
@@ -46,21 +47,40 @@ export default function ShiftsPage() {
       minWidth: 120,
       format: (value) => {
         const config = statusConfig[value as string] || statusConfig.completed;
-        return <Chip label={config.label} color={config.color} size="small" />;
+        return (
+          <Chip
+            label={config?.label || 'Unknown'}
+            color={config?.color || 'default'}
+            size="small"
+          />
+        );
       },
     },
   ];
 
   return (
-    <Box>
-      <ListViewPage
+    <Box sx={{ px: 4, py: 2 }}>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load shifts
+        </Alert>
+      )}
+      <ListViewPage<Shift>
         title="Shifts"
-        subtitle="Staff shift history"
+        description="Staff shift history"
         columns={columns}
         data={data?.data ?? []}
-        actions={[{ label: 'View', onClick: (row) => navigate(`/shifts/${row.id}`) }]}
+        actions={[
+          {
+            label: 'View',
+            icon: <Visibility fontSize="small" />,
+            onClick: (row) => navigate(`/shifts/${row.id}`),
+          },
+        ]}
         isLoading={isLoading}
-        error={error ? 'Failed to load shifts' : undefined}
+        inputValue=""
+        handleSearch={() => {}}
+        handleClearSearch={() => {}}
       />
       {data && data.totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>

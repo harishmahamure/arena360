@@ -148,7 +148,7 @@ export default function CashDepositsPage() {
   }
 
   return (
-    <Box>
+    <Box sx={{ px: 4, py: 2 }}>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           Failed to load cash deposits

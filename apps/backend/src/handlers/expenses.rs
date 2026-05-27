@@ -196,3 +196,28 @@ pub async fn expense_summary(
     let summary = state.expenses.get_summary().await?;
     ok(summary)
 }
+
+#[utoipa::path(
+    delete,
+    path = "/expenses/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Expense ID"),
+    ),
+    responses(
+        (status = 200, description = "Delete expense", body = ExpenseEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "expenses"
+)]
+pub async fn delete_expense(
+    AdminUser(_claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Expense> {
+    let expense = state.expenses.delete(id).await?;
+    ok(expense)
+}

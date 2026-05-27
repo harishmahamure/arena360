@@ -68,30 +68,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/device-games": {
+    "/cash-deposits": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["list_device_games"];
+        get: operations["list_deposits"];
         put?: never;
-        post: operations["create_device_game"];
+        post: operations["initiate_deposit"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/device-games/device/{device_id}": {
+    "/cash-deposits/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["list_device_games_by_device"];
+        get: operations["get_deposit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -100,14 +100,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/device-games/game/{game_id}": {
+    "/cash-deposits/{id}/approve": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["list_device_games_by_game"];
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["approve_deposit"];
+        trace?: never;
+    };
+    "/cash-deposits/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["reject_deposit"];
+        trace?: never;
+    };
+    "/cash-registers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_cash_registers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -116,20 +148,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/device-games/{id}": {
+    "/cash-registers/active/expected-closing": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_device_game"];
+        get: operations["get_active_expected_closing"];
         put?: never;
         post?: never;
-        delete: operations["delete_device_game"];
+        delete?: never;
         options?: never;
         head?: never;
-        patch: operations["update_device_game"];
+        patch?: never;
+        trace?: never;
+    };
+    "/cash-registers/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["open_cash_register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cash-registers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_cash_register"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cash-registers/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["close_cash_register"];
+        trace?: never;
+    };
+    "/cash-registers/{id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["add_entry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cash-registers/{id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["reconcile_cash_register"];
+        trace?: never;
+    };
+    "/cash-registers/{id}/update-opening": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_opening_balance"];
+        trace?: never;
+    };
+    "/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_config"];
+        put: operations["upsert_config"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/devices": {
@@ -180,30 +340,62 @@ export interface paths {
         patch: operations["update_device_status"];
         trace?: never;
     };
-    "/files": {
+    "/expense-categories": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["list_files"];
+        get: operations["list_expense_categories"];
         put?: never;
-        post: operations["create_file"];
+        post: operations["create_expense_category"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/files/stats": {
+    "/expense-categories/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_storage_stats"];
+        get: operations["get_expense_category"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_expense_category"];
+        options?: never;
+        head?: never;
+        patch: operations["update_expense_category"];
+        trace?: never;
+    };
+    "/expenses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_expenses"];
+        put?: never;
+        post: operations["create_expense"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expenses/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["expense_summary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -212,23 +404,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/files/{id}": {
+    "/expenses/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["get_file"];
-        put: operations["update_file"];
+        get: operations["get_expense"];
+        put?: never;
         post?: never;
-        delete: operations["delete_file"];
+        delete: operations["delete_expense"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_expense"];
         trace?: never;
     };
-    "/files/{id}/activate": {
+    "/expenses/{id}/approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -236,15 +428,15 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["activate_file"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["approve_expense"];
         trace?: never;
     };
-    "/files/{id}/archive": {
+    "/expenses/{id}/reject": {
         parameters: {
             query?: never;
             header?: never;
@@ -252,60 +444,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["archive_file"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/files/{id}/download-url": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_file_download_url"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/games": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_games"];
-        put?: never;
-        post: operations["create_game"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/games/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_game"];
-        put?: never;
-        post?: never;
-        delete: operations["delete_game"];
-        options?: never;
-        head?: never;
-        patch: operations["update_game"];
+        patch: operations["reject_expense"];
         trace?: never;
     };
     "/health": {
@@ -580,6 +724,134 @@ export interface paths {
         patch: operations["end_session"];
         trace?: never;
     };
+    "/shifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_shifts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shifts/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_active_shift"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shifts/clock-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["clock_in"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shifts/clock-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["clock_out"];
+        trace?: never;
+    };
+    "/shifts/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["close_shift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shifts/handover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["handover_shift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shifts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_shift"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shifts/{id}/force-close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["force_close_shift"];
+        trace?: never;
+    };
     "/sse": {
         parameters: {
             query?: never;
@@ -654,54 +926,6 @@ export interface paths {
         get: operations["usage_stats"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/storage/download-url": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["generate_download_url"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/storage/list": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_objects"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/storage/upload-url": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["generate_upload_url"];
         delete?: never;
         options?: never;
         head?: never;
@@ -804,6 +1028,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{id}/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["disable_totp"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["setup_totp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/totp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verify_totp_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_vendors"];
+        put?: never;
+        post: operations["create_vendor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vendors/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_vendor"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_vendor"];
+        options?: never;
+        head?: never;
+        patch: operations["update_vendor"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -814,6 +1118,12 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        ApproveDepositDto: {
+            depositType: string;
+        };
+        ApproveExpenseDto: {
+            notes?: string | null;
         };
         AssignPlanDto: {
             /** Format: uuid */
@@ -827,6 +1137,7 @@ export interface components {
         };
         AuthResponseDto: {
             accessToken: string;
+            shiftId?: string | null;
             user: components["schemas"]["AuthUserDto"];
         };
         AuthResponseEnvelope: {
@@ -845,6 +1156,246 @@ export interface components {
             role: string;
             username: string;
         };
+        CashDeposit: {
+            /** Format: double */
+            amount: number;
+            /** Format: date-time */
+            approvedAt?: string | null;
+            /** Format: uuid */
+            approvedBy?: string | null;
+            /** Format: uuid */
+            cashRegisterId: string;
+            /** Format: date-time */
+            createdAt: string;
+            denominations: unknown;
+            depositType?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            initiatedBy: string;
+            notes?: string | null;
+            rejectionReason?: string | null;
+            /** Format: uuid */
+            shiftId: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CashDepositEnvelope: {
+            data: components["schemas"]["CashDeposit"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CashDepositFilterDto: {
+            /** Format: uuid */
+            cashRegisterId?: string | null;
+            /** Format: uuid */
+            initiatedBy?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            /** Format: uuid */
+            shiftId?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+            status?: string | null;
+        };
+        CashDepositPaginationEnvelope: {
+            data: components["schemas"]["CashDepositPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CashDepositPaginationPage: {
+            data: components["schemas"]["CashDeposit"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        CashRegister: {
+            /** Format: uuid */
+            closedBy?: string | null;
+            /** Format: double */
+            closingBalance?: number | null;
+            closingDenominations?: unknown;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: double */
+            expectedClosing?: number | null;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: uuid */
+            openedBy: string;
+            /** Format: double */
+            openingBalance: number;
+            openingDenominations?: unknown;
+            /** Format: date-time */
+            reconciledAt?: string | null;
+            /** Format: uuid */
+            reconciledBy?: string | null;
+            reconciliationNotes?: string | null;
+            /** Format: uuid */
+            shiftId: string;
+            status: string;
+            /** Format: double */
+            totalCashIn?: number | null;
+            /** Format: double */
+            totalCashOut?: number | null;
+            /** Format: double */
+            totalDeposited?: number | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            /** Format: double */
+            variance?: number | null;
+        };
+        CashRegisterEntriesEnvelope: {
+            data: components["schemas"]["CashRegisterEntry"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CashRegisterEntry: {
+            /** Format: double */
+            amount: number;
+            /** Format: uuid */
+            cashRegisterId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            entryType: string;
+            /** Format: uuid */
+            id: string;
+            reason?: string | null;
+            /** Format: uuid */
+            referenceId?: string | null;
+            referenceType?: string | null;
+        };
+        CashRegisterEntryEnvelope: {
+            data: components["schemas"]["CashRegisterEntry"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CashRegisterEnvelope: {
+            data: components["schemas"]["CashRegister"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CashRegisterFilterDto: {
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: uuid */
+            openedBy?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+            /** Format: uuid */
+            shiftId?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+            status?: string | null;
+        };
+        CashRegisterPaginationEnvelope: {
+            data: components["schemas"]["CashRegisterPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CashRegisterPaginationPage: {
+            data: components["schemas"]["CashRegister"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        CashRegisterWithEntries: components["schemas"]["CashRegister"] & {
+            entries: components["schemas"]["CashRegisterEntry"][];
+        };
+        CashRegisterWithEntriesEnvelope: {
+            data: components["schemas"]["CashRegisterWithEntries"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ClockInDto: {
+            notes?: string | null;
+        };
+        ClockOutDto: {
+            notes?: string | null;
+        };
+        CloseCashRegisterDto: {
+            /** Format: double */
+            closingBalance: number;
+            closingDenominations?: unknown;
+            notes?: string | null;
+        };
+        ConfigFilterDto: {
+            category?: string | null;
+            key?: string | null;
+        };
+        Configuration: {
+            category: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            description?: string | null;
+            /** Format: uuid */
+            id: string;
+            key: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            value: unknown;
+        };
+        ConfigurationEnvelope: {
+            data: components["schemas"]["Configuration"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ConfigurationListEnvelope: {
+            data: components["schemas"]["Configuration"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CreateCashRegisterEntryDto: {
+            /** Format: double */
+            amount: number;
+            entryType: string;
+            reason?: string | null;
+            /** Format: uuid */
+            referenceId?: string | null;
+            referenceType?: string | null;
+        };
         CreateDeviceDto: {
             deviceSubType?: string | null;
             deviceType?: string | null;
@@ -855,68 +1406,41 @@ export interface components {
             serialNumber?: string | null;
             status?: string | null;
         };
-        CreateDeviceGameDto: {
-            /** Format: uuid */
-            deviceId: string;
-            /** Format: uuid */
-            gameId: string;
-            /** Format: date-time */
-            installationDate?: string | null;
-            isActive?: boolean | null;
-        };
-        CreateFileDto: {
-            bucket?: string | null;
-            category?: string | null;
-            contentType: string;
+        CreateExpenseCategoryDto: {
+            /** Format: double */
+            budgetAmount?: number | null;
+            budgetPeriod?: string | null;
             description?: string | null;
-            /** Format: int32 */
-            duration?: number | null;
-            etag?: string | null;
-            /** Format: date-time */
-            expiresAt?: string | null;
-            extension?: string | null;
-            fileName: string;
-            /** Format: int64 */
-            fileSize: number;
-            /** Format: int32 */
-            height?: number | null;
-            metadata?: unknown;
-            originalFileName: string;
-            /** Format: uuid */
-            relatedEntityId?: string | null;
-            relatedEntityType?: string | null;
-            storageKey: string;
-            tags?: unknown;
-            visibility?: string | null;
-            /** Format: int32 */
-            width?: number | null;
-        };
-        CreateGameDto: {
-            ageRating?: string | null;
-            backgroundUrl?: string | null;
-            bannerUrl?: string | null;
-            category?: string | null;
-            description?: string | null;
-            developer?: string | null;
-            genre?: string | null;
-            iconUrl?: string | null;
-            imageUrl?: string | null;
             isActive?: boolean | null;
-            isMultiplayer?: boolean | null;
-            logoUrl?: string | null;
-            /** Format: int32 */
-            maxPlayers?: number | null;
-            /** Format: int32 */
-            minPlayers?: number | null;
-            platform?: string | null;
-            publisher?: string | null;
+            name: string;
+            /** Format: uuid */
+            parentId?: string | null;
+        };
+        CreateExpenseDto: {
+            /** Format: double */
+            amount: number;
+            /** Format: uuid */
+            categoryId: string;
+            description?: string | null;
             /** Format: date-time */
-            releaseDate?: string | null;
-            tags?: string[] | null;
-            thumbnailUrl?: string | null;
-            title: string;
-            trailerUrl?: string | null;
-            videoUrl?: string | null;
+            expenseDate?: string | null;
+            isRecurring?: boolean | null;
+            paymentAccount?: string | null;
+            paymentMethod: string;
+            receiptUrl?: string | null;
+            recurrencePattern?: string | null;
+            /** Format: uuid */
+            shiftId?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
+        };
+        CreateLineItemDto: {
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: double */
+            unitPrice?: number | null;
         };
         CreatePlanDto: {
             description?: string | null;
@@ -957,9 +1481,9 @@ export interface components {
             /** Format: uuid */
             deviceId: string;
             /** Format: uuid */
-            gameId?: string | null;
-            /** Format: uuid */
             playerPlanId: string;
+            /** Format: uuid */
+            shiftId?: string | null;
             /** Format: date-time */
             startTime?: string | null;
         };
@@ -968,6 +1492,7 @@ export interface components {
             amount?: number | null;
             /** Format: double */
             cashAmount?: number | null;
+            lineItems?: components["schemas"]["CreateLineItemDto"][] | null;
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
@@ -977,6 +1502,8 @@ export interface components {
             planId?: string | null;
             /** Format: uuid */
             playerId: string;
+            /** Format: uuid */
+            shiftId?: string | null;
             /** Format: date-time */
             transactionDate?: string | null;
             transactionType: string;
@@ -987,6 +1514,16 @@ export interface components {
             isActive?: boolean | null;
             name: string;
             type?: string | null;
+        };
+        CreateVendorDto: {
+            address?: string | null;
+            contactPerson?: string | null;
+            email?: string | null;
+            gstNumber?: string | null;
+            isActive?: boolean | null;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
         };
         DashboardStatsDto: {
             devices: components["schemas"]["DeviceStatsDto"];
@@ -1009,6 +1546,8 @@ export interface components {
         Device: {
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             deviceSubType: string;
@@ -1024,6 +1563,8 @@ export interface components {
             status: string;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         DeviceEnvelope: {
             data: components["schemas"]["Device"];
@@ -1044,75 +1585,6 @@ export interface components {
             sortBy?: string | null;
             sortOrder?: string | null;
             status?: string | null;
-        };
-        DeviceGameDevice: {
-            deviceType: string;
-            /** Format: uuid */
-            id: string;
-            location?: string | null;
-            name: string;
-        };
-        DeviceGameEnvelope: {
-            data: components["schemas"]["DeviceGameResponse"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        DeviceGameFilterDto: {
-            /** Format: uuid */
-            deviceId?: string | null;
-            /** Format: uuid */
-            gameId?: string | null;
-            /** Format: int64 */
-            isActive?: number | null;
-            /** Format: int64 */
-            limit?: number | null;
-            /** Format: int64 */
-            page?: number | null;
-            sortBy?: string | null;
-            sortOrder?: string | null;
-        };
-        DeviceGameGame: {
-            genre?: string | null;
-            /** Format: uuid */
-            id: string;
-            title: string;
-        };
-        DeviceGamePaginationEnvelope: {
-            data: components["schemas"]["DeviceGamePaginationPage"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        DeviceGamePaginationPage: {
-            data: components["schemas"]["DeviceGameResponse"][];
-            /** Format: int64 */
-            limit: number;
-            /** Format: int64 */
-            page: number;
-            /** Format: int64 */
-            total: number;
-            /** Format: int64 */
-            totalPages: number;
-        };
-        DeviceGameResponse: {
-            /** Format: date-time */
-            createdAt: string;
-            device?: null | components["schemas"]["DeviceGameDevice"];
-            /** Format: uuid */
-            deviceId: string;
-            game?: null | components["schemas"]["DeviceGameGame"];
-            /** Format: uuid */
-            gameId: string;
-            /** Format: uuid */
-            id: string;
-            /** Format: date-time */
-            installationDate: string;
-            isActive: boolean;
-            /** Format: date-time */
-            updatedAt: string;
         };
         DevicePaginationEnvelope: {
             data: components["schemas"]["DevicePaginationPage"];
@@ -1152,170 +1624,109 @@ export interface components {
             statusCode: number;
             timestamp: string;
         };
-        FileEnvelope: {
-            data: components["schemas"]["FileRecord"];
+        ExpectedClosingEnvelope: {
+            data: components["schemas"]["ExpectedClosingResponse"];
             /** Format: int32 */
             statusCode: number;
             success: boolean;
             timestamp: string;
         };
-        FileFilterDto: {
-            category?: string | null;
-            contentType?: string | null;
-            /** Format: int64 */
-            limit?: number | null;
-            /** Format: int64 */
-            page?: number | null;
+        ExpectedClosingResponse: {
+            /** Format: double */
+            expectedClosing: number;
+            /** Format: double */
+            openingBalance: number;
             /** Format: uuid */
-            relatedEntityId?: string | null;
-            relatedEntityType?: string | null;
-            status?: string | null;
+            registerId?: string | null;
+        };
+        Expense: {
+            /** Format: double */
+            amount: number;
+            approvalStatus: string;
+            /** Format: date-time */
+            approvedAt?: string | null;
             /** Format: uuid */
-            uploadedBy?: string | null;
-        };
-        FilePaginationEnvelope: {
-            data: components["schemas"]["FilePaginationPage"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        FilePaginationPage: {
-            data: components["schemas"]["FileRecord"][];
-            /** Format: int64 */
-            limit: number;
-            /** Format: int64 */
-            page: number;
-            /** Format: int64 */
-            total: number;
-            /** Format: int64 */
-            totalPages: number;
-        };
-        FileRecord: {
-            bucket?: string | null;
-            category: string;
-            contentType: string;
+            approvedBy?: string | null;
+            /** Format: uuid */
+            cashRegisterEntryId?: string | null;
+            /** Format: uuid */
+            categoryId: string;
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             description?: string | null;
-            /** Format: int32 */
-            downloadCount: number;
-            /** Format: int32 */
-            duration?: number | null;
-            etag?: string | null;
             /** Format: date-time */
-            expiresAt?: string | null;
-            extension?: string | null;
-            fileName: string;
-            /** Format: int64 */
-            fileSize: number;
-            /** Format: int32 */
-            height?: number | null;
+            expenseDate: string;
             /** Format: uuid */
             id: string;
+            isRecurring: boolean;
             /** Format: date-time */
-            lastAccessedAt?: string | null;
-            metadata?: unknown;
-            originalFileName: string;
+            nextRecurrenceDate?: string | null;
+            paymentAccount?: string | null;
+            paymentMethod: string;
+            receiptUrl?: string | null;
+            recurrencePattern?: string | null;
+            rejectionReason?: string | null;
             /** Format: uuid */
-            relatedEntityId?: string | null;
-            relatedEntityType?: string | null;
-            status: string;
-            storageKey: string;
-            storageType: string;
-            tags?: unknown;
+            shiftId?: string | null;
             /** Format: date-time */
             updatedAt: string;
             /** Format: uuid */
-            uploadedBy?: string | null;
-            visibility: string;
-            /** Format: int32 */
-            width?: number | null;
+            updatedBy?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
         };
-        FileWithDownloadUrlDto: components["schemas"]["FileRecord"] & {
-            downloadUrl: string;
-            /** Format: int64 */
-            urlExpiresIn: number;
-        };
-        FileWithDownloadUrlEnvelope: {
-            data: components["schemas"]["FileWithDownloadUrlDto"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        Game: {
-            ageRating?: string | null;
-            backgroundUrl?: string | null;
-            bannerUrl?: string | null;
-            category?: string | null;
+        ExpenseCategory: {
+            /** Format: double */
+            budgetAmount?: number | null;
+            budgetPeriod?: string | null;
             /** Format: date-time */
             createdAt: string;
-            /** Format: date-time */
-            deletedAt?: string | null;
+            /** Format: uuid */
+            createdBy?: string | null;
             description?: string | null;
-            developer?: string | null;
-            genre?: string | null;
-            iconUrl?: string | null;
             /** Format: uuid */
             id: string;
-            imageUrl?: string | null;
             isActive: boolean;
-            isMultiplayer: boolean;
-            logoUrl?: string | null;
-            /** Format: int32 */
-            maxPlayers?: number | null;
-            /** Format: int32 */
-            minPlayers?: number | null;
-            platform?: string | null;
-            publisher?: string | null;
-            /** Format: date-time */
-            releaseDate?: string | null;
-            tags?: string | null;
-            thumbnailUrl?: string | null;
-            title: string;
-            trailerUrl?: string | null;
+            name: string;
+            /** Format: uuid */
+            parentId?: string | null;
             /** Format: date-time */
             updatedAt: string;
-            videoUrl?: string | null;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
-        GameEnvelope: {
-            data: components["schemas"]["Game"];
+        ExpenseCategoryEnvelope: {
+            data: components["schemas"]["ExpenseCategory"];
             /** Format: int32 */
             statusCode: number;
             success: boolean;
             timestamp: string;
         };
-        GameFilterDto: {
-            ageRating?: string | null;
-            category?: string | null;
-            developer?: string | null;
-            genre?: string | null;
-            /** Format: int64 */
-            isActive?: number | null;
-            /** Format: int64 */
-            isMultiplayer?: number | null;
+        ExpenseCategoryFilterDto: {
+            isActive?: boolean | null;
             /** Format: int64 */
             limit?: number | null;
+            name?: string | null;
             /** Format: int64 */
             page?: number | null;
-            platform?: string | null;
-            publisher?: string | null;
-            releaseDate?: string | null;
-            tag?: string | null;
-            title?: string | null;
+            /** Format: uuid */
+            parentId?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
         };
-        GamePaginationEnvelope: {
-            data: components["schemas"]["GamePaginationPage"];
+        ExpenseCategoryPaginationEnvelope: {
+            data: components["schemas"]["ExpenseCategoryPaginationPage"];
             /** Format: int32 */
             statusCode: number;
             success: boolean;
             timestamp: string;
         };
-        GamePaginationPage: {
-            data: components["schemas"]["Game"][];
+        ExpenseCategoryPaginationPage: {
+            data: components["schemas"]["ExpenseCategory"][];
             /** Format: int64 */
             limit: number;
             /** Format: int64 */
@@ -1325,18 +1736,80 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
-        GenerateDownloadUrlDto: {
-            /** Format: int64 */
-            expiresIn?: number | null;
-            key: string;
+        ExpenseEnvelope: {
+            data: components["schemas"]["Expense"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
-        GenerateUploadUrlDto: {
+        ExpenseFilterDto: {
+            approvalStatus?: string | null;
+            /** Format: uuid */
+            categoryId?: string | null;
+            /** Format: date-time */
+            dateFrom?: string | null;
+            /** Format: date-time */
+            dateTo?: string | null;
+            isRecurring?: boolean | null;
             /** Format: int64 */
-            contentLength?: number | null;
-            contentType?: string | null;
+            limit?: number | null;
+            /** Format: double */
+            maxAmount?: number | null;
+            /** Format: double */
+            minAmount?: number | null;
             /** Format: int64 */
-            expiresIn?: number | null;
-            key: string;
+            page?: number | null;
+            paymentMethod?: string | null;
+            /** Format: uuid */
+            shiftId?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
+        };
+        ExpensePaginationEnvelope: {
+            data: components["schemas"]["ExpensePaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ExpensePaginationPage: {
+            data: components["schemas"]["Expense"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        ExpenseSummaryDto: {
+            /** Format: double */
+            budgetAmount?: number | null;
+            budgetPeriod?: string | null;
+            categoryName: string;
+            /** Format: int64 */
+            expenseCount: number;
+            /** Format: double */
+            remainingBudget?: number | null;
+            /** Format: double */
+            totalSpent: number;
+        };
+        ExpenseSummaryListEnvelope: {
+            data: components["schemas"]["ExpenseSummaryDto"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        HandoverDepositDto: {
+            /** Format: double */
+            amount: number;
+            denominations: unknown;
+            notes?: string | null;
         };
         HealthData: {
             status: string;
@@ -1348,23 +1821,21 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        InitiateDepositDto: {
+            /** Format: double */
+            amount: number;
+            /** Format: uuid */
+            cashRegisterId: string;
+            denominations: unknown;
+            notes?: string | null;
+            /** Format: uuid */
+            shiftId: string;
+        };
         LegacyHealthResponse: {
             details: unknown;
             error: unknown;
             info: unknown;
             status: string;
-        };
-        ListObjectsEnvelope: {
-            data: components["schemas"]["ListObjectsResponse"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        ListObjectsResponse: {
-            isTruncated: boolean;
-            nextContinuationToken?: string | null;
-            objects: components["schemas"]["StorageObjectInfo"][];
         };
         LiveHealthData: {
             db: string;
@@ -1381,6 +1852,14 @@ export interface components {
         LoginDto: {
             password: string;
             username: string;
+        };
+        OpenCashRegisterDto: {
+            notes?: string | null;
+            /** Format: double */
+            openingBalance: number;
+            openingDenominations?: unknown;
+            /** Format: uuid */
+            shiftId: string;
         };
         OtpPendingEnvelope: {
             data: components["schemas"]["OtpPendingResponse"];
@@ -1492,6 +1971,8 @@ export interface components {
         Plan: {
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             description?: string | null;
@@ -1516,6 +1997,8 @@ export interface components {
             timeWindowStart?: string | null;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
             /** Format: int32 */
             validityDays: number;
         };
@@ -1581,6 +2064,8 @@ export interface components {
             activationDate?: string | null;
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             /** Format: date-time */
@@ -1604,6 +2089,8 @@ export interface components {
             status: string;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         PlayerPlanEnvelope: {
             data: components["schemas"]["PlayerPlanResponse"];
@@ -1683,6 +2170,8 @@ export interface components {
             activationDate?: string | null;
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             /** Format: date-time */
@@ -1708,36 +2197,15 @@ export interface components {
             status: string;
             /** Format: date-time */
             updatedAt: string;
-        };
-        PresignedDownloadUrlEnvelope: {
-            data: components["schemas"]["PresignedDownloadUrlResponse"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        PresignedDownloadUrlResponse: {
-            /** Format: int64 */
-            expiresIn: number;
-            url: string;
-        };
-        PresignedUploadUrlEnvelope: {
-            data: components["schemas"]["PresignedUploadUrlResponse"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        PresignedUploadUrlResponse: {
-            /** Format: int64 */
-            expiresIn: number;
-            key: string;
-            url: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         Product: {
             category: string;
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             description?: string | null;
@@ -1754,6 +2222,8 @@ export interface components {
             stockQuantity: number;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         ProductEnvelope: {
             data: components["schemas"]["Product"];
@@ -1796,6 +2266,9 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        ReconcileCashRegisterDto: {
+            reconciliationNotes?: string | null;
+        };
         RegisterDto: {
             email?: string | null;
             firstName?: string | null;
@@ -1813,6 +2286,12 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        RejectDepositDto: {
+            rejectionReason: string;
+        };
+        RejectExpenseDto: {
+            rejectionReason: string;
         };
         RevenueByPaymentMethodDto: {
             /** Format: double */
@@ -1862,8 +2341,6 @@ export interface components {
         SessionFilterDto: {
             /** Format: uuid */
             deviceId?: string | null;
-            /** Format: uuid */
-            gameId?: string | null;
             /** Format: int32 */
             isActive?: number | null;
             /** Format: int64 */
@@ -1874,6 +2351,8 @@ export interface components {
             playerId?: string | null;
             /** Format: uuid */
             playerPlanId?: string | null;
+            /** Format: uuid */
+            shiftId?: string | null;
             sortBy?: string | null;
             sortOrder?: string | null;
             /** Format: date-time */
@@ -1934,6 +2413,117 @@ export interface components {
             lastName?: string | null;
             username: string;
         };
+        Shift: {
+            /** Format: date-time */
+            clockIn: string;
+            /** Format: date-time */
+            clockOut?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            /** Format: uuid */
+            userId: string;
+        };
+        ShiftActiveEnvelope: {
+            data?: null | components["schemas"]["Shift"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ShiftCloseDto: {
+            /** Format: double */
+            closingBalance: number;
+            closingDenominations?: unknown;
+            deposit?: null | components["schemas"]["HandoverDepositDto"];
+            notes?: string | null;
+        };
+        ShiftCloseResponseDto: {
+            cashRegister?: null | components["schemas"]["CashRegister"];
+            closedShift: components["schemas"]["Shift"];
+            deposit?: null | components["schemas"]["CashDeposit"];
+        };
+        ShiftCloseResponseEnvelope: {
+            data: components["schemas"]["ShiftCloseResponseDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ShiftEnvelope: {
+            data: components["schemas"]["Shift"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ShiftFilterDto: {
+            /** Format: date-time */
+            clockInFrom?: string | null;
+            /** Format: date-time */
+            clockInTo?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+            status?: string | null;
+            /** Format: uuid */
+            userId?: string | null;
+        };
+        ShiftHandoverDto: {
+            /** Format: double */
+            closingBalance: number;
+            closingDenominations?: unknown;
+            deposit?: null | components["schemas"]["HandoverDepositDto"];
+            notes?: string | null;
+            validatorPassword: string;
+            validatorTotp: string;
+            validatorUsername: string;
+        };
+        ShiftHandoverResponseDto: {
+            cashRegister?: null | components["schemas"]["CashRegister"];
+            closedShift: components["schemas"]["Shift"];
+            deposit?: null | components["schemas"]["CashDeposit"];
+            newAccessToken: string;
+            newShiftId: string;
+            newUser: components["schemas"]["AuthUserDto"];
+        };
+        ShiftHandoverResponseEnvelope: {
+            data: components["schemas"]["ShiftHandoverResponseDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ShiftPaginationEnvelope: {
+            data: components["schemas"]["ShiftPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ShiftPaginationPage: {
+            data: components["schemas"]["Shift"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
         StaffDashboardStatsDto: {
             devices: components["schemas"]["StaffDeviceStatsDto"];
             period: components["schemas"]["PeriodDto"];
@@ -1959,6 +2549,11 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        StaffLoginDto: {
+            password: string;
+            totp?: string | null;
+            username: string;
+        };
         StaffPlayerStatsDto: {
             /** Format: int64 */
             activePlayers: number;
@@ -1974,33 +2569,21 @@ export interface components {
             endDate?: string | null;
             startDate?: string | null;
         };
-        StorageObjectInfo: {
-            etag?: string | null;
-            key: string;
-            /** Format: date-time */
-            lastModified: string;
-            /** Format: int64 */
-            size: number;
+        TopPerformersDto: {
+            topPlans: unknown[];
+            topPlayers: unknown[];
         };
-        StorageStatsDto: {
-            byCategory: unknown;
-            byStatus: unknown;
-            /** Format: int64 */
-            totalFiles: number;
-            /** Format: int64 */
-            totalSize: number;
-        };
-        StorageStatsEnvelope: {
-            data: components["schemas"]["StorageStatsDto"];
+        TotpSetupEnvelope: {
+            data: components["schemas"]["TotpSetupResponseDto"];
             /** Format: int32 */
             statusCode: number;
             success: boolean;
             timestamp: string;
         };
-        TopPerformersDto: {
-            topGames: unknown[];
-            topPlans: unknown[];
-            topPlayers: unknown[];
+        TotpSetupResponseDto: {
+            otpauthUri: string;
+            secret: string;
+            totpEnabled: boolean;
         };
         Transaction: {
             /** Format: double */
@@ -2009,6 +2592,8 @@ export interface components {
             cashAmount?: number | null;
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             /** Format: uuid */
@@ -2022,11 +2607,15 @@ export interface components {
             planId?: string | null;
             /** Format: uuid */
             playerId: string;
+            /** Format: uuid */
+            shiftId?: string | null;
             /** Format: date-time */
             transactionDate: string;
             transactionType: string;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         TransactionEnvelope: {
             data: components["schemas"]["Transaction"];
@@ -2050,6 +2639,8 @@ export interface components {
             planId?: string | null;
             /** Format: uuid */
             playerId?: string | null;
+            /** Format: uuid */
+            shiftId?: string | null;
             sortBy?: string | null;
             sortOrder?: string | null;
             /** Format: date-time */
@@ -2076,6 +2667,24 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        TransactionProductResponse: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            productName: string;
+            /** Format: double */
+            productPrice: number;
+            productSku?: string | null;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: uuid */
+            transactionId: string;
+            /** Format: double */
+            unitPrice: number;
+        };
         TransactionStatsDto: {
             /** Format: double */
             averageTransactionAmount: number;
@@ -2088,10 +2697,52 @@ export interface components {
             /** Format: int64 */
             totalTransactions: number;
         };
+        TransactionWithLineItems: {
+            /** Format: double */
+            amount: number;
+            /** Format: double */
+            cashAmount?: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: uuid */
+            id: string;
+            lineItems: components["schemas"]["TransactionProductResponse"][];
+            notes?: string | null;
+            /** Format: double */
+            onlineAmount?: number | null;
+            paymentMethod: string;
+            paymentStatus: string;
+            /** Format: uuid */
+            planId?: string | null;
+            /** Format: uuid */
+            playerId: string;
+            /** Format: uuid */
+            shiftId?: string | null;
+            /** Format: date-time */
+            transactionDate: string;
+            transactionType: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+        };
+        TransactionWithLineItemsEnvelope: {
+            data: components["schemas"]["TransactionWithLineItems"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         Unit: {
             abbreviation: string;
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             description?: string | null;
@@ -2102,6 +2753,8 @@ export interface components {
             type: string;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         UnitEnvelope: {
             data: components["schemas"]["Unit"];
@@ -2148,52 +2801,41 @@ export interface components {
             serialNumber?: string | null;
             status?: string | null;
         };
-        UpdateDeviceGameDto: {
-            /** Format: date-time */
-            installationDate?: string | null;
-            isActive?: boolean | null;
-        };
         UpdateDeviceStatusDto: {
             status: string;
         };
-        UpdateFileDto: {
-            category?: string | null;
+        UpdateExpenseCategoryDto: {
+            /** Format: double */
+            budgetAmount?: number | null;
+            budgetPeriod?: string | null;
             description?: string | null;
-            fileName?: string | null;
-            metadata?: unknown;
-            /** Format: uuid */
-            relatedEntityId?: string | null;
-            relatedEntityType?: string | null;
-            status?: string | null;
-            tags?: unknown;
-            visibility?: string | null;
-        };
-        UpdateGameDto: {
-            ageRating?: string | null;
-            backgroundUrl?: string | null;
-            bannerUrl?: string | null;
-            category?: string | null;
-            description?: string | null;
-            developer?: string | null;
-            genre?: string | null;
-            iconUrl?: string | null;
-            imageUrl?: string | null;
             isActive?: boolean | null;
-            isMultiplayer?: boolean | null;
-            logoUrl?: string | null;
-            /** Format: int32 */
-            maxPlayers?: number | null;
-            /** Format: int32 */
-            minPlayers?: number | null;
-            platform?: string | null;
-            publisher?: string | null;
+            name?: string | null;
+            /** Format: uuid */
+            parentId?: string | null;
+        };
+        UpdateExpenseDto: {
+            /** Format: double */
+            amount?: number | null;
+            /** Format: uuid */
+            categoryId?: string | null;
+            description?: string | null;
             /** Format: date-time */
-            releaseDate?: string | null;
-            tags?: string[] | null;
-            thumbnailUrl?: string | null;
-            title?: string | null;
-            trailerUrl?: string | null;
-            videoUrl?: string | null;
+            expenseDate?: string | null;
+            isRecurring?: boolean | null;
+            paymentAccount?: string | null;
+            paymentMethod?: string | null;
+            receiptUrl?: string | null;
+            recurrencePattern?: string | null;
+            /** Format: uuid */
+            shiftId?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
+        };
+        UpdateOpeningBalanceDto: {
+            /** Format: double */
+            openingBalance: number;
+            openingDenominations?: unknown;
         };
         UpdatePlanDto: {
             description?: string | null;
@@ -2249,9 +2891,25 @@ export interface components {
             role?: string | null;
             username?: string | null;
         };
+        UpdateVendorDto: {
+            address?: string | null;
+            contactPerson?: string | null;
+            email?: string | null;
+            gstNumber?: string | null;
+            isActive?: boolean | null;
+            name?: string | null;
+            notes?: string | null;
+            phone?: string | null;
+        };
+        UpsertConfigDto: {
+            description?: string | null;
+            value: unknown;
+        };
         UsageSession: {
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             /** Format: uuid */
@@ -2261,21 +2919,25 @@ export interface components {
             /** Format: date-time */
             endTime?: string | null;
             /** Format: uuid */
-            gameId?: string | null;
-            /** Format: uuid */
             id: string;
             /** Format: uuid */
             playerPlanId: string;
+            /** Format: uuid */
+            shiftId?: string | null;
             /** Format: date-time */
             startTime: string;
             /** Format: int32 */
             timeCreditsConsumed?: number | null;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         UsageSessionResponse: {
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             device?: null | components["schemas"]["SessionDeviceSummary"];
@@ -2286,18 +2948,20 @@ export interface components {
             /** Format: date-time */
             endTime?: string | null;
             /** Format: uuid */
-            gameId?: string | null;
-            /** Format: uuid */
             id: string;
             playerPlan?: null | components["schemas"]["SessionPlayerPlanSummary"];
             /** Format: uuid */
             playerPlanId: string;
+            /** Format: uuid */
+            shiftId?: string | null;
             /** Format: date-time */
             startTime: string;
             /** Format: int32 */
             timeCreditsConsumed?: number | null;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         UsageStatsDto: {
             /** Format: int64 */
@@ -2323,6 +2987,8 @@ export interface components {
         User: {
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
             email?: string | null;
@@ -2334,8 +3000,11 @@ export interface components {
             phoneNumber?: string | null;
             role?: string | null;
             sessionOtpId?: string | null;
+            totpEnabled: boolean;
             /** Format: date-time */
             updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
             username: string;
         };
         UserEnvelope: {
@@ -2399,9 +3068,67 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        Vendor: {
+            address?: string | null;
+            contactPerson?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            email?: string | null;
+            gstNumber?: string | null;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            name: string;
+            notes?: string | null;
+            phone?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+        };
+        VendorEnvelope: {
+            data: components["schemas"]["Vendor"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        VendorFilterDto: {
+            isActive?: boolean | null;
+            /** Format: int64 */
+            limit?: number | null;
+            name?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+        };
+        VendorPaginationEnvelope: {
+            data: components["schemas"]["VendorPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        VendorPaginationPage: {
+            data: components["schemas"]["Vendor"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
         VerifyOtpDto: {
             otp: string;
             sessionOtpId: string;
+        };
+        VerifyTotpSetupDto: {
+            code: string;
         };
     };
     responses: never;
@@ -2472,7 +3199,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoginDto"];
+                "application/json": components["schemas"]["StaffLoginDto"];
             };
         };
         responses: {
@@ -2625,26 +3352,35 @@ export interface operations {
             };
         };
     };
-    list_device_games: {
+    list_deposits: {
         parameters: {
-            query?: never;
+            query?: {
+                shiftId?: string | null;
+                cashRegisterId?: string | null;
+                status?: string | null;
+                initiatedBy?: string | null;
+                page?: number | null;
+                limit?: number | null;
+                sortBy?: string | null;
+                sortOrder?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description List device games */
+            /** @description List cash deposits */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeviceGamePaginationEnvelope"];
+                    "application/json": components["schemas"]["CashDepositPaginationEnvelope"];
                 };
             };
-            /** @description Bad request */
-            400: {
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2652,8 +3388,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Unauthorized */
-            401: {
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2672,7 +3408,7 @@ export interface operations {
             };
         };
     };
-    create_device_game: {
+    initiate_deposit: {
         parameters: {
             query?: never;
             header?: never;
@@ -2681,17 +3417,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateDeviceGameDto"];
+                "application/json": components["schemas"]["InitiateDepositDto"];
             };
         };
         responses: {
-            /** @description Create device game */
+            /** @description Deposit initiated */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeviceGameEnvelope"];
+                    "application/json": components["schemas"]["CashDepositEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -2732,174 +3468,26 @@ export interface operations {
             };
         };
     };
-    list_device_games_by_device: {
+    get_deposit: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Device ID */
-                device_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List device games by device */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceGamePaginationEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    list_device_games_by_game: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Game ID */
-                game_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List device games by game */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceGamePaginationEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    get_device_game: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device game ID */
+                /** @description Cash deposit ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Get device game */
+            /** @description Get cash deposit */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeviceGameEnvelope"];
+                    "application/json": components["schemas"]["CashDepositEnvelope"];
                 };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    delete_device_game: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device game ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Soft-deactivated (isActive=false) */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unauthorized */
             401: {
@@ -2939,29 +3527,29 @@ export interface operations {
             };
         };
     };
-    update_device_game: {
+    approve_deposit: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Device game ID */
+                /** @description Cash deposit ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateDeviceGameDto"];
+                "application/json": components["schemas"]["ApproveDepositDto"];
             };
         };
         responses: {
-            /** @description Update device game */
+            /** @description Deposit approved */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeviceGameEnvelope"];
+                    "application/json": components["schemas"]["CashDepositEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -2993,6 +3581,777 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reject_deposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cash deposit ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectDepositDto"];
+            };
+        };
+        responses: {
+            /** @description Deposit rejected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashDepositEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_cash_registers: {
+        parameters: {
+            query?: {
+                shiftId?: string | null;
+                status?: string | null;
+                openedBy?: string | null;
+                page?: number | null;
+                limit?: number | null;
+                sortBy?: string | null;
+                sortOrder?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List cash registers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegisterPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_active_expected_closing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Expected closing for active shift register */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpectedClosingEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    open_cash_register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenCashRegisterDto"];
+            };
+        };
+        responses: {
+            /** @description Cash register opened */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegisterEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_cash_register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cash register ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cash register details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegisterWithEntriesEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    close_cash_register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cash register ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseCashRegisterDto"];
+            };
+        };
+        responses: {
+            /** @description Cash register closed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegisterEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    add_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cash register ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCashRegisterEntryDto"];
+            };
+        };
+        responses: {
+            /** @description Entry added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegisterEntryEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reconcile_cash_register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cash register ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileCashRegisterDto"];
+            };
+        };
+        responses: {
+            /** @description Cash register reconciled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegisterEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_opening_balance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cash register ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOpeningBalanceDto"];
+            };
+        };
+        responses: {
+            /** @description Opening balance updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashRegisterEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_config: {
+        parameters: {
+            query?: {
+                category?: string | null;
+                key?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List configurations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigurationListEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Configuration key (dot notation, e.g. business.name) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigurationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    upsert_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Configuration key (dot notation, e.g. business.name) */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertConfigDto"];
+            };
+        };
+        responses: {
+            /** @description Upsert configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigurationEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3369,7 +4728,7 @@ export interface operations {
             };
         };
     };
-    list_files: {
+    list_expense_categories: {
         parameters: {
             query?: never;
             header?: never;
@@ -3378,13 +4737,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List files */
+            /** @description List expense categories */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FilePaginationEnvelope"];
+                    "application/json": components["schemas"]["ExpenseCategoryPaginationEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -3405,15 +4764,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
             /** @description Internal server error */
             500: {
                 headers: {
@@ -3425,7 +4775,7 @@ export interface operations {
             };
         };
     };
-    create_file: {
+    create_expense_category: {
         parameters: {
             query?: never;
             header?: never;
@@ -3434,17 +4784,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateFileDto"];
+                "application/json": components["schemas"]["CreateExpenseCategoryDto"];
             };
         };
         responses: {
-            /** @description Create file */
+            /** @description Create expense category */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FileEnvelope"];
+                    "application/json": components["schemas"]["ExpenseCategoryEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -3474,6 +4824,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error */
             500: {
                 headers: {
@@ -3485,22 +4844,25 @@ export interface operations {
             };
         };
     };
-    get_storage_stats: {
+    get_expense_category: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description Expense category ID */
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Get file storage statistics */
+            /** @description Get expense category */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StorageStatsEnvelope"];
+                    "application/json": components["schemas"]["ExpenseCategoryEnvelope"];
                 };
             };
             /** @description Unauthorized */
@@ -3512,8 +4874,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Forbidden */
-            403: {
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3532,25 +4894,25 @@ export interface operations {
             };
         };
     };
-    get_file: {
+    delete_expense_category: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description File ID */
+                /** @description Expense category ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Get file */
+            /** @description Delete expense category */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FileEnvelope"];
+                    "application/json": unknown;
                 };
             };
             /** @description Unauthorized */
@@ -3591,29 +4953,29 @@ export interface operations {
             };
         };
     };
-    update_file: {
+    update_expense_category: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description File ID */
+                /** @description Expense category ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateFileDto"];
+                "application/json": components["schemas"]["UpdateExpenseCategoryDto"];
             };
         };
         responses: {
-            /** @description Update file */
+            /** @description Update expense category */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FileEnvelope"];
+                    "application/json": components["schemas"]["ExpenseCategoryEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -3652,56 +5014,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    delete_file: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description File ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Soft-deactivated (status=deleted) */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3720,187 +5034,7 @@ export interface operations {
             };
         };
     };
-    activate_file: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description File ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Activate file */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    archive_file: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description File ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Archive file */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    get_file_download_url: {
-        parameters: {
-            query?: {
-                /** @description URL expiry in seconds */
-                expires_in?: number;
-            };
-            header?: never;
-            path: {
-                /** @description File ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Get file download URL */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileWithDownloadUrlEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    list_games: {
+    list_expenses: {
         parameters: {
             query?: never;
             header?: never;
@@ -3909,13 +5043,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List games */
+            /** @description List expenses */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GamePaginationEnvelope"];
+                    "application/json": components["schemas"]["ExpensePaginationEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -3947,7 +5081,7 @@ export interface operations {
             };
         };
     };
-    create_game: {
+    create_expense: {
         parameters: {
             query?: never;
             header?: never;
@@ -3956,17 +5090,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateGameDto"];
+                "application/json": components["schemas"]["CreateExpenseDto"];
             };
         };
         responses: {
-            /** @description Create game */
+            /** @description Create expense */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GameEnvelope"];
+                    "application/json": components["schemas"]["ExpenseEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -4007,25 +5141,72 @@ export interface operations {
             };
         };
     };
-    get_game: {
+    expense_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get expense summary by category */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseSummaryListEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_expense: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Game ID */
+                /** @description Expense ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Get game */
+            /** @description Get expense */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GameEnvelope"];
+                    "application/json": components["schemas"]["ExpenseEnvelope"];
                 };
             };
             /** @description Unauthorized */
@@ -4057,24 +5238,26 @@ export interface operations {
             };
         };
     };
-    delete_game: {
+    delete_expense: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Game ID */
+                /** @description Expense ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Soft-deactivated (isActive=false) */
-            204: {
+            /** @description Delete expense */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ExpenseEnvelope"];
+                };
             };
             /** @description Unauthorized */
             401: {
@@ -4114,29 +5297,173 @@ export interface operations {
             };
         };
     };
-    update_game: {
+    update_expense: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Game ID */
+                /** @description Expense ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateGameDto"];
+                "application/json": components["schemas"]["UpdateExpenseDto"];
             };
         };
         responses: {
-            /** @description Update game */
+            /** @description Update expense */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GameEnvelope"];
+                    "application/json": components["schemas"]["ExpenseEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approve_expense: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Expense ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveExpenseDto"];
+            };
+        };
+        responses: {
+            /** @description Approve expense */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reject_expense: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Expense ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectExpenseDto"];
+            };
+        };
+        responses: {
+            /** @description Reject expense */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpenseEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -5435,6 +6762,503 @@ export interface operations {
             };
         };
     };
+    list_shifts: {
+        parameters: {
+            query?: {
+                userId?: string | null;
+                status?: string | null;
+                clockInFrom?: string | null;
+                clockInTo?: string | null;
+                page?: number | null;
+                limit?: number | null;
+                sortBy?: string | null;
+                sortOrder?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List shifts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_active_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active shift or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    clock_in: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClockInDto"];
+            };
+        };
+        responses: {
+            /** @description Shift started */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Already clocked in */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    clock_out: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClockOutDto"];
+            };
+        };
+        responses: {
+            /** @description Shift ended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active shift */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    close_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftCloseDto"];
+            };
+        };
+        responses: {
+            /** @description Shift closed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftCloseResponseEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active shift */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    handover_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftHandoverDto"];
+            };
+        };
+        responses: {
+            /** @description Shift handover completed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftHandoverResponseEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Shift ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get shift */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    force_close_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Shift ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shift force-closed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     sse_handler: {
         parameters: {
             query?: {
@@ -5713,182 +7537,6 @@ export interface operations {
             };
         };
     };
-    generate_download_url: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GenerateDownloadUrlDto"];
-            };
-        };
-        responses: {
-            /** @description Generate download URL */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PresignedDownloadUrlEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    list_objects: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List storage objects */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListObjectsEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    generate_upload_url: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GenerateUploadUrlDto"];
-            };
-        };
-        responses: {
-            /** @description Generate upload URL */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PresignedUploadUrlEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     list_transactions: {
         parameters: {
             query?: never;
@@ -6008,13 +7656,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Get transaction */
+            /** @description Get transaction with line items */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TransactionEnvelope"];
+                    "application/json": components["schemas"]["TransactionWithLineItemsEnvelope"];
                 };
             };
             /** @description Unauthorized */
@@ -6564,6 +8212,511 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    disable_totp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description TOTP disabled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setup_totp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description TOTP setup initiated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpSetupEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    verify_totp_setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyTotpSetupDto"];
+            };
+        };
+        responses: {
+            /** @description TOTP enabled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpSetupEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_vendors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List vendors */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorPaginationEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_vendor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVendorDto"];
+            };
+        };
+        responses: {
+            /** @description Create vendor */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_vendor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Vendor ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get vendor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_vendor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Vendor ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Delete vendor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_vendor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Vendor ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVendorDto"];
+            };
+        };
+        responses: {
+            /** @description Update vendor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

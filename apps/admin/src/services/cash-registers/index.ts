@@ -17,6 +17,9 @@ export interface CashRegister {
   updatedBy?: string | null;
   createdAt: string;
   updatedAt: string;
+  totalCashIn?: number | null;
+  totalCashOut?: number | null;
+  totalDeposited?: number | null;
 }
 
 export interface CashRegisterEntry {
@@ -84,6 +87,21 @@ export const getCashRegisters = async (filters: Record<string, unknown> = {}) =>
       page: filters.page || 1,
     },
   });
+
+export interface ReconcileCashRegisterDto {
+  reconciliationNotes?: string;
+}
+
+export interface UpdateOpeningBalanceDto {
+  openingBalance: number;
+  openingDenominations?: Record<string, number>;
+}
+
+export const reconcileRegister = async (id: string, dto: ReconcileCashRegisterDto) =>
+  http.patch<CashRegister>(`/cash-registers/${id}/reconcile`, dto);
+
+export const updateOpeningBalance = async (id: string, dto: UpdateOpeningBalanceDto) =>
+  http.patch<CashRegister>(`/cash-registers/${id}/update-opening`, dto);
 
 export const DENOMINATIONS = {
   notes: [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1],
