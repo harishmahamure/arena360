@@ -20,6 +20,8 @@ pub struct User {
     pub session_otp_id: Option<String>,
     #[serde(skip_serializing)]
     pub session_otp: Option<String>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

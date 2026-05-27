@@ -1,10 +1,10 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::dto::{PaginationResult, RegisterDto, RegisterResponseDto, JwtUserClaims};
+use crate::dto::{JwtUserClaims, PaginationResult, RegisterDto, RegisterResponseDto};
 use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
-use crate::repositories::UserRepository;
+use crate::repositories::{CreatePlayerParams, UserRepository};
 
 pub struct UserService {
     repo: UserRepository,
@@ -28,7 +28,12 @@ impl UserService {
             .ok_or_else(|| AppError::NotFound(format!("User with ID {id} not found")))
     }
 
-    pub async fn update(&self, id: Uuid, dto: UpdateUserDto) -> Result<User, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateUserDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<User, AppError> {
         if let Some(username) = &dto.username {
             if self.repo.username_exists(username, Some(id)).await? {
                 return Err(AppError::Conflict(format!(
@@ -36,7 +41,7 @@ impl UserService {
                 )));
             }
         }
-        self.repo.update(id, &dto).await
+        self.repo.update(id, &dto, actor_id).await
     }
 
     pub async fn register(
@@ -71,15 +76,18 @@ impl UserService {
         let password_hash = bcrypt::hash(&dto.password, bcrypt::DEFAULT_COST)
             .map_err(|e| AppError::Internal(format!("Failed to hash password: {e}")))?;
 
+        let actor_id = claims.user_id_uuid();
+
         self.repo
-            .create_player(
-                dto.email.as_deref(),
-                &dto.username,
-                &password_hash,
-                dto.firstName.as_deref(),
-                dto.lastName.as_deref(),
+            .create_player(CreatePlayerParams {
+                email: dto.email.as_deref(),
+                username: &dto.username,
+                password_hash: &password_hash,
+                first_name: dto.firstName.as_deref(),
+                last_name: dto.lastName.as_deref(),
                 role,
-            )
+                actor_id,
+            })
             .await?;
 
         Ok(RegisterResponseDto {

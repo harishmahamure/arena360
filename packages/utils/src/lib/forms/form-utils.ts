@@ -120,9 +120,7 @@ export const loadFormDataFromJson = <TFieldValues extends FieldValues>(
   try {
     const data = JSON.parse(jsonString);
     form.reset(data);
-  } catch (error) {
-    console.error('Failed to parse JSON:', error);
-  }
+  } catch (_error) {}
 };
 
 export const validateField = async <TFieldValues extends FieldValues>(

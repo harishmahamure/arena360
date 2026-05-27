@@ -37,6 +37,7 @@ import {
 import { useState } from 'react';
 import { formatFileSize } from '../../services/files/fileManagement';
 import type { FileRecord } from '../../services/files/types';
+import { formatDisplayDate } from '../../utils/date';
 
 export interface FileGalleryProps {
   files: FileRecord[];
@@ -298,7 +299,7 @@ const FileGallery: React.FC<FileGalleryProps> = ({
                     display="block"
                     sx={{ mt: 0.5 }}
                   >
-                    {new Date(file.createdAt).toLocaleDateString()}
+                    {formatDisplayDate(file.createdAt)}
                   </Typography>
                 </CardContent>
 

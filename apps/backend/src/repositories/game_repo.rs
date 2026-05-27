@@ -24,6 +24,7 @@ impl GameRepository {
                "backgroundUrl" as background_url, "logoUrl" as logo_url,
                tags, "ageRating" as age_rating, "minPlayers" as min_players,
                "maxPlayers" as max_players,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM games
@@ -53,6 +54,7 @@ impl GameRepository {
                "backgroundUrl" as background_url, "logoUrl" as logo_url,
                tags, "ageRating" as age_rating, "minPlayers" as min_players,
                "maxPlayers" as max_players,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
                FROM games WHERE "deletedAt" IS NULL"#,
@@ -65,7 +67,10 @@ impl GameRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let games = builder.build_query_as::<Game>().fetch_all(&self.pool).await?;
+        let games = builder
+            .build_query_as::<Game>()
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new(r#"SELECT COUNT(*) FROM games WHERE "deletedAt" IS NULL"#);
@@ -119,7 +124,11 @@ impl GameRepository {
         }
     }
 
-    pub async fn create(&self, dto: &CreateGameDto) -> Result<Game, AppError> {
+    pub async fn create(
+        &self,
+        dto: &CreateGameDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Game, AppError> {
         let tags = tags_to_db(&dto.tags);
 
         let game = sqlx::query_as::<_, Game>(
@@ -130,12 +139,12 @@ impl GameRepository {
                 "releaseDate", platform, category, "isMultiplayer",
                 "iconUrl", "bannerUrl", "thumbnailUrl", "backgroundUrl", "logoUrl",
                 tags, "ageRating", "minPlayers", "maxPlayers",
-                "createdAt", "updatedAt"
+                "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, COALESCE($4, true),
                 $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, false),
-                $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(), NOW()
+                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $23, NOW(), NOW()
             )
             RETURNING id, title, description, genre, "isActive" as is_active,
                       "imageUrl" as image_url, "videoUrl" as video_url,
@@ -146,6 +155,7 @@ impl GameRepository {
                       "backgroundUrl" as background_url, "logoUrl" as logo_url,
                       tags, "ageRating" as age_rating, "minPlayers" as min_players,
                       "maxPlayers" as max_players,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -172,17 +182,20 @@ impl GameRepository {
         .bind(&dto.age_rating)
         .bind(dto.min_players)
         .bind(dto.max_players)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
         Ok(game)
     }
 
-    pub async fn update(&self, id: Uuid, dto: &UpdateGameDto) -> Result<Game, AppError> {
-        let tags = dto
-            .tags
-            .as_ref()
-            .and_then(|t| tags_to_db(&Some(t.clone())));
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: &UpdateGameDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Game, AppError> {
+        let tags = dto.tags.as_ref().and_then(|t| tags_to_db(&Some(t.clone())));
 
         let game = sqlx::query_as::<_, Game>(
             r#"
@@ -209,6 +222,7 @@ impl GameRepository {
                 "ageRating" = COALESCE($21, "ageRating"),
                 "minPlayers" = COALESCE($22, "minPlayers"),
                 "maxPlayers" = COALESCE($23, "maxPlayers"),
+                "updatedBy" = COALESCE($24, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, title, description, genre, "isActive" as is_active,
@@ -220,6 +234,7 @@ impl GameRepository {
                       "backgroundUrl" as background_url, "logoUrl" as logo_url,
                       tags, "ageRating" as age_rating, "minPlayers" as min_players,
                       "maxPlayers" as max_players,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -247,6 +262,7 @@ impl GameRepository {
         .bind(&dto.age_rating)
         .bind(dto.min_players)
         .bind(dto.max_players)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -268,7 +284,11 @@ impl GameRepository {
         Ok(())
     }
 
-    pub async fn title_exists(&self, title: &str, exclude_id: Option<Uuid>) -> Result<bool, AppError> {
+    pub async fn title_exists(
+        &self,
+        title: &str,
+        exclude_id: Option<Uuid>,
+    ) -> Result<bool, AppError> {
         let exists: (bool,) = match exclude_id {
             Some(id) => {
                 sqlx::query_as(

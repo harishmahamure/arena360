@@ -167,7 +167,7 @@ export const formatPhoneNumber = (phone: string): string => {
   const cleaned = phone.replace(/\D/g, '');
   const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
   if (match) {
-    return '(' + match[1] + ') ' + match[2] + '-' + match[3];
+    return `(${match[1]}) ${match[2]}-${match[3]}`;
   }
   return phone;
 };
@@ -177,5 +177,5 @@ export const formatPhoneNumber = (phone: string): string => {
  */
 export const pluralize = (word: string, count: number, plural?: string): string => {
   if (count === 1) return word;
-  return plural || word + 's';
+  return plural || `${word}s`;
 };

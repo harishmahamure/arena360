@@ -1,5 +1,17 @@
 import { Box, Skeleton } from '@mui/material';
 
+const HEADER_COLUMNS = [
+  { id: 'name', width: 150 },
+  { id: 'status', width: 100 },
+  { id: 'type', width: 100 },
+  { id: 'col-4', width: 80 },
+  { id: 'col-5', width: 80 },
+  { id: 'col-6', width: 80 },
+  { id: 'actions', width: 120 },
+] as const;
+
+const SKELETON_ROWS = ['row-1', 'row-2', 'row-3', 'row-4', 'row-5'] as const;
+
 export const GridSkeleton = () => (
   <>
     <Box
@@ -31,14 +43,14 @@ export const GridSkeleton = () => (
           gap: 2,
         }}
       >
-        {[150, 100, 100, 80, 80, 80, 120].map((width, i) => (
-          <Skeleton key={i} variant="text" width={width} height={24} />
+        {HEADER_COLUMNS.map((column) => (
+          <Skeleton key={column.id} variant="text" width={column.width} height={24} />
         ))}
       </Box>
       {/* Table Rows */}
-      {Array.from({ length: 5 }).map((_, rowIndex) => (
+      {SKELETON_ROWS.map((rowId) => (
         <Box
-          key={rowIndex}
+          key={rowId}
           sx={{
             display: 'flex',
             py: 1.5,

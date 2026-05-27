@@ -40,7 +40,11 @@ impl PlayerPlanService {
             .ok_or_else(|| AppError::NotFound(format!("Player plan with ID {id} not found")))
     }
 
-    pub async fn assign_plan_to_player(&self, dto: AssignPlanDto) -> Result<PlayerPlan, AppError> {
+    pub async fn assign_plan_to_player(
+        &self,
+        dto: AssignPlanDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<PlayerPlan, AppError> {
         let plan = self
             .plan_repo
             .find_by_id(dto.plan_id)
@@ -77,15 +81,18 @@ impl PlayerPlanService {
         let remaining_time_credits = Some(plan.time_credits);
 
         self.repo
-            .create(&PlayerPlanCreateValues {
-                player_id: dto.player_id,
-                plan_id: dto.plan_id,
-                purchase_date,
-                expiry_date,
-                remaining_usage_count,
-                remaining_time_credits,
-                status: status::ACTIVE.to_string(),
-            })
+            .create(
+                &PlayerPlanCreateValues {
+                    player_id: dto.player_id,
+                    plan_id: dto.plan_id,
+                    purchase_date,
+                    expiry_date,
+                    remaining_usage_count,
+                    remaining_time_credits,
+                    status: status::ACTIVE.to_string(),
+                },
+                actor_id,
+            )
             .await
     }
 
@@ -106,7 +113,11 @@ impl PlayerPlanService {
                 ))
             })?;
 
-        Ok(Self::validate_player_plan_response(&player_plan, &plan, current_time))
+        Ok(Self::validate_player_plan_response(
+            &player_plan,
+            &plan,
+            current_time,
+        ))
     }
 
     pub async fn deduct_time_credits(
@@ -132,7 +143,7 @@ impl PlayerPlanService {
             update.status = Some(status::EXHAUSTED.to_string());
         }
 
-        self.repo.update(player_plan_id, &update).await
+        self.repo.update(player_plan_id, &update, None).await
     }
 
     pub async fn deduct_session_count(&self, player_plan_id: Uuid) -> Result<PlayerPlan, AppError> {
@@ -158,7 +169,7 @@ impl PlayerPlanService {
             update.status = Some(status::EXHAUSTED.to_string());
         }
 
-        self.repo.update(player_plan_id, &update).await
+        self.repo.update(player_plan_id, &update, None).await
     }
 
     pub async fn get_best_plan(&self, player_id: Uuid) -> Result<PlayerPlan, AppError> {
@@ -253,6 +264,7 @@ impl PlayerPlanService {
                             remaining_usage_count: None,
                             activation_date: None,
                         },
+                        None,
                     )
                     .await;
                 player_plan.status = status::EXPIRED.to_string();

@@ -22,6 +22,8 @@ pub struct Plan {
     pub is_active: bool,
     pub device_type: Option<String>,
     pub device_sub_type: Option<String>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

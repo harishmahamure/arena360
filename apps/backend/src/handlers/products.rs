@@ -69,11 +69,11 @@ pub async fn get_product(
     tag = "products"
 )]
 pub async fn create_product(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateProductDto>,
 ) -> ApiResult<Product> {
-    let product = state.products.create(dto).await?;
+    let product = state.products.create(dto, claims.user_id_uuid()).await?;
     created(product)
 }
 
@@ -96,12 +96,15 @@ pub async fn create_product(
     tag = "products"
 )]
 pub async fn update_product(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateProductDto>,
 ) -> ApiResult<Product> {
-    let product = state.products.update(id, dto).await?;
+    let product = state
+        .products
+        .update(id, dto, claims.user_id_uuid())
+        .await?;
     ok(product)
 }
 

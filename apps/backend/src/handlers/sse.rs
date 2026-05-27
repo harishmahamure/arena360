@@ -40,21 +40,19 @@ pub async fn sse_handler(
 
     let rx = state.events.broadcaster().subscribe();
 
-    let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
-        .filter_map(move |result| {
-            match result {
-                Ok(event) => {
-                    if topics.is_empty() || topics.iter().any(|t| event.topic.starts_with(t)) {
-                        Some(Ok(Event::default()
-                            .event(&event.topic)
-                            .json_data(&event.payload)
-                            .unwrap()))
-                    } else {
-                        None
-                    }
+    let stream =
+        tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(move |result| match result {
+            Ok(event) => {
+                if topics.is_empty() || topics.iter().any(|t| event.topic.starts_with(t)) {
+                    Some(Ok(Event::default()
+                        .event(&event.topic)
+                        .json_data(&event.payload)
+                        .unwrap()))
+                } else {
+                    None
                 }
-                Err(_) => None,
             }
+            Err(_) => None,
         });
 
     Sse::new(stream).keep_alive(KeepAlive::default())

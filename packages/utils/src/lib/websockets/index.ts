@@ -55,12 +55,10 @@ export class WebSocketClient {
       });
 
       this.socket.on('connect', () => {
-        console.log('[Gateway] Connected:', this.socket?.id);
         resolve();
       });
 
       this.socket.on('connect_error', (error) => {
-        console.error('[Gateway] Connection error:', error.message);
         reject(error);
       });
 
@@ -85,12 +83,7 @@ export class WebSocketClient {
     }
 
     return new Promise((resolve) => {
-      this.socket!.emit('room:join', { room }, (response: RoomResponse) => {
-        if (response.success) {
-          console.log('[Gateway] Joined room:', room);
-        } else {
-          console.warn('[Gateway] Failed to join room:', room, response.error);
-        }
+      this.socket?.emit('room:join', { room }, (response: RoomResponse) => {
         resolve(response);
       });
     });
@@ -102,8 +95,7 @@ export class WebSocketClient {
     }
 
     return new Promise((resolve) => {
-      this.socket!.emit('room:leave', { room }, (response: RoomResponse) => {
-        console.log('[Gateway] Left room:', room);
+      this.socket?.emit('room:leave', { room }, (response: RoomResponse) => {
         resolve(response);
       });
     });
@@ -119,7 +111,7 @@ export class WebSocketClient {
 
     const start = Date.now();
     return new Promise((resolve) => {
-      this.socket!.emit('ping', () => {
+      this.socket?.emit('ping', () => {
         resolve(Date.now() - start);
       });
     });
@@ -150,30 +142,19 @@ export class WebSocketClient {
     if (!this.socket) return;
 
     // Room events
-    this.socket.on('room:joined', (data: RoomJoinedEvent) => {
-      console.log('[Gateway] Joined rooms:', data.rooms);
-    });
+    this.socket.on('room:joined', (_data: RoomJoinedEvent) => {});
 
-    this.socket.on('room:error', (data: RoomErrorEvent) => {
-      console.error('[Gateway] Room error:', data.room, data.error);
-    });
+    this.socket.on('room:error', (_data: RoomErrorEvent) => {});
 
-    this.socket.on('room:left', (data: RoomLeftEvent) => {
-      console.log('[Gateway] Left room:', data.room);
-    });
+    this.socket.on('room:left', (_data: RoomLeftEvent) => {});
 
     // System events
-    this.socket.on('system:shutdown', (data: SystemShutdownEvent) => {
-      console.warn('[Gateway] Server shutting down:', data.message);
-    });
+    this.socket.on('system:shutdown', (_data: SystemShutdownEvent) => {});
 
     // Reconnection handling
-    this.socket.on('disconnect', (reason) => {
-      console.log('[Gateway] Disconnected:', reason);
-    });
+    this.socket.on('disconnect', (_reason) => {});
 
-    this.socket.on('reconnect', (attemptNumber) => {
-      console.log('[Gateway] Reconnected after', attemptNumber, 'attempts');
+    this.socket.on('reconnect', (_attemptNumber) => {
       // Trigger state refresh
       this.eventHandlers.get('_reconnect')?.forEach((h) => {
         h(null);
@@ -194,7 +175,6 @@ export class WebSocketClient {
 
       // Client-side deduplication
       if (this.processedEvents.has(envelope.eventId)) {
-        console.debug('[Gateway] Skipping duplicate event:', envelope.eventId);
         return;
       }
 
@@ -207,9 +187,7 @@ export class WebSocketClient {
       for (const handler of handlers) {
         try {
           handler(envelope.payload);
-        } catch (error) {
-          console.error('[Gateway] Event handler error:', event, error);
-        }
+        } catch (_error) {}
       }
     });
   }

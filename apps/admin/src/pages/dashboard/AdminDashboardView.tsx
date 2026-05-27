@@ -26,42 +26,36 @@ import {
   LinearProgress,
   Typography,
 } from '@mui/material';
-import { startOfMonth, subDays } from 'date-fns';
+import { subDays } from 'date-fns';
 import { useMemo, useState } from 'react';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { formatStatsDate } from '../../services/stats/formatStatsDate';
+import { endOfTodayIST, now, startOfTodayIST, toISTString } from '../../utils/date';
 
 export default function AdminDashboardView() {
   const [dateRange, setDateRange] = useState<'today' | 'last 7 days' | 'month' | 'all'>('today');
 
   const dateFilters = useMemo(() => {
-    const now = new Date();
+    const current = now();
 
     switch (dateRange) {
-      case 'today': {
-        const startOfToday = new Date(now);
-        startOfToday.setHours(0, 0, 0, 0);
-        const endOfToday = new Date(now);
-        endOfToday.setHours(23, 59, 59, 999);
+      case 'today':
         return {
-          startDate: formatStatsDate(startOfToday),
-          endDate: formatStatsDate(endOfToday),
+          startDate: toISTString(startOfTodayIST()),
+          endDate: toISTString(endOfTodayIST()),
         };
-      }
-      case 'last 7 days': {
+      case 'last 7 days':
         return {
-          startDate: formatStatsDate(subDays(now, 7)),
-          endDate: formatStatsDate(now),
+          startDate: formatStatsDate(subDays(current, 7)),
+          endDate: toISTString(endOfTodayIST()),
         };
-      }
       case 'month': {
-        const monthStart = startOfMonth(now);
-        monthStart.setHours(0, 0, 0, 0);
-        const monthEnd = new Date(now);
-        monthEnd.setHours(23, 59, 59, 999);
+        const d = new Date(current);
+        d.setDate(1);
+        d.setHours(0, 0, 0, 0);
         return {
-          startDate: formatStatsDate(monthStart),
-          endDate: formatStatsDate(monthEnd),
+          startDate: formatStatsDate(d),
+          endDate: toISTString(endOfTodayIST()),
         };
       }
       default:

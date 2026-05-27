@@ -206,14 +206,14 @@ export function DataGrid<T extends Record<string, unknown>>({
                         alignItems: 'center',
                       }}
                     >
-                      {actions.map((action, actionIndex) => {
+                      {actions.map((action) => {
                         const shouldShow = action.show === undefined || action.show(row);
                         const isDisabled = action.disabled?.(row);
 
                         if (!shouldShow) return null;
 
                         return (
-                          <Tooltip key={actionIndex} title={action.label} arrow>
+                          <Tooltip key={action.label} title={action.label} arrow>
                             <span>
                               <IconButton
                                 color={action.color || 'default'}

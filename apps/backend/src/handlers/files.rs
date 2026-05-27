@@ -113,7 +113,10 @@ pub async fn create_file(
     Json(dto): Json<CreateFileDto>,
 ) -> ApiResult<FileRecord> {
     let uploaded_by = Uuid::parse_str(&claims.userId).ok();
-    let file = state.files.create(dto, uploaded_by).await?;
+    let file = state
+        .files
+        .create(dto, uploaded_by, claims.user_id_uuid())
+        .await?;
     created(file)
 }
 
@@ -136,12 +139,12 @@ pub async fn create_file(
     tag = "files"
 )]
 pub async fn update_file(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateFileDto>,
 ) -> ApiResult<FileRecord> {
-    let file = state.files.update(id, dto).await?;
+    let file = state.files.update(id, dto, claims.user_id_uuid()).await?;
     ok(file)
 }
 

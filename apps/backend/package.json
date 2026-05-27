@@ -12,6 +12,11 @@
     "fmt": "cargo fmt",
     "fmt:check": "cargo fmt -- --check",
     "clean": "cargo clean",
-    "openapi:generate": "cargo run --bin openapi-gen --quiet"
+    "openapi:generate": "cargo run --bin openapi-gen --quiet",
+    "migration:generate": "tsx ../../scripts/migration.ts generate",
+    "migration:run": "tsx ../../scripts/migration.ts run",
+    "migration:revert": "tsx ../../scripts/migration.ts revert",
+    "migration:info": "tsx ../../scripts/migration.ts info",
+    "migration:prepare": "tsx ../../scripts/migration.ts prepare"
   }
 }

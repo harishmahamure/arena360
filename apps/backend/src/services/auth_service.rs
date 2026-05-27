@@ -108,7 +108,9 @@ impl AuthService {
             .unwrap_or_else(|| "hmahamure10@gmail.com".to_string());
         let name = format!(
             "{} {}",
-            user.first_name.clone().unwrap_or_else(|| "Admin".to_string()),
+            user.first_name
+                .clone()
+                .unwrap_or_else(|| "Admin".to_string()),
             user.last_name.clone().unwrap_or_default()
         );
 

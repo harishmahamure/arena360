@@ -20,8 +20,5 @@ pub async fn create_pool(settings: &Settings) -> PgPool {
 }
 
 pub async fn ping(pool: &PgPool) -> bool {
-    sqlx::query("SELECT 1")
-        .execute(pool)
-        .await
-        .is_ok()
+    sqlx::query("SELECT 1").execute(pool).await.is_ok()
 }

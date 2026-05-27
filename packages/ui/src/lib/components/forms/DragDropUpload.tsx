@@ -240,7 +240,7 @@ const DragDropUpload = forwardRef<HTMLDivElement, DragDropUploadProps>(
           <List sx={{ mt: 2 }}>
             {files.map((file, index) => (
               <ListItem
-                key={`${file.name}-${index}`}
+                key={`${file.name}-${file.size}-${file.lastModified}`}
                 secondaryAction={
                   <IconButton edge="end" onClick={() => handleRemove(index)} disabled={disabled}>
                     <Close />

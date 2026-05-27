@@ -154,7 +154,7 @@ const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
           <Box sx={{ mt: 2 }}>
             {files.map((file, index) => (
               <Chip
-                key={`${file.name}-${index}`}
+                key={`${file.name}-${file.size}-${file.lastModified}`}
                 icon={<InsertDriveFile />}
                 label={`${file.name} (${formatFileSize(file.size)})`}
                 onDelete={() => handleRemove(index)}

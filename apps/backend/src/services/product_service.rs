@@ -30,7 +30,11 @@ impl ProductService {
             .ok_or_else(|| AppError::NotFound(format!("Product with ID {id} not found")))
     }
 
-    pub async fn create(&self, dto: CreateProductDto) -> Result<Product, AppError> {
+    pub async fn create(
+        &self,
+        dto: CreateProductDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Product, AppError> {
         if dto.price < 0.0 {
             return Err(AppError::BadRequest(
                 "Price must be greater than or equal to 0".to_string(),
@@ -60,10 +64,15 @@ impl ProductService {
             }
         }
 
-        self.repo.create(&dto).await
+        self.repo.create(&dto, actor_id).await
     }
 
-    pub async fn update(&self, id: Uuid, dto: UpdateProductDto) -> Result<Product, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateProductDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Product, AppError> {
         if let Some(price) = dto.price {
             if price < 0.0 {
                 return Err(AppError::BadRequest(
@@ -96,7 +105,7 @@ impl ProductService {
             }
         }
 
-        self.repo.update(id, &dto).await
+        self.repo.update(id, &dto, actor_id).await
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<Product, AppError> {

@@ -7,7 +7,9 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::models::{CreateSessionDto, EndSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse};
+use crate::models::{
+    CreateSessionDto, EndSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse,
+};
 use crate::openapi::responses::{
     ErrorEnvelope, SessionEnvelope, SessionFlatEnvelope, SessionPaginationEnvelope,
 };
@@ -90,7 +92,7 @@ pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateSessionDto>,
 ) -> ApiResult<UsageSession> {
-    let session = state.sessions.start(dto).await?;
+    let session = state.sessions.start(dto, None).await?;
     created(session)
 }
 
@@ -116,6 +118,6 @@ pub async fn end_session(
     Path(id): Path<Uuid>,
     Json(dto): Json<EndSessionDto>,
 ) -> ApiResult<UsageSession> {
-    let session = state.sessions.end(id, dto).await?;
+    let session = state.sessions.end(id, dto, None).await?;
     ok(session)
 }

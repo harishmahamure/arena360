@@ -18,12 +18,7 @@ impl MailService {
         }
     }
 
-    pub async fn send_otp_email(
-        &self,
-        email: &str,
-        name: &str,
-        otp: &str,
-    ) -> Result<(), AppError> {
+    pub async fn send_otp_email(&self, email: &str, name: &str, otp: &str) -> Result<(), AppError> {
         let Some(token) = &self.token else {
             warn!("ZEPTOMAIL_TOKEN not set; skipping OTP email delivery");
             return Ok(());

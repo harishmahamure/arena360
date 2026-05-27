@@ -11,7 +11,7 @@ export const formatDate = (
 ): string => {
   const d = new Date(date);
 
-  if (isNaN(d.getTime())) {
+  if (Number.isNaN(d.getTime())) {
     return 'Invalid Date';
   }
 
@@ -206,7 +206,7 @@ export const formatDuration = (seconds: number): string => {
  * Check if date is valid
  */
 export const isValidDate = (date: unknown): boolean => {
-  return date instanceof Date && !isNaN(date.getTime());
+  return date instanceof Date && !Number.isNaN(date.getTime());
 };
 
 /**
@@ -228,7 +228,7 @@ export const parseDate = (dateString: string): Date | null => {
 export const formatTimeAgo = (date: Date | string | number, thresholdDays: number = 7): string => {
   const d = new Date(date);
 
-  if (isNaN(d.getTime())) {
+  if (Number.isNaN(d.getTime())) {
     return 'Invalid Date';
   }
 

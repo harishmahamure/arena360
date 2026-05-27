@@ -8,7 +8,9 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::AdminOrStaff;
-use crate::models::{CreateTransactionDto, Transaction, TransactionFilterDto, UpdateTransactionDto};
+use crate::models::{
+    CreateTransactionDto, Transaction, TransactionFilterDto, UpdateTransactionDto,
+};
 use crate::openapi::responses::{
     ErrorEnvelope, TransactionEnvelope, TransactionPaginationEnvelope,
 };
@@ -71,11 +73,14 @@ pub async fn get_transaction(
     tag = "transactions"
 )]
 pub async fn create_transaction(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateTransactionDto>,
 ) -> ApiResult<Transaction> {
-    let transaction = state.transactions.create(dto).await?;
+    let transaction = state
+        .transactions
+        .create(dto, claims.user_id_uuid())
+        .await?;
     created(transaction)
 }
 
@@ -98,11 +103,14 @@ pub async fn create_transaction(
     tag = "transactions"
 )]
 pub async fn update_transaction(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateTransactionDto>,
 ) -> ApiResult<Transaction> {
-    let transaction = state.transactions.update(id, dto).await?;
+    let transaction = state
+        .transactions
+        .update(id, dto, claims.user_id_uuid())
+        .await?;
     ok(transaction)
 }

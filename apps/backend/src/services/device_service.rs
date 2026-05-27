@@ -2,7 +2,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::{CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto};
+use crate::models::{
+    CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
+};
 use crate::repositories::DeviceRepository;
 use crate::services::EventService;
 
@@ -20,7 +22,10 @@ impl DeviceService {
         }
     }
 
-    pub async fn list(&self, filters: DeviceFilterDto) -> Result<crate::dto::PaginationResult<Device>, AppError> {
+    pub async fn list(
+        &self,
+        filters: DeviceFilterDto,
+    ) -> Result<crate::dto::PaginationResult<Device>, AppError> {
         self.repo.list(&filters).await
     }
 
@@ -31,20 +36,29 @@ impl DeviceService {
             .ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
     }
 
-    pub async fn create(&self, dto: CreateDeviceDto) -> Result<Device, AppError> {
+    pub async fn create(
+        &self,
+        dto: CreateDeviceDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
         if self.repo.name_exists(&dto.name, None).await? {
             return Err(AppError::Conflict(format!(
                 "Device with name '{}' already exists",
                 dto.name
             )));
         }
-        let device = self.repo.create(&dto).await?;
+        let device = self.repo.create(&dto, actor_id).await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         Ok(device)
     }
 
-    pub async fn update(&self, id: Uuid, dto: UpdateDeviceDto) -> Result<Device, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateDeviceDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
         if let Some(name) = &dto.name {
             if self.repo.name_exists(name, Some(id)).await? {
                 return Err(AppError::Conflict(format!(
@@ -52,7 +66,7 @@ impl DeviceService {
                 )));
             }
         }
-        let device = self.repo.update(id, &dto).await?;
+        let device = self.repo.update(id, &dto, actor_id).await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         Ok(device)

@@ -112,7 +112,7 @@ export const formatFileSize = (bytes: number): string => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
-  return round(bytes / k ** i, 2) + ' ' + sizes[i];
+  return `${round(bytes / k ** i, 2)} ${sizes[i]}`;
 };
 
 /**
@@ -148,9 +148,9 @@ export const isOdd = (num: number): boolean => {
  */
 export const abbreviateNumber = (num: number): string => {
   if (num < 1000) return num.toString();
-  if (num < 1000000) return round(num / 1000, 1) + 'K';
-  if (num < 1000000000) return round(num / 1000000, 1) + 'M';
-  return round(num / 1000000000, 1) + 'B';
+  if (num < 1000000) return `${round(num / 1000, 1)}K`;
+  if (num < 1000000000) return `${round(num / 1000000, 1)}M`;
+  return `${round(num / 1000000000, 1)}B`;
 };
 
 /**
@@ -159,7 +159,7 @@ export const abbreviateNumber = (num: number): string => {
 export const parseNumber = (value: string | number): number | null => {
   if (typeof value === 'number') return value;
   const parsed = parseFloat(value);
-  return isNaN(parsed) ? null : parsed;
+  return Number.isNaN(parsed) ? null : parsed;
 };
 
 /**
@@ -169,8 +169,8 @@ export const ordinalSuffix = (num: number): string => {
   const j = num % 10;
   const k = num % 100;
 
-  if (j === 1 && k !== 11) return num + 'st';
-  if (j === 2 && k !== 12) return num + 'nd';
-  if (j === 3 && k !== 13) return num + 'rd';
-  return num + 'th';
+  if (j === 1 && k !== 11) return `${num}st`;
+  if (j === 2 && k !== 12) return `${num}nd`;
+  if (j === 3 && k !== 13) return `${num}rd`;
+  return `${num}th`;
 };

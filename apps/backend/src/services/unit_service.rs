@@ -16,7 +16,10 @@ impl UnitService {
         }
     }
 
-    pub async fn list(&self, filters: UnitFilterDto) -> Result<crate::dto::PaginationResult<Unit>, AppError> {
+    pub async fn list(
+        &self,
+        filters: UnitFilterDto,
+    ) -> Result<crate::dto::PaginationResult<Unit>, AppError> {
         self.repo.list(&filters).await
     }
 
@@ -27,23 +30,36 @@ impl UnitService {
             .ok_or_else(|| AppError::NotFound(format!("Unit with ID {id} not found")))
     }
 
-    pub async fn create(&self, dto: CreateUnitDto) -> Result<Unit, AppError> {
+    pub async fn create(
+        &self,
+        dto: CreateUnitDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Unit, AppError> {
         if self.repo.name_exists(&dto.name, None).await? {
             return Err(AppError::Conflict(format!(
                 "Unit with name '{}' already exists",
                 dto.name
             )));
         }
-        if self.repo.abbreviation_exists(&dto.abbreviation, None).await? {
+        if self
+            .repo
+            .abbreviation_exists(&dto.abbreviation, None)
+            .await?
+        {
             return Err(AppError::Conflict(format!(
                 "Unit with abbreviation '{}' already exists",
                 dto.abbreviation
             )));
         }
-        self.repo.create(&dto).await
+        self.repo.create(&dto, actor_id).await
     }
 
-    pub async fn update(&self, id: Uuid, dto: UpdateUnitDto) -> Result<Unit, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateUnitDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Unit, AppError> {
         if let Some(name) = &dto.name {
             if self.repo.name_exists(name, Some(id)).await? {
                 return Err(AppError::Conflict(format!(
@@ -52,13 +68,17 @@ impl UnitService {
             }
         }
         if let Some(abbreviation) = &dto.abbreviation {
-            if self.repo.abbreviation_exists(abbreviation, Some(id)).await? {
+            if self
+                .repo
+                .abbreviation_exists(abbreviation, Some(id))
+                .await?
+            {
                 return Err(AppError::Conflict(format!(
                     "Unit with abbreviation '{abbreviation}' already exists"
                 )));
             }
         }
-        self.repo.update(id, &dto).await
+        self.repo.update(id, &dto, actor_id).await
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {

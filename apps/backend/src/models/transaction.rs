@@ -18,6 +18,8 @@ pub struct Transaction {
     pub payment_status: String,
     pub notes: Option<String>,
     pub transaction_date: DateTime<Utc>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

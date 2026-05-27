@@ -3,7 +3,17 @@ use uuid::Uuid;
 
 use crate::dto::PaginationResult;
 use crate::error::AppError;
-use crate::models::{User, UserFilterDto, UpdateUserDto};
+use crate::models::{UpdateUserDto, User, UserFilterDto};
+
+pub struct CreatePlayerParams<'a> {
+    pub email: Option<&'a str>,
+    pub username: &'a str,
+    pub password_hash: &'a str,
+    pub first_name: Option<&'a str>,
+    pub last_name: Option<&'a str>,
+    pub role: &'a str,
+    pub actor_id: Option<Uuid>,
+}
 
 pub struct UserRepository {
     pool: PgPool,
@@ -22,6 +32,7 @@ impl UserRepository {
                "phoneNumber" as phone_number, role,
                NULL::varchar as session_otp_id,
                NULL::varchar as session_otp,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM users
@@ -52,6 +63,7 @@ impl UserRepository {
              \"phoneNumber\" as phone_number, role, \
              NULL::varchar as session_otp_id, \
              NULL::varchar as session_otp, \
+             \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \
              \"deletedAt\" as deleted_at \
              FROM users WHERE \"deletedAt\" IS NULL",
@@ -76,7 +88,10 @@ impl UserRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let users = builder.build_query_as::<User>().fetch_all(&self.pool).await?;
+        let users = builder
+            .build_query_as::<User>()
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM users WHERE \"deletedAt\" IS NULL");
@@ -87,49 +102,48 @@ impl UserRepository {
         Ok(PaginationResult::new(users, total.0, page, limit))
     }
 
-    pub async fn create_player(
-        &self,
-        email: Option<&str>,
-        username: &str,
-        password_hash: &str,
-        first_name: Option<&str>,
-        last_name: Option<&str>,
-        role: &str,
-    ) -> Result<User, AppError> {
+    pub async fn create_player(&self, params: CreatePlayerParams<'_>) -> Result<User, AppError> {
         let user = sqlx::query_as::<_, User>(
             r#"
             INSERT INTO users (
                 id, email, username, password_hash, "firstName", "lastName",
-                role, "isActive", "createdAt", "updatedAt"
+                role, "isActive", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4, $5,
-                $6, true, NOW(), NOW()
+                $6, true, $7, $7, NOW(), NOW()
             )
             RETURNING id, email, username,
                       NULL::varchar as password_hash,
                       "isActive" as is_active,
                       "firstName" as first_name, "lastName" as last_name,
-                      "phoneNumber" as phone_number, role,
+                      "phoneNumber" as phone_name, role,
                       NULL::varchar as session_otp_id,
                       NULL::varchar as session_otp,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
         )
-        .bind(email)
-        .bind(username)
-        .bind(password_hash)
-        .bind(first_name)
-        .bind(last_name)
-        .bind(role)
+        .bind(params.email)
+        .bind(params.username)
+        .bind(params.password_hash)
+        .bind(params.first_name)
+        .bind(params.last_name)
+        .bind(params.role)
+        .bind(params.actor_id)
         .fetch_one(&self.pool)
         .await?;
 
         Ok(user)
     }
 
-    pub async fn update(&self, id: Uuid, dto: &UpdateUserDto) -> Result<User, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: &UpdateUserDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<User, AppError> {
         let user = sqlx::query_as::<_, User>(
             r#"
             UPDATE users SET
@@ -139,6 +153,7 @@ impl UserRepository {
                 "lastName" = COALESCE($5, "lastName"),
                 role = COALESCE($6, role),
                 "isActive" = COALESCE($7, "isActive"),
+                "updatedBy" = COALESCE($8, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, email, username,
@@ -148,6 +163,7 @@ impl UserRepository {
                       "phoneNumber" as phone_number, role,
                       NULL::varchar as session_otp_id,
                       NULL::varchar as session_otp,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -159,13 +175,18 @@ impl UserRepository {
         .bind(&dto.last_name)
         .bind(&dto.role)
         .bind(dto.is_active)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 
         user.ok_or_else(|| AppError::NotFound(format!("User with ID {id} not found")))
     }
 
-    pub async fn username_exists(&self, username: &str, exclude_id: Option<Uuid>) -> Result<bool, AppError> {
+    pub async fn username_exists(
+        &self,
+        username: &str,
+        exclude_id: Option<Uuid>,
+    ) -> Result<bool, AppError> {
         let exists: (bool,) = match exclude_id {
             Some(id) => {
                 sqlx::query_as(
@@ -198,6 +219,7 @@ impl UserRepository {
                    "firstName" as first_name, "lastName" as last_name,
                    "phoneNumber" as phone_number, role,
                    "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at
             FROM users
@@ -211,13 +233,17 @@ impl UserRepository {
         Ok(user)
     }
 
-    pub async fn find_by_session_otp_id(&self, session_otp_id: &str) -> Result<Option<User>, AppError> {
+    pub async fn find_by_session_otp_id(
+        &self,
+        session_otp_id: &str,
+    ) -> Result<Option<User>, AppError> {
         let user = sqlx::query_as::<_, User>(
             r#"
             SELECT id, email, username, password_hash, "isActive" as is_active,
                    "firstName" as first_name, "lastName" as last_name,
                    "phoneNumber" as phone_number, role,
                    "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at
             FROM users

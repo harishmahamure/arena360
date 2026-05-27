@@ -9,7 +9,7 @@ use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::{AdminOrStaff, AuthUser};
 use crate::models::{
-    status, AssignPlanDto, PlayerPlan, PlayerPlanFilterDto, ValidationResult, PlayerPlanResponse,
+    status, AssignPlanDto, PlayerPlan, PlayerPlanFilterDto, PlayerPlanResponse, ValidationResult,
 };
 use crate::openapi::responses::{
     ErrorEnvelope, PlayerPlanEnvelope, PlayerPlanFlatEnvelope, PlayerPlanPaginationEnvelope,
@@ -104,11 +104,14 @@ pub async fn get_best_plan(
     tag = "player-plans"
 )]
 pub async fn assign_plan(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<AssignPlanDto>,
 ) -> ApiResult<PlayerPlan> {
-    let player_plan = state.player_plans.assign_plan_to_player(dto).await?;
+    let player_plan = state
+        .player_plans
+        .assign_plan_to_player(dto, claims.user_id_uuid())
+        .await?;
     created(player_plan)
 }
 

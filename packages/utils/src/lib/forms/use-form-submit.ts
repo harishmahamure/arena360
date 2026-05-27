@@ -52,7 +52,6 @@ export const useFormSubmit = <TFieldValues extends FieldValues>(
           }
 
           if (options?.showSuccessMessage) {
-            console.log('Form submitted successfully');
             // You can integrate with a toast notification library here
           }
         } catch (error: unknown) {
@@ -71,7 +70,6 @@ export const useFormSubmit = <TFieldValues extends FieldValues>(
           }
 
           if (options?.showErrorMessage) {
-            console.error('Form submission error:', errorMessage);
             // You can integrate with a toast notification library here
           }
 

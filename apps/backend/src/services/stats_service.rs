@@ -259,8 +259,8 @@ impl StatsService {
         shift_start: Option<String>,
     ) -> Result<StaffDashboardStatsDto, AppError> {
         let now = Utc::now();
-        let period_start = parse_date_start(start_date.as_deref())
-            .unwrap_or_else(|| start_of_day(now));
+        let period_start =
+            parse_date_start(start_date.as_deref()).unwrap_or_else(|| start_of_day(now));
         let period_end = parse_date_end(end_date.as_deref()).unwrap_or(now);
 
         let revenue = self.revenue_stats(period_start, period_end).await?;
@@ -273,9 +273,7 @@ impl StatsService {
             let shift_start_dt = DateTime::parse_from_rfc3339(&shift_start_raw)
                 .map(|d| d.with_timezone(&Utc))
                 .map_err(|_| {
-                    AppError::BadRequest(
-                        "shiftStart must be a valid ISO 8601 datetime".to_string(),
-                    )
+                    AppError::BadRequest("shiftStart must be a valid ISO 8601 datetime".to_string())
                 })?;
             let shift_end = now;
             let shift_revenue = self.revenue_stats(shift_start_dt, shift_end).await?;
@@ -467,16 +465,18 @@ impl StatsService {
     }
 
     async fn plan_stats(&self) -> Result<PlanStatsDto, AppError> {
-        let active: (i64,) =
-            sqlx::query_as(r#"SELECT COUNT(*) FROM player_plans WHERE status = 'active' AND "deletedAt" IS NULL"#)
-                .fetch_one(&self.pool)
-                .await
-                .unwrap_or((0,));
-        let expired: (i64,) =
-            sqlx::query_as(r#"SELECT COUNT(*) FROM player_plans WHERE status = 'expired' AND "deletedAt" IS NULL"#)
-                .fetch_one(&self.pool)
-                .await
-                .unwrap_or((0,));
+        let active: (i64,) = sqlx::query_as(
+            r#"SELECT COUNT(*) FROM player_plans WHERE status = 'active' AND "deletedAt" IS NULL"#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or((0,));
+        let expired: (i64,) = sqlx::query_as(
+            r#"SELECT COUNT(*) FROM player_plans WHERE status = 'expired' AND "deletedAt" IS NULL"#,
+        )
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or((0,));
 
         Ok(PlanStatsDto {
             total_active_plans: active.0,
@@ -551,17 +551,37 @@ impl StatsService {
 
 fn parse_date_start(value: Option<&str>) -> Option<DateTime<Utc>> {
     value.and_then(|s| {
-        DateTime::parse_from_rfc3339(&format!("{s}T00:00:00Z"))
+        DateTime::parse_from_rfc3339(s)
             .ok()
             .map(|d| d.with_timezone(&Utc))
+            .or_else(|| {
+                DateTime::parse_from_rfc3339(&format!("{s}T00:00:00+05:30"))
+                    .ok()
+                    .map(|d| d.with_timezone(&Utc))
+            })
+            .or_else(|| {
+                DateTime::parse_from_rfc3339(&format!("{s}T00:00:00Z"))
+                    .ok()
+                    .map(|d| d.with_timezone(&Utc))
+            })
     })
 }
 
 fn parse_date_end(value: Option<&str>) -> Option<DateTime<Utc>> {
     value.and_then(|s| {
-        DateTime::parse_from_rfc3339(&format!("{s}T23:59:59Z"))
+        DateTime::parse_from_rfc3339(s)
             .ok()
             .map(|d| d.with_timezone(&Utc))
+            .or_else(|| {
+                DateTime::parse_from_rfc3339(&format!("{s}T23:59:59+05:30"))
+                    .ok()
+                    .map(|d| d.with_timezone(&Utc))
+            })
+            .or_else(|| {
+                DateTime::parse_from_rfc3339(&format!("{s}T23:59:59Z"))
+                    .ok()
+                    .map(|d| d.with_timezone(&Utc))
+            })
     })
 }
 

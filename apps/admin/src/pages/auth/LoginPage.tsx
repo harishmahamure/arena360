@@ -4,7 +4,6 @@ import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OtpModal from '../../components/OtpModal';
-import { setStaffShiftStart } from '../../constants/staffShift';
 import { useDispatch } from '../../hooks/store';
 import { loginAPI, loginStaffAPI, verifyOtpAPI } from '../../services/auth/auth';
 import type { VerifyOtpResponseUser } from '../../services/auth/types';
@@ -33,9 +32,6 @@ export default function LoginPage() {
     }
 
     local.set('accessToken', accessToken);
-    if (user.role === 'staff') {
-      setStaffShiftStart(new Date().toISOString());
-    }
     dispatch({
       type: 'SetAuthDetail',
       payload: {

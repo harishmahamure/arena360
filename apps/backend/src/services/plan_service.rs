@@ -2,9 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::{
-    parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto,
-};
+use crate::models::{parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto};
 use crate::repositories::{PlanCreateValues, PlanRepository};
 
 struct PlanTypeValidation<'a> {
@@ -47,7 +45,11 @@ impl PlanService {
         self.repo.find_active().await
     }
 
-    pub async fn create(&self, dto: CreatePlanDto) -> Result<Plan, AppError> {
+    pub async fn create(
+        &self,
+        dto: CreatePlanDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Plan, AppError> {
         self.validate_create(&dto)?;
 
         let duration_minutes = dto.duration_minutes.unwrap_or(60);
@@ -60,31 +62,37 @@ impl PlanService {
             .as_deref()
             .map(parse_time)
             .transpose()?;
-        let time_window_end = dto
-            .time_window_end
-            .as_deref()
-            .map(parse_time)
-            .transpose()?;
+        let time_window_end = dto.time_window_end.as_deref().map(parse_time).transpose()?;
 
         self.repo
-            .create(PlanCreateValues {
-                dto: &dto,
-                duration_minutes,
-                validity_days,
-                time_credits,
-                per_minute_rate,
-                time_window_start,
-                time_window_end,
-            })
+            .create(
+                PlanCreateValues {
+                    dto: &dto,
+                    duration_minutes,
+                    validity_days,
+                    time_credits,
+                    per_minute_rate,
+                    time_window_start,
+                    time_window_end,
+                },
+                actor_id,
+            )
             .await
     }
 
-    pub async fn update(&self, id: Uuid, dto: UpdatePlanDto) -> Result<Plan, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdatePlanDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Plan, AppError> {
         let existing = self.get_by_id(id).await?;
 
         if let Some(price) = dto.price {
             if price <= 0.0 {
-                return Err(AppError::BadRequest("price must be greater than 0".to_string()));
+                return Err(AppError::BadRequest(
+                    "price must be greater than 0".to_string(),
+                ));
             }
         }
 
@@ -111,7 +119,10 @@ impl PlanService {
             max_sessions: dto.max_sessions.or(existing.max_sessions),
             validity_days: dto.validity_days.or(Some(existing.validity_days)),
             per_minute_rate: dto.per_minute_rate.or(Some(existing.per_minute_rate)),
-            time_window_start: dto.time_window_start.as_deref().or(existing_start.as_deref()),
+            time_window_start: dto
+                .time_window_start
+                .as_deref()
+                .or(existing_start.as_deref()),
             time_window_end: dto.time_window_end.as_deref().or(existing_end.as_deref()),
         })?;
 
@@ -125,7 +136,7 @@ impl PlanService {
         };
 
         self.repo
-            .update(id, &dto, time_window_start, time_window_end)
+            .update(id, &dto, time_window_start, time_window_end, actor_id)
             .await
     }
 
@@ -136,7 +147,9 @@ impl PlanService {
 
     fn validate_create(&self, dto: &CreatePlanDto) -> Result<(), AppError> {
         if dto.price <= 0.0 {
-            return Err(AppError::BadRequest("price must be greater than 0".to_string()));
+            return Err(AppError::BadRequest(
+                "price must be greater than 0".to_string(),
+            ));
         }
 
         let per_minute_rate = dto.per_minute_rate.unwrap_or(1.0);
@@ -199,9 +212,7 @@ impl PlanService {
                     "hourly_rental plans require perMinuteRate > 0".to_string(),
                 ));
             }
-            "weekend_special"
-                if time_window_start.is_none() || time_window_end.is_none() =>
-            {
+            "weekend_special" if time_window_start.is_none() || time_window_end.is_none() => {
                 return Err(AppError::BadRequest(
                     "weekend_special plans require both timeWindowStart and timeWindowEnd"
                         .to_string(),

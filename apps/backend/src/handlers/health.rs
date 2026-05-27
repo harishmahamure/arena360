@@ -56,7 +56,9 @@ pub async fn ready_check(State(state): State<Arc<AppState>>) -> ApiResult<Health
     if ping(&state.db).await {
         ok(HealthData { status: "ok" })
     } else {
-        Err(crate::error::AppError::Internal("Database unavailable".to_string()))
+        Err(crate::error::AppError::Internal(
+            "Database unavailable".to_string(),
+        ))
     }
 }
 

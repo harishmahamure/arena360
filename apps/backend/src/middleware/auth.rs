@@ -1,10 +1,4 @@
-use axum::{
-    body::Body,
-    extract::State,
-    http::Request,
-    middleware::Next,
-    response::Response,
-};
+use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use std::sync::Arc;
 
@@ -64,7 +58,9 @@ pub fn require_admin_or_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
     if claims.is_admin_or_staff() {
         Ok(())
     } else {
-        Err(AppError::Forbidden("Admin or staff access required".to_string()))
+        Err(AppError::Forbidden(
+            "Admin or staff access required".to_string(),
+        ))
     }
 }
 

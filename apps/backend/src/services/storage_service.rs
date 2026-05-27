@@ -208,10 +208,14 @@ fn object_to_info(obj: &Object) -> Option<StorageObjectInfo> {
 
 fn validate_key(key: &str) -> Result<(), AppError> {
     if key.trim().is_empty() {
-        return Err(AppError::BadRequest("Object key cannot be empty".to_string()));
+        return Err(AppError::BadRequest(
+            "Object key cannot be empty".to_string(),
+        ));
     }
     if key.contains("..") || key.starts_with('/') {
-        return Err(AppError::BadRequest("Invalid object key format".to_string()));
+        return Err(AppError::BadRequest(
+            "Invalid object key format".to_string(),
+        ));
     }
     Ok(())
 }

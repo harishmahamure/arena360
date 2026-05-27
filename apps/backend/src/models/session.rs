@@ -15,6 +15,8 @@ pub struct UsageSession {
     pub end_time: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
     pub time_credits_consumed: Option<i32>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -108,6 +110,8 @@ pub struct UsageSessionResponse {
     pub end_time: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
     pub time_credits_consumed: Option<i32>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -129,6 +133,8 @@ impl From<UsageSession> for UsageSessionResponse {
             end_time: value.end_time,
             duration_minutes: value.duration_minutes,
             time_credits_consumed: value.time_credits_consumed,
+            created_by: value.created_by,
+            updated_by: value.updated_by,
             created_at: value.created_at,
             updated_at: value.updated_at,
             deleted_at: value.deleted_at,
@@ -148,6 +154,8 @@ pub struct UsageSessionRow {
     pub end_time: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
     pub time_credits_consumed: Option<i32>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -169,16 +177,22 @@ pub struct UsageSessionRow {
 
 impl UsageSessionRow {
     pub fn into_response(self) -> UsageSessionResponse {
-        let player = self.player_username.as_ref().map(|username| SessionPlayerSummary {
-            id: self.pp_player_id.unwrap_or_default(),
-            username: username.clone(),
-            first_name: self.player_first_name.clone(),
-            last_name: self.player_last_name.clone(),
-        });
+        let player = self
+            .player_username
+            .as_ref()
+            .map(|username| SessionPlayerSummary {
+                id: self.pp_player_id.unwrap_or_default(),
+                username: username.clone(),
+                first_name: self.player_first_name.clone(),
+                last_name: self.player_last_name.clone(),
+            });
         let plan = self.plan_name.as_ref().map(|name| SessionPlanSummary {
             id: self.pp_plan_id.unwrap_or_default(),
             name: name.clone(),
-            plan_type: self.plan_type.clone().unwrap_or_else(|| "time_based".to_string()),
+            plan_type: self
+                .plan_type
+                .clone()
+                .unwrap_or_else(|| "time_based".to_string()),
             time_credits: self.plan_time_credits.unwrap_or(0),
         });
         let player_plan = Some(SessionPlayerPlanSummary {
@@ -195,7 +209,9 @@ impl UsageSessionRow {
             name,
             device_type: self.device_type.unwrap_or_else(|| "other".to_string()),
             location: self.device_location,
-            status: self.device_status.unwrap_or_else(|| "available".to_string()),
+            status: self
+                .device_status
+                .unwrap_or_else(|| "available".to_string()),
         });
 
         UsageSessionResponse {
@@ -207,6 +223,8 @@ impl UsageSessionRow {
             end_time: self.end_time,
             duration_minutes: self.duration_minutes,
             time_credits_consumed: self.time_credits_consumed,
+            created_by: self.created_by,
+            updated_by: self.updated_by,
             created_at: self.created_at,
             updated_at: self.updated_at,
             deleted_at: self.deleted_at,

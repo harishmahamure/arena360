@@ -19,6 +19,7 @@ impl DeviceGameRepository {
     const SELECT_WITH_RELATIONS: &'static str = r#"
         SELECT dg.id, dg."deviceId" as device_id, dg."gameId" as game_id,
                dg."installationDate" as installation_date, dg."isActive" as is_active,
+               dg."createdBy" as created_by, dg."updatedBy" as updated_by,
                dg."createdAt" as created_at, dg."updatedAt" as updated_at,
                d.name as device_name, d."deviceType"::text as device_type, d.location as device_location,
                g.title as game_title, g.genre as game_genre
@@ -48,7 +49,9 @@ impl DeviceGameRepository {
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
 
-        let (rows, total) = self.fetch_filtered(filters, Some(limit), Some(offset)).await?;
+        let (rows, total) = self
+            .fetch_filtered(filters, Some(limit), Some(offset))
+            .await?;
         let data = rows.into_iter().map(|r| r.into_response()).collect();
         Ok(PaginationResult::new(data, total, page, limit))
     }
@@ -73,17 +76,23 @@ impl DeviceGameRepository {
         self.list(&filters).await
     }
 
-    pub async fn create(&self, dto: &CreateDeviceGameDto) -> Result<DeviceGame, AppError> {
+    pub async fn create(
+        &self,
+        dto: &CreateDeviceGameDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<DeviceGame, AppError> {
         let device_game = sqlx::query_as::<_, DeviceGame>(
             r#"
             INSERT INTO device_games (
-                id, "deviceId", "gameId", "installationDate", "isActive", "createdAt", "updatedAt"
+                id, "deviceId", "gameId", "installationDate", "isActive",
+                "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2, COALESCE($3, NOW()), COALESCE($4, true), NOW(), NOW()
+                gen_random_uuid(), $1, $2, COALESCE($3, NOW()), COALESCE($4, true), $5, $5, NOW(), NOW()
             )
             RETURNING id, "deviceId" as device_id, "gameId" as game_id,
                       "installationDate" as installation_date, "isActive" as is_active,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -92,6 +101,7 @@ impl DeviceGameRepository {
         .bind(dto.game_id)
         .bind(dto.installation_date)
         .bind(dto.is_active)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
@@ -111,16 +121,19 @@ impl DeviceGameRepository {
         &self,
         id: Uuid,
         dto: &crate::models::UpdateDeviceGameDto,
+        actor_id: Option<Uuid>,
     ) -> Result<DeviceGame, AppError> {
         let device_game = sqlx::query_as::<_, DeviceGame>(
             r#"
             UPDATE device_games SET
                 "installationDate" = COALESCE($2, "installationDate"),
                 "isActive" = COALESCE($3, "isActive"),
+                "updatedBy" = COALESCE($4, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, "deviceId" as device_id, "gameId" as game_id,
                       "installationDate" as installation_date, "isActive" as is_active,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -128,6 +141,7 @@ impl DeviceGameRepository {
         .bind(id)
         .bind(dto.installation_date)
         .bind(dto.is_active)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| {
@@ -182,6 +196,7 @@ impl DeviceGameRepository {
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT dg.id, dg.\"deviceId\" as device_id, dg.\"gameId\" as game_id, \
              dg.\"installationDate\" as installation_date, dg.\"isActive\" as is_active, \
+             dg.\"createdBy\" as created_by, dg.\"updatedBy\" as updated_by, \
              dg.\"createdAt\" as created_at, dg.\"updatedAt\" as updated_at, \
              d.name as device_name, d.\"deviceType\"::text as device_type, d.location as device_location, \
              g.title as game_title, g.genre as game_genre \
@@ -215,7 +230,10 @@ impl DeviceGameRepository {
             builder.push_bind(offset);
         }
 
-        let rows = builder.build_query_as::<DeviceGameRow>().fetch_all(&self.pool).await?;
+        let rows = builder
+            .build_query_as::<DeviceGameRow>()
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut count_builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT COUNT(*) FROM device_games dg WHERE dg.\"deletedAt\" IS NULL",

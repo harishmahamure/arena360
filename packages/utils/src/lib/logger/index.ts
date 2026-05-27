@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/suspicious/noConsole: logger wrapper intentionally delegates to console */
 /**
  * Logger utility for development and production environments
  * In production builds with Vite, all console statements are automatically stripped
@@ -9,7 +10,7 @@ export const logger = {
   /**
    * Log general information (only in development)
    */
-  log: (...args: any[]) => {
+  log: (...args: unknown[]) => {
     if (isDevelopment) {
       console.log(...args);
     }
@@ -18,7 +19,7 @@ export const logger = {
   /**
    * Log informational messages (only in development)
    */
-  info: (...args: any[]) => {
+  info: (...args: unknown[]) => {
     if (isDevelopment) {
       console.info(...args);
     }
@@ -27,7 +28,7 @@ export const logger = {
   /**
    * Log warning messages (only in development)
    */
-  warn: (...args: any[]) => {
+  warn: (...args: unknown[]) => {
     if (isDevelopment) {
       console.warn(...args);
     }
@@ -37,14 +38,14 @@ export const logger = {
    * Log error messages (always logged, even in production)
    * Note: In production builds, these will be stripped by Vite's esbuild config
    */
-  error: (...args: any[]) => {
+  error: (...args: unknown[]) => {
     console.error(...args);
   },
 
   /**
    * Log debug messages (only in development)
    */
-  debug: (...args: any[]) => {
+  debug: (...args: unknown[]) => {
     if (isDevelopment) {
       console.debug(...args);
     }
@@ -53,7 +54,7 @@ export const logger = {
   /**
    * Log a table (only in development)
    */
-  table: (data: any) => {
+  table: (data: unknown) => {
     if (isDevelopment && console.table) {
       console.table(data);
     }

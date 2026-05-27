@@ -4,7 +4,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::{AssignPlanDto, CreateTransactionDto, Transaction, TransactionFilterDto, UpdateTransactionDto};
+use crate::models::{
+    AssignPlanDto, CreateTransactionDto, Transaction, TransactionFilterDto, UpdateTransactionDto,
+};
 use crate::repositories::TransactionRepository;
 use crate::services::{EventService, PlayerPlanService};
 
@@ -37,7 +39,11 @@ impl TransactionService {
             .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))
     }
 
-    pub async fn create(&self, dto: CreateTransactionDto) -> Result<Transaction, AppError> {
+    pub async fn create(
+        &self,
+        dto: CreateTransactionDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Transaction, AppError> {
         if dto.transaction_type == "plan_purchase" && dto.plan_id.is_none() {
             return Err(AppError::BadRequest(
                 "planId is required for plan_purchase transactions".to_string(),
@@ -48,7 +54,9 @@ impl TransactionService {
             Some(amount) => amount,
             None if dto.transaction_type == "plan_purchase" => {
                 let plan_id = dto.plan_id.ok_or_else(|| {
-                    AppError::BadRequest("planId is required for plan_purchase transactions".to_string())
+                    AppError::BadRequest(
+                        "planId is required for plan_purchase transactions".to_string(),
+                    )
                 })?;
                 self.repo.plan_price(plan_id).await?.ok_or_else(|| {
                     AppError::NotFound(format!("Plan with ID {plan_id} not found"))
@@ -76,18 +84,21 @@ impl TransactionService {
 
         let transaction = self
             .repo
-            .create(&dto, amount, transaction_date, &payment_status)
+            .create(&dto, amount, transaction_date, &payment_status, actor_id)
             .await?;
 
         if dto.transaction_type == "plan_purchase" && payment_status == "completed" {
             if let Some(plan_id) = dto.plan_id {
                 self.player_plans
-                    .assign_plan_to_player(AssignPlanDto {
-                        player_id: dto.player_id,
-                        plan_id,
-                        transaction_id: Some(transaction.id),
-                        purchase_date: Some(transaction.transaction_date),
-                    })
+                    .assign_plan_to_player(
+                        AssignPlanDto {
+                            player_id: dto.player_id,
+                            plan_id,
+                            transaction_id: Some(transaction.id),
+                            purchase_date: Some(transaction.transaction_date),
+                        },
+                        actor_id,
+                    )
                     .await?;
             }
         }
@@ -102,6 +113,7 @@ impl TransactionService {
         &self,
         id: Uuid,
         dto: UpdateTransactionDto,
+        actor_id: Option<Uuid>,
     ) -> Result<Transaction, AppError> {
         if dto.payment_status.is_none() && dto.notes.is_none() {
             return Err(AppError::BadRequest(
@@ -109,6 +121,6 @@ impl TransactionService {
             ));
         }
 
-        self.repo.update(id, &dto).await
+        self.repo.update(id, &dto, actor_id).await
     }
 }

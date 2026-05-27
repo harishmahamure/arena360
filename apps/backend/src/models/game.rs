@@ -10,7 +10,11 @@ where
 {
     match value {
         Some(s) if !s.is_empty() => {
-            let tags: Vec<&str> = s.split(',').map(str::trim).filter(|t| !t.is_empty()).collect();
+            let tags: Vec<&str> = s
+                .split(',')
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .collect();
             tags.serialize(serializer)
         }
         _ => serializer.serialize_none(),
@@ -55,6 +59,8 @@ pub struct Game {
     pub age_rating: Option<String>,
     pub min_players: Option<i32>,
     pub max_players: Option<i32>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

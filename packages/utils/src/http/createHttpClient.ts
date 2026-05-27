@@ -63,6 +63,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
       }
 
       if (import.meta.env.DEV) {
+        // biome-ignore lint/suspicious/noConsole: dev-only request logging
         console.log('API Request:', {
           method: config.method?.toUpperCase(),
           url: config.url,
@@ -78,6 +79,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
   client.interceptors.response.use(
     (response) => {
       if (import.meta.env.DEV) {
+        // biome-ignore lint/suspicious/noConsole: dev-only response logging
         console.log('API Response:', {
           url: response.config.url,
           status: response.status,
@@ -88,6 +90,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
     },
     async (error: AxiosError) => {
       if (import.meta.env.DEV) {
+        // biome-ignore lint/suspicious/noConsole: dev-only error logging
         console.error('API Error:', {
           url: error.config?.url,
           status: error.response?.status,

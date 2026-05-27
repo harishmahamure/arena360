@@ -11,11 +11,13 @@ const SPEC = join(BACKEND, 'docs/openapi.json');
 const OUT = join(ROOT, 'packages/api-types/src/schema.ts');
 
 function run(cmd: string, cwd = ROOT): void {
+  // biome-ignore lint/suspicious/noConsole: CLI script
   console.log(`$ ${cmd}`);
   execSync(cmd, { cwd, stdio: 'inherit' });
 }
 
 if (!existsSync(BACKEND)) {
+  // biome-ignore lint/suspicious/noConsole: CLI script
   console.error(`apps/backend not found at ${BACKEND}. Skipping spec regeneration.`);
 } else {
   run('cargo run --bin openapi-gen --quiet', BACKEND);
@@ -26,4 +28,5 @@ if (!existsSync(SPEC)) {
 }
 mkdirSync(dirname(OUT), { recursive: true });
 run(`pnpm dlx openapi-typescript@^7 ${SPEC} -o ${OUT}`);
+// biome-ignore lint/suspicious/noConsole: CLI script
 console.log(`api-types written to ${OUT}`);

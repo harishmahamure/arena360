@@ -9,6 +9,7 @@ import RequirePermission from './components/RequirePermission';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/auth/LoginPage';
+import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import DeviceGameDetailPage from './pages/dashboard/device-games/DeviceGameDetailPage';
 import DeviceGameNewPage from './pages/dashboard/device-games/DeviceGameNewPage';
@@ -16,6 +17,7 @@ import DeviceGamesPage from './pages/dashboard/device-games/DeviceGamesPage';
 import DeviceDetailPage from './pages/dashboard/devices/DeviceDetailPage';
 import DeviceNewPage from './pages/dashboard/devices/DeviceNewPage';
 import DevicesPage from './pages/dashboard/devices/DevicesPage';
+import ExpensesPage from './pages/dashboard/expenses/ExpensesPage';
 import GameDetailPage from './pages/dashboard/games/GameDetailPage';
 import GameNewPage from './pages/dashboard/games/GameNewPage';
 import GamesPage from './pages/dashboard/games/GamesPage';
@@ -37,9 +39,12 @@ import ProductsPage from './pages/dashboard/products/ProductsPage';
 import SessionDetailPage from './pages/dashboard/sessions/SessionDetailPage';
 import SessionNewPage from './pages/dashboard/sessions/SessionNewPage';
 import SessionsPage from './pages/dashboard/sessions/SessionsPage';
+import SettingsPage from './pages/dashboard/settings/SettingsPage';
+import ShiftsPage from './pages/dashboard/shifts/ShiftsPage';
 import UnitDetailPage from './pages/dashboard/units/UnitDetailPage';
 import UnitNewPage from './pages/dashboard/units/UnitNewPage';
 import UnitsPage from './pages/dashboard/units/UnitsPage';
+import VendorsPage from './pages/dashboard/vendors/VendorsPage';
 import { StoreContext } from './store';
 import { PERSIST_KEY } from './store/persistance';
 import { rootInitialState, rootReducer } from './store/rootReducer';
@@ -117,6 +122,13 @@ function App() {
                 <Route path="/units/:id" element={<UnitDetailPage />} />
                 <Route element={<RequirePermission permission={Permission.FilesWrite} />}>
                   <Route path="/media/upload" element={<MediaUploadPage />} />
+                </Route>
+                <Route path="/shifts" element={<ShiftsPage />} />
+                <Route path="/cash-registers" element={<CashRegistersPage />} />
+                <Route path="/expenses" element={<ExpensesPage />} />
+                <Route path="/vendors" element={<VendorsPage />} />
+                <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
+                  <Route path="/settings" element={<SettingsPage />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

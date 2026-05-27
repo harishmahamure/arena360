@@ -41,6 +41,8 @@ impl FileRepository {
                "downloadCount" as download_count,
                "lastAccessedAt" as last_accessed_at,
                "expiresAt" as expires_at,
+               "createdBy" as created_by,
+               "updatedBy" as updated_by,
                "createdAt" as created_at,
                "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -56,7 +58,10 @@ impl FileRepository {
         Ok(file)
     }
 
-    pub async fn find_by_storage_key(&self, storage_key: &str) -> Result<Option<FileRecord>, AppError> {
+    pub async fn find_by_storage_key(
+        &self,
+        storage_key: &str,
+    ) -> Result<Option<FileRecord>, AppError> {
         let query = format!(
             "{} WHERE \"storageKey\" = $1 AND \"deletedAt\" IS NULL",
             Self::SELECT
@@ -68,7 +73,10 @@ impl FileRepository {
         Ok(file)
     }
 
-    pub async fn list(&self, filters: &FileFilterDto) -> Result<PaginationResult<FileRecord>, AppError> {
+    pub async fn list(
+        &self,
+        filters: &FileFilterDto,
+    ) -> Result<PaginationResult<FileRecord>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(20).clamp(1, 100);
         let offset = (page - 1) * limit;
@@ -81,7 +89,9 @@ impl FileRepository {
              etag, metadata, description, tags, \"uploadedBy\" as uploaded_by, \
              \"relatedEntityType\" as related_entity_type, \"relatedEntityId\" as related_entity_id, \
              \"downloadCount\" as download_count, \"lastAccessedAt\" as last_accessed_at, \
-             \"expiresAt\" as expires_at, \"createdAt\" as created_at, \"updatedAt\" as updated_at, \
+             \"expiresAt\" as expires_at, \
+             \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
+             \"createdAt\" as created_at, \"updatedAt\" as updated_at, \
              \"deletedAt\" as deleted_at FROM files WHERE \"deletedAt\" IS NULL",
         );
 
@@ -91,7 +101,10 @@ impl FileRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let files = builder.build_query_as::<FileRecord>().fetch_all(&self.pool).await?;
+        let files = builder
+            .build_query_as::<FileRecord>()
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM files WHERE \"deletedAt\" IS NULL");
@@ -129,7 +142,12 @@ impl FileRepository {
         }
     }
 
-    pub async fn create(&self, dto: &CreateFileDto, uploaded_by: Option<Uuid>) -> Result<FileRecord, AppError> {
+    pub async fn create(
+        &self,
+        dto: &CreateFileDto,
+        uploaded_by: Option<Uuid>,
+        actor_id: Option<Uuid>,
+    ) -> Result<FileRecord, AppError> {
         let category = dto.category.as_deref().unwrap_or("other");
         let visibility = dto.visibility.as_deref().unwrap_or("private");
 
@@ -140,13 +158,13 @@ impl FileRepository {
                 "fileSize", extension, category, status, visibility, "storageType",
                 width, height, duration, etag, metadata, description, tags,
                 "uploadedBy", "relatedEntityType", "relatedEntityId", "downloadCount",
-                "expiresAt", "createdAt", "updatedAt"
+                "expiresAt", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7,
                 $8::files_category_enum, 'active'::files_status_enum,
                 $9::files_visibility_enum, 'r2', $10, $11, $12, $13, $14, $15, $16,
-                $17, $18, $19, 0, $20, NOW(), NOW()
+                $17, $18, $19, 0, $20, $21, $21, NOW(), NOW()
             )
             RETURNING id,
                       "fileName" as file_name,
@@ -173,6 +191,8 @@ impl FileRepository {
                       "downloadCount" as download_count,
                       "lastAccessedAt" as last_accessed_at,
                       "expiresAt" as expires_at,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
                       "createdAt" as created_at,
                       "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -198,13 +218,19 @@ impl FileRepository {
         .bind(&dto.related_entity_type)
         .bind(dto.related_entity_id)
         .bind(dto.expires_at)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
         Ok(file)
     }
 
-    pub async fn update(&self, id: Uuid, dto: &UpdateFileDto) -> Result<FileRecord, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: &UpdateFileDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<FileRecord, AppError> {
         let file = sqlx::query_as::<_, FileRecord>(
             r#"
             UPDATE files SET
@@ -217,6 +243,7 @@ impl FileRepository {
                 metadata = COALESCE($8, metadata),
                 "relatedEntityType" = COALESCE($9, "relatedEntityType"),
                 "relatedEntityId" = COALESCE($10, "relatedEntityId"),
+                "updatedBy" = COALESCE($11, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id,
@@ -244,6 +271,8 @@ impl FileRepository {
                       "downloadCount" as download_count,
                       "lastAccessedAt" as last_accessed_at,
                       "expiresAt" as expires_at,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
                       "createdAt" as created_at,
                       "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -259,6 +288,7 @@ impl FileRepository {
         .bind(&dto.metadata)
         .bind(&dto.related_entity_type)
         .bind(dto.related_entity_id)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -347,7 +377,11 @@ impl FileRepository {
         })
     }
 
-    pub async fn storage_key_exists(&self, storage_key: &str, exclude_id: Option<Uuid>) -> Result<bool, AppError> {
+    pub async fn storage_key_exists(
+        &self,
+        storage_key: &str,
+        exclude_id: Option<Uuid>,
+    ) -> Result<bool, AppError> {
         let exists: (bool,) = match exclude_id {
             Some(id) => {
                 sqlx::query_as(

@@ -47,10 +47,7 @@ pub async fn list_units(
     security(("bearer_auth" = [])),
     tag = "units"
 )]
-pub async fn get_unit(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Unit> {
+pub async fn get_unit(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<Unit> {
     let unit = state.units.get_by_id(id).await?;
     ok(unit)
 }
@@ -70,11 +67,11 @@ pub async fn get_unit(
     tag = "units"
 )]
 pub async fn create_unit(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = state.units.create(dto).await?;
+    let unit = state.units.create(dto, claims.user_id_uuid()).await?;
     created(unit)
 }
 
@@ -97,12 +94,12 @@ pub async fn create_unit(
     tag = "units"
 )]
 pub async fn update_unit(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = state.units.update(id, dto).await?;
+    let unit = state.units.update(id, dto, claims.user_id_uuid()).await?;
     ok(unit)
 }
 

@@ -17,6 +17,7 @@ impl UnitRepository {
     const SELECT: &'static str = r#"
         SELECT id, name, abbreviation, type::text as type,
                description, "isActive" as is_active,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM units
@@ -38,7 +39,9 @@ impl UnitRepository {
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT id, name, abbreviation, type::text as type, description, \
-             \"isActive\" as is_active, \"createdAt\" as created_at, \
+             \"isActive\" as is_active, \
+             \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
+             \"createdAt\" as created_at, \
              \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM units WHERE \"deletedAt\" IS NULL",
         );
@@ -66,7 +69,10 @@ impl UnitRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let units = builder.build_query_as::<Unit>().fetch_all(&self.pool).await?;
+        let units = builder
+            .build_query_as::<Unit>()
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM units WHERE \"deletedAt\" IS NULL");
@@ -88,18 +94,25 @@ impl UnitRepository {
         Ok(PaginationResult::new(units, total.0, page, limit))
     }
 
-    pub async fn create(&self, dto: &CreateUnitDto) -> Result<Unit, AppError> {
+    pub async fn create(
+        &self,
+        dto: &CreateUnitDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Unit, AppError> {
         let unit = sqlx::query_as::<_, Unit>(
             r#"
             INSERT INTO units (
-                id, name, abbreviation, type, description, "isActive", "createdAt", "updatedAt"
+                id, name, abbreviation, type, description, "isActive",
+                "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, COALESCE($3::units_type_enum, 'other'::units_type_enum), $4,
-                COALESCE($5, true), NOW(), NOW()
+                COALESCE($5, true), $6, $6, NOW(), NOW()
             )
             RETURNING id, name, abbreviation, type::text as type, description,
-                      "isActive" as is_active, "createdAt" as created_at,
+                      "isActive" as is_active,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
+                      "createdAt" as created_at,
                       "updatedAt" as updated_at, "deletedAt" as deleted_at
             "#,
         )
@@ -108,13 +121,19 @@ impl UnitRepository {
         .bind(&dto.r#type)
         .bind(&dto.description)
         .bind(dto.is_active)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
         Ok(unit)
     }
 
-    pub async fn update(&self, id: Uuid, dto: &UpdateUnitDto) -> Result<Unit, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: &UpdateUnitDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Unit, AppError> {
         let unit = sqlx::query_as::<_, Unit>(
             r#"
             UPDATE units SET
@@ -123,10 +142,13 @@ impl UnitRepository {
                 type = COALESCE($4::units_type_enum, type),
                 description = COALESCE($5, description),
                 "isActive" = COALESCE($6, "isActive"),
+                "updatedBy" = COALESCE($7, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, abbreviation, type::text as type, description,
-                      "isActive" as is_active, "createdAt" as created_at,
+                      "isActive" as is_active,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
+                      "createdAt" as created_at,
                       "updatedAt" as updated_at, "deletedAt" as deleted_at
             "#,
         )
@@ -136,6 +158,7 @@ impl UnitRepository {
         .bind(&dto.r#type)
         .bind(&dto.description)
         .bind(dto.is_active)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -156,7 +179,11 @@ impl UnitRepository {
         Ok(())
     }
 
-    pub async fn name_exists(&self, name: &str, exclude_id: Option<Uuid>) -> Result<bool, AppError> {
+    pub async fn name_exists(
+        &self,
+        name: &str,
+        exclude_id: Option<Uuid>,
+    ) -> Result<bool, AppError> {
         let exists: (bool,) = match exclude_id {
             Some(id) => {
                 sqlx::query_as(

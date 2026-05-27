@@ -12,9 +12,7 @@ use crate::middleware::AdminUser;
 use crate::models::{
     CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
 };
-use crate::openapi::responses::{
-    DeviceEnvelope, DevicePaginationEnvelope, ErrorEnvelope,
-};
+use crate::openapi::responses::{DeviceEnvelope, DevicePaginationEnvelope, ErrorEnvelope};
 
 #[utoipa::path(
     get,
@@ -74,11 +72,11 @@ pub async fn get_device(
     tag = "devices"
 )]
 pub async fn create_device(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateDeviceDto>,
 ) -> ApiResult<Device> {
-    let device = state.devices.create(dto).await?;
+    let device = state.devices.create(dto, claims.user_id_uuid()).await?;
     created(device)
 }
 
@@ -101,12 +99,12 @@ pub async fn create_device(
     tag = "devices"
 )]
 pub async fn update_device(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateDeviceDto>,
 ) -> ApiResult<Device> {
-    let device = state.devices.update(id, dto).await?;
+    let device = state.devices.update(id, dto, claims.user_id_uuid()).await?;
     ok(device)
 }
 

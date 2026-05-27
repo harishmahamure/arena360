@@ -19,7 +19,7 @@ export type FileVisibility = 'public' | 'private' | 'admin';
 export type StorageType = 'r2' | 's3' | 'local';
 
 export interface FileMetadata {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface FileRecord {

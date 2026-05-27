@@ -15,6 +15,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { type DeviceResponse, DeviceStatus, getDevices } from '../../../services/devices/list';
+import { formatDisplayDate } from '../../../utils/date';
 
 const getStatusColor = (status: DeviceStatus) => {
   switch (status) {
@@ -207,12 +208,7 @@ export default function DevicesPage() {
       id: 'createdAt',
       label: 'Added',
       minWidth: 110,
-      format: (value) =>
-        new Date(value as string).toLocaleDateString('en-IN', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        }),
+      format: (value) => formatDisplayDate(value as string),
     },
   ];
 

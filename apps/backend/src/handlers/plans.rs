@@ -65,10 +65,7 @@ pub async fn get_active_plans(State(state): State<Arc<AppState>>) -> ApiResult<V
     security(("bearer_auth" = [])),
     tag = "plans"
 )]
-pub async fn get_plan(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Plan> {
+pub async fn get_plan(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<Plan> {
     let plan = state.plans.get_by_id(id).await?;
     ok(plan)
 }
@@ -88,11 +85,11 @@ pub async fn get_plan(
     tag = "plans"
 )]
 pub async fn create_plan(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreatePlanDto>,
 ) -> ApiResult<Plan> {
-    let plan = state.plans.create(dto).await?;
+    let plan = state.plans.create(dto, claims.user_id_uuid()).await?;
     created(plan)
 }
 
@@ -115,12 +112,12 @@ pub async fn create_plan(
     tag = "plans"
 )]
 pub async fn update_plan(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdatePlanDto>,
 ) -> ApiResult<Plan> {
-    let plan = state.plans.update(id, dto).await?;
+    let plan = state.plans.update(id, dto, claims.user_id_uuid()).await?;
     ok(plan)
 }
 

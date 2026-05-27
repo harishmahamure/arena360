@@ -6,11 +6,16 @@ import {
   FileUpload,
   Inventory,
   Link,
+  MoneyOff,
   People,
   PlayCircle,
+  PointOfSale,
   Receipt,
   Sell,
+  Settings,
   SportsEsports,
+  Store,
+  WorkHistory,
 } from '@mui/icons-material';
 import type { AdminNavItem } from '../utils/filterNavItems';
 
@@ -179,5 +184,45 @@ export const adminNavItems: AdminNavItem[] = [
     path: '/media/upload',
     icon: <FileUpload />,
     requiredPermission: Permission.FilesWrite,
+  },
+  {
+    title: 'Shifts',
+    path: '/shifts',
+    icon: <WorkHistory />,
+    requiredPermission: Permission.ShiftsRead,
+  },
+  {
+    title: 'Cash Registers',
+    path: '/cash-registers',
+    icon: <PointOfSale />,
+    requiredPermission: Permission.CashRegistersRead,
+  },
+  {
+    title: 'Expenses',
+    path: '/expenses',
+    icon: <MoneyOff />,
+    requiredPermission: Permission.ExpensesRead,
+    children: [
+      { title: 'All Expenses', path: '/expenses' },
+      {
+        title: 'Add Expense',
+        path: '/expenses/new',
+        requiredPermission: Permission.ExpensesWrite,
+      },
+      { title: 'Pending Approval', path: '/expenses?status=pending' },
+      { title: 'Approved', path: '/expenses?status=approved' },
+    ],
+  },
+  {
+    title: 'Vendors',
+    path: '/vendors',
+    icon: <Store />,
+    requiredPermission: Permission.VendorsRead,
+  },
+  {
+    title: 'Settings',
+    path: '/settings',
+    icon: <Settings />,
+    requiredPermission: Permission.ConfigRead,
   },
 ];

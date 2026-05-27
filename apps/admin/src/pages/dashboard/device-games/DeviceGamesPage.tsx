@@ -9,6 +9,7 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { removeGameFromDevice } from '../../../services/device-games/delete';
 import { type DeviceGameResponse, getDeviceGames } from '../../../services/device-games/list';
 import { toggleDeviceGameActive } from '../../../services/device-games/update';
+import { formatDisplayDate } from '../../../utils/date';
 
 export default function DeviceGamesPage() {
   const [inputValue, setInputValue] = useState<string>('');
@@ -131,14 +132,7 @@ export default function DeviceGamesPage() {
       id: 'installationDate',
       label: 'Installed On',
       minWidth: 130,
-      format: (value) =>
-        value
-          ? new Date(value as string).toLocaleDateString('en-IN', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-            })
-          : '-',
+      format: (value) => (value ? formatDisplayDate(value as string) : '-'),
     },
     {
       id: 'isActive',
@@ -158,12 +152,7 @@ export default function DeviceGamesPage() {
       id: 'createdAt',
       label: 'Assigned On',
       minWidth: 120,
-      format: (value) =>
-        new Date(value as string).toLocaleDateString('en-IN', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        }),
+      format: (value) => formatDisplayDate(value as string),
     },
   ];
 

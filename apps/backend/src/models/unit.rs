@@ -13,6 +13,8 @@ pub struct Unit {
     pub r#type: String,
     pub description: Option<String>,
     pub is_active: bool,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

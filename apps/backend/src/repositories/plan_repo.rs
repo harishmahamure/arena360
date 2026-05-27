@@ -32,6 +32,7 @@ impl PlanRepository {
                "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
                "maxSessions" as max_sessions, "isActive" as is_active,
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM plans
@@ -51,7 +52,9 @@ impl PlanRepository {
             "{} WHERE \"isActive\" = true AND \"deletedAt\" IS NULL ORDER BY name ASC",
             Self::SELECT
         );
-        let plans = sqlx::query_as::<_, Plan>(&query).fetch_all(&self.pool).await?;
+        let plans = sqlx::query_as::<_, Plan>(&query)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(plans)
     }
 
@@ -68,6 +71,7 @@ impl PlanRepository {
                "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
                "maxSessions" as max_sessions, "isActive" as is_active,
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
                FROM plans WHERE "deletedAt" IS NULL"#,
@@ -92,7 +96,10 @@ impl PlanRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let plans = builder.build_query_as::<Plan>().fetch_all(&self.pool).await?;
+        let plans = builder
+            .build_query_as::<Plan>()
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new(r#"SELECT COUNT(*) FROM plans WHERE "deletedAt" IS NULL"#);
@@ -137,7 +144,11 @@ impl PlanRepository {
         }
     }
 
-    pub async fn create(&self, values: PlanCreateValues<'_>) -> Result<Plan, AppError> {
+    pub async fn create(
+        &self,
+        values: PlanCreateValues<'_>,
+        actor_id: Option<Uuid>,
+    ) -> Result<Plan, AppError> {
         let dto = values.dto;
         let plan = sqlx::query_as::<_, Plan>(
             r#"
@@ -145,11 +156,12 @@ impl PlanRepository {
                 id, name, description, price, "planType", "durationMinutes", "validityDays",
                 "timeWindowStart", "timeWindowEnd", "timeCredits", "perMinuteRate",
                 "maxSessions", "isActive", "deviceType", "deviceSubType",
-                "createdAt", "updatedAt"
+                "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4::plans_plantype_enum, $5, $6, $7, $8, $9, $10,
-                $11, COALESCE($12, true), $13::plans_devicetype_enum, $14::plans_devicesubtype_enum, NOW(), NOW()
+                $11, COALESCE($12, true), $13::plans_devicetype_enum, $14::plans_devicesubtype_enum,
+                $15, $15, NOW(), NOW()
             )
             RETURNING id, name, description,
                       price::float8 as price, "planType"::text as plan_type,
@@ -158,6 +170,7 @@ impl PlanRepository {
                       "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
                       "maxSessions" as max_sessions, "isActive" as is_active,
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -176,6 +189,7 @@ impl PlanRepository {
         .bind(dto.is_active)
         .bind(&dto.device_type)
         .bind(&dto.device_sub_type)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -188,6 +202,7 @@ impl PlanRepository {
         dto: &UpdatePlanDto,
         time_window_start: Option<chrono::NaiveTime>,
         time_window_end: Option<chrono::NaiveTime>,
+        actor_id: Option<Uuid>,
     ) -> Result<Plan, AppError> {
         let plan = sqlx::query_as::<_, Plan>(
             r#"
@@ -206,6 +221,7 @@ impl PlanRepository {
                 "isActive" = COALESCE($13, "isActive"),
                 "deviceType" = COALESCE($14::plans_devicetype_enum, "deviceType"),
                 "deviceSubType" = COALESCE($15::plans_devicesubtype_enum, "deviceSubType"),
+                "updatedBy" = COALESCE($16, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, description,
@@ -215,6 +231,7 @@ impl PlanRepository {
                       "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
                       "maxSessions" as max_sessions, "isActive" as is_active,
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -234,6 +251,7 @@ impl PlanRepository {
         .bind(dto.is_active)
         .bind(&dto.device_type)
         .bind(&dto.device_sub_type)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 

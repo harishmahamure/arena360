@@ -48,10 +48,7 @@ pub async fn list_users(
     security(("bearer_auth" = [])),
     tag = "users"
 )]
-pub async fn get_user(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<User> {
+pub async fn get_user(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<User> {
     let user = state.users.get_by_id(id).await?;
     ok(user)
 }
@@ -75,11 +72,11 @@ pub async fn get_user(
     tag = "users"
 )]
 pub async fn update_user(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUserDto>,
 ) -> ApiResult<User> {
-    let user = state.users.update(id, dto).await?;
+    let user = state.users.update(id, dto, claims.user_id_uuid()).await?;
     ok(user)
 }

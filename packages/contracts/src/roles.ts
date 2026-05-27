@@ -34,6 +34,17 @@ export enum Permission {
   DeviceGamesWrite = 'device-games:write',
   FilesRead = 'files:read',
   FilesWrite = 'files:write',
+  ShiftsRead = 'shifts:read',
+  ShiftsWrite = 'shifts:write',
+  CashRegistersRead = 'cash-registers:read',
+  CashRegistersWrite = 'cash-registers:write',
+  ExpensesRead = 'expenses:read',
+  ExpensesWrite = 'expenses:write',
+  ExpensesApprove = 'expenses:approve',
+  VendorsRead = 'vendors:read',
+  VendorsWrite = 'vendors:write',
+  ConfigRead = 'config:read',
+  ConfigWrite = 'config:write',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -54,6 +65,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.PlayerPlansWrite,
     Permission.PlayersRead,
     Permission.PlayersWrite,
+    Permission.ShiftsRead,
+    Permission.ShiftsWrite,
+    Permission.CashRegistersRead,
+    Permission.CashRegistersWrite,
+    Permission.ExpensesRead,
+    Permission.ExpensesWrite,
   ],
   player: [
     Permission.DevicesRead,

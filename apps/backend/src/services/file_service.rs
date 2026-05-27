@@ -42,6 +42,7 @@ impl FileService {
         &self,
         dto: CreateFileDto,
         uploaded_by: Option<Uuid>,
+        actor_id: Option<Uuid>,
     ) -> Result<FileRecord, AppError> {
         self.validate_file_size(dto.file_size)?;
 
@@ -52,11 +53,16 @@ impl FileService {
             )));
         }
 
-        self.repo.create(&dto, uploaded_by).await
+        self.repo.create(&dto, uploaded_by, actor_id).await
     }
 
-    pub async fn update(&self, id: Uuid, dto: UpdateFileDto) -> Result<FileRecord, AppError> {
-        self.repo.update(id, &dto).await
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateFileDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<FileRecord, AppError> {
+        self.repo.update(id, &dto, actor_id).await
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
@@ -77,6 +83,7 @@ impl FileService {
                 related_entity_type: None,
                 related_entity_id: None,
             },
+            None,
         )
         .await
     }
@@ -95,6 +102,7 @@ impl FileService {
                 related_entity_type: None,
                 related_entity_id: None,
             },
+            None,
         )
         .await
     }
@@ -125,7 +133,10 @@ impl FileService {
         })
     }
 
-    pub fn validate_upload_content_length(&self, content_length: Option<u64>) -> Result<(), AppError> {
+    pub fn validate_upload_content_length(
+        &self,
+        content_length: Option<u64>,
+    ) -> Result<(), AppError> {
         if let Some(len) = content_length {
             self.validate_file_size(len as i64)?;
         }

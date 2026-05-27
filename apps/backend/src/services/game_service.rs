@@ -30,17 +30,26 @@ impl GameService {
             .ok_or_else(|| AppError::NotFound(format!("Game with ID {id} not found")))
     }
 
-    pub async fn create(&self, dto: CreateGameDto) -> Result<Game, AppError> {
+    pub async fn create(
+        &self,
+        dto: CreateGameDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Game, AppError> {
         if self.repo.title_exists(&dto.title, None).await? {
             return Err(AppError::Conflict(format!(
                 "Game with title '{}' already exists",
                 dto.title
             )));
         }
-        self.repo.create(&dto).await
+        self.repo.create(&dto, actor_id).await
     }
 
-    pub async fn update(&self, id: Uuid, dto: UpdateGameDto) -> Result<Game, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: UpdateGameDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Game, AppError> {
         if let Some(title) = &dto.title {
             if self.repo.title_exists(title, Some(id)).await? {
                 return Err(AppError::Conflict(format!(
@@ -48,7 +57,7 @@ impl GameService {
                 )));
             }
         }
-        self.repo.update(id, &dto).await
+        self.repo.update(id, &dto, actor_id).await
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {

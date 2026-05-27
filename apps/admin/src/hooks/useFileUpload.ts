@@ -37,7 +37,7 @@ export interface UseFileUploadReturn {
 }
 
 export const useFileUpload = (): UseFileUploadReturn => {
-  const validateFile = (file: File, options: UploadOptions): string | null => {
+  const validateFile = useCallback((file: File, options: UploadOptions): string | null => {
     if (options.maxSizeMB) {
       const maxBytes = options.maxSizeMB * 1024 * 1024;
       if (file.size > maxBytes) {
@@ -63,7 +63,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
     }
 
     return null;
-  };
+  }, []);
 
   const uploadFile = useCallback(
     async (file: File, options: UploadOptions): Promise<FileRecord | null> => {

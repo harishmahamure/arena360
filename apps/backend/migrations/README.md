@@ -3,18 +3,31 @@
 This Rust backend connects to an existing Postgres database whose schema
 was originally created by TypeORM migrations in the NestJS backend.
 
-**We do NOT maintain migrations here.** The schema is treated as an
-external dependency. If schema changes are needed, create raw SQL
-migration files in this directory using:
+**We maintain migrations here** for schema changes introduced by the Rust backend.
+Create raw SQL migration files in this directory using:
 
 ```bash
-sqlx migrate add <description>
+pnpm migration generate <description>
+```
+
+Apply pending migrations:
+
+```bash
+pnpm migration run
+```
+
+Other commands:
+
+```bash
+pnpm migration info
+pnpm migration revert
+pnpm migration prepare
 ```
 
 For compile-time query checking in CI (offline mode):
 
 ```bash
-cargo sqlx prepare
+pnpm migration prepare
 ```
 
-This generates `sqlx-data.json` which should be committed.
+This generates `.sqlx/` query metadata which should be committed.

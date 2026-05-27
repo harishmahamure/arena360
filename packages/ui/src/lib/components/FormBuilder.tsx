@@ -449,7 +449,7 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <RHFSearchOnEnterAutocomplete
                   name={name}
-                  control={control as Control<any>}
+                  control={control as Control<FieldValues>}
                   label={''}
                   placeholder={placeholder}
                   onSearch={onSearch as (query: string) => Promise<SearchOption[]>}
@@ -609,7 +609,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   const renderSections = () => (
     <Stack spacing={4}>
       {sections.map((section, index) => (
-        <Box key={index}>
+        <Box key={section.title ?? section.fields.map((field) => field.name).join('-')}>
           {section.title && (
             <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
               {section.title}

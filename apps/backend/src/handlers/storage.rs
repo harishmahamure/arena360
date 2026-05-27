@@ -41,11 +41,7 @@ pub async fn generate_upload_url(
 
     let storage = require_storage(&state.storage)?;
     let result = storage
-        .generate_upload_url(
-            &dto.key,
-            dto.content_type.as_deref(),
-            dto.expires_in,
-        )
+        .generate_upload_url(&dto.key, dto.content_type.as_deref(), dto.expires_in)
         .await?;
     ok(result)
 }

@@ -26,6 +26,8 @@ pub struct PlayerPlan {
     pub status: String,
     pub moved_to_plan_id: Option<Uuid>,
     pub moved_credits_count: Option<i32>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -66,6 +68,8 @@ pub struct PlayerPlanResponse {
     pub status: String,
     pub moved_to_plan_id: Option<Uuid>,
     pub moved_credits_count: Option<i32>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,6 +94,8 @@ impl From<PlayerPlan> for PlayerPlanResponse {
             status: value.status,
             moved_to_plan_id: value.moved_to_plan_id,
             moved_credits_count: value.moved_credits_count,
+            created_by: value.created_by,
+            updated_by: value.updated_by,
             created_at: value.created_at,
             updated_at: value.updated_at,
             deleted_at: value.deleted_at,
@@ -112,6 +118,8 @@ pub struct PlayerPlanRow {
     pub status: String,
     pub moved_to_plan_id: Option<Uuid>,
     pub moved_credits_count: Option<i32>,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -126,12 +134,14 @@ pub struct PlayerPlanRow {
 
 impl PlayerPlanRow {
     pub fn into_response(self) -> PlayerPlanResponse {
-        let player = self.player_username.map(|username| PlayerPlanPlayerSummary {
-            id: self.player_id,
-            username,
-            first_name: self.player_first_name,
-            last_name: self.player_last_name,
-        });
+        let player = self
+            .player_username
+            .map(|username| PlayerPlanPlayerSummary {
+                id: self.player_id,
+                username,
+                first_name: self.player_first_name,
+                last_name: self.player_last_name,
+            });
         let plan = self.plan_name.map(|name| PlayerPlanPlanSummary {
             id: self.plan_id,
             name,
@@ -152,6 +162,8 @@ impl PlayerPlanRow {
             status: self.status,
             moved_to_plan_id: self.moved_to_plan_id,
             moved_credits_count: self.moved_credits_count,
+            created_by: self.created_by,
+            updated_by: self.updated_by,
             created_at: self.created_at,
             updated_at: self.updated_at,
             deleted_at: self.deleted_at,

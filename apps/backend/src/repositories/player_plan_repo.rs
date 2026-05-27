@@ -25,16 +25,14 @@ impl PlayerPlanRepository {
                "remainingTimeCredits" as remaining_time_credits, status::text as status,
                "movedToPlanId" as moved_to_plan_id,
                "movedCreditsCount" as moved_credits_count,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM player_plans
     "#;
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<PlayerPlan>, AppError> {
-        let query = format!(
-            "{} WHERE id = $1 AND \"deletedAt\" IS NULL",
-            Self::SELECT
-        );
+        let query = format!("{} WHERE id = $1 AND \"deletedAt\" IS NULL", Self::SELECT);
         let player_plan = sqlx::query_as::<_, PlayerPlan>(&query)
             .bind(id)
             .fetch_optional(&self.pool)
@@ -42,15 +40,18 @@ impl PlayerPlanRepository {
         Ok(player_plan)
     }
 
-    pub async fn find_enriched_by_id(&self, id: Uuid) -> Result<Option<PlayerPlanResponse>, AppError> {
-        let query = format!(
-            r#"
+    pub async fn find_enriched_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<PlayerPlanResponse>, AppError> {
+        let query = r#"
             SELECT pp.id, pp."playerId" as player_id, pp."planId" as plan_id,
                    pp."purchaseDate" as purchase_date, pp."activationDate" as activation_date,
                    pp."expiryDate" as expiry_date, pp."remainingUsageCount" as remaining_usage_count,
                    pp."remainingTimeCredits" as remaining_time_credits, pp.status::text as status,
                    pp."movedToPlanId" as moved_to_plan_id,
                    pp."movedCreditsCount" as moved_credits_count,
+                   pp."createdBy" as created_by, pp."updatedBy" as updated_by,
                    pp."createdAt" as created_at, pp."updatedAt" as updated_at,
                    pp."deletedAt" as deleted_at,
                    u.username as player_username, u."firstName" as player_first_name,
@@ -62,7 +63,7 @@ impl PlayerPlanRepository {
             LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL
             WHERE pp.id = $1 AND pp."deletedAt" IS NULL
             "#
-        );
+        .to_string();
         let row = sqlx::query_as::<_, PlayerPlanRow>(&query)
             .bind(id)
             .fetch_optional(&self.pool)
@@ -70,19 +71,25 @@ impl PlayerPlanRepository {
         Ok(row.map(|r| r.into_response()))
     }
 
-    pub async fn create(&self, values: &PlayerPlanCreateValues) -> Result<PlayerPlan, AppError> {
+    pub async fn create(
+        &self,
+        values: &PlayerPlanCreateValues,
+        actor_id: Option<Uuid>,
+    ) -> Result<PlayerPlan, AppError> {
         let player_plan = sqlx::query_as::<_, PlayerPlan>(
             r#"INSERT INTO player_plans (
                    "playerId", "planId", "purchaseDate", "expiryDate",
-                   "remainingUsageCount", "remainingTimeCredits", status
+                   "remainingUsageCount", "remainingTimeCredits", status,
+                   "createdBy", "updatedBy"
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7::player_plans_status_enum)
+               VALUES ($1, $2, $3, $4, $5, $6, $7::player_plans_status_enum, $8, $8)
                RETURNING id, "playerId" as player_id, "planId" as plan_id,
                    "purchaseDate" as purchase_date, "activationDate" as activation_date,
                    "expiryDate" as expiry_date, "remainingUsageCount" as remaining_usage_count,
                    "remainingTimeCredits" as remaining_time_credits, status::text as status,
                    "movedToPlanId" as moved_to_plan_id,
                    "movedCreditsCount" as moved_credits_count,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at"#,
         )
@@ -93,6 +100,7 @@ impl PlayerPlanRepository {
         .bind(values.remaining_usage_count)
         .bind(values.remaining_time_credits)
         .bind(&values.status)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -103,6 +111,7 @@ impl PlayerPlanRepository {
         &self,
         id: Uuid,
         values: &PlayerPlanUpdateValues,
+        actor_id: Option<Uuid>,
     ) -> Result<PlayerPlan, AppError> {
         let player_plan = sqlx::query_as::<_, PlayerPlan>(
             r#"UPDATE player_plans SET
@@ -110,6 +119,7 @@ impl PlayerPlanRepository {
                    "remainingTimeCredits" = COALESCE($3, "remainingTimeCredits"),
                    "remainingUsageCount" = COALESCE($4, "remainingUsageCount"),
                    "activationDate" = COALESCE($5, "activationDate"),
+                   "updatedBy" = COALESCE($6, "updatedBy"),
                    "updatedAt" = NOW()
                WHERE id = $1 AND "deletedAt" IS NULL
                RETURNING id, "playerId" as player_id, "planId" as plan_id,
@@ -118,6 +128,7 @@ impl PlayerPlanRepository {
                    "remainingTimeCredits" as remaining_time_credits, status::text as status,
                    "movedToPlanId" as moved_to_plan_id,
                    "movedCreditsCount" as moved_credits_count,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at"#,
         )
@@ -126,6 +137,7 @@ impl PlayerPlanRepository {
         .bind(values.remaining_time_credits)
         .bind(values.remaining_usage_count)
         .bind(values.activation_date)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Player plan with ID {id} not found")))?;
@@ -161,6 +173,7 @@ impl PlayerPlanRepository {
                pp."remainingTimeCredits" as remaining_time_credits, pp.status::text as status,
                pp."movedToPlanId" as moved_to_plan_id,
                pp."movedCreditsCount" as moved_credits_count,
+               pp."createdBy" as created_by, pp."updatedBy" as updated_by,
                pp."createdAt" as created_at, pp."updatedAt" as updated_at,
                pp."deletedAt" as deleted_at,
                u.username as player_username, u."firstName" as player_first_name,
@@ -193,7 +206,10 @@ impl PlayerPlanRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let mut rows = builder.build_query_as::<PlayerPlanRow>().fetch_all(&self.pool).await?;
+        let mut rows = builder
+            .build_query_as::<PlayerPlanRow>()
+            .fetch_all(&self.pool)
+            .await?;
 
         Self::apply_post_filters_rows(&mut rows, filters);
 

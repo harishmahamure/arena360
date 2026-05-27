@@ -27,6 +27,8 @@ impl TransactionRepository {
                "paymentStatus"::text as payment_status,
                notes,
                "transactionDate" as transaction_date,
+               "createdBy" as created_by,
+               "updatedBy" as updated_by,
                "createdAt" as created_at,
                "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -55,6 +57,7 @@ impl TransactionRepository {
              \"planId\" as plan_id, amount::float8 as amount, \"cashAmount\"::float8 as cash_amount, \
              \"onlineAmount\"::float8 as online_amount, \"paymentMethod\"::text as payment_method, \
              \"paymentStatus\"::text as payment_status, notes, \"transactionDate\" as transaction_date, \
+             \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM transactions WHERE \"deletedAt\" IS NULL",
         );
@@ -137,18 +140,19 @@ impl TransactionRepository {
         amount: f64,
         transaction_date: DateTime<Utc>,
         payment_status: &str,
+        actor_id: Option<Uuid>,
     ) -> Result<Transaction, AppError> {
         let transaction = sqlx::query_as::<_, Transaction>(
             r#"
             INSERT INTO transactions (
                 id, "playerId", "transactionType", "planId", amount,
                 "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
-                notes, "transactionDate", "createdAt", "updatedAt"
+                notes, "transactionDate", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4,
                 $5, $6, $7::transactions_paymentmethod_enum, $8::transactions_paymentstatus_enum,
-                $9, $10, NOW(), NOW()
+                $9, $10, $11, $11, NOW(), NOW()
             )
             RETURNING id,
                       "playerId" as player_id,
@@ -161,6 +165,8 @@ impl TransactionRepository {
                       "paymentStatus"::text as payment_status,
                       notes,
                       "transactionDate" as transaction_date,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
                       "createdAt" as created_at,
                       "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -176,6 +182,7 @@ impl TransactionRepository {
         .bind(payment_status)
         .bind(&dto.notes)
         .bind(transaction_date)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -186,12 +193,14 @@ impl TransactionRepository {
         &self,
         id: Uuid,
         dto: &crate::models::UpdateTransactionDto,
+        actor_id: Option<Uuid>,
     ) -> Result<Transaction, AppError> {
         let transaction = sqlx::query_as::<_, Transaction>(
             r#"
             UPDATE transactions SET
                 "paymentStatus" = COALESCE($2::transactions_paymentstatus_enum, "paymentStatus"),
                 notes = COALESCE($3, notes),
+                "updatedBy" = COALESCE($4, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id,
@@ -205,6 +214,8 @@ impl TransactionRepository {
                       "paymentStatus"::text as payment_status,
                       notes,
                       "transactionDate" as transaction_date,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
                       "createdAt" as created_at,
                       "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -213,6 +224,7 @@ impl TransactionRepository {
         .bind(id)
         .bind(&dto.payment_status)
         .bind(&dto.notes)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;

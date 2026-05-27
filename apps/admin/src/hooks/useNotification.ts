@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
 
+interface WindowWithWebkitAudio extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
+
 export const useNotification = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const isAudioSupportedRef = useRef<boolean>(false);
@@ -9,7 +13,8 @@ export const useNotification = () => {
     // Initialize Web Audio API context with error handling
     try {
       // Check if AudioContext is supported
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass =
+        window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext;
 
       if (!AudioContextClass) {
         return;

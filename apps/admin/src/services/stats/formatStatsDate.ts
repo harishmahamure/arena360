@@ -1,9 +1,6 @@
+import { toISTString } from '../../utils/date';
+
 /**
- * Format a date for backend stats query params (YYYY-MM-DD).
+ * Format a date for backend stats query params as ISO 8601 with IST offset.
  */
-export const formatStatsDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+export const formatStatsDate = (date: Date): string => toISTString(date);

@@ -10,6 +10,7 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlayer } from '../../../services/players/delete';
 import { getPlayers, type PlayerResponse } from '../../../services/players/list';
 import { updatePlayer } from '../../../services/players/update';
+import { formatDisplayDate } from '../../../utils/date';
 
 const getRoleColor = (role: UserRole) => {
   switch (role) {
@@ -163,12 +164,7 @@ export default function PlayersPage() {
       id: 'createdAt',
       label: 'Joined',
       minWidth: 120,
-      format: (value) =>
-        new Date(value as string).toLocaleDateString('en-IN', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        }),
+      format: (value) => formatDisplayDate(value as string),
     },
   ];
 

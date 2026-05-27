@@ -23,6 +23,7 @@ import { getPlayerById } from '../../../services/players/getById';
 import { getTransactionById } from '../../../services/transactions/getById';
 import { PaymentStatus } from '../../../services/transactions/list';
 import { updateTransaction } from '../../../services/transactions/update';
+import { formatDisplayDateTime } from '../../../utils/date';
 
 const getStatusColor = (status: PaymentStatus): ChipProps['color'] => {
   switch (status) {
@@ -201,15 +202,7 @@ export default function ViewPlanTransactionPage() {
                   Transaction Date
                 </Typography>
                 <Typography variant="body1">
-                  {transactionDate
-                    ? new Date(transactionDate).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : 'N/A'}
+                  {transactionDate ? formatDisplayDateTime(transactionDate) : 'N/A'}
                 </Typography>
               </Grid>
             </Grid>

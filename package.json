@@ -23,6 +23,7 @@
     "clean": "turbo run clean && rimraf node_modules .turbo",
     "gen:api-types": "tsx scripts/gen-api-types.ts",
     "gen:bruno": "tsx scripts/gen-bruno-collection.ts",
+    "migration": "tsx scripts/migration.ts",
     "changeset": "changeset",
     "release": "changeset publish",
     "prepare": "simple-git-hooks",

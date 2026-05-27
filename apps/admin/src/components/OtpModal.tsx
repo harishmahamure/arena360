@@ -20,6 +20,8 @@ interface OtpModalProps {
   loading?: boolean;
 }
 
+const OTP_SLOT_IDS = ['otp-0', 'otp-1', 'otp-2', 'otp-3', 'otp-4', 'otp-5'] as const;
+
 export default function OtpModal({ open, onClose, onVerify, loading = false }: OtpModalProps) {
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -129,11 +131,11 @@ export default function OtpModal({ open, onClose, onVerify, loading = false }: O
           }}
           onPaste={handlePaste}
         >
-          {otp.map((digit, index) => (
+          {OTP_SLOT_IDS.map((slotId, index) => (
             <TextField
-              key={index}
+              key={slotId}
               inputRef={(el) => (inputRefs.current[index] = el)}
-              value={digit}
+              value={otp[index]}
               onChange={(e) => handleChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
               inputProps={{

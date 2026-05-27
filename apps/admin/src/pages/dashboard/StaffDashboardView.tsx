@@ -1,63 +1,38 @@
 import {
   AccessTime,
-  AttachMoney,
   Devices,
-  MonetizationOn,
+  Login,
+  Logout,
   People,
+  PointOfSale,
   ShoppingCart,
 } from '@mui/icons-material';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   CircularProgress,
+  Divider,
   GridLegacy as Grid,
   Typography,
 } from '@mui/material';
-import { startOfMonth, subDays } from 'date-fns';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useStaffDashboardStats } from '../../hooks/useStaffDashboardStats';
-import { formatStatsDate } from '../../services/stats/formatStatsDate';
+import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
 
 export default function StaffDashboardView() {
-  const [dateRange, setDateRange] = useState<'today' | 'last 7 days' | 'month'>('today');
-
-  const dateFilters = useMemo(() => {
-    const now = new Date();
-
-    switch (dateRange) {
-      case 'today': {
-        const startOfToday = new Date(now);
-        startOfToday.setHours(0, 0, 0, 0);
-        return {
-          startDate: formatStatsDate(startOfToday),
-          endDate: formatStatsDate(now),
-        };
-      }
-      case 'last 7 days':
-        return {
-          startDate: formatStatsDate(subDays(now, 7)),
-          endDate: formatStatsDate(now),
-        };
-      case 'month': {
-        const monthStart = startOfMonth(now);
-        monthStart.setHours(0, 0, 0, 0);
-        return {
-          startDate: formatStatsDate(monthStart),
-          endDate: formatStatsDate(now),
-        };
-      }
-      default:
-        return undefined;
-    }
-  }, [dateRange]);
-
-  const { data: stats, isLoading, error } = useStaffDashboardStats(dateFilters);
+  const { data: stats, isLoading, error } = useStaffDashboardStats();
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
+
+  const shiftDuration = useMemo(() => {
+    if (!stats?.shift?.startDate) return null;
+    const start = new Date(stats.shift.startDate);
+    const diffMs = nowDate().getTime() - start.getTime();
+    return formatDuration(diffMs / 60000);
+  }, [stats?.shift?.startDate]);
 
   if (isLoading) {
     return (
@@ -77,20 +52,13 @@ export default function StaffDashboardView() {
     );
   }
 
-  const cards = [
+  const collectionCards = [
     {
-      title: 'Revenue This Shift',
+      title: 'Collections This Shift',
       value: formatCurrency(stats.shiftRevenue?.total ?? 0),
       subtitle: `Cash: ${formatCurrency(stats.shiftRevenue?.cashRevenue ?? 0)} | Online: ${formatCurrency(stats.shiftRevenue?.onlineRevenue ?? 0)}`,
-      icon: MonetizationOn,
+      icon: PointOfSale,
       color: '#059669',
-    },
-    {
-      title: 'Revenue Today',
-      value: formatCurrency(stats.revenue.total),
-      subtitle: `Cash: ${formatCurrency(stats.revenue.cashRevenue)} | Online: ${formatCurrency(stats.revenue.onlineRevenue)}`,
-      icon: AttachMoney,
-      color: '#10B981',
     },
     {
       title: 'Transactions',
@@ -109,7 +77,7 @@ export default function StaffDashboardView() {
     {
       title: 'Active Players',
       value: stats.players.activePlayers.toLocaleString(),
-      subtitle: `New this period: ${stats.players.newPlayersInPeriod}`,
+      subtitle: `New this shift: ${stats.players.newPlayersInPeriod}`,
       icon: People,
       color: '#8B5CF6',
     },
@@ -124,6 +92,47 @@ export default function StaffDashboardView() {
 
   return (
     <Box sx={{ py: { xs: 3, md: 4 }, px: { xs: 2, sm: 3, md: 4 } }}>
+      {/* Shift Header Bar */}
+      <Card
+        variant="outlined"
+        sx={{
+          mb: 3,
+          bgcolor: stats.shift ? 'success.50' : 'warning.50',
+          borderColor: stats.shift ? 'success.main' : 'warning.main',
+        }}
+      >
+        <CardContent
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 2,
+            py: 2,
+            '&:last-child': { pb: 2 },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {stats.shift ? (
+              <Login sx={{ color: 'success.main' }} />
+            ) : (
+              <Logout sx={{ color: 'warning.main' }} />
+            )}
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {stats.shift ? 'Shift Active' : 'No Active Shift'}
+              </Typography>
+              {stats.shift && (
+                <Typography variant="body2" color="text.secondary">
+                  Started {formatDisplayDateTime(stats.shift.startDate)}
+                  {shiftDuration && ` \u2022 Duration: ${shiftDuration}`}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
+
       <Box
         sx={{
           display: 'flex',
@@ -139,32 +148,19 @@ export default function StaffDashboardView() {
             Staff Dashboard
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            {stats.period.label}
+            {stats.shift ? 'Showing collections for your current shift' : stats.period.label}
           </Typography>
-          {stats.shift && (
-            <Typography variant="body2" color="text.secondary">
-              Shift started {new Date(stats.shift.startDate).toLocaleString()}
-            </Typography>
-          )}
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {(['today', 'last 7 days', 'month'] as const).map((range) => (
-            <Button
-              key={range}
-              size="small"
-              variant={dateRange === range ? 'contained' : 'outlined'}
-              onClick={() => setDateRange(range)}
-            >
-              {range === 'last 7 days'
-                ? 'Last 7 Days'
-                : range.charAt(0).toUpperCase() + range.slice(1)}
-            </Button>
-          ))}
         </Box>
       </Box>
 
+      {/* Collection Summary */}
+      <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+        Shift Collection Summary
+      </Typography>
+      <Divider sx={{ mb: 3 }} />
+
       <Grid container spacing={3}>
-        {cards.map((card) => {
+        {collectionCards.map((card) => {
           const Icon = card.icon;
           return (
             <Grid item xs={12} sm={6} md={4} key={card.title}>

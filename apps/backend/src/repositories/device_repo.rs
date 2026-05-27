@@ -1,4 +1,4 @@
-use sqlx::{PgPool, QueryBuilder, Postgres};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
 use crate::dto::PaginationResult;
@@ -21,6 +21,7 @@ impl DeviceRepository {
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                location, status::text as status, "registeredKiosk" as registered_kiosk,
                "registrationStatus"::text as registration_status,
+               "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM devices
@@ -35,7 +36,10 @@ impl DeviceRepository {
         Ok(device)
     }
 
-    pub async fn list(&self, filters: &DeviceFilterDto) -> Result<PaginationResult<Device>, AppError> {
+    pub async fn list(
+        &self,
+        filters: &DeviceFilterDto,
+    ) -> Result<PaginationResult<Device>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
@@ -44,6 +48,7 @@ impl DeviceRepository {
             "SELECT id, name, \"serialNumber\" as serial_number, \"localIpAddress\" as local_ip_address, \
              \"deviceType\"::text as device_type, \"deviceSubType\"::text as device_sub_type, location, status::text as status, \
              \"registeredKiosk\" as registered_kiosk, \"registrationStatus\"::text as registration_status, \
+             \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM devices WHERE \"deletedAt\" IS NULL",
         );
@@ -85,7 +90,10 @@ impl DeviceRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let devices = builder.build_query_as::<Device>().fetch_all(&self.pool).await?;
+        let devices = builder
+            .build_query_as::<Device>()
+            .fetch_all(&self.pool)
+            .await?;
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM devices WHERE \"deletedAt\" IS NULL");
@@ -115,12 +123,16 @@ impl DeviceRepository {
         Ok(PaginationResult::new(devices, total.0, page, limit))
     }
 
-    pub async fn create(&self, dto: &CreateDeviceDto) -> Result<Device, AppError> {
+    pub async fn create(
+        &self,
+        dto: &CreateDeviceDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
         let device = sqlx::query_as::<_, Device>(
             r#"
             INSERT INTO devices (
                 id, name, "serialNumber", "localIpAddress", "deviceType", "deviceSubType",
-                location, status, "registrationStatus", "createdAt", "updatedAt"
+                location, status, "registrationStatus", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3,
@@ -129,13 +141,14 @@ impl DeviceRepository {
                 $6,
                 COALESCE($7::devices_status_enum, 'available'::devices_status_enum),
                 COALESCE($8::devices_registrationstatus_enum, 'unregistered'::devices_registrationstatus_enum),
-                NOW(), NOW()
+                $9, $9, NOW(), NOW()
             )
             RETURNING id, name, "serialNumber" as serial_number,
                       "localIpAddress" as local_ip_address,
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       location, status::text as status, "registeredKiosk" as registered_kiosk,
                       "registrationStatus"::text as registration_status,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -148,13 +161,19 @@ impl DeviceRepository {
         .bind(&dto.location)
         .bind(&dto.status)
         .bind(&dto.registration_status)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
         Ok(device)
     }
 
-    pub async fn update(&self, id: Uuid, dto: &UpdateDeviceDto) -> Result<Device, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: &UpdateDeviceDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
         let device = sqlx::query_as::<_, Device>(
             r#"
             UPDATE devices SET
@@ -166,6 +185,7 @@ impl DeviceRepository {
                 location = COALESCE($7, location),
                 status = COALESCE($8::devices_status_enum, status),
                 "registrationStatus" = COALESCE($9::devices_registrationstatus_enum, "registrationStatus"),
+                "updatedBy" = COALESCE($10, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, "serialNumber" as serial_number,
@@ -173,6 +193,7 @@ impl DeviceRepository {
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       location, status::text as status, "registeredKiosk" as registered_kiosk,
                       "registrationStatus"::text as registration_status,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -186,6 +207,7 @@ impl DeviceRepository {
         .bind(&dto.location)
         .bind(&dto.status)
         .bind(&dto.registration_status)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -202,6 +224,7 @@ impl DeviceRepository {
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       location, status::text as status, "registeredKiosk" as registered_kiosk,
                       "registrationStatus"::text as registration_status,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -228,7 +251,11 @@ impl DeviceRepository {
         Ok(())
     }
 
-    pub async fn name_exists(&self, name: &str, exclude_id: Option<Uuid>) -> Result<bool, AppError> {
+    pub async fn name_exists(
+        &self,
+        name: &str,
+        exclude_id: Option<Uuid>,
+    ) -> Result<bool, AppError> {
         let exists: (bool,) = match exclude_id {
             Some(id) => {
                 sqlx::query_as(

@@ -47,10 +47,7 @@ pub async fn list_games(
     security(("bearer_auth" = [])),
     tag = "games"
 )]
-pub async fn get_game(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Game> {
+pub async fn get_game(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<Game> {
     let game = state.games.get_by_id(id).await?;
     ok(game)
 }
@@ -70,11 +67,11 @@ pub async fn get_game(
     tag = "games"
 )]
 pub async fn create_game(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateGameDto>,
 ) -> ApiResult<Game> {
-    let game = state.games.create(dto).await?;
+    let game = state.games.create(dto, claims.user_id_uuid()).await?;
     created(game)
 }
 
@@ -97,12 +94,12 @@ pub async fn create_game(
     tag = "games"
 )]
 pub async fn update_game(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateGameDto>,
 ) -> ApiResult<Game> {
-    let game = state.games.update(id, dto).await?;
+    let game = state.games.update(id, dto, claims.user_id_uuid()).await?;
     ok(game)
 }
 

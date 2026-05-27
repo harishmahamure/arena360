@@ -10,12 +10,13 @@ use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLay
 use crate::config::{create_pool, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::auth_middleware;
-use crate::services::{
-    AuthService, DeviceGameService, DeviceService, EventService, FileService, GameService,
-    PlanService, PlayerPlanService, ProductService, SessionService, StatsService,
-    StorageService, TransactionService, UnitService, UserService,
-};
 use crate::openapi::ApiDoc;
+use crate::services::{
+    AuthService, CashRegisterService, ConfigService, DeviceGameService, DeviceService,
+    EventService, ExpenseCategoryService, ExpenseService, FileService, GameService, PlanService,
+    PlayerPlanService, ProductService, SessionService, ShiftService, StatsService, StorageService,
+    TransactionService, UnitService, UserService, VendorService,
+};
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub db: PgPool,
     pub settings: Arc<Settings>,
     pub auth: AuthService,
+    pub config: ConfigService,
     pub users: UserService,
     pub devices: DeviceService,
     pub games: GameService,
@@ -32,8 +34,13 @@ pub struct AppState {
     pub units: UnitService,
     pub device_games: DeviceGameService,
     pub sessions: SessionService,
+    pub shifts: ShiftService,
+    pub cash_registers: CashRegisterService,
     pub transactions: TransactionService,
     pub products: ProductService,
+    pub expense_categories: ExpenseCategoryService,
+    pub vendors: VendorService,
+    pub expenses: ExpenseService,
     pub stats: StatsService,
     pub events: EventService,
     pub storage: Option<StorageService>,
@@ -58,6 +65,7 @@ pub async fn build_state() -> Arc<AppState> {
 
     Arc::new(AppState {
         auth: AuthService::new(pool.clone(), settings.clone()),
+        config: ConfigService::new(pool.clone()),
         users: UserService::new(pool.clone()),
         devices: devices.clone(),
         games: GameService::new(pool.clone()),
@@ -66,8 +74,13 @@ pub async fn build_state() -> Arc<AppState> {
         units: UnitService::new(pool.clone()),
         device_games: DeviceGameService::new(pool.clone()),
         sessions: SessionService::new(pool.clone(), devices, player_plans.clone(), events.clone()),
+        shifts: ShiftService::new(pool.clone()),
+        cash_registers: CashRegisterService::new(pool.clone()),
         transactions: TransactionService::new(pool.clone(), player_plans, events.clone()),
         products: ProductService::new(pool.clone()),
+        expense_categories: ExpenseCategoryService::new(pool.clone()),
+        vendors: VendorService::new(pool.clone()),
+        expenses: ExpenseService::new(pool.clone()),
         stats: StatsService::new(pool.clone()),
         storage,
         files,
@@ -88,7 +101,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/verify-otp", post(handlers::auth::verify_otp))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))
-        .route("/stats/staff-dashboard", get(handlers::stats::staff_dashboard_stats))
+        .route(
+            "/stats/staff-dashboard",
+            get(handlers::stats::staff_dashboard_stats),
+        )
         .route(
             "/stats/revenue/by-payment-method",
             get(handlers::stats::revenue_by_payment_method),
@@ -99,7 +115,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/users/{id}",
             get(handlers::users::get_user).put(handlers::users::update_user),
         )
-        .route("/devices", get(handlers::devices::list_devices).post(handlers::devices::create_device))
+        .route(
+            "/devices",
+            get(handlers::devices::list_devices).post(handlers::devices::create_device),
+        )
         .route(
             "/devices/{id}",
             get(handlers::devices::get_device)
@@ -110,7 +129,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/devices/{id}/status",
             patch(handlers::devices::update_device_status),
         )
-        .route("/games", get(handlers::games::list_games).post(handlers::games::create_game))
+        .route(
+            "/games",
+            get(handlers::games::list_games).post(handlers::games::create_game),
+        )
         .route(
             "/games/{id}",
             get(handlers::games::get_game)
@@ -118,7 +140,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .delete(handlers::games::delete_game),
         )
         .route("/plans/active", get(handlers::plans::get_active_plans))
-        .route("/plans", get(handlers::plans::list_plans).post(handlers::plans::create_plan))
+        .route(
+            "/plans",
+            get(handlers::plans::list_plans).post(handlers::plans::create_plan),
+        )
         .route(
             "/plans/{id}",
             get(handlers::plans::get_plan)
@@ -176,18 +201,44 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .delete(handlers::device_games::delete_device_game),
         )
         .route(
+            "/cash-registers/open",
+            post(handlers::cash_registers::open_cash_register),
+        )
+        .route(
+            "/cash-registers",
+            get(handlers::cash_registers::list_cash_registers),
+        )
+        .route(
+            "/cash-registers/{id}/close",
+            patch(handlers::cash_registers::close_cash_register),
+        )
+        .route(
+            "/cash-registers/{id}/entries",
+            post(handlers::cash_registers::add_entry),
+        )
+        .route(
+            "/cash-registers/{id}",
+            get(handlers::cash_registers::get_cash_register),
+        )
+        .route("/shifts/clock-in", post(handlers::shifts::clock_in))
+        .route("/shifts/clock-out", patch(handlers::shifts::clock_out))
+        .route("/shifts/active", get(handlers::shifts::get_active_shift))
+        .route("/shifts", get(handlers::shifts::list_shifts))
+        .route("/shifts/{id}", get(handlers::shifts::get_shift))
+        .route(
+            "/shifts/{id}/force-close",
+            patch(handlers::shifts::force_close_shift),
+        )
+        .route(
             "/sessions",
             get(handlers::sessions::list_sessions).post(handlers::sessions::create_session),
         )
-        .route("/sessions/active", get(handlers::sessions::list_active_sessions))
         .route(
-            "/sessions/{id}",
-            get(handlers::sessions::get_session),
+            "/sessions/active",
+            get(handlers::sessions::list_active_sessions),
         )
-        .route(
-            "/sessions/{id}/end",
-            patch(handlers::sessions::end_session),
-        )
+        .route("/sessions/{id}", get(handlers::sessions::get_session))
+        .route("/sessions/{id}/end", patch(handlers::sessions::end_session))
         .route(
             "/transactions",
             get(handlers::transactions::list_transactions)
@@ -234,7 +285,53 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .put(handlers::files::update_file)
                 .delete(handlers::files::delete_file),
         )
+        .route(
+            "/expense-categories",
+            get(handlers::expense_categories::list_expense_categories)
+                .post(handlers::expense_categories::create_expense_category),
+        )
+        .route(
+            "/expense-categories/{id}",
+            get(handlers::expense_categories::get_expense_category)
+                .patch(handlers::expense_categories::update_expense_category)
+                .delete(handlers::expense_categories::delete_expense_category),
+        )
+        .route(
+            "/vendors",
+            get(handlers::vendors::list_vendors).post(handlers::vendors::create_vendor),
+        )
+        .route(
+            "/vendors/{id}",
+            get(handlers::vendors::get_vendor)
+                .patch(handlers::vendors::update_vendor)
+                .delete(handlers::vendors::delete_vendor),
+        )
+        .route(
+            "/expenses/summary",
+            get(handlers::expenses::expense_summary),
+        )
+        .route(
+            "/expenses",
+            get(handlers::expenses::list_expenses).post(handlers::expenses::create_expense),
+        )
+        .route(
+            "/expenses/{id}",
+            get(handlers::expenses::get_expense).patch(handlers::expenses::update_expense),
+        )
+        .route(
+            "/expenses/{id}/approve",
+            patch(handlers::expenses::approve_expense),
+        )
+        .route(
+            "/expenses/{id}/reject",
+            patch(handlers::expenses::reject_expense),
+        )
         .route("/sse", get(handlers::sse::sse_handler))
+        .route("/config", get(handlers::config::list_config))
+        .route(
+            "/config/{key}",
+            get(handlers::config::get_config).put(handlers::config::upsert_config),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -244,9 +341,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let mut router = Router::new().merge(api);
 
     if !state.settings.is_production() {
-        router = router.merge(
-            SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()),
-        );
+        router = router
+            .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()));
     }
 
     Router::new()

@@ -10,7 +10,7 @@ import {
   deviceTypeOptions,
   planTypeOptions,
 } from '../../../../src/containers/plans/schemas/plan.schema';
-import { addPlan } from '../../../services/plans/add';
+import { addPlan, type CreatePlanPayload } from '../../../services/plans/add';
 import type { PlanType } from '../../../services/plans/list';
 
 export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
@@ -156,7 +156,7 @@ export default function AddNewPlanPage() {
     }
 
     try {
-      const payload: any = {
+      const payload: CreatePlanPayload = {
         name: data.name,
         description: data.description || '',
         price: data.price,

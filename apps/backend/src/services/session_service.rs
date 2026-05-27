@@ -60,8 +60,15 @@ impl SessionService {
             .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
     }
 
-    pub async fn start(&self, dto: CreateSessionDto) -> Result<UsageSession, AppError> {
-        let active = self.repo.find_active_by_player_plan(dto.player_plan_id).await?;
+    pub async fn start(
+        &self,
+        dto: CreateSessionDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<UsageSession, AppError> {
+        let active = self
+            .repo
+            .find_active_by_player_plan(dto.player_plan_id)
+            .await?;
         if !active.is_empty() {
             return Err(AppError::Conflict(format!(
                 "Player plan already has an active session (ID: {})",
@@ -78,7 +85,9 @@ impl SessionService {
         if !validation.valid {
             return Err(AppError::Forbidden(format!(
                 "Cannot start session: {}",
-                validation.reason.unwrap_or_else(|| "Plan access denied".to_string())
+                validation
+                    .reason
+                    .unwrap_or_else(|| "Plan access denied".to_string())
             )));
         }
 
@@ -90,7 +99,7 @@ impl SessionService {
             )));
         }
 
-        let session = self.repo.create(&dto, start_time).await?;
+        let session = self.repo.create(&dto, start_time, actor_id).await?;
 
         let _ = self
             .devices
@@ -102,13 +111,17 @@ impl SessionService {
             )
             .await;
 
-        self.events
-            .publish_session_started(&session.id.to_string());
+        self.events.publish_session_started(&session.id.to_string());
 
         Ok(session)
     }
 
-    pub async fn end(&self, id: Uuid, dto: EndSessionDto) -> Result<UsageSession, AppError> {
+    pub async fn end(
+        &self,
+        id: Uuid,
+        dto: EndSessionDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<UsageSession, AppError> {
         let session = self.get_by_id(id).await?;
 
         if session.end_time.is_some() {
@@ -133,13 +146,19 @@ impl SessionService {
                 AppError::NotFound(format!("Plan with ID {} not found", player_plan.plan_id))
             })?;
 
-        let time_credits_consumed = dto.time_credits_consumed.unwrap_or_else(|| {
-            ((duration_minutes as f64) * plan.per_minute_rate).ceil() as i32
-        });
+        let time_credits_consumed = dto
+            .time_credits_consumed
+            .unwrap_or_else(|| ((duration_minutes as f64) * plan.per_minute_rate).ceil() as i32);
 
         let updated = self
             .repo
-            .end(id, end_time, duration_minutes, Some(time_credits_consumed))
+            .end(
+                id,
+                end_time,
+                duration_minutes,
+                Some(time_credits_consumed),
+                actor_id,
+            )
             .await?;
 
         if player_plan.remaining_time_credits.is_some() {
@@ -172,8 +191,7 @@ impl SessionService {
             )
             .await;
 
-        self.events
-            .publish_session_ended(&updated.id.to_string());
+        self.events.publish_session_ended(&updated.id.to_string());
 
         Ok(updated)
     }

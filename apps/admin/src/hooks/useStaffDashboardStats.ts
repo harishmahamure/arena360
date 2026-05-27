@@ -1,16 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { getStaffShiftStart } from '../constants/staffShift';
+import { getActiveShift } from '../services/shifts';
 import { getStaffDashboardStats } from '../services/stats/getStaffDashboardStats';
-import type { StaffStatsQueryDto } from '../services/stats/types';
 
-export const useStaffDashboardStats = (filters?: Omit<StaffStatsQueryDto, 'shiftStart'>) => {
-  const shiftStart = getStaffShiftStart();
+export const useStaffDashboardStats = () => {
+  const { data: activeShift } = useQuery({
+    queryKey: ['activeShift'],
+    queryFn: getActiveShift,
+    retry: false,
+  });
+
+  const shiftStart = activeShift?.clockIn;
 
   return useQuery({
-    queryKey: ['staffDashboardStats', filters, shiftStart],
+    queryKey: ['staffDashboardStats', shiftStart],
     queryFn: () =>
       getStaffDashboardStats({
-        ...filters,
         shiftStart,
       }),
   });

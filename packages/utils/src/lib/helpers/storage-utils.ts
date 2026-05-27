@@ -23,9 +23,7 @@ export const setStorageItem = <T>(key: string, value: T, type: StorageType = 'lo
     const storage = getStorage(type);
     if (!storage) return;
     storage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.error('Error setting storage item:', error);
-  }
+  } catch (_error) {}
 };
 
 /**
@@ -38,8 +36,7 @@ export const getStorageItem = <T>(key: string, type: StorageType = 'local'): T |
 
     const item = storage.getItem(key);
     return item ? JSON.parse(item) : null;
-  } catch (error) {
-    console.error('Error getting storage item:', error);
+  } catch (_error) {
     return null;
   }
 };
@@ -52,9 +49,7 @@ export const removeStorageItem = (key: string, type: StorageType = 'local'): voi
     const storage = getStorage(type);
     if (!storage) return;
     storage.removeItem(key);
-  } catch (error) {
-    console.error('Error removing storage item:', error);
-  }
+  } catch (_error) {}
 };
 
 /**
@@ -65,9 +60,7 @@ export const clearStorage = (type: StorageType = 'local'): void => {
     const storage = getStorage(type);
     if (!storage) return;
     storage.clear();
-  } catch (error) {
-    console.error('Error clearing storage:', error);
-  }
+  } catch (_error) {}
 };
 
 /**

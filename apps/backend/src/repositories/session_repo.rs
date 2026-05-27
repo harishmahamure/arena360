@@ -26,6 +26,8 @@ impl SessionRepository {
                "endTime" as end_time,
                "durationMinutes" as duration_minutes,
                "timeCreditsConsumed" as time_credits_consumed,
+               "createdBy" as created_by,
+               "updatedBy" as updated_by,
                "createdAt" as created_at,
                "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -41,12 +43,16 @@ impl SessionRepository {
         Ok(session)
     }
 
-    pub async fn find_enriched_by_id(&self, id: Uuid) -> Result<Option<UsageSessionResponse>, AppError> {
+    pub async fn find_enriched_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<UsageSessionResponse>, AppError> {
         let row = sqlx::query_as::<_, UsageSessionRow>(
             r#"
             SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
                    s."gameId" as game_id, s."startTime" as start_time, s."endTime" as end_time,
                    s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
+                   s."createdBy" as created_by, s."updatedBy" as updated_by,
                    s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
                    pp."playerId" as pp_player_id, pp."planId" as pp_plan_id,
                    pp."remainingTimeCredits" as pp_remaining_time_credits, pp.status::text as pp_status,
@@ -96,6 +102,7 @@ impl SessionRepository {
             r#"SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
                s."gameId" as game_id, s."startTime" as start_time, s."endTime" as end_time,
                s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
+               s."createdBy" as created_by, s."updatedBy" as updated_by,
                s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
                pp."playerId" as pp_player_id, pp."planId" as pp_plan_id,
                pp."remainingTimeCredits" as pp_remaining_time_credits, pp.status::text as pp_status,
@@ -138,8 +145,9 @@ impl SessionRepository {
 
         let data = rows.into_iter().map(|r| r.into_response()).collect();
 
-        let mut count_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM usage_sessions s WHERE s.\"deletedAt\" IS NULL");
+        let mut count_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT COUNT(*) FROM usage_sessions s WHERE s.\"deletedAt\" IS NULL",
+        );
         Self::apply_filters(&mut count_builder, filters, "s");
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
@@ -147,7 +155,11 @@ impl SessionRepository {
         Ok(PaginationResult::new(data, total.0, page, limit))
     }
 
-    fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &SessionFilterDto, prefix: &str) {
+    fn apply_filters(
+        builder: &mut QueryBuilder<Postgres>,
+        filters: &SessionFilterDto,
+        prefix: &str,
+    ) {
         let col = |name: &str| format!("{prefix}.\"{name}\"");
         if let Some(player_plan_id) = filters.player_plan_id {
             builder.push(format!(" AND {} = ", col("playerPlanId")));
@@ -186,13 +198,19 @@ impl SessionRepository {
         }
     }
 
-    pub async fn create(&self, dto: &CreateSessionDto, start_time: DateTime<Utc>) -> Result<UsageSession, AppError> {
+    pub async fn create(
+        &self,
+        dto: &CreateSessionDto,
+        start_time: DateTime<Utc>,
+        actor_id: Option<Uuid>,
+    ) -> Result<UsageSession, AppError> {
         let session = sqlx::query_as::<_, UsageSession>(
             r#"
             INSERT INTO usage_sessions (
-                id, "playerPlanId", "deviceId", "gameId", "startTime", "createdAt", "updatedAt"
+                id, "playerPlanId", "deviceId", "gameId", "startTime",
+                "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5, NOW(), NOW())
             RETURNING id,
                       "playerPlanId" as player_plan_id,
                       "deviceId" as device_id,
@@ -201,6 +219,8 @@ impl SessionRepository {
                       "endTime" as end_time,
                       "durationMinutes" as duration_minutes,
                       "timeCreditsConsumed" as time_credits_consumed,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
                       "createdAt" as created_at,
                       "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -210,6 +230,7 @@ impl SessionRepository {
         .bind(dto.device_id)
         .bind(dto.game_id)
         .bind(start_time)
+        .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -222,6 +243,7 @@ impl SessionRepository {
         end_time: DateTime<Utc>,
         duration_minutes: i32,
         time_credits_consumed: Option<i32>,
+        actor_id: Option<Uuid>,
     ) -> Result<UsageSession, AppError> {
         let session = sqlx::query_as::<_, UsageSession>(
             r#"
@@ -229,6 +251,7 @@ impl SessionRepository {
                 "endTime" = $2,
                 "durationMinutes" = $3,
                 "timeCreditsConsumed" = $4,
+                "updatedBy" = COALESCE($5, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
             RETURNING id,
@@ -239,6 +262,8 @@ impl SessionRepository {
                       "endTime" as end_time,
                       "durationMinutes" as duration_minutes,
                       "timeCreditsConsumed" as time_credits_consumed,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
                       "createdAt" as created_at,
                       "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -248,6 +273,7 @@ impl SessionRepository {
         .bind(end_time)
         .bind(duration_minutes)
         .bind(time_credits_consumed)
+        .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;
 

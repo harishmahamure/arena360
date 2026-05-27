@@ -9,10 +9,10 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::AdminUser;
-use crate::models::{CreateDeviceGameDto, DeviceGameFilterDto, DeviceGameResponse, UpdateDeviceGameDto};
-use crate::openapi::responses::{
-    DeviceGameEnvelope, DeviceGamePaginationEnvelope, ErrorEnvelope,
+use crate::models::{
+    CreateDeviceGameDto, DeviceGameFilterDto, DeviceGameResponse, UpdateDeviceGameDto,
 };
+use crate::openapi::responses::{DeviceGameEnvelope, DeviceGamePaginationEnvelope, ErrorEnvelope};
 
 #[utoipa::path(
     get,
@@ -54,7 +54,10 @@ pub async fn list_device_games_by_device(
     Path(device_id): Path<Uuid>,
     Query(filters): Query<DeviceGameFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<DeviceGameResponse>> {
-    let result = state.device_games.list_by_device(device_id, filters).await?;
+    let result = state
+        .device_games
+        .list_by_device(device_id, filters)
+        .await?;
     ok(result)
 }
 
@@ -97,11 +100,14 @@ pub async fn list_device_games_by_game(
     tag = "device-games"
 )]
 pub async fn create_device_game(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateDeviceGameDto>,
 ) -> ApiResult<DeviceGameResponse> {
-    let device_game = state.device_games.create(dto).await?;
+    let device_game = state
+        .device_games
+        .create(dto, claims.user_id_uuid())
+        .await?;
     created(device_game)
 }
 
@@ -147,12 +153,15 @@ pub async fn get_device_game(
     tag = "device-games"
 )]
 pub async fn update_device_game(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateDeviceGameDto>,
 ) -> ApiResult<DeviceGameResponse> {
-    let device_game = state.device_games.update(id, dto).await?;
+    let device_game = state
+        .device_games
+        .update(id, dto, claims.user_id_uuid())
+        .await?;
     ok(device_game)
 }
 

@@ -1,20 +1,17 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::dto::auth_dto::{
-    AuthResponseDto, OtpPendingResponse, RegisterResponseDto,
-};
+use crate::dto::auth_dto::{AuthResponseDto, OtpPendingResponse, RegisterResponseDto};
 pub use crate::models::{
     AssignPlanDto, CreateDeviceDto, CreateDeviceGameDto, CreateFileDto, CreateGameDto,
-    CreatePlanDto, CreateProductDto, CreateSessionDto, CreateTransactionDto, CreateUnitDto,
-    Device, DeviceFilterDto, DeviceGameFilterDto, DeviceGameResponse, EndSessionDto, FileFilterDto,
+    CreatePlanDto, CreateProductDto, CreateSessionDto, CreateTransactionDto, CreateUnitDto, Device,
+    DeviceFilterDto, DeviceGameFilterDto, DeviceGameResponse, EndSessionDto, FileFilterDto,
     FileRecord, FileWithDownloadUrlDto, Game, GameFilterDto, GenerateDownloadUrlDto,
     GenerateUploadUrlDto, Plan, PlanFilterDto, PlayerPlan, PlayerPlanFilterDto, PlayerPlanResponse,
-    Product,
-    ProductFilterDto, SessionFilterDto, StorageStatsDto, Transaction, TransactionFilterDto, Unit,
-    UnitFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto, UpdateFileDto, UpdateGameDto,
-    UpdatePlanDto, UpdateProductDto, UpdateUnitDto, UpdateUserDto, UsageSession, UsageSessionResponse,
-    User, UserFilterDto, ValidationResult,
+    Product, ProductFilterDto, SessionFilterDto, StorageStatsDto, Transaction,
+    TransactionFilterDto, Unit, UnitFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
+    UpdateFileDto, UpdateGameDto, UpdatePlanDto, UpdateProductDto, UpdateUnitDto, UpdateUserDto,
+    UsageSession, UsageSessionResponse, User, UserFilterDto, ValidationResult,
 };
 use crate::services::stats_service::{
     DashboardStatsDto, PeriodPairRevenueByPaymentMethod, PeriodPairUsageStats,
@@ -82,8 +79,14 @@ success_envelope!(OtpPendingEnvelope, OtpPendingResponse);
 success_envelope!(AuthResponseEnvelope, AuthResponseDto);
 success_envelope!(RegisterResponseEnvelope, RegisterResponseDto);
 success_envelope!(DashboardStatsEnvelope, DashboardStatsDto);
-success_envelope!(StaffDashboardStatsEnvelope, crate::services::stats_service::StaffDashboardStatsDto);
-success_envelope!(RevenueByPaymentMethodEnvelope, PeriodPairRevenueByPaymentMethod);
+success_envelope!(
+    StaffDashboardStatsEnvelope,
+    crate::services::stats_service::StaffDashboardStatsDto
+);
+success_envelope!(
+    RevenueByPaymentMethodEnvelope,
+    PeriodPairRevenueByPaymentMethod
+);
 success_envelope!(UsageStatsEnvelope, PeriodPairUsageStats);
 success_envelope!(DeviceEnvelope, Device);
 success_envelope!(GameEnvelope, Game);
@@ -105,15 +108,69 @@ success_envelope!(StorageStatsEnvelope, StorageStatsDto);
 success_envelope!(PresignedUploadUrlEnvelope, PresignedUploadUrlResponse);
 success_envelope!(PresignedDownloadUrlEnvelope, PresignedDownloadUrlResponse);
 success_envelope!(ListObjectsEnvelope, ListObjectsResponse);
+success_envelope!(ConfigurationEnvelope, crate::models::Configuration);
+success_envelope!(ConfigurationListEnvelope, Vec<crate::models::Configuration>);
+success_envelope!(ShiftEnvelope, crate::models::Shift);
+success_envelope!(ShiftActiveEnvelope, Option<crate::models::Shift>);
 
 pagination_envelope!(DevicePaginationEnvelope, DevicePaginationPage, Device);
 pagination_envelope!(GamePaginationEnvelope, GamePaginationPage, Game);
 pagination_envelope!(PlanPaginationEnvelope, PlanPaginationPage, Plan);
-pagination_envelope!(PlayerPlanPaginationEnvelope, PlayerPlanPaginationPage, PlayerPlanResponse);
+pagination_envelope!(
+    PlayerPlanPaginationEnvelope,
+    PlayerPlanPaginationPage,
+    PlayerPlanResponse
+);
 pagination_envelope!(UnitPaginationEnvelope, UnitPaginationPage, Unit);
-pagination_envelope!(DeviceGamePaginationEnvelope, DeviceGamePaginationPage, DeviceGameResponse);
-pagination_envelope!(SessionPaginationEnvelope, SessionPaginationPage, UsageSessionResponse);
-pagination_envelope!(TransactionPaginationEnvelope, TransactionPaginationPage, Transaction);
+pagination_envelope!(
+    DeviceGamePaginationEnvelope,
+    DeviceGamePaginationPage,
+    DeviceGameResponse
+);
+pagination_envelope!(
+    SessionPaginationEnvelope,
+    SessionPaginationPage,
+    UsageSessionResponse
+);
+pagination_envelope!(
+    ShiftPaginationEnvelope,
+    ShiftPaginationPage,
+    crate::models::Shift
+);
+pagination_envelope!(
+    TransactionPaginationEnvelope,
+    TransactionPaginationPage,
+    Transaction
+);
 pagination_envelope!(ProductPaginationEnvelope, ProductPaginationPage, Product);
 pagination_envelope!(UserPaginationEnvelope, UserPaginationPage, User);
 pagination_envelope!(FilePaginationEnvelope, FilePaginationPage, FileRecord);
+
+use crate::models::{
+    CashRegister, CashRegisterEntry, CashRegisterWithEntries, Expense, ExpenseCategory,
+    ExpenseSummaryDto, Vendor,
+};
+
+success_envelope!(CashRegisterEnvelope, CashRegister);
+success_envelope!(CashRegisterWithEntriesEnvelope, CashRegisterWithEntries);
+success_envelope!(CashRegisterEntryEnvelope, CashRegisterEntry);
+success_envelope!(CashRegisterEntriesEnvelope, Vec<CashRegisterEntry>);
+pagination_envelope!(
+    CashRegisterPaginationEnvelope,
+    CashRegisterPaginationPage,
+    CashRegister
+);
+
+success_envelope!(ExpenseCategoryEnvelope, ExpenseCategory);
+pagination_envelope!(
+    ExpenseCategoryPaginationEnvelope,
+    ExpenseCategoryPaginationPage,
+    ExpenseCategory
+);
+
+success_envelope!(VendorEnvelope, Vendor);
+pagination_envelope!(VendorPaginationEnvelope, VendorPaginationPage, Vendor);
+
+success_envelope!(ExpenseEnvelope, Expense);
+success_envelope!(ExpenseSummaryListEnvelope, Vec<ExpenseSummaryDto>);
+pagination_envelope!(ExpensePaginationEnvelope, ExpensePaginationPage, Expense);

@@ -17,6 +17,8 @@ pub struct Device {
     pub status: String,
     pub registered_kiosk: Option<String>,
     pub registration_status: String,
+    pub created_by: Option<Uuid>,
+    pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

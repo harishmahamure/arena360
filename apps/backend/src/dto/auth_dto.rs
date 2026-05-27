@@ -99,6 +99,10 @@ impl JwtUserClaims {
     pub fn is_admin_or_staff(&self) -> bool {
         self.is_admin() || self.is_staff()
     }
+
+    pub fn user_id_uuid(&self) -> Option<uuid::Uuid> {
+        uuid::Uuid::parse_str(&self.userId).ok()
+    }
 }
 
 #[cfg(test)]
