@@ -1,0 +1,38 @@
+{
+  "name": "@gaming-cafe/theme",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Design tokens (TS + emitted CSS variables) and the MUI theme for Arena360.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tokens.css": "./src/tokens.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "clean": "rimraf dist .turbo *.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@gaming-cafe/tsconfig": "workspace:*",
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  },
+  "peerDependencies": {
+    "@mui/material": "^7.0.0"
+  },
+  "dependencies": {
+    "@mui/material": "^7.3.6"
+  }
+}

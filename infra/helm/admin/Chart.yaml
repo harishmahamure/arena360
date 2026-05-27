@@ -1,0 +1,23 @@
+apiVersion: v2
+name: admin-panel
+description: Admin Panel - Helm chart for Kubernetes deployment
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: DevOps Team
+    email: devops@example.com
+keywords:
+  - admin
+  - panel
+  - react
+  - nginx
+home: https://github.com/your-org/admin-panel
+sources:
+  - https://github.com/your-org/admin-panel
+
+
+
+
+
+

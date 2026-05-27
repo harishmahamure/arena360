@@ -1,0 +1,35 @@
+# Used when building from apps/backend, e.g.:
+#   docker build -f Dockerfile .
+
+# Rust build artifacts (rebuilt in container)
+target/
+
+# Version control
+.git/
+.gitignore
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Docs & local notes
+docs/
+*.md
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Docker meta
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore

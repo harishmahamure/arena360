@@ -1,0 +1,41 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "tui",
+  "globalEnv": ["NODE_ENV", "CI"],
+  "globalDependencies": [
+    "tsconfig.base.json",
+    "biome.json",
+    "packages/tsconfig/base.json",
+    "packages/tsconfig/node.json",
+    "packages/tsconfig/react.json",
+    "packages/tsconfig/nest.json",
+    "packages/biome-config/biome.json",
+    ".npmrc",
+    ".nvmrc"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "package.json", "tsconfig.json", "vite.config.*", "tauri.conf.json"],
+      "outputs": ["dist/**", "build/**", ".next/**", "src-tauri/target/release/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

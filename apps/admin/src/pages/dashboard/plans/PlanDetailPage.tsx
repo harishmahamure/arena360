@@ -1,0 +1,145 @@
+import { FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
+import { Box, Paper, Typography } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  type CreatePlanFormData,
+  createPlanSchema,
+  type DeviceSubType,
+  type DeviceType,
+} from '../../../containers/plans/schemas/plan.schema';
+import type { CreatePlanPayload } from '../../../services/plans/add';
+import { getPlanById } from '../../../services/plans/getById';
+import { PlanType } from '../../../services/plans/list';
+import { updatePlan } from '../../../services/plans/update';
+import { planFormFields } from './PlanNewPage';
+
+export default function EditPlanPage() {
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const [error, setError] = useState<string | undefined>();
+  const [success, setSuccess] = useState<string | undefined>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { data: plan, isLoading } = useQuery({
+    queryKey: ['plan', id],
+    queryFn: () => getPlanById(id as string),
+    enabled: !!id,
+    staleTime: 1000 * 30, // 30 seconds
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+    refetchInterval: 1000 * 30,
+    refetchIntervalInBackground: true,
+  });
+
+  const handleSubmit = async (data: CreatePlanFormData) => {
+    setIsSubmitting(true);
+    setError(undefined);
+    setSuccess(undefined);
+
+    if (!data.name || !data.price || !data.planType) {
+      setError('Name, price, and plan type are required');
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const payload: Partial<CreatePlanPayload> &
+        Pick<CreatePlanFormData, 'deviceType' | 'deviceSubType'> = {
+        name: data.name,
+        description: data.description,
+        price: data.price,
+        planType: data.planType as PlanType,
+        validityDays: data.validityDays ?? undefined,
+        perMinuteRate: data.perMinuteRate ?? undefined,
+        isActive: data.isActive,
+        deviceType: data.deviceType,
+        deviceSubType: data.deviceSubType,
+      };
+
+      // Add conditional fields based on plan type
+      if (data.durationMinutes) payload.durationMinutes = data.durationMinutes;
+      if (data.timeCredits) payload.timeCredits = data.timeCredits;
+      if (data.maxSessions) payload.maxSessions = data.maxSessions;
+      if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
+      if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
+
+      await updatePlan(id as string, payload);
+      setSuccess('Plan updated successfully!');
+
+      // Navigate back to plans list after a short delay
+      setTimeout(() => {
+        navigate('/plans');
+      }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update plan');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    navigate('/plans');
+  };
+
+  if (isLoading) {
+    return (
+      <Paper elevation={0} sx={{ p: 4 }}>
+        <FormSkeleton />
+      </Paper>
+    );
+  }
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 4,
+      }}
+    >
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" fontWeight={600} gutterBottom>
+          Update Plan
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {plan?.name} - Update the plan details
+        </Typography>
+      </Box>
+
+      <FormBuilder<CreatePlanFormData>
+        fields={planFormFields}
+        schema={createPlanSchema}
+        defaultValues={{
+          name: plan?.name || '',
+          description: plan?.description || '',
+          price: plan?.price ? parseFloat(plan.price) : 0,
+          planType: plan?.planType || PlanType.TIME_BASED,
+          durationMinutes: plan?.durationMinutes,
+          validityDays: plan?.validityDays || 30,
+          timeWindowStart: plan?.timeWindowStart,
+          timeWindowEnd: plan?.timeWindowEnd,
+          timeCredits: plan?.timeCredits,
+          perMinuteRate: plan?.perMinuteRate || 1.0,
+          maxSessions: plan?.maxSessions,
+          isActive: plan?.isActive ?? true,
+          deviceSubType: plan?.deviceSubType as DeviceSubType,
+          deviceType: plan?.deviceType as DeviceType,
+        }}
+        mode="edit"
+        onSubmit={handleSubmit}
+        onCancel={handleCancel}
+        loading={isSubmitting}
+        error={error}
+        success={success}
+        showCancel
+        showReset
+        submitLabel="Update Plan"
+        cancelLabel="Cancel"
+        buttonAlign="right"
+        spacing={3}
+      />
+    </Paper>
+  );
+}

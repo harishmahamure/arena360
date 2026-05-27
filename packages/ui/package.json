@@ -1,0 +1,48 @@
+{
+  "name": "@gaming-cafe/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared MUI-based React components for admin.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "clean": "rimraf dist .turbo *.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@gaming-cafe/utils": "workspace:*",
+    "@hookform/resolvers": "^5.2.2",
+    "@mui/icons-material": "^7.3.6",
+    "@mui/material": "^7.3.6",
+    "@tanstack/react-query": "^5.90.12",
+    "react-hook-form": "^7.68.0",
+    "react-router-dom": "^7.11.0",
+    "yup": "^1.7.1"
+  },
+  "devDependencies": {
+    "@gaming-cafe/tsconfig": "workspace:*",
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  },
+  "peerDependencies": {
+    "@emotion/react": "^11.0.0",
+    "@emotion/styled": "^11.0.0",
+    "@gaming-cafe/theme": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

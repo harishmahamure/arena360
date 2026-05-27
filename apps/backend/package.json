@@ -1,0 +1,7 @@
+{
+  "name": "@gaming-cafe/backend",
+  "private": true,
+  "scripts": {
+    "openapi:generate": "cargo run --bin openapi-gen --quiet"
+  }
+}

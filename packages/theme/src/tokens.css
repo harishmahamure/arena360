@@ -1,0 +1,51 @@
+/*
+ * Arena360 design tokens — CSS custom properties.
+ * Keep in lockstep with `tokens.ts`. Kiosk imports this file directly
+ * via `@gaming-cafe/theme/tokens.css`; admin reads the equivalent
+ * values through the MUI theme.
+ */
+
+:root {
+  /* color */
+  --gz-color-primary: #ff6900;
+  --gz-color-primary-light: #ff8a3d;
+  --gz-color-primary-dark: #cc5400;
+  --gz-color-on-primary: #ffffff;
+
+  --gz-color-secondary: #1a1a2e;
+  --gz-color-secondary-light: #2d2d44;
+  --gz-color-secondary-dark: #0f0f1a;
+  --gz-color-on-secondary: #ffffff;
+
+  --gz-color-surface: #ffffff;
+  --gz-color-surface-alt: #f8f9fc;
+  --gz-color-on-surface: #18181b;
+  --gz-color-on-surface-muted: #52525b;
+
+  --gz-color-success: #10b981;
+  --gz-color-warning: #f59e0b;
+  --gz-color-danger: #ef4444;
+  --gz-color-info: #3b82f6;
+
+  --gz-color-border: #e4e4e7;
+  --gz-color-divider: #e4e4e7;
+
+  /* spacing */
+  --gz-space-1: 4px;
+  --gz-space-2: 8px;
+  --gz-space-3: 12px;
+  --gz-space-4: 16px;
+  --gz-space-5: 20px;
+  --gz-space-6: 24px;
+  --gz-space-7: 32px;
+  --gz-space-8: 40px;
+
+  /* radius */
+  --gz-radius-sm: 8px;
+  --gz-radius-md: 12px;
+  --gz-radius-lg: 16px;
+
+  /* typography */
+  --gz-font-sans: "Zalando Sans", Roboto, Arial, sans-serif;
+  --gz-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}

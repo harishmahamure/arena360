@@ -1,0 +1,18 @@
+{
+  "name": "@gaming-cafe/biome-config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared Biome 2.x linter + formatter configuration for the gaming-cafe monorepo.",
+  "files": [
+    "biome.json"
+  ],
+  "exports": {
+    ".": {
+      "biome": "./biome.json",
+      "default": "./biome.json"
+    }
+  },
+  "peerDependencies": {
+    "@biomejs/biome": "^2.4.15"
+  }
+}

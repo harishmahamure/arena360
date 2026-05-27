@@ -1,0 +1,25 @@
+{
+  "name": "@gaming-cafe/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runtime enums, pagination types, and role contracts shared across all gaming-cafe workspaces.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./errors": "./src/errors.ts",
+    "./pagination": "./src/pagination.ts",
+    "./roles": "./src/roles.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf .turbo *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@gaming-cafe/tsconfig": "workspace:*"
+  }
+}

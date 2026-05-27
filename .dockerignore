@@ -1,0 +1,72 @@
+# Used when building from repo root, e.g.:
+#   docker build -f apps/admin/Dockerfile .
+
+# Dependencies (reinstalled in container)
+node_modules/
+.pnp
+.pnp.js
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Rust backend (not needed for admin image)
+apps/backend/
+target/
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# CI / docs / infra (not copied by admin Dockerfile)
+.github/
+docs/
+infra/
+.changeset/
+scripts/
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+**/__tests__/
+**/*.test.*
+**/*.spec.*
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs & cache
+*.log
+.cache/
+.vite/
+
+# Docker meta (not needed inside image context)
+**/Dockerfile*
+**/docker-compose*.yml
+**/docker-compose*.yaml
+.dockerignore
+
+# Helm charts (deployed separately)
+**/helm/
+
+# Local-only markdown (keep README out of build context)
+**/*.md
+!apps/admin/docker/**

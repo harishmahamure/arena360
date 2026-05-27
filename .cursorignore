@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Rust
+target/
+apps/backend/target/
+
+# Testing artifacts
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Lockfiles (large, low signal for AI context)
+pnpm-lock.yaml
+Cargo.lock
+
+# Git
+.git/
+
+# Cache
+.cache/
+.vite/

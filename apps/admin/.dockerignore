@@ -1,0 +1,19 @@
+# Admin builds use the repo root as context. Prefer the root .dockerignore:
+#   docker build -f apps/admin/Dockerfile .
+#
+# This file applies only when the build context is apps/admin/.
+
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+coverage/
+.env
+.env.*
+!.env.example
+.git/
+.idea/
+.vscode/
+.DS_Store
+*.log

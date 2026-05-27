@@ -1,0 +1,49 @@
+{
+  "name": "@gaming-cafe/utils",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cross-app utilities: shared axios HTTP client, envelope unwrapping, validators.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "clean": "rimraf dist .turbo *.tsbuildinfo",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@gaming-cafe/tsconfig": "workspace:*",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "vitest": "^3.0.9"
+  },
+  "dependencies": {
+    "@gaming-cafe/contracts": "workspace:*",
+    "@hookform/resolvers": "^5.2.2",
+    "axios": "^1.13.2",
+    "react-hook-form": "^7.68.0",
+    "react-toastify": "^11.0.5",
+    "socket.io-client": "^4.8.1",
+    "yup": "^1.7.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}
