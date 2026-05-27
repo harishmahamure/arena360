@@ -133,9 +133,7 @@ impl AuthService {
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
-            iat: Some(
-                now.timestamp_millis(),
-            ),
+            iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: user.id.to_string(),
             tenantId: "dualshock-arena".to_string(),

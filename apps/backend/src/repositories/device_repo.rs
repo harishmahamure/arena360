@@ -18,9 +18,9 @@ impl DeviceRepository {
     const SELECT: &'static str = r#"
         SELECT id, name, "serialNumber" as serial_number,
                "localIpAddress" as local_ip_address,
-               "deviceType" as device_type, "deviceSubType" as device_sub_type,
-               location, status, "registeredKiosk" as registered_kiosk,
-               "registrationStatus" as registration_status,
+               "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+               location, status::text as status, "registeredKiosk" as registered_kiosk,
+               "registrationStatus"::text as registration_status,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM devices
@@ -42,22 +42,22 @@ impl DeviceRepository {
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT id, name, \"serialNumber\" as serial_number, \"localIpAddress\" as local_ip_address, \
-             \"deviceType\" as device_type, \"deviceSubType\" as device_sub_type, location, status, \
-             \"registeredKiosk\" as registered_kiosk, \"registrationStatus\" as registration_status, \
+             \"deviceType\"::text as device_type, \"deviceSubType\"::text as device_sub_type, location, status::text as status, \
+             \"registeredKiosk\" as registered_kiosk, \"registrationStatus\"::text as registration_status, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM devices WHERE \"deletedAt\" IS NULL",
         );
 
         if let Some(status) = &filters.status {
-            builder.push(" AND status = ");
+            builder.push(" AND status::text = ");
             builder.push_bind(status);
         }
         if let Some(device_type) = &filters.device_type {
-            builder.push(" AND \"deviceType\" = ");
+            builder.push(" AND \"deviceType\"::text = ");
             builder.push_bind(device_type);
         }
         if let Some(device_sub_type) = &filters.device_sub_type {
-            builder.push(" AND \"deviceSubType\" = ");
+            builder.push(" AND \"deviceSubType\"::text = ");
             builder.push_bind(device_sub_type);
         }
         if let Some(location) = &filters.location {
@@ -90,15 +90,15 @@ impl DeviceRepository {
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM devices WHERE \"deletedAt\" IS NULL");
         if let Some(status) = &filters.status {
-            count_builder.push(" AND status = ");
+            count_builder.push(" AND status::text = ");
             count_builder.push_bind(status);
         }
         if let Some(device_type) = &filters.device_type {
-            count_builder.push(" AND \"deviceType\" = ");
+            count_builder.push(" AND \"deviceType\"::text = ");
             count_builder.push_bind(device_type);
         }
         if let Some(device_sub_type) = &filters.device_sub_type {
-            count_builder.push(" AND \"deviceSubType\" = ");
+            count_builder.push(" AND \"deviceSubType\"::text = ");
             count_builder.push_bind(device_sub_type);
         }
         if let Some(location) = &filters.location {
@@ -124,14 +124,18 @@ impl DeviceRepository {
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3,
-                COALESCE($4, 'other'), COALESCE($5, 'other'),
-                $6, COALESCE($7, 'available'), COALESCE($8, 'unregistered'), NOW(), NOW()
+                COALESCE($4::devices_devicetype_enum, 'other'::devices_devicetype_enum),
+                COALESCE($5::devices_devicesubtype_enum, 'other'::devices_devicesubtype_enum),
+                $6,
+                COALESCE($7::devices_status_enum, 'available'::devices_status_enum),
+                COALESCE($8::devices_registrationstatus_enum, 'unregistered'::devices_registrationstatus_enum),
+                NOW(), NOW()
             )
             RETURNING id, name, "serialNumber" as serial_number,
                       "localIpAddress" as local_ip_address,
-                      "deviceType" as device_type, "deviceSubType" as device_sub_type,
-                      location, status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus" as registration_status,
+                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      location, status::text as status, "registeredKiosk" as registered_kiosk,
+                      "registrationStatus"::text as registration_status,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -157,18 +161,18 @@ impl DeviceRepository {
                 name = COALESCE($2, name),
                 "serialNumber" = COALESCE($3, "serialNumber"),
                 "localIpAddress" = COALESCE($4, "localIpAddress"),
-                "deviceType" = COALESCE($5, "deviceType"),
-                "deviceSubType" = COALESCE($6, "deviceSubType"),
+                "deviceType" = COALESCE($5::devices_devicetype_enum, "deviceType"),
+                "deviceSubType" = COALESCE($6::devices_devicesubtype_enum, "deviceSubType"),
                 location = COALESCE($7, location),
-                status = COALESCE($8, status),
-                "registrationStatus" = COALESCE($9, "registrationStatus"),
+                status = COALESCE($8::devices_status_enum, status),
+                "registrationStatus" = COALESCE($9::devices_registrationstatus_enum, "registrationStatus"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, "serialNumber" as serial_number,
                       "localIpAddress" as local_ip_address,
-                      "deviceType" as device_type, "deviceSubType" as device_sub_type,
-                      location, status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus" as registration_status,
+                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      location, status::text as status, "registeredKiosk" as registered_kiosk,
+                      "registrationStatus"::text as registration_status,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,
@@ -191,13 +195,13 @@ impl DeviceRepository {
     pub async fn update_status(&self, id: Uuid, status: &str) -> Result<Device, AppError> {
         let device = sqlx::query_as::<_, Device>(
             r#"
-            UPDATE devices SET status = $2, "updatedAt" = NOW()
+            UPDATE devices SET status = $2::devices_status_enum, "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, "serialNumber" as serial_number,
                       "localIpAddress" as local_ip_address,
-                      "deviceType" as device_type, "deviceSubType" as device_sub_type,
-                      location, status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus" as registration_status,
+                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      location, status::text as status, "registeredKiosk" as registered_kiosk,
+                      "registrationStatus"::text as registration_status,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
             "#,

@@ -91,3 +91,53 @@ impl JwtUserClaims {
         self.roles.iter().any(|r| r == "admin")
     }
 }
+
+#[cfg(test)]
+mod jwt_tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+    use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+
+    fn sample_claims(now: chrono::DateTime<Utc>, iat: i64) -> JwtUserClaims {
+        JwtUserClaims {
+            sub: "user-id".to_string(),
+            permissions: vec![],
+            allowedTenants: vec![],
+            rateLimit: Some(RateLimitClaims { qps: 100 }),
+            iss: "gamezone".to_string(),
+            aud: serde_json::json!("gamezone"),
+            iat: Some(iat),
+            exp: Some((now + Duration::minutes(15)).timestamp()),
+            userId: "user-id".to_string(),
+            tenantId: "dualshock-arena".to_string(),
+            roles: vec!["admin".to_string()],
+            appId: "game-zone-backend".to_string(),
+            orgIds: vec![],
+        }
+    }
+
+    #[test]
+    fn jwt_roundtrip_uses_seconds_for_iat() {
+        let secret = "your-secret-key-must-be-at-least-32-characters-long";
+        let now = Utc::now();
+        let claims = sample_claims(now, now.timestamp());
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("encode");
+
+        let mut validation = Validation::default();
+        validation.validate_exp = true;
+        validation.set_audience(&["gamezone"]);
+        validation.set_issuer(&["gamezone"]);
+
+        decode::<JwtUserClaims>(
+            &token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &validation,
+        )
+        .expect("decode with second-based iat");
+    }
+}

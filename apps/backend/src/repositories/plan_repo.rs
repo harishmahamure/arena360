@@ -26,7 +26,7 @@ impl PlanRepository {
 
     const SELECT: &'static str = r#"
         SELECT id, name, description,
-               price::float8 as price, "planType" as plan_type,
+               price::float8 as price, "planType"::text as plan_type,
                "durationMinutes" as duration_minutes, "validityDays" as validity_days,
                "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
                "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
@@ -62,7 +62,7 @@ impl PlanRepository {
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT id, name, description,
-               price::float8 as price, "planType" as plan_type,
+               price::float8 as price, "planType"::text as plan_type,
                "durationMinutes" as duration_minutes, "validityDays" as validity_days,
                "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
                "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
@@ -112,7 +112,7 @@ impl PlanRepository {
             builder.push(")");
         }
         if let Some(plan_type) = filters.plan_type.clone() {
-            builder.push(" AND \"planType\" = ");
+            builder.push(" AND \"planType\"::text = ");
             builder.push_bind(plan_type);
         }
         if let Some(is_active) = filters.is_active_bool() {
@@ -128,11 +128,11 @@ impl PlanRepository {
             builder.push_bind(max_price);
         }
         if let Some(device_type) = filters.device_type.clone() {
-            builder.push(" AND \"deviceType\" = ");
+            builder.push(" AND \"deviceType\"::text = ");
             builder.push_bind(device_type);
         }
         if let Some(device_sub_type) = filters.device_sub_type.clone() {
-            builder.push(" AND \"deviceSubType\" = ");
+            builder.push(" AND \"deviceSubType\"::text = ");
             builder.push_bind(device_sub_type);
         }
     }
@@ -148,11 +148,11 @@ impl PlanRepository {
                 "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, COALESCE($12, true), $13, $14, NOW(), NOW()
+                gen_random_uuid(), $1, $2, $3, $4::plans_plantype_enum, $5, $6, $7, $8, $9, $10,
+                $11, COALESCE($12, true), $13::plans_devicetype_enum, $14::plans_devicesubtype_enum, NOW(), NOW()
             )
             RETURNING id, name, description,
-                      price::float8 as price, "planType" as plan_type,
+                      price::float8 as price, "planType"::text as plan_type,
                       "durationMinutes" as duration_minutes, "validityDays" as validity_days,
                       "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
                       "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
@@ -195,7 +195,7 @@ impl PlanRepository {
                 name = COALESCE($2, name),
                 description = COALESCE($3, description),
                 price = COALESCE($4, price),
-                "planType" = COALESCE($5, "planType"),
+                "planType" = COALESCE($5::plans_plantype_enum, "planType"),
                 "durationMinutes" = COALESCE($6, "durationMinutes"),
                 "validityDays" = COALESCE($7, "validityDays"),
                 "timeWindowStart" = COALESCE($8, "timeWindowStart"),
@@ -204,12 +204,12 @@ impl PlanRepository {
                 "perMinuteRate" = COALESCE($11, "perMinuteRate"),
                 "maxSessions" = COALESCE($12, "maxSessions"),
                 "isActive" = COALESCE($13, "isActive"),
-                "deviceType" = COALESCE($14, "deviceType"),
-                "deviceSubType" = COALESCE($15, "deviceSubType"),
+                "deviceType" = COALESCE($14::plans_devicetype_enum, "deviceType"),
+                "deviceSubType" = COALESCE($15::plans_devicesubtype_enum, "deviceSubType"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, description,
-                      price::float8 as price, "planType" as plan_type,
+                      price::float8 as price, "planType"::text as plan_type,
                       "durationMinutes" as duration_minutes, "validityDays" as validity_days,
                       "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
                       "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,

@@ -20,7 +20,7 @@ impl DeviceGameRepository {
         SELECT dg.id, dg."deviceId" as device_id, dg."gameId" as game_id,
                dg."installationDate" as installation_date, dg."isActive" as is_active,
                dg."createdAt" as created_at, dg."updatedAt" as updated_at,
-               d.name as device_name, d."deviceType" as device_type, d.location as device_location,
+               d.name as device_name, d."deviceType"::text as device_type, d.location as device_location,
                g.title as game_title, g.genre as game_genre
         FROM device_games dg
         LEFT JOIN devices d ON d.id = dg."deviceId" AND d."deletedAt" IS NULL
@@ -153,7 +153,7 @@ impl DeviceGameRepository {
             "SELECT dg.id, dg.\"deviceId\" as device_id, dg.\"gameId\" as game_id, \
              dg.\"installationDate\" as installation_date, dg.\"isActive\" as is_active, \
              dg.\"createdAt\" as created_at, dg.\"updatedAt\" as updated_at, \
-             d.name as device_name, d.\"deviceType\" as device_type, d.location as device_location, \
+             d.name as device_name, d.\"deviceType\"::text as device_type, d.location as device_location, \
              g.title as game_title, g.genre as game_genre \
              FROM device_games dg \
              LEFT JOIN devices d ON d.id = dg.\"deviceId\" AND d.\"deletedAt\" IS NULL \

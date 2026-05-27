@@ -21,7 +21,7 @@ impl PlayerPlanRepository {
         SELECT id, "playerId" as player_id, "planId" as plan_id,
                "purchaseDate" as purchase_date, "activationDate" as activation_date,
                "expiryDate" as expiry_date, "remainingUsageCount" as remaining_usage_count,
-               "remainingTimeCredits" as remaining_time_credits, status,
+               "remainingTimeCredits" as remaining_time_credits, status::text as status,
                "movedToPlanId" as moved_to_plan_id,
                "movedCreditsCount" as moved_credits_count,
                "createdAt" as created_at, "updatedAt" as updated_at,
@@ -47,11 +47,11 @@ impl PlayerPlanRepository {
                    "playerId", "planId", "purchaseDate", "expiryDate",
                    "remainingUsageCount", "remainingTimeCredits", status
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               VALUES ($1, $2, $3, $4, $5, $6, $7::player_plans_status_enum)
                RETURNING id, "playerId" as player_id, "planId" as plan_id,
                    "purchaseDate" as purchase_date, "activationDate" as activation_date,
                    "expiryDate" as expiry_date, "remainingUsageCount" as remaining_usage_count,
-                   "remainingTimeCredits" as remaining_time_credits, status,
+                   "remainingTimeCredits" as remaining_time_credits, status::text as status,
                    "movedToPlanId" as moved_to_plan_id,
                    "movedCreditsCount" as moved_credits_count,
                    "createdAt" as created_at, "updatedAt" as updated_at,
@@ -77,7 +77,7 @@ impl PlayerPlanRepository {
     ) -> Result<PlayerPlan, AppError> {
         let player_plan = sqlx::query_as::<_, PlayerPlan>(
             r#"UPDATE player_plans SET
-                   status = COALESCE($2, status),
+                   status = COALESCE($2::player_plans_status_enum, status),
                    "remainingTimeCredits" = COALESCE($3, "remainingTimeCredits"),
                    "remainingUsageCount" = COALESCE($4, "remainingUsageCount"),
                    "activationDate" = COALESCE($5, "activationDate"),
@@ -86,7 +86,7 @@ impl PlayerPlanRepository {
                RETURNING id, "playerId" as player_id, "planId" as plan_id,
                    "purchaseDate" as purchase_date, "activationDate" as activation_date,
                    "expiryDate" as expiry_date, "remainingUsageCount" as remaining_usage_count,
-                   "remainingTimeCredits" as remaining_time_credits, status,
+                   "remainingTimeCredits" as remaining_time_credits, status::text as status,
                    "movedToPlanId" as moved_to_plan_id,
                    "movedCreditsCount" as moved_credits_count,
                    "createdAt" as created_at, "updatedAt" as updated_at,
@@ -106,7 +106,7 @@ impl PlayerPlanRepository {
 
     pub async fn find_expired_active(&self) -> Result<Vec<PlayerPlan>, AppError> {
         let query = format!(
-            r#"{} WHERE status = 'active' AND "expiryDate" <= NOW() AND "deletedAt" IS NULL"#,
+            r#"{} WHERE status::text = 'active' AND "expiryDate" <= NOW() AND "deletedAt" IS NULL"#,
             Self::SELECT
         );
         let player_plans = sqlx::query_as::<_, PlayerPlan>(&query)
@@ -129,7 +129,7 @@ impl PlayerPlanRepository {
             r#"SELECT pp.id, pp."playerId" as player_id, pp."planId" as plan_id,
                pp."purchaseDate" as purchase_date, pp."activationDate" as activation_date,
                pp."expiryDate" as expiry_date, pp."remainingUsageCount" as remaining_usage_count,
-               pp."remainingTimeCredits" as remaining_time_credits, pp.status,
+               pp."remainingTimeCredits" as remaining_time_credits, pp.status::text as status,
                pp."movedToPlanId" as moved_to_plan_id,
                pp."movedCreditsCount" as moved_credits_count,
                pp."createdAt" as created_at, pp."updatedAt" as updated_at,
@@ -194,7 +194,7 @@ impl PlayerPlanRepository {
             builder.push_bind(plan_id);
         }
         if let Some(status) = filters.status.clone() {
-            builder.push(" AND pp.status = ");
+            builder.push(" AND pp.status::text = ");
             builder.push_bind(status);
         }
         if let Some(from) = &filters.purchase_date_from {
@@ -223,11 +223,11 @@ impl PlayerPlanRepository {
         }
         if join_plan {
             if let Some(device_type) = &filters.device_type {
-                builder.push(" AND p.\"deviceType\" = ");
+                builder.push(" AND p.\"deviceType\"::text = ");
                 builder.push_bind(device_type);
             }
             if let Some(device_sub_type) = &filters.device_sub_type {
-                builder.push(" AND p.\"deviceSubType\" = ");
+                builder.push(" AND p.\"deviceSubType\"::text = ");
                 builder.push_bind(device_sub_type);
             }
         }

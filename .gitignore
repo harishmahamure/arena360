@@ -85,5 +85,7 @@ temp/
 # ADR event log (per-developer; DRAFT ADRs are committed)
 docs/adr/.events.jsonl
 
-# Bruno
-bruno/
+# Bruno local env overrides (generated collection is tracked)
+bruno/**/environments/Local.bru
+
+/bruno

@@ -80,6 +80,8 @@ fn extract_bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
 fn decode_token(state: &AppState, token: &str) -> Result<JwtUserClaims, AppError> {
     let mut validation = Validation::default();
     validation.validate_exp = true;
+    validation.set_audience(&["gamezone"]);
+    validation.set_issuer(&["gamezone"]);
 
     decode::<JwtUserClaims>(
         token,
@@ -87,7 +89,10 @@ fn decode_token(state: &AppState, token: &str) -> Result<JwtUserClaims, AppError
         &validation,
     )
     .map(|data| data.claims)
-    .map_err(|_| AppError::Unauthorized("Invalid or expired token".to_string()))
+    .map_err(|err| {
+        tracing::debug!(?err, "JWT decode failed");
+        AppError::Unauthorized("Invalid or expired token".to_string())
+    })
 }
 
 pub struct AuthUser(pub JwtUserClaims);

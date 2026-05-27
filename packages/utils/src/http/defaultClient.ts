@@ -5,7 +5,7 @@ function defaultBaseUrl(): string {
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  return 'http://localhost:3000';
+  return 'http://localhost:3001';
 }
 
 function defaultOnUnauthorized(): void {
@@ -16,9 +16,7 @@ function defaultOnUnauthorized(): void {
   try {
     local.remove('accessToken');
     window.location.href = '/login';
-  } catch (error) {
-    console.error('Error handling unauthorized response:', error);
-  }
+  } catch (_error) {}
 }
 
 function defaultGetAuthToken(): string | null {

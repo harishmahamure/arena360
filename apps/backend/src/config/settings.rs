@@ -21,6 +21,7 @@ impl Settings {
         
         let jwt_secret: String =
             std::env::var("JWT_SECRET").expect("JWT_SECRET must be set and >= 32 chars");
+        let jwt_secret = jwt_secret.trim().to_string();
         if jwt_secret.len() < 32 {
             panic!("JWT_SECRET must be at least 32 characters");
         }

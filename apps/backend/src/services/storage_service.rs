@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use aws_credential_types::Credentials;
-use aws_sdk_s3::config::{Builder as S3ConfigBuilder, Region};
+use aws_sdk_s3::config::{BehaviorVersion, Builder as S3ConfigBuilder, Region};
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::types::Object;
 use aws_sdk_s3::Client;
@@ -68,6 +68,7 @@ impl StorageService {
 
         let credentials = Credentials::new(access_key, secret_key, None, None, "r2");
         let config = S3ConfigBuilder::new()
+            .behavior_version(BehaviorVersion::latest())
             .credentials_provider(credentials)
             .region(Region::new("auto"))
             .endpoint_url(endpoint)
@@ -236,6 +237,7 @@ mod tests {
         let svc = StorageService {
             client: Client::from_conf(
                 S3ConfigBuilder::new()
+                    .behavior_version(BehaviorVersion::latest())
                     .region(Region::new("auto"))
                     .endpoint_url("https://example.r2.cloudflarestorage.com")
                     .force_path_style(true)
@@ -252,6 +254,7 @@ mod tests {
         let svc = StorageService {
             client: Client::from_conf(
                 S3ConfigBuilder::new()
+                    .behavior_version(BehaviorVersion::latest())
                     .region(Region::new("auto"))
                     .endpoint_url("https://example.r2.cloudflarestorage.com")
                     .force_path_style(true)

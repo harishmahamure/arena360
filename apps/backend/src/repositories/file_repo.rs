@@ -104,11 +104,11 @@ impl FileRepository {
 
     fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &FileFilterDto) {
         if let Some(category) = filters.category.clone() {
-            builder.push(" AND category = ");
+            builder.push(" AND category::text = ");
             builder.push_bind(category);
         }
         if let Some(status) = filters.status.clone() {
-            builder.push(" AND status = ");
+            builder.push(" AND status::text = ");
             builder.push_bind(status);
         }
         if let Some(uploaded_by) = filters.uploaded_by {

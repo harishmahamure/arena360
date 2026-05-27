@@ -18,13 +18,13 @@ impl TransactionRepository {
     const SELECT: &'static str = r#"
         SELECT id,
                "playerId" as player_id,
-               "transactionType" as transaction_type,
+               "transactionType"::text as transaction_type,
                "planId" as plan_id,
                amount::float8 as amount,
                "cashAmount"::float8 as cash_amount,
                "onlineAmount"::float8 as online_amount,
-               "paymentMethod" as payment_method,
-               "paymentStatus" as payment_status,
+               "paymentMethod"::text as payment_method,
+               "paymentStatus"::text as payment_status,
                notes,
                "transactionDate" as transaction_date,
                "createdAt" as created_at,
@@ -51,10 +51,10 @@ impl TransactionRepository {
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, \"playerId\" as player_id, \"transactionType\" as transaction_type, \
+            "SELECT id, \"playerId\" as player_id, \"transactionType\"::text as transaction_type, \
              \"planId\" as plan_id, amount::float8 as amount, \"cashAmount\"::float8 as cash_amount, \
-             \"onlineAmount\"::float8 as online_amount, \"paymentMethod\" as payment_method, \
-             \"paymentStatus\" as payment_status, notes, \"transactionDate\" as transaction_date, \
+             \"onlineAmount\"::float8 as online_amount, \"paymentMethod\"::text as payment_method, \
+             \"paymentStatus\"::text as payment_status, notes, \"transactionDate\" as transaction_date, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM transactions WHERE \"deletedAt\" IS NULL",
         );
@@ -98,7 +98,7 @@ impl TransactionRepository {
             builder.push_bind(player_id);
         }
         if let Some(transaction_type) = filters.transaction_type.clone() {
-            builder.push(" AND \"transactionType\" = ");
+            builder.push(" AND \"transactionType\"::text = ");
             builder.push_bind(transaction_type);
         }
         if let Some(plan_id) = filters.plan_id {
@@ -106,11 +106,11 @@ impl TransactionRepository {
             builder.push_bind(plan_id);
         }
         if let Some(payment_method) = filters.payment_method.clone() {
-            builder.push(" AND \"paymentMethod\" = ");
+            builder.push(" AND \"paymentMethod\"::text = ");
             builder.push_bind(payment_method);
         }
         if let Some(payment_status) = filters.payment_status.clone() {
-            builder.push(" AND \"paymentStatus\" = ");
+            builder.push(" AND \"paymentStatus\"::text = ");
             builder.push_bind(payment_status);
         }
         if let Some(from) = filters.transaction_date_from {
@@ -146,19 +146,19 @@ impl TransactionRepository {
                 notes, "transactionDate", "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2, $3, $4,
-                $5, $6, $7, $8,
+                gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4,
+                $5, $6, $7::transactions_paymentmethod_enum, $8::transactions_paymentstatus_enum,
                 $9, $10, NOW(), NOW()
             )
             RETURNING id,
                       "playerId" as player_id,
-                      "transactionType" as transaction_type,
+                      "transactionType"::text as transaction_type,
                       "planId" as plan_id,
                       amount::float8 as amount,
                       "cashAmount"::float8 as cash_amount,
                       "onlineAmount"::float8 as online_amount,
-                      "paymentMethod" as payment_method,
-                      "paymentStatus" as payment_status,
+                      "paymentMethod"::text as payment_method,
+                      "paymentStatus"::text as payment_status,
                       notes,
                       "transactionDate" as transaction_date,
                       "createdAt" as created_at,

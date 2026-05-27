@@ -15,7 +15,7 @@ impl UnitRepository {
     }
 
     const SELECT: &'static str = r#"
-        SELECT id, name, abbreviation, type,
+        SELECT id, name, abbreviation, type::text as type,
                description, "isActive" as is_active,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -37,7 +37,7 @@ impl UnitRepository {
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, name, abbreviation, type, description, \
+            "SELECT id, name, abbreviation, type::text as type, description, \
              \"isActive\" as is_active, \"createdAt\" as created_at, \
              \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM units WHERE \"deletedAt\" IS NULL",
@@ -48,7 +48,7 @@ impl UnitRepository {
             builder.push_bind(format!("%{name}%"));
         }
         if let Some(unit_type) = &filters.r#type {
-            builder.push(" AND type = ");
+            builder.push(" AND type::text = ");
             builder.push_bind(unit_type);
         }
         if let Some(is_active) = filters.is_active {
@@ -75,7 +75,7 @@ impl UnitRepository {
             count_builder.push_bind(format!("%{name}%"));
         }
         if let Some(unit_type) = &filters.r#type {
-            count_builder.push(" AND type = ");
+            count_builder.push(" AND type::text = ");
             count_builder.push_bind(unit_type);
         }
         if let Some(is_active) = filters.is_active {
@@ -95,10 +95,10 @@ impl UnitRepository {
                 id, name, abbreviation, type, description, "isActive", "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2, COALESCE($3, 'other'), $4,
+                gen_random_uuid(), $1, $2, COALESCE($3::units_type_enum, 'other'::units_type_enum), $4,
                 COALESCE($5, true), NOW(), NOW()
             )
-            RETURNING id, name, abbreviation, type, description,
+            RETURNING id, name, abbreviation, type::text as type, description,
                       "isActive" as is_active, "createdAt" as created_at,
                       "updatedAt" as updated_at, "deletedAt" as deleted_at
             "#,
@@ -120,12 +120,12 @@ impl UnitRepository {
             UPDATE units SET
                 name = COALESCE($2, name),
                 abbreviation = COALESCE($3, abbreviation),
-                type = COALESCE($4, type),
+                type = COALESCE($4::units_type_enum, type),
                 description = COALESCE($5, description),
                 "isActive" = COALESCE($6, "isActive"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
-            RETURNING id, name, abbreviation, type, description,
+            RETURNING id, name, abbreviation, type::text as type, description,
                       "isActive" as is_active, "createdAt" as created_at,
                       "updatedAt" as updated_at, "deletedAt" as deleted_at
             "#,

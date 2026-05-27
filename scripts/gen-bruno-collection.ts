@@ -54,6 +54,19 @@ type OpenAPISpec = {
 
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'] as const;
 
+/** Bruno reserves "auth" — conflicts with collection.bru `auth {}` block. */
+const BRUNO_FOLDER_NAMES: Record<string, string> = {
+  auth: 'authentication',
+};
+
+const AUTH_OPERATION_ORDER = ['login_admin', 'verify_otp', 'register'] as const;
+
+const OPERATION_DISPLAY_NAMES: Record<string, string> = {
+  login_admin: 'Login Admin',
+  verify_otp: 'Verify OTP',
+  register: 'Register User',
+};
+
 function loadSpec(): OpenAPISpec {
   if (!existsSync(SPEC_PATH)) {
     throw new Error(`OpenAPI spec not found at ${SPEC_PATH}. Run pnpm gen:api-types first.`);
@@ -148,6 +161,35 @@ function toBrunoUrl(path: string): string {
   return `{{baseUrl}}${path.replace(/\{([^}]+)\}/g, '{{$1}}')}`;
 }
 
+function toFolderName(tag: string): string {
+  return BRUNO_FOLDER_NAMES[tag] ?? tag;
+}
+
+function toFolderLabel(tag: string): string {
+  if (tag === 'auth') return 'Authentication';
+  return tag
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function toDisplayName(operationId: string, fallback: string): string {
+  return OPERATION_DISPLAY_NAMES[operationId] ?? fallback;
+}
+
+function sortRoutes(tag: string, routes: { operation: OpenAPIOperation }[]): void {
+  if (tag !== 'auth') return;
+  routes.sort((a, b) => {
+    const idA = a.operation.operationId ?? '';
+    const idB = b.operation.operationId ?? '';
+    const idxA = AUTH_OPERATION_ORDER.indexOf(idA as (typeof AUTH_OPERATION_ORDER)[number]);
+    const idxB = AUTH_OPERATION_ORDER.indexOf(idB as (typeof AUTH_OPERATION_ORDER)[number]);
+    const orderA = idxA === -1 ? 99 : idxA;
+    const orderB = idxB === -1 ? 99 : idxB;
+    return orderA - orderB || idA.localeCompare(idB);
+  });
+}
+
 function sanitizeFilename(operationId: string, method: string): string {
   const base = operationId.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
   return `${method}-${base || 'request'}.bru`;
@@ -216,16 +258,9 @@ function buildBruRequest(options: {
   lines.push(`${method} {`);
   lines.push(`  url: ${options.url}`);
   lines.push(hasBody ? '  body: json' : '  body: none');
-  lines.push(options.bearerAuth ? '  auth: bearer' : '  auth: none');
+  lines.push(options.bearerAuth ? '  auth: inherit' : '  auth: none');
   lines.push('}');
   lines.push('');
-
-  if (options.bearerAuth) {
-    lines.push('auth:bearer {');
-    lines.push('  token: {{accessToken}}');
-    lines.push('}');
-    lines.push('');
-  }
 
   if (options.queryBlock) {
     lines.push(options.queryBlock);
@@ -288,7 +323,11 @@ function writeCollection(spec: OpenAPISpec): void {
 }
 
 auth {
-  mode: none
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
 }
 
 vars:pre-request {
@@ -327,9 +366,10 @@ pnpm gen:bruno
 
 ## Auth flow
 
-1. Run **auth → post-login_admin** (saves \`sessionOtpId\`)
-2. Run **auth → post-verify_otp** (saves \`accessToken\`)
-3. Other secured routes use \`{{accessToken}}\` automatically
+1. Select **Local** environment
+2. Run **authentication → Login Admin** (saves \`sessionOtpId\`)
+3. Run **authentication → Verify OTP** (saves \`accessToken\`)
+4. Secured routes inherit Bearer auth from collection settings
 
 Edit credentials in **environments/Local.bru**.
 `,
@@ -355,31 +395,41 @@ Edit credentials in **environments/Local.bru**.
     }
   }
 
+  const tagOrder = (a: string, b: string): number => {
+    if (a === 'auth') return -1;
+    if (b === 'auth') return 1;
+    return a.localeCompare(b);
+  };
+
   let folderSeq = 1;
-  for (const [tag, routes] of [...routesByTag.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const folderDir = join(OUT_DIR, tag);
+  for (const [tag, routes] of [...routesByTag.entries()].sort(([a], [b]) => tagOrder(a, b))) {
+    const folderName = toFolderName(tag);
+    const folderDir = join(OUT_DIR, folderName);
     mkdirSync(folderDir, { recursive: true });
 
     writeFileSync(
       join(folderDir, 'folder.bru'),
       `meta {
-  name: ${tag}
+  name: ${toFolderLabel(tag)}
   seq: ${folderSeq}
 }
 `,
     );
     folderSeq += 1;
 
-    routes.sort((a, b) => {
-      const idA = a.operation.operationId ?? '';
-      const idB = b.operation.operationId ?? '';
-      return idA.localeCompare(idB) || a.path.localeCompare(b.path);
-    });
+    sortRoutes(tag, routes);
+    if (tag !== 'auth') {
+      routes.sort((a, b) => {
+        const idA = a.operation.operationId ?? '';
+        const idB = b.operation.operationId ?? '';
+        return idA.localeCompare(idB) || a.path.localeCompare(b.path);
+      });
+    }
 
     let reqSeq = 1;
     for (const { method, path, operation } of routes) {
       const operationId = operation.operationId ?? `${method}_${path}`;
-      const name = operation.summary ?? operationId;
+      const name = toDisplayName(operationId, operation.summary ?? operationId);
       const body = requestBodyExample(operation, schemas);
 
       // Wire auth login/verify env vars into example bodies
@@ -412,7 +462,10 @@ Edit credentials in **environments/Local.bru**.
     }
   }
 
-  const _totalRoutes = [...routesByTag.values()].reduce((n, r) => n + r.length, 0);
+  const totalRoutes = [...routesByTag.values()].reduce((n, r) => n + r.length, 0);
+  process.stdout.write(
+    `Bruno collection written to ${OUT_DIR} (${totalRoutes} requests, ${routesByTag.size} folders)\n`,
+  );
 }
 
 writeCollection(loadSpec());

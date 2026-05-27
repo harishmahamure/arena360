@@ -86,7 +86,7 @@ impl ProductRepository {
             builder.push_bind(format!("%{name}%"));
         }
         if let Some(category) = filters.category.clone() {
-            builder.push(" AND category = ");
+            builder.push(" AND category::text = ");
             builder.push_bind(category);
         }
         if let Some(disabled) = filters.disabled {
