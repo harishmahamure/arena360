@@ -1,0 +1,53 @@
+---
+description: ADR discipline — stick to accepted ADRs; draft before architectural changes
+alwaysApply: true
+---
+
+# ADR Discipline
+
+Before any architectural change, check the accepted ADRs in `docs/adr/`. If your change conflicts with or supersedes one, **stop and draft a DRAFT ADR first**.
+
+## Accepted ADR index
+
+| ADR | Title |
+|-----|-------|
+| 0001 | Monorepo on Turborepo + pnpm |
+| 0002 | Kiosk Tauri canonical |
+| 0003 | Secrets management |
+| 0004 | Shared API types via OpenAPI |
+| 0005 | Testing strategy |
+| 0006 | Biome replaces ESLint + Prettier |
+| 0007 | Design tokens shared |
+| 0008 | Runtime contracts package |
+| 0009 | Rust Axum backend replaces NestJS |
+
+## What counts as an architectural change
+
+Any of the following requires a DRAFT ADR before coding:
+
+- New external dependency that changes deployment shape
+- Swap of a library named in an ADR (e.g. Axum → Actix, Biome → ESLint)
+- Change to `packages/contracts` error envelope or `ErrorCode` enum
+- New HTTP surface area or API style change (REST path prefix, response envelope)
+- New or changed DB migration in `apps/backend/migrations/`
+- Change to `infra/**`
+- Change to `turbo.json`, `pnpm-workspace.yaml`, or root `package.json` `packageManager`
+- Change to the `apps/backend` layered tree (ADR-0009)
+- Change to lint/format tooling (ADR-0006)
+
+## Mandated workflow
+
+When an architectural change is needed:
+
+1. **Stop.** Do not write implementation code yet.
+2. **Draft** `docs/adr/DRAFT-NNNN-kebab-title.md` with `Status: Proposed` using the template from existing ADRs (Context / Decision / Consequences / Alternatives / Risks / References). Add `Supersedes: ADR-XXXX` if overriding a current ADR.
+3. **Log** append one JSON line to `docs/adr/.events.jsonl`:
+   ```json
+   {"ts":"<ISO8601>","source":"agent","kind":"adr_draft","draft":"docs/adr/DRAFT-NNNN-title.md","supersedes":["ADR-XXXX"],"summary":"<one line>"}
+   ```
+4. **Inform** the user: what was drafted, which ADR it touches, and the smallest alternative that would not require an ADR.
+5. **Wait** for user approval before implementing.
+
+## When no ADR is needed
+
+Bug fixes, feature work within an accepted ADR's boundaries, and refactors that preserve the same stack and contracts proceed normally.

@@ -84,3 +84,6 @@ tmp/
 temp/
 *.tmp
 *.bak
+
+# ADR event log (per-developer; DRAFT ADRs are committed)
+docs/adr/.events.jsonl

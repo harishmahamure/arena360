@@ -248,6 +248,31 @@ Same as a package, with these extras:
 
 ---
 
+## Working with the agent
+
+Project-local Cursor rules live in `.cursor/rules/`:
+
+| Rule | Scope |
+|---|---|
+| `00-standards.mdc` | Always — KISS/DRY/SOLID + project constraints |
+| `10-typescript.mdc` | `apps/admin`, `packages/*`, `scripts/` |
+| `11-rust.mdc` | `apps/backend/**/*.rs` |
+| `20-adr-discipline.mdc` | Always — ADR workflow |
+
+When the agent detects an **architectural change** (stack swap, new
+dependency, API envelope change, infra edit, etc.), it must:
+
+1. Stop before writing code.
+2. Draft `docs/adr/DRAFT-NNNN-kebab-title.md` with `Status: Proposed`.
+3. Append an event to `docs/adr/.events.jsonl` (gitignored, local only).
+4. Ask for your approval before implementing.
+
+A Cursor hook (`.cursor/hooks.json`) also logs edits to
+architecture-sensitive paths independently. Restart Cursor after cloning
+if hooks do not load.
+
+---
+
 ## Reporting bugs and proposing features
 
 - **Bug**: open an issue with reproduction steps, expected vs actual,

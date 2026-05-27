@@ -1,0 +1,29 @@
+---
+description: TypeScript and React standards for admin, packages, and scripts
+globs: apps/admin/**/*.{ts,tsx},packages/**/*.{ts,tsx},scripts/**/*.ts
+alwaysApply: false
+---
+
+# TypeScript Standards
+
+Follow @~/.cursor/rules/typescript-standards.mdc for KISS, DRY, and SOLID patterns.
+
+## Project-specific rules
+
+- **Error envelope**: Use `@gaming-cafe/contracts` for `ErrorCode` and response shapes — do not invent new error codes.
+- **API types**: Import from `@gaming-cafe/api-types`; never edit `packages/api-types/src/schema.ts` directly.
+- **Type safety**: No `any`; use `unknown` and narrow with Zod or type guards.
+- **Stack**: React 19 + Vite — no Next.js patterns (no `getServerSideProps`, no App Router).
+- **TS config**: Extend presets from `@gaming-cafe/tsconfig` (`base`, `react`, or `node`).
+- **Testing**: Vitest + RTL for UI; smoke test in `src/__tests__/smoke.test.ts` for new packages.
+
+## Examples
+
+```typescript
+// ❌ BAD: hand-rolled API type
+type Plan = { id: string; name: string };
+
+// ✅ GOOD: generated type
+import type { components } from '@gaming-cafe/api-types';
+type Plan = components['schemas']['PlanResponse'];
+```

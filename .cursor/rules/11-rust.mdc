@@ -1,0 +1,42 @@
+---
+description: Rust backend standards aligned with ADR-0009 Axum stack
+globs: apps/backend/**/*.rs
+alwaysApply: false
+---
+
+# Rust Backend Standards
+
+Follow @~/.cursor/rules/rust-standards.mdc for KISS, DRY, and ownership patterns.
+
+## Stack contract (ADR-0009)
+
+- **Framework**: Axum 0.7 + tower-http middleware
+- **Database**: SQLx 0.7 with compile-time checked queries; run `sqlx prepare` for offline CI
+- **OpenAPI**: utoipa — source of truth for `@gaming-cafe/api-types`
+- **Auth**: jsonwebtoken, HS256, existing `JWT_SECRET`
+- **SSE**: `tokio::broadcast` for event distribution
+
+## Layered architecture
+
+```
+handlers/ → services/ → repositories/ → models/
+dto/       middleware/  error/         sse/
+```
+
+- Handlers: HTTP only — parse request, call service, map to DTO.
+- Services: business logic — no SQL, no HTTP types.
+- Repositories: SQLx queries only — no business rules.
+- All errors via `AppError` enum — never raw `String` or `anyhow` at handler boundary.
+
+## Response envelope
+
+```json
+{ "data": <T>, "statusCode": 200, "message": "OK" }
+```
+
+Error responses use `ErrorCode` values from `@gaming-cafe/contracts`.
+
+## Constraints
+
+- No new external crates without a DRAFT ADR (see `20-adr-discipline.mdc`).
+- No ORM — raw SQL via SQLx migrations in `apps/backend/migrations/`.

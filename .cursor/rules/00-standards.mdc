@@ -1,0 +1,22 @@
+---
+description: Core KISS/DRY/SOLID standards and project-wide constraints for gaming-cafe
+alwaysApply: true
+---
+
+# Project Standards
+
+Follow @~/.cursor/rules/production-grade.mdc for KISS, DRY, and SOLID principles.
+
+## Project constraints
+
+- **Lint/format**: Biome only — no ESLint or Prettier (ADR-0006).
+- **Package manager**: pnpm with `workspace:*` protocol — no npm/yarn/bun installs.
+- **Commits**: Conventional form `type(scope): summary` per `docs/CONTRIBUTING.md`.
+- **Generated code**: Never hand-edit `packages/api-types/src/schema.ts`; run `pnpm gen:api-types`.
+- **DRY threshold**: Extract a shared util only after the same logic appears three times.
+
+## Language-specific rules
+
+- TypeScript/React: see `10-typescript.mdc`
+- Rust backend: see `11-rust.mdc`
+- Architectural decisions: see `20-adr-discipline.mdc` — always check before changing stack, API shape, or infra.
