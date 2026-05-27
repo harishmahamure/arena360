@@ -163,7 +163,14 @@ impl CashRegisterService {
         actor_id: Uuid,
     ) -> Result<CashRegister, AppError> {
         let last_register = self.repo.find_last_closed_by_user(user_id).await?;
-        let opening = last_register.and_then(|r| r.closing_balance).unwrap_or(0.0);
+        let opening = match last_register {
+            Some(ref r) => {
+                let closing = r.closing_balance.unwrap_or(0.0);
+                let deposited = self.repo.sum_deposit_entries(r.id).await?;
+                closing - deposited
+            }
+            None => 0.0,
+        };
         self.ensure_open_for_shift(new_shift_id, actor_id, opening)
             .await
     }

@@ -3,8 +3,8 @@ import { http } from '@gaming-cafe/utils';
 
 export interface PlayerResponse {
   id: string;
-  email: string;
   username: string;
+  phoneNumber?: string;
   firstName?: string;
   lastName?: string;
   role: UserRole;
@@ -23,8 +23,8 @@ interface GetPlayersResponse {
 }
 
 export interface GetPlayersFilters {
-  email?: string;
   username?: string;
+  phoneNumber?: string;
   isActive?: 0 | 1;
   role?: UserRole;
   page?: number;

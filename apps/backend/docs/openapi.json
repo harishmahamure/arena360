@@ -6751,6 +6751,101 @@
         ]
       }
     },
+    "/users/{id}/password": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "change_password",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/users/{id}/totp": {
       "delete": {
         "tags": [
@@ -7532,12 +7627,6 @@
           "isActive"
         ],
         "properties": {
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "firstName": {
             "type": [
               "string",
@@ -7551,6 +7640,12 @@
             "type": "boolean"
           },
           "lastName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phoneNumber": {
             "type": [
               "string",
               "null"
@@ -8205,6 +8300,17 @@
             "type": "boolean"
           },
           "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "required": [
+          "newPassword"
+        ],
+        "properties": {
+          "newPassword": {
             "type": "string"
           }
         }
@@ -11534,15 +11640,10 @@
         "type": "object",
         "required": [
           "username",
-          "password"
+          "password",
+          "phoneNumber"
         ],
         "properties": {
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "firstName": {
             "type": [
               "string",
@@ -11556,6 +11657,9 @@
             ]
           },
           "password": {
+            "type": "string"
+          },
+          "phoneNumber": {
             "type": "string"
           },
           "role": {
@@ -13807,12 +13911,6 @@
       "UpdateUserDto": {
         "type": "object",
         "properties": {
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "firstName": {
             "type": [
               "string",
@@ -13826,6 +13924,12 @@
             ]
           },
           "lastName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phoneNumber": {
             "type": [
               "string",
               "null"
@@ -14196,12 +14300,6 @@
             ],
             "format": "date-time"
           },
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "firstName": {
             "type": [
               "string",
@@ -14286,12 +14384,6 @@
       "UserFilterDto": {
         "type": "object",
         "properties": {
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "isActive": {
             "type": [
               "integer",
@@ -14312,6 +14404,12 @@
               "null"
             ],
             "format": "int64"
+          },
+          "phoneNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "role": {
             "type": [

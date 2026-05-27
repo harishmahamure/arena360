@@ -6,9 +6,9 @@ use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
 
 pub struct CreatePlayerParams<'a> {
-    pub email: Option<&'a str>,
     pub username: &'a str,
     pub password_hash: &'a str,
+    pub phone_number: &'a str,
     pub first_name: Option<&'a str>,
     pub last_name: Option<&'a str>,
     pub role: &'a str,
@@ -78,7 +78,7 @@ impl UserRepository {
         let sort_by = filters.sort_by.as_deref().unwrap_or("createdAt");
         let sort_col = match sort_by {
             "username" => "username",
-            "email" => "email",
+            "phoneNumber" => "\"phoneNumber\"",
             "role" => "role",
             _ => "\"createdAt\"",
         };
@@ -110,7 +110,7 @@ impl UserRepository {
         let user = sqlx::query_as::<_, User>(
             r#"
             INSERT INTO users (
-                id, email, username, password_hash, "firstName", "lastName",
+                id, username, password_hash, "phoneNumber", "firstName", "lastName",
                 role, "isActive", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
@@ -131,9 +131,9 @@ impl UserRepository {
                       "deletedAt" as deleted_at
             "#,
         )
-        .bind(params.email)
         .bind(params.username)
         .bind(params.password_hash)
+        .bind(params.phone_number)
         .bind(params.first_name)
         .bind(params.last_name)
         .bind(params.role)
@@ -153,8 +153,8 @@ impl UserRepository {
         let user = sqlx::query_as::<_, User>(
             r#"
             UPDATE users SET
-                email = COALESCE($2, email),
-                username = COALESCE($3, username),
+                username = COALESCE($2, username),
+                "phoneNumber" = COALESCE($3, "phoneNumber"),
                 "firstName" = COALESCE($4, "firstName"),
                 "lastName" = COALESCE($5, "lastName"),
                 role = COALESCE($6, role),
@@ -177,8 +177,8 @@ impl UserRepository {
             "#,
         )
         .bind(id)
-        .bind(&dto.email)
         .bind(&dto.username)
+        .bind(&dto.phone_number)
         .bind(&dto.first_name)
         .bind(&dto.last_name)
         .bind(&dto.role)
@@ -360,10 +360,34 @@ impl UserRepository {
         Ok(())
     }
 
+    pub async fn update_password(
+        &self,
+        user_id: Uuid,
+        password_hash: &str,
+    ) -> Result<(), AppError> {
+        let result = sqlx::query(
+            r#"
+            UPDATE users SET password_hash = $2, "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL
+            "#,
+        )
+        .bind(user_id)
+        .bind(password_hash)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound(format!(
+                "User with ID {user_id} not found"
+            )));
+        }
+        Ok(())
+    }
+
     fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &UserFilterDto) {
-        if let Some(email) = &filters.email {
-            builder.push(" AND email ILIKE ");
-            builder.push_bind(format!("%{email}%"));
+        if let Some(phone) = &filters.phone_number {
+            builder.push(" AND \"phoneNumber\" ILIKE ");
+            builder.push_bind(format!("%{phone}%"));
         }
         if let Some(username) = &filters.username {
             builder.push(" AND username ILIKE ");

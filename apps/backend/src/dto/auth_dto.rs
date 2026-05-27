@@ -5,11 +5,17 @@ use utoipa::ToSchema;
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterDto {
     pub username: String,
-    pub email: Option<String>,
     pub password: String,
+    pub phoneNumber: String,
     pub firstName: Option<String>,
     pub lastName: Option<String>,
     pub role: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ChangePasswordDto {
+    pub newPassword: String,
 }
 
 #[allow(non_snake_case)]
@@ -60,9 +66,9 @@ pub struct AuthResponseDto {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthUserDto {
     pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub email: Option<String>,
     pub username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phoneNumber: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub firstName: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

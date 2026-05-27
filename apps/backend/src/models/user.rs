@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: Uuid,
+    #[serde(skip_serializing)]
     pub email: Option<String>,
     pub username: String,
     #[serde(skip_serializing)]
@@ -34,8 +35,8 @@ impl User {
     pub fn to_auth_user(&self) -> crate::dto::AuthUserDto {
         crate::dto::AuthUserDto {
             id: self.id.to_string(),
-            email: self.email.clone(),
             username: self.username.clone(),
+            phoneNumber: self.phone_number.clone(),
             firstName: self.first_name.clone(),
             lastName: self.last_name.clone(),
             role: self.role.clone().unwrap_or_else(|| "player".to_string()),
@@ -61,8 +62,8 @@ pub struct TotpSetupResponseDto {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateUserDto {
-    pub email: Option<String>,
     pub username: Option<String>,
+    pub phone_number: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub role: Option<String>,
@@ -72,8 +73,8 @@ pub struct UpdateUserDto {
 #[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct UserFilterDto {
-    pub email: Option<String>,
     pub username: Option<String>,
+    pub phone_number: Option<String>,
     pub is_active: Option<i64>,
     pub role: Option<String>,
     pub page: Option<i64>,

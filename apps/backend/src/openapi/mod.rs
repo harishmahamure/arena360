@@ -2,7 +2,8 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::dto::auth_dto::{
-    AuthResponseDto, AuthUserDto, LoginDto, RegisterDto, RegisterResponseDto, VerifyOtpDto,
+    AuthResponseDto, AuthUserDto, ChangePasswordDto, LoginDto, RegisterDto, RegisterResponseDto,
+    VerifyOtpDto,
 };
 use crate::handlers;
 use crate::models::{
@@ -77,6 +78,7 @@ impl Modify for SecurityAddon {
         handlers::users::list_users,
         handlers::users::get_user,
         handlers::users::update_user,
+        handlers::users::change_password,
         handlers::users::setup_totp,
         handlers::users::verify_totp_setup,
         handlers::users::disable_totp,
@@ -174,6 +176,7 @@ impl Modify for SecurityAddon {
             LoginDto,
             VerifyOtpDto,
             RegisterDto,
+            ChangePasswordDto,
             OtpPendingEnvelope,
             AuthResponseDto,
             AuthUserDto,

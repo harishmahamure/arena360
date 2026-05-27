@@ -1028,6 +1028,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["change_password"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/{id}/totp": {
         parameters: {
             query?: never;
@@ -1148,11 +1164,11 @@ export interface components {
             timestamp: string;
         };
         AuthUserDto: {
-            email?: string | null;
             firstName?: string | null;
             id: string;
             isActive: boolean;
             lastName?: string | null;
+            phoneNumber?: string | null;
             role: string;
             username: string;
         };
@@ -1340,6 +1356,9 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        ChangePasswordDto: {
+            newPassword: string;
         };
         ClockInDto: {
             notes?: string | null;
@@ -2270,10 +2289,10 @@ export interface components {
             reconciliationNotes?: string | null;
         };
         RegisterDto: {
-            email?: string | null;
             firstName?: string | null;
             lastName?: string | null;
             password: string;
+            phoneNumber: string;
             role?: string | null;
             username: string;
         };
@@ -2884,10 +2903,10 @@ export interface components {
             type?: string | null;
         };
         UpdateUserDto: {
-            email?: string | null;
             firstName?: string | null;
             isActive?: boolean | null;
             lastName?: string | null;
+            phoneNumber?: string | null;
             role?: string | null;
             username?: string | null;
         };
@@ -2991,7 +3010,6 @@ export interface components {
             createdBy?: string | null;
             /** Format: date-time */
             deletedAt?: string | null;
-            email?: string | null;
             firstName?: string | null;
             /** Format: uuid */
             id: string;
@@ -3015,13 +3033,13 @@ export interface components {
             timestamp: string;
         };
         UserFilterDto: {
-            email?: string | null;
             /** Format: int64 */
             isActive?: number | null;
             /** Format: int64 */
             limit?: number | null;
             /** Format: int64 */
             page?: number | null;
+            phoneNumber?: string | null;
             role?: string | null;
             sortBy?: string | null;
             sortOrder?: string | null;
@@ -8181,6 +8199,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordDto"];
+            };
+        };
+        responses: {
+            /** @description Password changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Bad request */

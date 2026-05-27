@@ -1,6 +1,6 @@
 use axum::{
     middleware,
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use sqlx::PgPool;
@@ -111,6 +111,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/users/{id}",
             get(handlers::users::get_user).put(handlers::users::update_user),
+        )
+        .route(
+            "/users/{id}/password",
+            put(handlers::users::change_password),
         )
         .route(
             "/devices",

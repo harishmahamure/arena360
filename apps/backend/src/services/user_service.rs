@@ -81,9 +81,9 @@ impl UserService {
 
         self.repo
             .create_player(CreatePlayerParams {
-                email: dto.email.as_deref(),
                 username: &dto.username,
                 password_hash: &password_hash,
+                phone_number: &dto.phoneNumber,
                 first_name: dto.firstName.as_deref(),
                 last_name: dto.lastName.as_deref(),
                 role,
@@ -94,6 +94,41 @@ impl UserService {
         Ok(RegisterResponseDto {
             message: "Created successfully".to_string(),
         })
+    }
+
+    pub async fn change_password(
+        &self,
+        target_user_id: Uuid,
+        new_password: &str,
+        caller_claims: &JwtUserClaims,
+    ) -> Result<(), AppError> {
+        if new_password.len() < 8 {
+            return Err(AppError::BadRequest(
+                "Password must be at least 8 characters".to_string(),
+            ));
+        }
+
+        let target = self.get_by_id(target_user_id).await?;
+        let target_role = target.role.as_deref().unwrap_or("player");
+
+        if target_role == "admin" {
+            return Err(AppError::Forbidden(
+                "Cannot change admin passwords via this endpoint".to_string(),
+            ));
+        }
+
+        if target_role == "staff" && !caller_claims.is_admin() {
+            return Err(AppError::Forbidden(
+                "Only admins can change staff passwords".to_string(),
+            ));
+        }
+
+        let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
+            .map_err(|e| AppError::Internal(format!("Failed to hash password: {e}")))?;
+
+        self.repo
+            .update_password(target_user_id, &password_hash)
+            .await
     }
 
     pub async fn setup_totp(

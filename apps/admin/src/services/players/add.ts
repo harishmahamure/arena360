@@ -1,9 +1,9 @@
 import { http } from '@gaming-cafe/utils';
 
 export interface AddPlayerRequest {
-  email?: string;
   username: string;
   password: string;
+  phoneNumber: string;
   firstName?: string;
   lastName?: string;
   role?: 'player' | 'staff';

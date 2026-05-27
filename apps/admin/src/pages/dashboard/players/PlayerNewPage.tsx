@@ -22,13 +22,13 @@ const basePlayerFormFields: FieldConfig<CreatePlayerFormData>[] = [
     helperText: '3-50 characters, must be unique',
   },
   {
-    name: 'email',
-    label: 'Email Address',
+    name: 'phoneNumber',
+    label: 'Phone Number',
     type: 'text',
-    placeholder: 'e.g., player@example.com',
-    required: false,
+    placeholder: 'e.g., 9876543210',
+    required: true,
     gridCols: 6,
-    helperText: 'Must be a valid and unique email address',
+    helperText: 'Required, minimum 10 digits',
   },
   {
     name: 'firstName',
@@ -96,17 +96,17 @@ export default function AddNewPlayerPage() {
     setError(undefined);
     setSuccess(undefined);
 
-    if (!data.username || !data.password) {
-      setError('Username and password are required');
+    if (!data.username || !data.password || !data.phoneNumber) {
+      setError('Username, phone number, and password are required');
       setLoading(false);
       return;
     }
 
     try {
       await addPlayer({
-        email: data.email || undefined,
         username: data.username,
         password: data.password,
+        phoneNumber: data.phoneNumber,
         firstName: data.firstName || undefined,
         lastName: data.lastName || undefined,
         role: isAdmin ? data.role : 'player',

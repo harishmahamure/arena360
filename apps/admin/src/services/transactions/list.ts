@@ -30,7 +30,6 @@ export interface TransactionResponse {
   player?: {
     id: string;
     name: string;
-    email: string;
     username: string;
   };
   plan?: {

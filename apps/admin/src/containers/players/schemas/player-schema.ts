@@ -25,7 +25,10 @@ export const createPlayerSchema = yup.object({
     .max(50, 'Username must not exceed 50 characters')
     .required(validationMessages.required('Username')),
 
-  email: yup.string().email(validationMessages.email).optional().nullable(),
+  phoneNumber: yup
+    .string()
+    .min(10, 'Phone number must be at least 10 digits')
+    .required(validationMessages.required('Phone Number')),
 
   password: yup
     .string()
@@ -48,22 +51,25 @@ export type CreatePlayerFormData = yup.InferType<typeof createPlayerSchema>;
 
 export const createPlayerDefaultValues: CreatePlayerFormData = {
   username: '',
+  phoneNumber: '',
   password: '',
   confirmPassword: '',
   firstName: '',
   lastName: '',
-  email: '',
   role: 'player',
 };
 
 export const updatePlayerSchema = yup.object({
-  email: yup.string().email('Please enter a valid email address').optional().nullable(),
-
   username: yup
     .string()
     .min(3, 'Username must be at least 3 characters')
     .max(50, 'Username must not exceed 50 characters')
     .required(validationMessages.required('Username')),
+
+  phoneNumber: yup
+    .string()
+    .min(10, 'Phone number must be at least 10 digits')
+    .required(validationMessages.required('Phone Number')),
 
   firstName: yup.string().max(50, 'First name must not exceed 50 characters').optional().nullable(),
 

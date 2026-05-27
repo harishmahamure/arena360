@@ -300,7 +300,7 @@ impl CashRegisterRepository {
                       cr."updatedAt" as updated_at,
                       (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_in')::float8 as total_cash_in,
                       (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_out')::float8 as total_cash_out,
-                      (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_out' AND "referenceType" = 'cash_deposit')::float8 as total_deposited
+                      (SELECT COALESCE(SUM(e.amount::float8), 0) FROM cash_register_entries e JOIN cash_deposits d ON d.id = e."referenceId" WHERE e."cashRegisterId" = cr.id AND e."entryType" = 'cash_out' AND e."referenceType" = 'cash_deposit' AND d.status = 'approved')::float8 as total_deposited
                FROM cash_registers cr WHERE 1=1"#,
         );
 
@@ -462,6 +462,25 @@ impl CashRegisterRepository {
         Ok(row.0.unwrap_or(0.0))
     }
 
+    pub async fn sum_deposit_entries(&self, register_id: Uuid) -> Result<f64, AppError> {
+        let row: (Option<f64>,) = sqlx::query_as(
+            r#"
+            SELECT COALESCE(SUM(e.amount::float8), 0.0)
+            FROM cash_register_entries e
+            JOIN cash_deposits d ON d.id = e."referenceId"
+            WHERE e."cashRegisterId" = $1
+              AND e."entryType" = 'cash_out'
+              AND e."referenceType" = 'cash_deposit'
+              AND d.status = 'approved'
+            "#,
+        )
+        .bind(register_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0.unwrap_or(0.0))
+    }
+
     pub async fn get_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
         self.calculate_expected_closing(register_id).await
     }
@@ -473,7 +492,10 @@ impl CashRegisterRepository {
 
         let cash_in = self.sum_entries_by_type(register_id, "cash_in").await?;
         let cash_out = self.sum_entries_by_type(register_id, "cash_out").await?;
+        let deposited = self.sum_deposit_entries(register_id).await?;
 
-        Ok(register.opening_balance + cash_in - cash_out)
+        // Exclude deposits from expected: staff counts the full drawer before
+        // deposits are physically removed, so deposits don't create variance.
+        Ok(register.opening_balance + cash_in - (cash_out - deposited))
     }
 }

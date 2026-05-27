@@ -29,9 +29,7 @@ export function useEnrichedTransactions(transactions: TransactionResponse[] | un
         tx.player ??
         (() => {
           const p = playerMap.get(tx.playerId);
-          return p
-            ? { id: p.id, username: p.username, email: p.email ?? '', name: p.username }
-            : undefined;
+          return p ? { id: p.id, username: p.username, name: p.username } : undefined;
         })(),
       plan:
         tx.plan ??

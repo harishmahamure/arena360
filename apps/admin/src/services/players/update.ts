@@ -2,8 +2,8 @@ import type { UserRole } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
 export interface UpdatePlayerRequest {
-  email?: string;
   username?: string;
+  phoneNumber?: string;
   firstName?: string;
   lastName?: string;
   role?: UserRole;
@@ -12,4 +12,8 @@ export interface UpdatePlayerRequest {
 
 export const updatePlayer = async (id: string, player: UpdatePlayerRequest) => {
   return http.put(`/users/${id}`, player);
+};
+
+export const changePlayerPassword = async (id: string, newPassword: string) => {
+  return http.put(`/users/${id}/password`, { newPassword });
 };

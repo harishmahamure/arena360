@@ -6,7 +6,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
-use crate::dto::{ok, ApiResult};
+use crate::dto::{ok, ApiResult, ChangePasswordDto};
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::models::{TotpSetupResponseDto, UpdateUserDto, User, UserFilterDto, VerifyTotpSetupDto};
 use crate::openapi::responses::{ErrorEnvelope, UserEnvelope, UserPaginationEnvelope};
@@ -79,6 +79,37 @@ pub async fn update_user(
 ) -> ApiResult<User> {
     let user = state.users.update(id, dto, claims.user_id_uuid()).await?;
     ok(user)
+}
+
+#[utoipa::path(
+    put,
+    path = "/users/{id}/password",
+    params(
+        ("id" = Uuid, Path, description = "User ID"),
+    ),
+    request_body = ChangePasswordDto,
+    responses(
+        (status = 200, description = "Password changed", body = serde_json::Value),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "users"
+)]
+pub async fn change_password(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(dto): Json<ChangePasswordDto>,
+) -> ApiResult<serde_json::Value> {
+    state
+        .users
+        .change_password(id, &dto.newPassword, &claims)
+        .await?;
+    ok(serde_json::json!({ "message": "Password changed successfully" }))
 }
 
 #[utoipa::path(

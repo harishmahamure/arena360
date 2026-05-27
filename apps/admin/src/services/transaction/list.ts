@@ -49,8 +49,8 @@ interface Player {
   createdAt: string;
   updatedAt: string;
   deletedAt: null;
-  email: null | string;
   username: string;
+  phoneNumber?: string | null;
   isActive: boolean;
   firstName: string;
   lastName: string;

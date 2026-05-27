@@ -13,7 +13,7 @@ import {
 } from '../../../containers/players/schemas/player-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getPlayerById } from '../../../services/players/getById';
-import { updatePlayer } from '../../../services/players/update';
+import { changePlayerPassword, updatePlayer } from '../../../services/players/update';
 import { disableTotp, setupTotp, verifyTotpSetup } from '../../../services/users/totp';
 
 export default function EditPlayerPage() {
@@ -26,15 +26,6 @@ export default function EditPlayerPage() {
   const editPlayerFormFields = useMemo<FieldConfig<UpdatePlayerFormData>[]>(
     () => [
       {
-        name: 'email',
-        label: 'Email Address',
-        type: 'text',
-        placeholder: 'e.g., player@example.com',
-        required: false,
-        gridCols: 6,
-        helperText: 'Must be a valid and unique email address',
-      },
-      {
         name: 'username',
         label: 'Username',
         type: 'text',
@@ -42,6 +33,15 @@ export default function EditPlayerPage() {
         required: true,
         gridCols: 6,
         helperText: '3-50 characters, must be unique',
+      },
+      {
+        name: 'phoneNumber',
+        label: 'Phone Number',
+        type: 'text',
+        placeholder: 'e.g., 9876543210',
+        required: true,
+        gridCols: 6,
+        helperText: 'Required, minimum 10 digits',
       },
       {
         name: 'firstName',
@@ -85,6 +85,8 @@ export default function EditPlayerPage() {
   const [totpCode, setTotpCode] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [totpLoading, setTotpLoading] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const { data: player, isLoading } = useQuery({
     queryKey: ['player', id],
@@ -106,16 +108,16 @@ export default function EditPlayerPage() {
     setError(undefined);
     setSuccess(undefined);
 
-    if (!data.email || !data.username) {
-      setError('Email and username are required');
+    if (!data.username || !data.phoneNumber) {
+      setError('Username and phone number are required');
       setIsSubmitting(false);
       return;
     }
 
     try {
       await updatePlayer(id as string, {
-        email: data.email,
         username: data.username,
+        phoneNumber: data.phoneNumber,
         firstName: data.firstName || undefined,
         lastName: data.lastName || undefined,
         role: data.role as UserRole,
@@ -218,8 +220,8 @@ export default function EditPlayerPage() {
         fields={editPlayerFormFields}
         schema={updatePlayerSchema}
         defaultValues={{
-          email: playerData?.email || '',
           username: playerData?.username || '',
+          phoneNumber: playerData?.phoneNumber || '',
           firstName: playerData?.firstName || '',
           lastName: playerData?.lastName || '',
           role: playerData?.role || 'player',
@@ -238,6 +240,48 @@ export default function EditPlayerPage() {
         buttonAlign="right"
         spacing={3}
       />
+
+      {canWrite && playerData?.role !== 'admin' && (
+        <Box sx={{ mt: 4 }}>
+          <Divider sx={{ mb: 3 }} />
+          <Typography variant="h6" fontWeight={600} gutterBottom>
+            Change Password
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Set a new password for this user.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, maxWidth: 480, alignItems: 'flex-start' }}>
+            <TextField
+              label="New Password"
+              type="password"
+              size="small"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              helperText="Minimum 8 characters"
+              sx={{ flex: 1 }}
+            />
+            <Button
+              variant="contained"
+              disabled={passwordLoading || newPassword.length < 8}
+              onClick={async () => {
+                if (!id) return;
+                setPasswordLoading(true);
+                try {
+                  await changePlayerPassword(id, newPassword);
+                  setNewPassword('');
+                  setSuccess('Password changed successfully');
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Failed to change password');
+                } finally {
+                  setPasswordLoading(false);
+                }
+              }}
+            >
+              Change
+            </Button>
+          </Box>
+        </Box>
+      )}
 
       {isAdmin && playerData?.role === 'staff' && (
         <Box sx={{ mt: 4 }}>
