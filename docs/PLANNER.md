@@ -255,7 +255,7 @@ The layered architecture follows:
 - `src/dto/` — Request/response serialization types (serde)
 - `src/middleware/` — Tower middleware (auth, logging, CORS, compression)
 - `src/error/` — Unified error type implementing IntoResponse
-- `src/sse/` — Server-Sent Events broadcaster
+- `src/realtime/` — WebSocket channel (outbox, dispatcher, rooms — ADR-0013)
 - `src/config.rs` — Env-based config (envy or figment)
 - `src/main.rs` — Bootstrap, router composition, graceful shutdown
 
@@ -289,7 +289,7 @@ API-compatible JSON responses so the admin SPA works without changes.
 **Evidence**:
 
 - `cd _new/apps/backend && cargo build && cargo clippy -- -D warnings` — exit 0 (2026-05-27).
-- Root routes (no `/api/v1` prefix): `/health`, `/health/live`, `/health/ready`, `/auth/*`, `/stats/*`, `/devices`, `/sse`.
+- Root routes (no `/api/v1` prefix): `/health`, `/health/live`, `/health/ready`, `/auth/*`, `/stats/*`, `/devices`, `/realtime`.
 - NestJS-compatible envelope in `src/dto/envelope.rs`; bcrypt (not argon2) in `Cargo.toml`.
 - `DATABASE_URL` or `DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/DB_DATABASE` assembly in `src/config/settings.rs`.
 - `.env` copied from `arena360-backend/` (untracked, no rotation).
@@ -518,7 +518,7 @@ compatibility.
 - Session start validates plan access; session end deducts credits via `SessionService` + `PlayerPlanService`.
 - Completed `plan_purchase` transactions provision player plans via `TransactionService`.
 - Files/storage: `src/services/storage_service.rs` (aws-sdk-s3 R2 presign), `src/handlers/files.rs`, `src/handlers/storage.rs`; 25 MiB cap via `Settings::upload_max_size_bytes`.
-- Sessions publish SSE via `EventService` on start/end.
+- Sessions publish events via `OutboxService` on start/end (WebSocket channel — ADR-0013).
 - Smoke: `_new/scripts/smoke-p2.sh` covers player-plan list, assign, validate, get-by-id (steps 5, 8–10).
 - `cargo build` + `cargo clippy -- -D warnings` pass.
 - Live DB health: `curl http://localhost:3001/health/live` → `{ data: { status: "ok", db: "up" } }`.

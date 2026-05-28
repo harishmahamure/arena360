@@ -26,6 +26,7 @@ use crate::models::{
     VendorFilterDto, VerifyTotpSetupDto,
 };
 use crate::openapi::responses::*;
+use crate::realtime::rooms::{AddMemberDto, CreateRoomDto, Room};
 use crate::services::stats_service::{
     DashboardStatsDto, DeviceStatsDto, PeriodDto, PeriodPairRevenueByPaymentMethod,
     PeriodPairUsageStats, PlanStatsDto, PlanTypeStat, RevenueByPaymentMethodDto, RevenueTrendDto,
@@ -119,7 +120,10 @@ impl Modify for SecurityAddon {
         handlers::products::create_product,
         handlers::products::update_product,
         handlers::products::delete_product,
-        handlers::sse::sse_handler,
+        handlers::realtime_rooms::list_rooms,
+        handlers::realtime_rooms::create_room,
+        handlers::realtime_rooms::add_member,
+        handlers::realtime_rooms::remove_member,
         handlers::config::list_config,
         handlers::config::get_config,
         handlers::config::upsert_config,
@@ -341,6 +345,9 @@ impl Modify for SecurityAddon {
             ExpenseSummaryListEnvelope,
             ExpensePaginationEnvelope,
             ExpensePaginationPage,
+            Room,
+            CreateRoomDto,
+            AddMemberDto,
         )
     ),
     modifiers(&SecurityAddon),
@@ -362,7 +369,7 @@ impl Modify for SecurityAddon {
         (name = "expense-categories", description = "Expense category management"),
         (name = "vendors", description = "Vendor management"),
         (name = "expenses", description = "Expense tracking and approval"),
-        (name = "sse", description = "Server-sent events"),
+        (name = "realtime", description = "Realtime WebSocket and room management"),
     )
 )]
 pub struct ApiDoc;

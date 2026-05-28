@@ -7,6 +7,7 @@ use crate::models::{
     CreateCashRegisterEntryDto, CreateExpenseDto, Expense, ExpenseFilterDto, ExpenseSummaryDto,
     UpdateExpenseDto,
 };
+use crate::realtime::OutboxService;
 use crate::repositories::{ExpenseCategoryRepository, ExpenseRepository, VendorRepository};
 use crate::services::cash_register_service::CashRegisterService;
 use crate::services::shift_service::ShiftService;
@@ -17,6 +18,7 @@ pub struct ExpenseService {
     vendor_repo: VendorRepository,
     cash_register_service: CashRegisterService,
     shift_service: ShiftService,
+    outbox: OutboxService,
 }
 
 impl ExpenseService {
@@ -24,6 +26,7 @@ impl ExpenseService {
         pool: PgPool,
         cash_register_service: CashRegisterService,
         shift_service: ShiftService,
+        outbox: OutboxService,
     ) -> Self {
         Self {
             repo: ExpenseRepository::new(pool.clone()),
@@ -31,6 +34,7 @@ impl ExpenseService {
             vendor_repo: VendorRepository::new(pool),
             cash_register_service,
             shift_service,
+            outbox,
         }
     }
 
@@ -78,7 +82,18 @@ impl ExpenseService {
                 })?;
         }
 
-        self.repo.create(&dto, created_by).await
+        let expense = self.repo.create(&dto, created_by).await?;
+
+        if expense.approval_status == "pending" {
+            let payload = serde_json::json!({
+                "expense_id": expense.id.to_string(),
+                "amount": expense.amount,
+                "entity_type": "expense",
+            });
+            let _ = self.outbox.publish("admin", "approval.requested", payload, Some("admin"), None, true).await;
+        }
+
+        Ok(expense)
     }
 
     pub async fn update(
@@ -181,6 +196,25 @@ impl ExpenseService {
             }
         }
 
+        {
+            let payload = serde_json::json!({
+                "expense_id": expense.id.to_string(),
+                "status": "approved",
+                "entity_type": "expense",
+            });
+            if let Some(created_by) = expense.created_by {
+                let _ = self.outbox.publish(
+                    &format!("user:{created_by}"),
+                    "approval.decided",
+                    payload.clone(),
+                    None,
+                    Some(created_by),
+                    true,
+                ).await;
+            }
+            let _ = self.outbox.publish("admin", "expense.status_changed", payload, Some("admin"), None, true).await;
+        }
+
         Ok(expense)
     }
 
@@ -202,7 +236,28 @@ impl ExpenseService {
             ));
         }
 
-        self.repo.reject(id, rejection_reason, rejected_by).await
+        let expense = self.repo.reject(id, rejection_reason, rejected_by).await?;
+
+        {
+            let payload = serde_json::json!({
+                "expense_id": expense.id.to_string(),
+                "status": "rejected",
+                "entity_type": "expense",
+            });
+            if let Some(created_by) = expense.created_by {
+                let _ = self.outbox.publish(
+                    &format!("user:{created_by}"),
+                    "approval.decided",
+                    payload.clone(),
+                    None,
+                    Some(created_by),
+                    true,
+                ).await;
+            }
+            let _ = self.outbox.publish("admin", "expense.status_changed", payload, Some("admin"), None, true).await;
+        }
+
+        Ok(expense)
     }
 
     pub async fn get_summary(&self) -> Result<Vec<ExpenseSummaryDto>, AppError> {

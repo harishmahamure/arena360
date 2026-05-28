@@ -5,6 +5,7 @@ use crate::error::AppError;
 use crate::models::{
     CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
 };
+use crate::realtime::OutboxService;
 use crate::repositories::DeviceRepository;
 use crate::services::EventService;
 
@@ -12,13 +13,15 @@ use crate::services::EventService;
 pub struct DeviceService {
     repo: DeviceRepository,
     events: EventService,
+    outbox: OutboxService,
 }
 
 impl DeviceService {
-    pub fn new(pool: PgPool, events: EventService) -> Self {
+    pub fn new(pool: PgPool, events: EventService, outbox: OutboxService) -> Self {
         Self {
             repo: DeviceRepository::new(pool),
             events,
+            outbox,
         }
     }
 
@@ -50,6 +53,7 @@ impl DeviceService {
         let device = self.repo.create(&dto, actor_id).await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
+        self.publish_device_ws(&device).await;
         Ok(device)
     }
 
@@ -69,6 +73,7 @@ impl DeviceService {
         let device = self.repo.update(id, &dto, actor_id).await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
+        self.publish_device_ws(&device).await;
         Ok(device)
     }
 
@@ -80,10 +85,18 @@ impl DeviceService {
         let device = self.repo.update_status(id, &dto.status).await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
+        self.publish_device_ws(&device).await;
         Ok(device)
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         self.repo.soft_delete(id).await
+    }
+
+    async fn publish_device_ws(&self, device: &Device) {
+        let channel = format!("device:{}", device.id);
+        let payload = serde_json::json!({ "device_id": device.id.to_string(), "status": device.status });
+        let _ = self.outbox.publish("staff", "device.status_changed", payload.clone(), None, None, false).await;
+        let _ = self.outbox.publish(&channel, "device.status_changed", payload, None, None, false).await;
     }
 }

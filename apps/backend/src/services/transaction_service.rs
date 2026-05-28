@@ -8,6 +8,7 @@ use crate::models::{
     AssignPlanDto, CreateLineItemDto, CreateTransactionDto, Transaction, TransactionFilterDto,
     TransactionWithLineItems, UpdateTransactionDto,
 };
+use crate::realtime::OutboxService;
 use crate::repositories::{TransactionProductRepository, TransactionRepository};
 use crate::services::{EventService, PlayerPlanService};
 
@@ -16,15 +17,17 @@ pub struct TransactionService {
     line_item_repo: TransactionProductRepository,
     player_plans: Arc<PlayerPlanService>,
     events: EventService,
+    outbox: OutboxService,
 }
 
 impl TransactionService {
-    pub fn new(pool: PgPool, player_plans: Arc<PlayerPlanService>, events: EventService) -> Self {
+    pub fn new(pool: PgPool, player_plans: Arc<PlayerPlanService>, events: EventService, outbox: OutboxService) -> Self {
         Self {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
             repo: TransactionRepository::new(pool),
             player_plans,
             events,
+            outbox,
         }
     }
 
@@ -98,6 +101,7 @@ impl TransactionService {
         &self,
         dto: CreateTransactionDto,
         actor_id: Option<Uuid>,
+        actor_role: Option<&str>,
         cash_registers: &crate::services::CashRegisterService,
     ) -> Result<Transaction, AppError> {
         let line_items = dto.line_items.as_ref().ok_or_else(|| {
@@ -183,6 +187,24 @@ impl TransactionService {
         self.events
             .publish_transaction_created(&transaction.id.to_string());
 
+        // Notify admin channel when a staff member processes a sale
+        if actor_role == Some("staff") {
+            let payload = serde_json::json!({
+                "transaction_id": transaction.id.to_string(),
+                "amount": transaction.amount,
+                "payment_method": transaction.payment_method,
+                "transaction_type": transaction.transaction_type,
+            });
+            let _ = self.outbox.publish(
+                "admin",
+                "transaction.sale_completed",
+                payload,
+                Some("admin"),
+                None,
+                true,
+            ).await;
+        }
+
         Ok(transaction)
     }
 
@@ -229,11 +251,12 @@ impl TransactionService {
         &self,
         dto: CreateTransactionDto,
         actor_id: Option<Uuid>,
+        actor_role: Option<&str>,
         cash_registers: &crate::services::CashRegisterService,
     ) -> Result<Transaction, AppError> {
         if dto.transaction_type == "product_purchase" {
             return self
-                .create_product_purchase(dto, actor_id, cash_registers)
+                .create_product_purchase(dto, actor_id, actor_role, cash_registers)
                 .await;
         }
 
@@ -301,6 +324,23 @@ impl TransactionService {
 
         self.events
             .publish_transaction_created(&transaction.id.to_string());
+
+        if actor_role == Some("staff") {
+            let payload = serde_json::json!({
+                "transaction_id": transaction.id.to_string(),
+                "amount": transaction.amount,
+                "payment_method": transaction.payment_method,
+                "transaction_type": transaction.transaction_type,
+            });
+            let _ = self.outbox.publish(
+                "admin",
+                "transaction.sale_completed",
+                payload,
+                Some("admin"),
+                None,
+                true,
+            ).await;
+        }
 
         Ok(transaction)
     }

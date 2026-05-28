@@ -11,6 +11,7 @@ use crate::config::{create_pool, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::auth_middleware;
 use crate::openapi::ApiDoc;
+use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, CashDepositService, CashRegisterService, ConfigService, DeviceService,
     EventService, ExpenseCategoryService, ExpenseService, PlanService, PlayerPlanService,
@@ -42,6 +43,9 @@ pub struct AppState {
     pub expenses: ExpenseService,
     pub stats: StatsService,
     pub events: EventService,
+    pub outbox: OutboxService,
+    pub rooms: RoomService,
+    pub ws_connections: Arc<tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>>,
 }
 
 pub async fn build_state() -> Arc<AppState> {
@@ -51,8 +55,17 @@ pub async fn build_state() -> Arc<AppState> {
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);
 
-    let devices = DeviceService::new(pool.clone(), events.clone());
+    let outbox = OutboxService::new(pool.clone());
+    let rooms = RoomService::new(pool.clone());
+    let ws_connections: Arc<tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>> =
+        Arc::new(tokio::sync::RwLock::new(Vec::new()));
+
+    let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
+
+    // Spawn the realtime dispatcher
+    let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
+    tokio::spawn(dispatcher.run());
 
     Arc::new(AppState {
         auth: AuthService::new(pool.clone(), settings.clone()),
@@ -62,7 +75,7 @@ pub async fn build_state() -> Arc<AppState> {
         plans: PlanService::new(pool.clone()),
         player_plans: player_plans.clone(),
         units: UnitService::new(pool.clone()),
-        sessions: SessionService::new(pool.clone(), devices, player_plans.clone(), events.clone()),
+        sessions: SessionService::new(pool.clone(), devices, player_plans.clone(), events.clone(), outbox.clone()),
         shifts: {
             let cash_reg = Arc::new(CashRegisterService::new(pool.clone()));
             let mut s = ShiftService::new(pool.clone());
@@ -70,8 +83,8 @@ pub async fn build_state() -> Arc<AppState> {
             s
         },
         cash_registers: Arc::new(CashRegisterService::new(pool.clone())),
-        cash_deposits: CashDepositService::new(pool.clone()),
-        transactions: TransactionService::new(pool.clone(), player_plans, events.clone()),
+        cash_deposits: CashDepositService::new(pool.clone(), outbox.clone()),
+        transactions: TransactionService::new(pool.clone(), player_plans, events.clone(), outbox.clone()),
         products: ProductService::new(pool.clone()),
         expense_categories: ExpenseCategoryService::new(pool.clone()),
         vendors: VendorService::new(pool.clone()),
@@ -79,8 +92,12 @@ pub async fn build_state() -> Arc<AppState> {
             pool.clone(),
             CashRegisterService::new(pool.clone()),
             ShiftService::new(pool.clone()),
+            outbox.clone(),
         ),
         stats: StatsService::new(pool.clone()),
+        outbox,
+        rooms,
+        ws_connections,
         db: pool,
         settings,
         events,
@@ -311,7 +328,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/expenses/{id}/reject",
             patch(handlers::expenses::reject_expense),
         )
-        .route("/sse", get(handlers::sse::sse_handler))
+        .route("/realtime", get(crate::realtime::handler::ws_upgrade))
+        .route(
+            "/realtime/rooms",
+            get(handlers::realtime_rooms::list_rooms)
+                .post(handlers::realtime_rooms::create_room),
+        )
+        .route(
+            "/realtime/rooms/{id}/members",
+            post(handlers::realtime_rooms::add_member),
+        )
+        .route(
+            "/realtime/rooms/{id}/members/{user_id}",
+            delete(handlers::realtime_rooms::remove_member),
+        )
         .route("/config", get(handlers::config::list_config))
         .route(
             "/config/{key}",

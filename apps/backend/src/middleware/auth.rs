@@ -13,6 +13,7 @@ const PUBLIC_EXACT: &[&str] = &[
     "/auth/login/staff",
     "/auth/verify-otp",
     "/health/live",
+    "/realtime",
 ];
 
 const PUBLIC_PREFIX: &[&str] = &["/health", "/api/docs"];

@@ -6,18 +6,21 @@ use crate::error::AppError;
 use crate::models::{
     CashDeposit, CashDepositFilterDto, CreateCashRegisterEntryDto, InitiateDepositDto,
 };
+use crate::realtime::OutboxService;
 use crate::repositories::{CashDepositRepository, CashRegisterRepository};
 
 pub struct CashDepositService {
     repo: CashDepositRepository,
     cash_register_repo: CashRegisterRepository,
+    outbox: OutboxService,
 }
 
 impl CashDepositService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, outbox: OutboxService) -> Self {
         Self {
             repo: CashDepositRepository::new(pool.clone()),
             cash_register_repo: CashRegisterRepository::new(pool),
+            outbox,
         }
     }
 
@@ -57,6 +60,14 @@ impl CashDepositService {
 
         let deposit = self.repo.create(&dto, staff_id).await?;
 
+        let payload = serde_json::json!({
+            "deposit_id": deposit.id.to_string(),
+            "amount": deposit.amount,
+            "staff_id": staff_id.to_string(),
+            "entity_type": "cash_deposit",
+        });
+        let _ = self.outbox.publish("admin", "approval.requested", payload, Some("admin"), None, true).await;
+
         let entry = CreateCashRegisterEntryDto {
             entry_type: "cash_out".to_string(),
             amount: dto.amount,
@@ -84,7 +95,24 @@ impl CashDepositService {
             ));
         }
 
-        self.repo.approve(id, deposit_type, admin_id).await
+        let deposit = self.repo.approve(id, deposit_type, admin_id).await?;
+
+        let payload = serde_json::json!({
+            "deposit_id": deposit.id.to_string(),
+            "status": "approved",
+            "entity_type": "cash_deposit",
+        });
+        let _ = self.outbox.publish(
+            &format!("user:{}", deposit.initiated_by),
+            "approval.decided",
+            payload.clone(),
+            None,
+            Some(deposit.initiated_by),
+            true,
+        ).await;
+        let _ = self.outbox.publish("admin", "cash_deposit.status_changed", payload, Some("admin"), None, true).await;
+
+        Ok(deposit)
     }
 
     pub async fn reject(
@@ -100,6 +128,23 @@ impl CashDepositService {
         }
 
         let deposit = self.repo.reject(id, rejection_reason, admin_id).await?;
+
+        {
+            let payload = serde_json::json!({
+                "deposit_id": deposit.id.to_string(),
+                "status": "rejected",
+                "entity_type": "cash_deposit",
+            });
+            let _ = self.outbox.publish(
+                &format!("user:{}", deposit.initiated_by),
+                "approval.decided",
+                payload.clone(),
+                None,
+                Some(deposit.initiated_by),
+                true,
+            ).await;
+            let _ = self.outbox.publish("admin", "cash_deposit.status_changed", payload, Some("admin"), None, true).await;
+        }
 
         let register = self
             .cash_register_repo

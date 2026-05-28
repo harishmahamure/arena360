@@ -8,7 +8,7 @@ default-run = "gaming-cafe-api"
 
 [dependencies]
 # Web framework
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
 axum-extra = { version = "0.10", features = ["typed-header"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"

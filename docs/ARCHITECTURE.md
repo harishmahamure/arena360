@@ -26,7 +26,7 @@ architectural patterns, each chosen for its specific shape:
 | OpenAPI docs | utoipa | auto-generated from handler types |
 | JWT | jsonwebtoken | RS256 / HS256 |
 | Serialization | serde + serde_json | throughout |
-| SSE | axum + tokio::broadcast | per-connection topic filtering |
+| WebSocket | axum (ws feature) | Role-gated channels, durable outbox, at-least-once delivery (ADR-0013) |
 
 The existing Postgres schema (originally created by TypeORM) is reused
 as-is. SQLx queries are written against the existing tables and
@@ -60,7 +60,7 @@ graph LR
   end
 
   Admin -- "HTTPS / REST envelope" --> Ingress
-  Admin -- "SSE /api/v1/sse" --> Ingress
+  Admin -- "WS /realtime" --> Ingress
   Ingress --> Backend
   Backend --> DB
   Backend -- "presigned PUT" --> R2
@@ -74,9 +74,9 @@ Key facts:
   else is served by the admin SPA (`admin.arena360.cloud`).
 - File uploads always go **direct to R2** via presigned URLs. The
   backend never proxies bytes.
-- The admin dashboard subscribes to `GET /api/v1/sse?topics=…` for
-  real-time updates (session events, device status changes, plan
-  alerts).
+- The admin dashboard connects to `GET /realtime` via WebSocket for
+  real-time updates (session events, device status, approval requests,
+  staff sale notifications). See ADR-0013.
 
 ---
 
@@ -105,7 +105,7 @@ Supporting modules:
 dto/          (request/response structs — serde Deserialize/Serialize + utoipa ToSchema)
 middleware/   (auth JWT extraction, request logging, error handling)
 error/        (AppError enum — implements IntoResponse for Axum)
-sse/          (Server-Sent Events broadcaster — tokio::broadcast + per-connection filtering)
+realtime/     (WebSocket subsystem — outbox, dispatcher, channels, rooms — ADR-0013)
 ```
 
 - **DTOs at the handler boundary.** Inbound: serde-deserialized
@@ -256,19 +256,25 @@ regardless of file size.
   `adr/0003-secrets-management.md`).
 - Wrapped behind a `MailService` so swapping providers is one file.
 
-### SSE (Server-Sent Events)
+### WebSocket (Realtime channel — ADR-0013)
 
-The backend provides a general-purpose event streaming endpoint:
+The backend provides a WebSocket endpoint for durable, role-gated
+real-time events:
 
-- **Endpoint**: `GET /api/v1/sse?topics=session,device`
-- **Architecture**: `tokio::broadcast` channel with per-connection filtering
-- **Event types**: `session.started`, `session.ended`, `device.status_changed`, `plan.exhausted`, `plan.expired`, `transaction.created`
-- **Format**: Standard SSE with JSON payload per event
-- **Consumers**: Admin dashboard subscribes for real-time updates
+- **Endpoint**: `GET /realtime` (WebSocket upgrade)
+- **Auth**: JWT via `Sec-WebSocket-Protocol: bearer, <token>`
+- **Architecture**: Postgres transactional outbox + `pg_notify` +
+  per-process dispatcher + per-connection actors
+- **Channels**: `public`, `admin`, `staff`, `user:{id}`, `device:{id}`,
+  `room:{name}` — with role-based subscribe/publish ACL
+- **Delivery**: at-least-once via `realtime_deliveries` table + ACK
+- **Client frames**: `Subscribe`, `Unsubscribe`, `Ack`, `Publish` (chat), `Ping`
+- **Consumers**: Admin dashboard, future kiosk
 
-Services publish events via an `EventService` that wraps the broadcast
-channel. Each SSE connection receives only events matching its
-subscribed topics.
+Services publish events via `OutboxService::publish` inside the same
+SQLx transaction as the business write. The outbox trigger wakes the
+dispatcher, which fans out to connected clients and inserts delivery
+rows for durable channels.
 
 ---
 
@@ -280,7 +286,7 @@ sequenceDiagram
   participant Admin as apps/admin (React SPA)
   participant API as apps/backend (Rust · Axum)
   participant DB as Postgres
-  participant SSE as SSE broadcast
+  participant WS as WS dispatcher
 
   Admin->>API: POST /api/v1/sessions { deviceId, playerId, planId }
   API->>DB: BEGIN
@@ -290,10 +296,11 @@ sequenceDiagram
     API-->>Admin: 422 PLAN_EXHAUSTED
   else sufficient time
     API->>DB: Insert session (status=ACTIVE)
+    API->>DB: Insert realtime_outbox (session.started)
     API->>DB: COMMIT
-    API->>SSE: publish session.started
     API-->>Admin: 201 { sessionId, expiresAt }
-    SSE-->>Admin: event: session.started
+    DB-->>WS: pg_notify
+    WS-->>Admin: WS Event: session.started
   end
 ```
 
@@ -301,7 +308,7 @@ Notes:
 
 - The plan-minutes check is a transactional `SELECT ... FOR UPDATE`
   so concurrent requests cannot double-spend the same plan.
-- The admin dashboard receives a `session.started` SSE event and
+- The admin dashboard receives a `session.started` WebSocket event and
   updates the UI in real time without polling.
 - Decrementing `remainingMinutes` is a backend-side job (a scheduled
   task or computed-on-read; see the `ScheduledTasksService` follow-up

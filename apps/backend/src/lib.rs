@@ -6,6 +6,7 @@ pub mod handlers;
 pub mod middleware;
 pub mod models;
 pub mod openapi;
+pub mod realtime;
 pub mod repositories;
 pub mod services;
 pub mod sse;

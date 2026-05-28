@@ -8,6 +8,7 @@ use crate::models::{
     CreateSessionDto, EndSessionDto, SessionFilterDto, UpdateDeviceStatusDto, UsageSession,
     UsageSessionResponse,
 };
+use crate::realtime::OutboxService;
 use crate::repositories::{PlanRepository, SessionRepository};
 use crate::services::{DeviceService, EventService, PlayerPlanService};
 
@@ -17,6 +18,7 @@ pub struct SessionService {
     devices: DeviceService,
     player_plans: Arc<PlayerPlanService>,
     events: EventService,
+    outbox: OutboxService,
 }
 
 impl SessionService {
@@ -25,6 +27,7 @@ impl SessionService {
         devices: DeviceService,
         player_plans: Arc<PlayerPlanService>,
         events: EventService,
+        outbox: OutboxService,
     ) -> Self {
         Self {
             repo: SessionRepository::new(pool.clone()),
@@ -32,6 +35,7 @@ impl SessionService {
             devices,
             player_plans,
             events,
+            outbox,
         }
     }
 
@@ -113,6 +117,11 @@ impl SessionService {
 
         self.events.publish_session_started(&session.id.to_string());
 
+        let device_channel = format!("device:{}", dto.device_id);
+        let payload = serde_json::json!({ "session_id": session.id.to_string(), "device_id": dto.device_id.to_string() });
+        let _ = self.outbox.publish("staff", "session.started", payload.clone(), None, None, true).await;
+        let _ = self.outbox.publish(&device_channel, "session.started", payload, None, None, false).await;
+
         Ok(session)
     }
 
@@ -192,6 +201,11 @@ impl SessionService {
             .await;
 
         self.events.publish_session_ended(&updated.id.to_string());
+
+        let device_channel = format!("device:{}", session.device_id);
+        let payload = serde_json::json!({ "session_id": updated.id.to_string(), "device_id": session.device_id.to_string() });
+        let _ = self.outbox.publish("staff", "session.ended", payload.clone(), None, None, true).await;
+        let _ = self.outbox.publish(&device_channel, "session.ended", payload, None, None, false).await;
 
         Ok(updated)
     }

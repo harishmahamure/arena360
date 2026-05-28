@@ -90,9 +90,10 @@ pub async fn create_transaction(
 
     dto.shift_id = Some(active_shift.id);
 
+    let actor_role = claims.roles.first().map(|s| s.as_str());
     let transaction = state
         .transactions
-        .create(dto, Some(user_id), &state.cash_registers)
+        .create(dto, Some(user_id), actor_role, &state.cash_registers)
         .await?;
     created(transaction)
 }
