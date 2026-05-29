@@ -35,6 +35,9 @@ export enum Permission {
   CashDepositsRead = 'cash-deposits:read',
   CashDepositsWrite = 'cash-deposits:write',
   CashDepositsApprove = 'cash-deposits:approve',
+  CreditRead = 'credit:read',
+  CreditWrite = 'credit:write',
+  CreditLimitWrite = 'credit-limit:write',
   ExpensesRead = 'expenses:read',
   ExpensesWrite = 'expenses:write',
   ExpensesApprove = 'expenses:approve',
@@ -66,6 +69,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.CashRegistersWrite,
     Permission.CashDepositsRead,
     Permission.CashDepositsWrite,
+    Permission.CreditRead,
+    Permission.CreditWrite,
     Permission.ExpensesRead,
   ],
   player: [

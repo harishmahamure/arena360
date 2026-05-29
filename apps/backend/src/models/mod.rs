@@ -1,4 +1,5 @@
 pub mod balance;
+pub mod credit;
 pub mod cash_deposit;
 pub mod cash_register;
 pub mod configuration;
@@ -18,6 +19,7 @@ pub mod user;
 pub mod vendor;
 
 pub use balance::*;
+pub use credit::*;
 pub use cash_deposit::*;
 pub use cash_register::*;
 pub use configuration::*;

@@ -22,6 +22,7 @@ impl TransactionRepository {
                "planId" as plan_id,
                "shiftId" as shift_id,
                amount::float8 as amount,
+               "paidAmount"::float8 as paid_amount,
                "cashAmount"::float8 as cash_amount,
                "onlineAmount"::float8 as online_amount,
                "paymentMethod"::text as payment_method,
@@ -55,7 +56,7 @@ impl TransactionRepository {
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             "SELECT id, \"playerId\" as player_id, \"transactionType\"::text as transaction_type, \
-             \"planId\" as plan_id, \"shiftId\" as shift_id, amount::float8 as amount, \"cashAmount\"::float8 as cash_amount, \
+             \"planId\" as plan_id, \"shiftId\" as shift_id, amount::float8 as amount, \"paidAmount\"::float8 as paid_amount, \"cashAmount\"::float8 as cash_amount, \
              \"onlineAmount\"::float8 as online_amount, \"paymentMethod\"::text as payment_method, \
              \"paymentStatus\"::text as payment_status, notes, \"transactionDate\" as transaction_date, \
              \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
@@ -151,12 +152,12 @@ impl TransactionRepository {
             r#"
             INSERT INTO transactions (
                 id, "playerId", "transactionType", "planId", "shiftId", amount,
-                "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
+                "paidAmount", "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
                 notes, "transactionDate", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
-                $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
+                0, $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
                 $10, $11, $12, $12, NOW(), NOW()
             )
             RETURNING id,
@@ -165,6 +166,7 @@ impl TransactionRepository {
                       "planId" as plan_id,
                       "shiftId" as shift_id,
                       amount::float8 as amount,
+                      "paidAmount"::float8 as paid_amount,
                       "cashAmount"::float8 as cash_amount,
                       "onlineAmount"::float8 as online_amount,
                       "paymentMethod"::text as payment_method,
@@ -216,6 +218,7 @@ impl TransactionRepository {
                       "planId" as plan_id,
                       "shiftId" as shift_id,
                       amount::float8 as amount,
+                      "paidAmount"::float8 as paid_amount,
                       "cashAmount"::float8 as cash_amount,
                       "onlineAmount"::float8 as online_amount,
                       "paymentMethod"::text as payment_method,
@@ -252,12 +255,12 @@ impl TransactionRepository {
             r#"
             INSERT INTO transactions (
                 id, "playerId", "transactionType", "planId", "shiftId", amount,
-                "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
+                "paidAmount", "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
                 notes, "transactionDate", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
-                $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
+                0, $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
                 $10, $11, $12, $12, NOW(), NOW()
             )
             RETURNING id,
@@ -266,6 +269,7 @@ impl TransactionRepository {
                       "planId" as plan_id,
                       "shiftId" as shift_id,
                       amount::float8 as amount,
+                      "paidAmount"::float8 as paid_amount,
                       "cashAmount"::float8 as cash_amount,
                       "onlineAmount"::float8 as online_amount,
                       "paymentMethod"::text as payment_method,

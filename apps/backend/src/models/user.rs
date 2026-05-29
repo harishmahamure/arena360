@@ -18,6 +18,9 @@ pub struct User {
     pub last_name: Option<String>,
     pub phone_number: Option<String>,
     pub role: Option<String>,
+    #[serde(default)]
+    #[sqlx(default)]
+    pub credit_limit: f64,
     pub session_otp_id: Option<String>,
     #[serde(skip_serializing)]
     pub session_otp: Option<String>,

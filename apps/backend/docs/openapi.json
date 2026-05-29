@@ -1759,6 +1759,272 @@
         ]
       }
     },
+    "/credit/accounts": {
+      "get": {
+        "tags": [
+          "credit"
+        ],
+        "operationId": "list_credit_accounts",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List players with outstanding credit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPlayerPaginationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/credit/players/{id}": {
+      "get": {
+        "tags": [
+          "credit"
+        ],
+        "operationId": "get_player_credit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Player ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Player credit summary and outstanding transactions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerCreditDetailEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/credit/settlements": {
+      "post": {
+        "tags": [
+          "credit"
+        ],
+        "operationId": "create_settlement",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettleCreditDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Credit settlement recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditSettlementEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/devices": {
       "get": {
         "tags": [
@@ -6870,6 +7136,103 @@
         ]
       }
     },
+    "/users/{id}/credit-limit": {
+      "patch": {
+        "tags": [
+          "credit"
+        ],
+        "operationId": "update_credit_limit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Player ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCreditLimitDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Credit limit updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditSummaryEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/users/{id}/password": {
       "put": {
         "tags": [
@@ -9456,6 +9819,303 @@
           }
         }
       },
+      "CreditAccountFilterDto": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortOrder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CreditPlayerPaginationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreditPlayerPaginationPage"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "CreditPlayerPaginationPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditPlayerRow"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CreditPlayerRow": {
+        "type": "object",
+        "required": [
+          "playerId",
+          "username",
+          "creditLimit",
+          "outstanding",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "number",
+            "format": "double"
+          },
+          "creditLimit": {
+            "type": "number",
+            "format": "double"
+          },
+          "firstName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outstanding": {
+            "type": "number",
+            "format": "double"
+          },
+          "phoneNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "CreditSettlement": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "shiftId",
+          "settledBy",
+          "amount",
+          "paymentMethod",
+          "settledAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "cashAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onlineAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "settledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "settledBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreditSettlementEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreditSettlement"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "CreditSummary": {
+        "type": "object",
+        "required": [
+          "playerId",
+          "creditLimit",
+          "outstanding",
+          "available",
+          "creditEnabled"
+        ],
+        "properties": {
+          "available": {
+            "type": "number",
+            "format": "double"
+          },
+          "creditEnabled": {
+            "type": "boolean"
+          },
+          "creditLimit": {
+            "type": "number",
+            "format": "double"
+          },
+          "outstanding": {
+            "type": "number",
+            "format": "double"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CreditSummaryEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreditSummary"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "DashboardStatsDto": {
         "type": "object",
         "required": [
@@ -10697,6 +11357,52 @@
           }
         }
       },
+      "OutstandingTxnRow": {
+        "type": "object",
+        "required": [
+          "transactionId",
+          "transactionType",
+          "amount",
+          "paidAmount",
+          "remaining",
+          "paymentStatus",
+          "transactionDate"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paidAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "paymentStatus": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "number",
+            "format": "double"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transactionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transactionType": {
+            "type": "string"
+          }
+        }
+      },
       "PeriodDto": {
         "type": "object",
         "required": [
@@ -11282,6 +11988,49 @@
             "format": "double"
           },
           "type": {
+            "type": "string"
+          }
+        }
+      },
+      "PlayerCreditDetail": {
+        "type": "object",
+        "required": [
+          "summary",
+          "transactions"
+        ],
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/CreditSummary"
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutstandingTxnRow"
+            }
+          }
+        }
+      },
+      "PlayerCreditDetailEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PlayerCreditDetail"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
             "type": "string"
           }
         }
@@ -12875,6 +13624,78 @@
           }
         }
       },
+      "SetCreditLimitDto": {
+        "type": "object",
+        "required": [
+          "creditLimit"
+        ],
+        "properties": {
+          "creditLimit": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "SettleCreditDto": {
+        "type": "object",
+        "required": [
+          "playerId",
+          "items",
+          "paymentMethod"
+        ],
+        "properties": {
+          "cashAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettleItemDto"
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onlineAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "SettleItemDto": {
+        "type": "object",
+        "required": [
+          "transactionId",
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "transactionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "Shift": {
         "type": "object",
         "required": [
@@ -13549,6 +14370,7 @@
           "playerId",
           "transactionType",
           "amount",
+          "paidAmount",
           "paymentMethod",
           "paymentStatus",
           "transactionDate",
@@ -13600,6 +14422,10 @@
               "number",
               "null"
             ],
+            "format": "double"
+          },
+          "paidAmount": {
+            "type": "number",
             "format": "double"
           },
           "paymentMethod": {
@@ -13919,6 +14745,7 @@
           "playerId",
           "transactionType",
           "amount",
+          "paidAmount",
           "paymentMethod",
           "paymentStatus",
           "transactionDate",
@@ -13977,6 +14804,10 @@
               "number",
               "null"
             ],
+            "format": "double"
+          },
+          "paidAmount": {
+            "type": "number",
             "format": "double"
           },
           "paymentMethod": {
@@ -15009,6 +15840,10 @@
             ],
             "format": "uuid"
           },
+          "creditLimit": {
+            "type": "number",
+            "format": "double"
+          },
           "deletedAt": {
             "type": [
               "string",
@@ -15581,6 +16416,10 @@
     {
       "name": "cash-registers",
       "description": "Cash register management"
+    },
+    {
+      "name": "credit",
+      "description": "Player credit accounts and settlements"
     },
     {
       "name": "config",

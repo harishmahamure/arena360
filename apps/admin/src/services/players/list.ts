@@ -10,6 +10,7 @@ export interface PlayerResponse {
   role: UserRole;
   isActive: boolean;
   totpEnabled?: boolean;
+  creditLimit?: number;
   createdAt: string;
   updatedAt: string;
 }

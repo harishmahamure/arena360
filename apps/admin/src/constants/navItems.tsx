@@ -1,6 +1,7 @@
 import { Permission } from '@gaming-cafe/contracts';
 import {
   CardMembership,
+  CreditCard,
   Dashboard,
   Devices,
   Inventory,
@@ -167,6 +168,12 @@ export const adminNavItems: AdminNavItem[] = [
       { title: 'Pending Approval', path: '/cash-deposits?status=pending' },
       { title: 'Approved', path: '/cash-deposits?status=approved' },
     ],
+  },
+  {
+    title: 'Credit (Tab)',
+    path: '/credit',
+    icon: <CreditCard />,
+    requiredPermission: Permission.CreditRead,
   },
   {
     title: 'Expenses',

@@ -6,6 +6,7 @@ export const PaymentMethodValues = {
   CASH: 'cash',
   ONLINE: 'online',
   SPLIT_PAYMENT: 'split_payment',
+  CREDIT: 'credit',
 } as const;
 
 export const PaymentStatusValues = {
@@ -14,6 +15,7 @@ export const PaymentStatusValues = {
   FAILED: 'failed',
   REFUNDED: 'refunded',
   CANCELLED: 'cancelled',
+  CREDIT: 'credit',
 } as const;
 
 export const TransactionTypeValues = {
@@ -33,6 +35,7 @@ export const paymentMethodOptions = [
   { value: PaymentMethodValues.CASH, label: 'Cash' },
   { value: PaymentMethodValues.ONLINE, label: 'Online' },
   { value: PaymentMethodValues.SPLIT_PAYMENT, label: 'Split Payment' },
+  { value: PaymentMethodValues.CREDIT, label: 'Credit (Tab)' },
 ];
 
 export const paymentStatusOptions = [

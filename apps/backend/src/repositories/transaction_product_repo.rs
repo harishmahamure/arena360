@@ -20,19 +20,26 @@ impl TransactionProductRepository {
         actor_id: Option<Uuid>,
     ) -> Result<(), AppError> {
         for item in line_items {
+            let unit_price = item.unit_price.unwrap_or(0.0);
+            let subtotal = unit_price * f64::from(item.quantity);
+            // "priceAtPurchase" and "subtotal" are legacy NOT NULL columns from the
+            // TypeORM baseline kept in sync with "unitPrice" (see migration
+            // 20260530000003).
             sqlx::query(
                 r#"
                 INSERT INTO transaction_products (
                     id, "transactionId", "productId", quantity, "unitPrice",
+                    "priceAtPurchase", subtotal,
                     "createdBy", "updatedBy", "createdAt", "updatedAt"
                 )
-                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5, NOW(), NOW())
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, $4, $5, $6, $6, NOW(), NOW())
                 "#,
             )
             .bind(transaction_id)
             .bind(item.product_id)
             .bind(item.quantity)
-            .bind(item.unit_price.unwrap_or(0.0))
+            .bind(unit_price)
+            .bind(subtotal)
             .bind(actor_id)
             .execute(&mut **tx)
             .await?;

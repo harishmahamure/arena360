@@ -1,15 +1,20 @@
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
 import { Box, Paper, Typography } from '@mui/material';
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
 import {
   type CreatePlanTransactionFormData,
-  createPlanTransactionDefaultValues,
-  createPlanTransactionSchema,
   type PaymentMethodType,
   PaymentMethodValues,
+  PaymentStatusValues,
+  createPlanTransactionDefaultValues,
+  createPlanTransactionSchema,
   paymentMethodOptions,
-} from '../../../../src/containers/transactions/schemas/transaction-schema';
+} from '../../../containers/transactions/schemas/transaction-schema';
+import { getPlayerCredit } from '../../../services/credit';
+import { getPlanById } from '../../../services/plans/getById';
 import { getPlans } from '../../../services/plans/list';
 import { getPlayers } from '../../../services/players/list';
 import { addTransaction } from '../../../services/transactions/add';
@@ -97,6 +102,31 @@ export default function AddNewPlanTransactionPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
+  const [formValues, setFormValues] = useState<Partial<CreatePlanTransactionFormData>>(
+    createPlanTransactionDefaultValues,
+  );
+
+  const { data: selectedPlan } = useQuery({
+    queryKey: ['plan', formValues.planId],
+    queryFn: () => getPlanById(formValues.planId as string),
+    enabled: !!formValues.planId,
+  });
+
+  const purchaseAmount = selectedPlan?.price ?? 0;
+  const isCredit = formValues.paymentMethod === PaymentMethodValues.CREDIT;
+
+  const { data: creditDetail } = useQuery({
+    queryKey: ['player-credit', formValues.playerId],
+    queryFn: () => getPlayerCredit(formValues.playerId as string),
+    enabled: isCredit && !!formValues.playerId,
+  });
+
+  const creditBlocked = useMemo(() => {
+    if (!isCredit || !creditDetail?.summary) return false;
+    const s = creditDetail.summary;
+    if (!s.creditEnabled || s.creditLimit <= 0) return true;
+    return Number(purchaseAmount) > Number(s.available) + 0.001;
+  }, [isCredit, creditDetail, purchaseAmount]);
 
   const handleSubmit = async (data: CreatePlanTransactionFormData) => {
     setLoading(true);
@@ -109,13 +139,22 @@ export default function AddNewPlanTransactionPage() {
       return;
     }
 
+    if (data.paymentMethod === PaymentMethodValues.CREDIT && creditBlocked) {
+      setError('This player is not eligible for this credit purchase');
+      setLoading(false);
+      return;
+    }
+
     try {
       const payload = {
         playerId: data.playerId,
         transactionType: TransactionType.PLAN_PURCHASE,
         planId: data.planId,
         paymentMethod: data.paymentMethod as PaymentMethodType,
-        paymentStatus: PaymentStatus.COMPLETED,
+        paymentStatus:
+          data.paymentMethod === PaymentMethodValues.CREDIT
+            ? PaymentStatusValues.CREDIT
+            : PaymentStatus.COMPLETED,
         notes: data.notes || undefined,
         cashAmount:
           data.paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? data.cashAmount : undefined,
@@ -126,7 +165,10 @@ export default function AddNewPlanTransactionPage() {
           : undefined,
       };
 
-      await addTransaction(payload);
+      await addTransaction({
+        ...payload,
+        paymentStatus: payload.paymentStatus as PaymentStatus,
+      });
 
       setSuccess('Transaction created successfully!');
 
@@ -161,10 +203,17 @@ export default function AddNewPlanTransactionPage() {
         </Typography>
       </Box>
 
+      <CreditEligibilityAlert
+        playerId={formValues.playerId}
+        paymentMethod={formValues.paymentMethod}
+        purchaseAmount={Number(purchaseAmount)}
+      />
+
       <FormBuilder<CreatePlanTransactionFormData>
         fields={formFields}
         schema={createPlanTransactionSchema}
         defaultValues={createPlanTransactionDefaultValues}
+        onChange={(values) => setFormValues(values)}
         mode="add"
         onSubmit={handleSubmit}
         onCancel={handleCancel}

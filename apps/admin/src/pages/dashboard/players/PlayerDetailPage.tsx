@@ -13,6 +13,7 @@ import {
 } from '../../../containers/players/schemas/player-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getPlayerById } from '../../../services/players/getById';
+import { setCreditLimit } from '../../../services/players/setCreditLimit';
 import { changePlayerPassword, updatePlayer } from '../../../services/players/update';
 import { disableTotp, setupTotp, verifyTotpSetup } from '../../../services/users/totp';
 
@@ -21,6 +22,7 @@ export default function EditPlayerPage() {
   const { id } = useParams();
   const { can, isAdmin } = usePermissions();
   const canWrite = can(Permission.PlayersWrite);
+  const canSetCreditLimit = can(Permission.CreditLimitWrite);
   const roleOptions = isAdmin ? userRoleOptions : adminCreateRoleOptions;
 
   const editPlayerFormFields = useMemo<FieldConfig<UpdatePlayerFormData>[]>(
@@ -87,6 +89,8 @@ export default function EditPlayerPage() {
   const [totpLoading, setTotpLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [creditLimitInput, setCreditLimitInput] = useState('');
+  const [creditLimitLoading, setCreditLimitLoading] = useState(false);
 
   const { data: player, isLoading } = useQuery({
     queryKey: ['player', id],
@@ -102,6 +106,12 @@ export default function EditPlayerPage() {
       setTotpEnabled(Boolean(player.totpEnabled));
     }
   }, [player?.totpEnabled]);
+
+  useEffect(() => {
+    if (player?.creditLimit !== undefined) {
+      setCreditLimitInput(String(player.creditLimit));
+    }
+  }, [player?.creditLimit]);
 
   const handleSubmit = async (data: UpdatePlayerFormData) => {
     setIsSubmitting(true);
@@ -240,6 +250,48 @@ export default function EditPlayerPage() {
         buttonAlign="right"
         spacing={3}
       />
+
+      {canSetCreditLimit && playerData?.role === 'player' && (
+        <Box sx={{ mt: 4 }}>
+          <Divider sx={{ mb: 3 }} />
+          <Typography variant="h6" fontWeight={600} gutterBottom>
+            Credit Limit (Tab / Khata)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Set to 0 to disable credit purchases for this member.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, maxWidth: 480, alignItems: 'flex-start' }}>
+            <TextField
+              label="Credit Limit (INR)"
+              type="number"
+              size="small"
+              value={creditLimitInput}
+              onChange={(e) => setCreditLimitInput(e.target.value)}
+              helperText="Maximum outstanding credit allowed"
+              sx={{ flex: 1 }}
+              inputProps={{ min: 0, step: 0.01 }}
+            />
+            <Button
+              variant="contained"
+              disabled={creditLimitLoading || creditLimitInput === ''}
+              onClick={async () => {
+                if (!id) return;
+                setCreditLimitLoading(true);
+                try {
+                  await setCreditLimit(id, Number.parseFloat(creditLimitInput));
+                  setSuccess('Credit limit updated');
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Failed to update credit limit');
+                } finally {
+                  setCreditLimitLoading(false);
+                }
+              }}
+            >
+              Save
+            </Button>
+          </Box>
+        </Box>
+      )}
 
       {canWrite && playerData?.role !== 'admin' && (
         <Box sx={{ mt: 4 }}>

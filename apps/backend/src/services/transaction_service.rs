@@ -10,22 +10,30 @@ use crate::models::{
 };
 use crate::realtime::OutboxService;
 use crate::repositories::{TransactionProductRepository, TransactionRepository};
-use crate::services::{BalanceService, EventService};
+use crate::services::{BalanceService, CreditService, EventService};
 
 pub struct TransactionService {
     repo: TransactionRepository,
     line_item_repo: TransactionProductRepository,
     balances: Arc<BalanceService>,
+    credit: Arc<CreditService>,
     events: EventService,
     outbox: OutboxService,
 }
 
 impl TransactionService {
-    pub fn new(pool: PgPool, balances: Arc<BalanceService>, events: EventService, outbox: OutboxService) -> Self {
+    pub fn new(
+        pool: PgPool,
+        balances: Arc<BalanceService>,
+        credit: Arc<CreditService>,
+        events: EventService,
+        outbox: OutboxService,
+    ) -> Self {
         Self {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
             repo: TransactionRepository::new(pool),
             balances,
+            credit,
             events,
             outbox,
         }
@@ -97,6 +105,19 @@ impl TransactionService {
         Ok(())
     }
 
+    async fn prepare_credit_purchase(
+        &self,
+        player_id: Uuid,
+        amount: f64,
+    ) -> Result<String, AppError> {
+        self.credit.validate_eligibility(player_id, amount).await?;
+        Ok("credit".to_string())
+    }
+
+    fn should_grant_plan_benefit(payment_method: &str, payment_status: &str) -> bool {
+        payment_status == "completed" || payment_method == "credit"
+    }
+
     async fn create_product_purchase(
         &self,
         dto: CreateTransactionDto,
@@ -124,11 +145,16 @@ impl TransactionService {
             .map(|(_, qty, price)| *qty as f64 * price)
             .sum();
 
-        let payment_status = dto
-            .payment_status
-            .as_deref()
-            .unwrap_or("pending")
-            .to_string();
+        let is_credit = dto.payment_method == "credit";
+        let payment_status = if is_credit {
+            self.prepare_credit_purchase(dto.player_id, server_total)
+                .await?
+        } else {
+            dto.payment_status
+                .as_deref()
+                .unwrap_or("pending")
+                .to_string()
+        };
         let transaction_date = dto.transaction_date.unwrap_or_else(Utc::now);
 
         let mut dto_for_insert = dto;
@@ -291,11 +317,15 @@ impl TransactionService {
             ));
         }
 
-        let payment_status = dto
-            .payment_status
-            .as_deref()
-            .unwrap_or("pending")
-            .to_string();
+        let is_credit = dto.payment_method == "credit";
+        let payment_status = if is_credit {
+            self.prepare_credit_purchase(dto.player_id, amount).await?
+        } else {
+            dto.payment_status
+                .as_deref()
+                .unwrap_or("pending")
+                .to_string()
+        };
         let transaction_date = dto.transaction_date.unwrap_or_else(Utc::now);
 
         let transaction = self
@@ -303,7 +333,9 @@ impl TransactionService {
             .create(&dto, amount, transaction_date, &payment_status, actor_id)
             .await?;
 
-        if dto.transaction_type == "plan_purchase" && payment_status == "completed" {
+        if dto.transaction_type == "plan_purchase"
+            && Self::should_grant_plan_benefit(&dto.payment_method, &payment_status)
+        {
             if let Some(plan_id) = dto.plan_id {
                 self.balances
                     .purchase_or_recharge(

@@ -14,8 +14,8 @@ use crate::openapi::ApiDoc;
 use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
-    DeviceService, EventService, ExpenseCategoryService, ExpenseService, PlanService,
-    PlayerPlanService, ProductService, SessionService, ShiftService, StatsService,
+    CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
+    PlanService, PlayerPlanService, ProductService, SessionService, ShiftService, StatsService,
     TransactionService, UnitService, UserService, VendorService,
 };
 use crate::sse::Broadcaster;
@@ -43,6 +43,7 @@ pub struct AppState {
     pub vendors: VendorService,
     pub expenses: ExpenseService,
     pub stats: StatsService,
+    pub credit: Arc<CreditService>,
     pub events: EventService,
     pub outbox: OutboxService,
     pub rooms: RoomService,
@@ -64,6 +65,8 @@ pub async fn build_state() -> Arc<AppState> {
     let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
     let balances = Arc::new(BalanceService::new(pool.clone()));
+
+    let credit = Arc::new(CreditService::new(pool.clone()));
 
     // Spawn the realtime dispatcher
     let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
@@ -87,7 +90,14 @@ pub async fn build_state() -> Arc<AppState> {
         },
         cash_registers: Arc::new(CashRegisterService::new(pool.clone())),
         cash_deposits: CashDepositService::new(pool.clone(), outbox.clone()),
-        transactions: TransactionService::new(pool.clone(), balances, events.clone(), outbox.clone()),
+        transactions: TransactionService::new(
+            pool.clone(),
+            balances,
+            credit.clone(),
+            events.clone(),
+            outbox.clone(),
+        ),
+        credit,
         products: ProductService::new(pool.clone()),
         expense_categories: ExpenseCategoryService::new(pool.clone()),
         vendors: VendorService::new(pool.clone()),
@@ -330,6 +340,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/expenses/{id}/reject",
             patch(handlers::expenses::reject_expense),
+        )
+        .route(
+            "/users/{id}/credit-limit",
+            patch(handlers::credit::update_credit_limit),
+        )
+        .route("/credit/accounts", get(handlers::credit::list_credit_accounts))
+        .route(
+            "/credit/players/{id}",
+            get(handlers::credit::get_player_credit),
+        )
+        .route(
+            "/credit/settlements",
+            post(handlers::credit::create_settlement),
         )
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
         .route(

@@ -30,6 +30,7 @@ impl UserRepository {
                "isActive" as is_active,
                "firstName" as first_name, "lastName" as last_name,
                "phoneNumber" as phone_number, role,
+               COALESCE("creditLimit", 0)::float8 as credit_limit,
                NULL::varchar as session_otp_id,
                NULL::varchar as session_otp,
                NULL::varchar as totp_secret,
@@ -63,6 +64,7 @@ impl UserRepository {
              \"isActive\" as is_active, \
              \"firstName\" as first_name, \"lastName\" as last_name, \
              \"phoneNumber\" as phone_number, role, \
+             COALESCE(\"creditLimit\", 0)::float8 as credit_limit, \
              NULL::varchar as session_otp_id, \
              NULL::varchar as session_otp, \
              NULL::varchar as totp_secret, \
@@ -122,6 +124,7 @@ impl UserRepository {
                       "isActive" as is_active,
                       "firstName" as first_name, "lastName" as last_name,
                       "phoneNumber" as phone_number, role,
+                      COALESCE("creditLimit", 0)::float8 as credit_limit,
                       NULL::varchar as session_otp_id,
                       NULL::varchar as session_otp,
                       NULL::varchar as totp_secret,
@@ -167,6 +170,7 @@ impl UserRepository {
                       "isActive" as is_active,
                       "firstName" as first_name, "lastName" as last_name,
                       "phoneNumber" as phone_number, role,
+                      COALESCE("creditLimit", 0)::float8 as credit_limit,
                       NULL::varchar as session_otp_id,
                       NULL::varchar as session_otp,
                       NULL::varchar as totp_secret,
@@ -226,6 +230,7 @@ impl UserRepository {
             SELECT id, email, username, password_hash, "isActive" as is_active,
                    "firstName" as first_name, "lastName" as last_name,
                    "phoneNumber" as phone_number, role,
+                   COALESCE("creditLimit", 0)::float8 as credit_limit,
                    "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
                    "totpSecret" as totp_secret,
                    COALESCE("totpEnabled", false) as totp_enabled,
@@ -252,6 +257,7 @@ impl UserRepository {
             SELECT id, email, username, password_hash, "isActive" as is_active,
                    "firstName" as first_name, "lastName" as last_name,
                    "phoneNumber" as phone_number, role,
+                   COALESCE("creditLimit", 0)::float8 as credit_limit,
                    "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
                    "totpSecret" as totp_secret,
                    COALESCE("totpEnabled", false) as totp_enabled,
@@ -297,6 +303,7 @@ impl UserRepository {
             SELECT id, email, username, password_hash, "isActive" as is_active,
                    "firstName" as first_name, "lastName" as last_name,
                    "phoneNumber" as phone_number, role,
+                   COALESCE("creditLimit", 0)::float8 as credit_limit,
                    "sessionOtpId" as session_otp_id, "sessionOtp" as session_otp,
                    "totpSecret" as totp_secret,
                    COALESCE("totpEnabled", false) as totp_enabled,

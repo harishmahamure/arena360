@@ -12,6 +12,7 @@ import { RealtimeProvider } from './lib/realtime';
 import LoginPage from './pages/auth/LoginPage';
 import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
 import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
+import CreditPage from './pages/dashboard/credit/CreditPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import DeviceDetailPage from './pages/dashboard/devices/DeviceDetailPage';
 import DeviceNewPage from './pages/dashboard/devices/DeviceNewPage';
@@ -121,6 +122,9 @@ function App() {
                   <Route path="/shifts" element={<ShiftsPage />} />
                   <Route path="/cash-registers" element={<CashRegistersPage />} />
                   <Route path="/cash-deposits" element={<CashDepositsPage />} />
+                  <Route element={<RequirePermission permission={Permission.CreditRead} />}>
+                    <Route path="/credit" element={<CreditPage />} />
+                  </Route>
                   <Route path="/expenses" element={<ExpensesPage />} />
                   <Route path="/expenses/new" element={<ExpenseNewPage />} />
                   <Route path="/expenses/:id" element={<ExpenseDetailPage />} />

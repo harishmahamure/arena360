@@ -22,13 +22,16 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
   paymentMethodOptions,
 } from '../../../containers/transactions/schemas/transaction-schema';
+import { getPlayerCredit } from '../../../services/credit';
 import { getPlayers } from '../../../services/players/list';
 import { getProducts } from '../../../services/product/list';
 import { addTransaction } from '../../../services/transaction/add';
@@ -181,6 +184,23 @@ export default function CreateProductTransactionPage() {
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal;
 
+  const isCredit = paymentMethod === PaymentMethodValues.CREDIT;
+  const { data: creditDetail } = useQuery({
+    queryKey: ['player-credit', selectedPlayer?.id],
+    queryFn: () => {
+      if (!selectedPlayer) throw new Error('No player selected');
+      return getPlayerCredit(selectedPlayer.id);
+    },
+    enabled: isCredit && !!selectedPlayer,
+  });
+
+  const creditBlocked = useMemo(() => {
+    if (!isCredit || !creditDetail?.summary) return isCredit;
+    const s = creditDetail.summary;
+    if (!s.creditEnabled || s.creditLimit <= 0) return true;
+    return total > s.available + 0.001;
+  }, [isCredit, creditDetail, total]);
+
   const handleSubmit = async () => {
     setError(undefined);
     setSuccess(undefined);
@@ -201,6 +221,11 @@ export default function CreateProductTransactionPage() {
       return;
     }
 
+    if (isCredit && creditBlocked) {
+      setError('This player is not eligible for this credit purchase');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -208,7 +233,10 @@ export default function CreateProductTransactionPage() {
         playerId: selectedPlayer.id,
         transactionType: TransactionType.PRODUCT_PURCHASE,
         amount: total,
-        paymentStatus: PaymentStatus.COMPLETED,
+        paymentStatus:
+          paymentMethod === PaymentMethodValues.CREDIT
+            ? PaymentStatus.CREDIT
+            : PaymentStatus.COMPLETED,
         paymentMethod: paymentMethod as PaymentMethodType,
         cashAmount:
           paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
@@ -520,6 +548,12 @@ export default function CreateProductTransactionPage() {
                 ))}
               </TextField>
 
+              <CreditEligibilityAlert
+                playerId={selectedPlayer?.id}
+                paymentMethod={paymentMethod}
+                purchaseAmount={total}
+              />
+
               {paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (
                 <Grid container spacing={2} sx={{ mb: 2 }}>
                   <Grid item xs={6}>
@@ -566,7 +600,7 @@ export default function CreateProductTransactionPage() {
                   size="large"
                   fullWidth
                   onClick={handleSubmit}
-                  disabled={loading || !selectedPlayer || cart.length === 0}
+                  disabled={loading || !selectedPlayer || cart.length === 0 || creditBlocked}
                 >
                   {loading ? 'Processing...' : 'Complete Transaction'}
                 </Button>

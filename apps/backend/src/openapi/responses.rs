@@ -197,3 +197,12 @@ pagination_envelope!(
     CashDepositPaginationPage,
     CashDeposit
 );
+
+success_envelope!(CreditSummaryEnvelope, crate::models::CreditSummary);
+success_envelope!(PlayerCreditDetailEnvelope, crate::models::PlayerCreditDetail);
+success_envelope!(CreditSettlementEnvelope, crate::models::CreditSettlement);
+pagination_envelope!(
+    CreditPlayerPaginationEnvelope,
+    CreditPlayerPaginationPage,
+    crate::models::CreditPlayerRow
+);

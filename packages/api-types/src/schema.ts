@@ -292,6 +292,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/credit/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_credit_accounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/credit/players/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_player_credit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/credit/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_settlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices": {
         parameters: {
             query?: never;
@@ -1060,6 +1108,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{id}/credit-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_credit_limit"];
+        trace?: never;
+    };
     "/users/{id}/password": {
         parameters: {
             query?: never;
@@ -1655,6 +1719,96 @@ export interface components {
             notes?: string | null;
             phone?: string | null;
         };
+        CreditAccountFilterDto: {
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            search?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+        };
+        CreditPlayerPaginationEnvelope: {
+            data: components["schemas"]["CreditPlayerPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CreditPlayerPaginationPage: {
+            data: components["schemas"]["CreditPlayerRow"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        CreditPlayerRow: {
+            /** Format: double */
+            available: number;
+            /** Format: double */
+            creditLimit: number;
+            firstName?: string | null;
+            lastName?: string | null;
+            /** Format: double */
+            outstanding: number;
+            phoneNumber?: string | null;
+            /** Format: uuid */
+            playerId: string;
+            username: string;
+        };
+        CreditSettlement: {
+            /** Format: double */
+            amount: number;
+            /** Format: double */
+            cashAmount?: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: double */
+            onlineAmount?: number | null;
+            paymentMethod: string;
+            /** Format: uuid */
+            playerId: string;
+            /** Format: date-time */
+            settledAt: string;
+            /** Format: uuid */
+            settledBy: string;
+            /** Format: uuid */
+            shiftId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreditSettlementEnvelope: {
+            data: components["schemas"]["CreditSettlement"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CreditSummary: {
+            /** Format: double */
+            available: number;
+            creditEnabled: boolean;
+            /** Format: double */
+            creditLimit: number;
+            /** Format: double */
+            outstanding: number;
+            /** Format: uuid */
+            playerId: string;
+        };
+        CreditSummaryEnvelope: {
+            data: components["schemas"]["CreditSummary"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         DashboardStatsDto: {
             devices: components["schemas"]["DeviceStatsDto"];
             period: components["schemas"]["PeriodDto"];
@@ -2002,6 +2156,21 @@ export interface components {
             message: string;
             transactionId: string;
         };
+        OutstandingTxnRow: {
+            /** Format: double */
+            amount: number;
+            notes?: string | null;
+            /** Format: double */
+            paidAmount: number;
+            paymentStatus: string;
+            /** Format: double */
+            remaining: number;
+            /** Format: date-time */
+            transactionDate: string;
+            /** Format: uuid */
+            transactionId: string;
+            transactionType: string;
+        };
         PeriodDto: {
             endDate: string;
             label: string;
@@ -2184,6 +2353,17 @@ export interface components {
             /** Format: double */
             revenue: number;
             type: string;
+        };
+        PlayerCreditDetail: {
+            summary: components["schemas"]["CreditSummary"];
+            transactions: components["schemas"]["OutstandingTxnRow"][];
+        };
+        PlayerCreditDetailEnvelope: {
+            data: components["schemas"]["PlayerCreditDetail"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         PlayerPlan: {
             /** Format: date-time */
@@ -2641,6 +2821,27 @@ export interface components {
             lastName?: string | null;
             username: string;
         };
+        SetCreditLimitDto: {
+            /** Format: double */
+            creditLimit: number;
+        };
+        SettleCreditDto: {
+            /** Format: double */
+            cashAmount?: number | null;
+            items: components["schemas"]["SettleItemDto"][];
+            notes?: string | null;
+            /** Format: double */
+            onlineAmount?: number | null;
+            paymentMethod: string;
+            /** Format: uuid */
+            playerId: string;
+        };
+        SettleItemDto: {
+            /** Format: double */
+            amount: number;
+            /** Format: uuid */
+            transactionId: string;
+        };
         Shift: {
             /** Format: date-time */
             clockIn: string;
@@ -2829,6 +3030,8 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            /** Format: double */
+            paidAmount: number;
             paymentMethod: string;
             paymentStatus: string;
             /** Format: uuid */
@@ -2942,6 +3145,8 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            /** Format: double */
+            paidAmount: number;
             paymentMethod: string;
             paymentStatus: string;
             /** Format: uuid */
@@ -3213,6 +3418,8 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             createdBy?: string | null;
+            /** Format: double */
+            creditLimit?: number;
             /** Format: date-time */
             deletedAt?: string | null;
             firstName?: string | null;
@@ -4553,6 +4760,178 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigurationEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_credit_accounts: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                page?: number | null;
+                limit?: number | null;
+                sortBy?: string | null;
+                sortOrder?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List players with outstanding credit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditPlayerPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_player_credit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Player ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Player credit summary and outstanding transactions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayerCreditDetailEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_settlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettleCreditDto"];
+            };
+        };
+        responses: {
+            /** @description Credit settlement recorded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditSettlementEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -8525,6 +8904,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_credit_limit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Player ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCreditLimitDto"];
+            };
+        };
+        responses: {
+            /** @description Credit limit updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditSummaryEnvelope"];
                 };
             };
             /** @description Bad request */

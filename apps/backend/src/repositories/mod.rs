@@ -1,4 +1,5 @@
 pub mod balance_repo;
+pub mod credit_repo;
 pub mod cash_deposit_repo;
 pub mod cash_register_repo;
 pub mod config_repo;
@@ -18,6 +19,7 @@ pub mod user_repo;
 pub mod vendor_repo;
 
 pub use balance_repo::BalanceRepository;
+pub use credit_repo::CreditRepository;
 pub use cash_deposit_repo::CashDepositRepository;
 pub use cash_register_repo::CashRegisterRepository;
 pub use config_repo::ConfigRepository;
