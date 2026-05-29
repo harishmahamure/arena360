@@ -269,7 +269,7 @@ export default function CreditPage() {
       {isLoading ? (
         <GridSkeleton />
       ) : (
-        <DataGrid<any>
+        <DataGrid
           columns={columns}
           data={data?.data ?? []}
           actions={actions}
