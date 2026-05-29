@@ -5,19 +5,22 @@ export enum PlayerPlanStatus {
   EXPIRED = 'expired',
   EXHAUSTED = 'exhausted',
   CANCELLED = 'cancelled',
-  SUSPENDED = 'suspended',
 }
 
 export interface PlayerPlanResponse {
   id: string;
   playerId: string;
-  planId: string;
-  purchaseDate: string;
-  activationDate?: string | null;
+  deviceType?: string | null;
+  deviceSubType?: string | null;
+  kind: string;
+  remainingMinutes: number;
   expiryDate: string;
-  remainingUsageCount?: number | null;
-  remainingTimeCredits?: number | null;
+  windowStart?: string | null;
+  windowEnd?: string | null;
   status: string;
+  sourcePlanId?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -46,8 +49,10 @@ export interface GetPlayerPlansResponse {
 
 export interface GetPlayerPlansFilters {
   playerId?: string;
-  planId?: string;
+  kind?: string;
   status?: PlayerPlanStatus | string;
+  deviceType?: string;
+  deviceSubType?: string;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -58,7 +63,7 @@ export const getPlayerPlans = async (filters: GetPlayerPlansFilters = {}) => {
   return http.get<GetPlayerPlansResponse>('/player-plans', {
     params: {
       ...filters,
-      sortBy: filters.sortBy || 'purchaseDate',
+      sortBy: filters.sortBy || 'createdAt',
       sortOrder: filters.sortOrder || 'DESC',
       limit: filters.limit || 100,
       page: filters.page || 1,

@@ -8,7 +8,7 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct UsageSession {
     pub id: Uuid,
-    pub player_plan_id: Uuid,
+    pub balance_id: Option<Uuid>,
     pub device_id: Uuid,
     pub shift_id: Option<Uuid>,
     pub start_time: DateTime<Utc>,
@@ -25,7 +25,7 @@ pub struct UsageSession {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSessionDto {
-    pub player_plan_id: Uuid,
+    pub balance_id: Uuid,
     pub device_id: Uuid,
     pub shift_id: Option<Uuid>,
     pub start_time: Option<DateTime<Utc>>,
@@ -41,7 +41,7 @@ pub struct EndSessionDto {
 #[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionFilterDto {
-    pub player_plan_id: Option<Uuid>,
+    pub balance_id: Option<Uuid>,
     pub device_id: Option<Uuid>,
     pub player_id: Option<Uuid>,
     pub shift_id: Option<Uuid>,
@@ -87,11 +87,11 @@ pub struct SessionPlanSummary {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionPlayerPlanSummary {
+pub struct SessionBalanceSummary {
     pub id: Uuid,
     pub player_id: Uuid,
-    pub plan_id: Uuid,
-    pub remaining_time_credits: Option<i32>,
+    pub kind: String,
+    pub remaining_minutes: i32,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub player: Option<SessionPlayerSummary>,
@@ -103,7 +103,7 @@ pub struct SessionPlayerPlanSummary {
 #[serde(rename_all = "camelCase")]
 pub struct UsageSessionResponse {
     pub id: Uuid,
-    pub player_plan_id: Uuid,
+    pub balance_id: Option<Uuid>,
     pub device_id: Uuid,
     pub shift_id: Option<Uuid>,
     pub start_time: DateTime<Utc>,
@@ -117,7 +117,7 @@ pub struct UsageSessionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub player_plan: Option<SessionPlayerPlanSummary>,
+    pub balance: Option<SessionBalanceSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<SessionDeviceSummary>,
 }
@@ -126,7 +126,7 @@ impl From<UsageSession> for UsageSessionResponse {
     fn from(value: UsageSession) -> Self {
         Self {
             id: value.id,
-            player_plan_id: value.player_plan_id,
+            balance_id: value.balance_id,
             device_id: value.device_id,
             shift_id: value.shift_id,
             start_time: value.start_time,
@@ -138,7 +138,7 @@ impl From<UsageSession> for UsageSessionResponse {
             created_at: value.created_at,
             updated_at: value.updated_at,
             deleted_at: value.deleted_at,
-            player_plan: None,
+            balance: None,
             device: None,
         }
     }
@@ -147,7 +147,7 @@ impl From<UsageSession> for UsageSessionResponse {
 #[derive(Debug, FromRow)]
 pub struct UsageSessionRow {
     pub id: Uuid,
-    pub player_plan_id: Uuid,
+    pub balance_id: Option<Uuid>,
     pub device_id: Uuid,
     pub shift_id: Option<Uuid>,
     pub start_time: DateTime<Utc>,
@@ -159,10 +159,11 @@ pub struct UsageSessionRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
-    pub pp_player_id: Option<Uuid>,
-    pub pp_plan_id: Option<Uuid>,
-    pub pp_remaining_time_credits: Option<i32>,
-    pub pp_status: Option<String>,
+    pub bal_player_id: Option<Uuid>,
+    pub bal_kind: Option<String>,
+    pub bal_remaining_minutes: Option<i32>,
+    pub bal_status: Option<String>,
+    pub bal_source_plan_id: Option<Uuid>,
     pub player_username: Option<String>,
     pub player_first_name: Option<String>,
     pub player_last_name: Option<String>,
@@ -181,13 +182,13 @@ impl UsageSessionRow {
             .player_username
             .as_ref()
             .map(|username| SessionPlayerSummary {
-                id: self.pp_player_id.unwrap_or_default(),
+                id: self.bal_player_id.unwrap_or_default(),
                 username: username.clone(),
                 first_name: self.player_first_name.clone(),
                 last_name: self.player_last_name.clone(),
             });
         let plan = self.plan_name.as_ref().map(|name| SessionPlanSummary {
-            id: self.pp_plan_id.unwrap_or_default(),
+            id: self.bal_source_plan_id.unwrap_or_default(),
             name: name.clone(),
             plan_type: self
                 .plan_type
@@ -195,12 +196,12 @@ impl UsageSessionRow {
                 .unwrap_or_else(|| "time_based".to_string()),
             time_credits: self.plan_time_credits.unwrap_or(0),
         });
-        let player_plan = Some(SessionPlayerPlanSummary {
-            id: self.player_plan_id,
-            player_id: self.pp_player_id.unwrap_or_default(),
-            plan_id: self.pp_plan_id.unwrap_or_default(),
-            remaining_time_credits: self.pp_remaining_time_credits,
-            status: self.pp_status.unwrap_or_else(|| "active".to_string()),
+        let balance = self.balance_id.map(|bid| SessionBalanceSummary {
+            id: bid,
+            player_id: self.bal_player_id.unwrap_or_default(),
+            kind: self.bal_kind.unwrap_or_else(|| "time".to_string()),
+            remaining_minutes: self.bal_remaining_minutes.unwrap_or(0),
+            status: self.bal_status.unwrap_or_else(|| "active".to_string()),
             player,
             plan,
         });
@@ -216,7 +217,7 @@ impl UsageSessionRow {
 
         UsageSessionResponse {
             id: self.id,
-            player_plan_id: self.player_plan_id,
+            balance_id: self.balance_id,
             device_id: self.device_id,
             shift_id: self.shift_id,
             start_time: self.start_time,
@@ -228,7 +229,7 @@ impl UsageSessionRow {
             created_at: self.created_at,
             updated_at: self.updated_at,
             deleted_at: self.deleted_at,
-            player_plan,
+            balance,
             device,
         }
     }

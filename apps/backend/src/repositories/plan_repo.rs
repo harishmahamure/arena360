@@ -1,3 +1,4 @@
+use serde_json::Value;
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
@@ -11,10 +12,8 @@ pub struct PlanRepository {
 
 pub struct PlanCreateValues<'a> {
     pub dto: &'a CreatePlanDto,
-    pub duration_minutes: i32,
     pub validity_days: i32,
     pub time_credits: i32,
-    pub per_minute_rate: f64,
     pub time_window_start: Option<chrono::NaiveTime>,
     pub time_window_end: Option<chrono::NaiveTime>,
 }
@@ -27,11 +26,11 @@ impl PlanRepository {
     const SELECT: &'static str = r#"
         SELECT id, name, description,
                price::float8 as price, "planType"::text as plan_type,
-               "durationMinutes" as duration_minutes, "validityDays" as validity_days,
+               "validityDays" as validity_days,
                "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
-               "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
-               "maxSessions" as max_sessions, "isActive" as is_active,
+               "timeCredits" as time_credits, "isActive" as is_active,
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+               "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -66,11 +65,11 @@ impl PlanRepository {
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"SELECT id, name, description,
                price::float8 as price, "planType"::text as plan_type,
-               "durationMinutes" as duration_minutes, "validityDays" as validity_days,
+               "validityDays" as validity_days,
                "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
-               "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
-               "maxSessions" as max_sessions, "isActive" as is_active,
+               "timeCredits" as time_credits, "isActive" as is_active,
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+               "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -153,23 +152,25 @@ impl PlanRepository {
         let plan = sqlx::query_as::<_, Plan>(
             r#"
             INSERT INTO plans (
-                id, name, description, price, "planType", "durationMinutes", "validityDays",
-                "timeWindowStart", "timeWindowEnd", "timeCredits", "perMinuteRate",
-                "maxSessions", "isActive", "deviceType", "deviceSubType",
+                id, name, description, price, "planType", "validityDays",
+                "timeWindowStart", "timeWindowEnd", "timeCredits",
+                "isActive", "deviceType", "deviceSubType",
+                "allowedDays", "allowedMonths",
                 "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2, $3, $4::plans_plantype_enum, $5, $6, $7, $8, $9, $10,
-                $11, COALESCE($12, true), $13::plans_devicetype_enum, $14::plans_devicesubtype_enum,
-                $15, $15, NOW(), NOW()
+                gen_random_uuid(), $1, $2, $3, $4::plans_plantype_enum, $5, $6, $7, $8,
+                COALESCE($9, true), $10::plans_devicetype_enum, $11::plans_devicesubtype_enum,
+                $12, $13,
+                $14, $14, NOW(), NOW()
             )
             RETURNING id, name, description,
                       price::float8 as price, "planType"::text as plan_type,
-                      "durationMinutes" as duration_minutes, "validityDays" as validity_days,
+                      "validityDays" as validity_days,
                       "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
-                      "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
-                      "maxSessions" as max_sessions, "isActive" as is_active,
+                      "timeCredits" as time_credits, "isActive" as is_active,
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -179,16 +180,15 @@ impl PlanRepository {
         .bind(&dto.description)
         .bind(dto.price)
         .bind(&dto.plan_type)
-        .bind(values.duration_minutes)
         .bind(values.validity_days)
         .bind(values.time_window_start)
         .bind(values.time_window_end)
         .bind(values.time_credits)
-        .bind(values.per_minute_rate)
-        .bind(dto.max_sessions)
         .bind(dto.is_active)
         .bind(&dto.device_type)
         .bind(&dto.device_sub_type)
+        .bind(&dto.allowed_days)
+        .bind(&dto.allowed_months)
         .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
@@ -202,6 +202,8 @@ impl PlanRepository {
         dto: &UpdatePlanDto,
         time_window_start: Option<chrono::NaiveTime>,
         time_window_end: Option<chrono::NaiveTime>,
+        allowed_days: Option<&Value>,
+        allowed_months: Option<&Value>,
         actor_id: Option<Uuid>,
     ) -> Result<Plan, AppError> {
         let plan = sqlx::query_as::<_, Plan>(
@@ -211,26 +213,25 @@ impl PlanRepository {
                 description = COALESCE($3, description),
                 price = COALESCE($4, price),
                 "planType" = COALESCE($5::plans_plantype_enum, "planType"),
-                "durationMinutes" = COALESCE($6, "durationMinutes"),
-                "validityDays" = COALESCE($7, "validityDays"),
-                "timeWindowStart" = COALESCE($8, "timeWindowStart"),
-                "timeWindowEnd" = COALESCE($9, "timeWindowEnd"),
-                "timeCredits" = COALESCE($10, "timeCredits"),
-                "perMinuteRate" = COALESCE($11, "perMinuteRate"),
-                "maxSessions" = COALESCE($12, "maxSessions"),
-                "isActive" = COALESCE($13, "isActive"),
-                "deviceType" = COALESCE($14::plans_devicetype_enum, "deviceType"),
-                "deviceSubType" = COALESCE($15::plans_devicesubtype_enum, "deviceSubType"),
-                "updatedBy" = COALESCE($16, "updatedBy"),
+                "validityDays" = COALESCE($6, "validityDays"),
+                "timeWindowStart" = COALESCE($7, "timeWindowStart"),
+                "timeWindowEnd" = COALESCE($8, "timeWindowEnd"),
+                "timeCredits" = COALESCE($9, "timeCredits"),
+                "isActive" = COALESCE($10, "isActive"),
+                "deviceType" = COALESCE($11::plans_devicetype_enum, "deviceType"),
+                "deviceSubType" = COALESCE($12::plans_devicesubtype_enum, "deviceSubType"),
+                "allowedDays" = COALESCE($13, "allowedDays"),
+                "allowedMonths" = COALESCE($14, "allowedMonths"),
+                "updatedBy" = COALESCE($15, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, description,
                       price::float8 as price, "planType"::text as plan_type,
-                      "durationMinutes" as duration_minutes, "validityDays" as validity_days,
+                      "validityDays" as validity_days,
                       "timeWindowStart" as time_window_start, "timeWindowEnd" as time_window_end,
-                      "timeCredits" as time_credits, "perMinuteRate"::float8 as per_minute_rate,
-                      "maxSessions" as max_sessions, "isActive" as is_active,
+                      "timeCredits" as time_credits, "isActive" as is_active,
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -241,16 +242,15 @@ impl PlanRepository {
         .bind(&dto.description)
         .bind(dto.price)
         .bind(&dto.plan_type)
-        .bind(dto.duration_minutes)
         .bind(dto.validity_days)
         .bind(time_window_start)
         .bind(time_window_end)
         .bind(dto.time_credits)
-        .bind(dto.per_minute_rate)
-        .bind(dto.max_sessions)
         .bind(dto.is_active)
         .bind(&dto.device_type)
         .bind(&dto.device_sub_type)
+        .bind(allowed_days)
+        .bind(allowed_months)
         .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;

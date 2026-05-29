@@ -69,6 +69,21 @@ export default function PlansPage() {
       .join(' ');
   };
 
+  const formatSchedule = (row: PlanResponse) => {
+    const parts: string[] = [];
+    if (row.allowedDays?.length) {
+      parts.push(row.allowedDays.map((d) => d.slice(0, 3)).join(', '));
+    }
+    if (row.allowedMonths?.length) {
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      parts.push(row.allowedMonths.map((m) => monthNames[m - 1]).join(', '));
+    }
+    if (row.timeWindowStart && row.timeWindowEnd) {
+      parts.push(`${row.timeWindowStart} - ${row.timeWindowEnd}`);
+    }
+    return parts.length ? parts.join(' | ') : 'All';
+  };
+
   const columns: Column<PlanResponse>[] = [
     {
       id: 'name',
@@ -89,24 +104,23 @@ export default function PlansPage() {
       format: (value) => `$${parseFloat(value as string).toFixed(2)}`,
     },
     {
+      id: 'timeCredits',
+      label: 'Credits (Min)',
+      minWidth: 100,
+      align: 'center',
+      format: (value) => (value != null ? String(value) : '-'),
+    },
+    {
       id: 'validityDays',
       label: 'Validity (Days)',
       minWidth: 100,
       align: 'center',
     },
     {
-      id: 'durationMinutes',
-      label: 'Duration (Min)',
-      minWidth: 100,
-      align: 'center',
-      format: (value) => (value != null && value !== '' ? String(value) : '-'),
-    },
-    {
-      id: 'maxSessions',
-      label: 'Max Sessions',
-      minWidth: 100,
-      align: 'center',
-      format: (value) => (value != null && value !== '' ? String(value) : '-'),
+      id: 'allowedDays',
+      label: 'Schedule',
+      minWidth: 160,
+      format: (_value, row) => formatSchedule(row),
     },
     {
       id: 'isActive',

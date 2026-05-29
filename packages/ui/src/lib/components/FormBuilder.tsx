@@ -3,11 +3,14 @@
 import { yupResolver } from '@hookform/resolvers/yup';
 import {
   Alert,
+  Autocomplete,
   Box,
+  Chip,
   Collapse,
   Divider,
   GridLegacy as Grid,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useMemo } from 'react';
@@ -50,7 +53,8 @@ export type FieldType =
   | 'datetime'
   | 'hidden'
   | 'custom'
-  | 'search';
+  | 'search'
+  | 'multiselect';
 
 export type FormMode = 'add' | 'edit' | 'view';
 
@@ -379,6 +383,41 @@ function FieldRenderer<T extends FieldValues>({
                   helperText={formHelperText}
                 />
               );
+
+            case 'multiselect': {
+              const msOptions = (options as FormSelectOption[]) || [];
+              const selectedValues: (string | number)[] = Array.isArray(field.value) ? field.value : [];
+              const selectedObjects = selectedValues
+                .map((v) => msOptions.find((o) => String(o.value) === String(v)))
+                .filter(Boolean) as FormSelectOption[];
+              return (
+                <Autocomplete
+                  multiple
+                  options={msOptions}
+                  getOptionLabel={(o) => o.label}
+                  isOptionEqualToValue={(a, b) => String(a.value) === String(b.value)}
+                  value={selectedObjects}
+                  onChange={(_e, newValue) => {
+                    field.onChange(newValue.map((o) => o.value));
+                  }}
+                  disabled={isDisabled}
+                  renderTags={(tagValue, getTagProps) =>
+                    tagValue.map((option, index) => (
+                      <Chip size="small" label={option.label} {...getTagProps({ index })} key={String(option.value)} />
+                    ))
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      placeholder={placeholder}
+                      error={!!errorMessage}
+                      helperText={formHelperText}
+                      size="small"
+                    />
+                  )}
+                />
+              );
+            }
 
             case 'checkbox':
               return (

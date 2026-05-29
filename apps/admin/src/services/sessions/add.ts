@@ -1,7 +1,7 @@
 import { http } from '@gaming-cafe/utils';
 
 export interface StartSessionPayload {
-  playerPlanId: string;
+  balanceId: string;
   deviceId: string;
   startTime?: string;
 }

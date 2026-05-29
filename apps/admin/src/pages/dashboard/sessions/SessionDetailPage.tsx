@@ -54,16 +54,16 @@ export default function ViewSessionPage() {
     refetchOnReconnect: true,
   });
 
-  const { data: playerPlanRecord } = useQuery({
-    queryKey: ['player-plan', session?.playerPlanId],
+  const { data: balanceRecord } = useQuery({
+    queryKey: ['player-plan', session?.balanceId],
     queryFn: () => {
-      const playerPlanId = session?.playerPlanId;
-      if (!playerPlanId) {
-        throw new Error('Missing player plan ID');
+      const balanceId = session?.balanceId;
+      if (!balanceId) {
+        throw new Error('Missing balance ID');
       }
-      return getPlayerPlanById(playerPlanId);
+      return getPlayerPlanById(balanceId);
     },
-    enabled: !!session?.playerPlanId && !session?.playerPlan,
+    enabled: !!session?.balanceId && !session?.balance,
   });
 
   const { data: deviceRecord } = useQuery({
@@ -78,8 +78,8 @@ export default function ViewSessionPage() {
     enabled: !!session?.deviceId && !session?.device,
   });
 
-  const playerId = session?.playerPlan?.playerId ?? playerPlanRecord?.playerId;
-  const planId = session?.playerPlan?.planId ?? playerPlanRecord?.planId;
+  const playerId = session?.balance?.playerId ?? balanceRecord?.playerId;
+  const planId = session?.balance?.plan?.id ?? balanceRecord?.sourcePlanId;
 
   const { data: playerRecord } = useQuery({
     queryKey: ['player', playerId],
@@ -89,7 +89,7 @@ export default function ViewSessionPage() {
       }
       return getPlayerById(playerId);
     },
-    enabled: !!playerId && !session?.playerPlan?.player,
+    enabled: !!playerId && !session?.balance?.player,
   });
 
   const { data: planRecord } = useQuery({
@@ -100,7 +100,7 @@ export default function ViewSessionPage() {
       }
       return getPlanById(planId);
     },
-    enabled: !!planId && !session?.playerPlan?.plan,
+    enabled: !!planId && !session?.balance?.plan,
   });
 
   const startTime = session?.startTime;
@@ -109,11 +109,11 @@ export default function ViewSessionPage() {
   const timeCreditsConsumed = session?.timeCreditsConsumed;
   const createdAt = session?.createdAt;
   const updatedAt = session?.updatedAt;
-  const playerPlan =
-    session?.playerPlan ??
-    (playerPlanRecord
+  const balance =
+    session?.balance ??
+    (balanceRecord
       ? {
-          ...playerPlanRecord,
+          ...balanceRecord,
           player: playerRecord,
           plan: planRecord,
         }
@@ -145,10 +145,8 @@ export default function ViewSessionPage() {
 
       setSuccess('Session ended successfully!');
 
-      // Refetch session data
       await refetch();
 
-      // Navigate back to sessions list after a short delay
       setTimeout(() => {
         navigate('/sessions');
       }, 1500);
@@ -260,8 +258,8 @@ export default function ViewSessionPage() {
           </CardContent>
         </Card>
 
-        {/* Player Information */}
-        {playerPlan && (
+        {/* Player & Balance Information */}
+        {balance && (
           <Card variant="outlined" sx={{ mb: 4 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
@@ -273,15 +271,15 @@ export default function ViewSessionPage() {
                   <Typography variant="body2" color="text.secondary">
                     Player Username
                   </Typography>
-                  <Typography variant="body1">{playerPlan.player?.username || 'N/A'}</Typography>
+                  <Typography variant="body1">{balance.player?.username || 'N/A'}</Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="body2" color="text.secondary">
                     Player Name
                   </Typography>
                   <Typography variant="body1">
-                    {playerPlan.player?.firstName && playerPlan.player?.lastName
-                      ? `${playerPlan.player.firstName} ${playerPlan.player.lastName}`
+                    {balance.player?.firstName && balance.player?.lastName
+                      ? `${balance.player.firstName} ${balance.player.lastName}`
                       : 'N/A'}
                   </Typography>
                 </Grid>
@@ -289,23 +287,34 @@ export default function ViewSessionPage() {
                   <Typography variant="body2" color="text.secondary">
                     Plan Name
                   </Typography>
-                  <Typography variant="body1">{playerPlan.plan?.name || 'N/A'}</Typography>
+                  <Typography variant="body1">{balance.plan?.name || 'N/A'}</Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="body2" color="text.secondary">
-                    Remaining Time Credits
+                    Remaining Minutes
                   </Typography>
                   <Typography variant="body1">
-                    {playerPlan.remainingTimeCredits
-                      ? `${playerPlan.remainingTimeCredits} minutes`
+                    {balance.remainingMinutes != null
+                      ? `${balance.remainingMinutes} minutes`
                       : 'N/A'}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="body2" color="text.secondary">
-                    Plan Status
+                    Plan Kind
                   </Typography>
-                  <Typography variant="body1">{playerPlan.status || 'N/A'}</Typography>
+                  <Chip
+                    label={balance.kind === 'happy_hours' ? 'Happy Hours' : 'Time Plan'}
+                    size="small"
+                    color={balance.kind === 'happy_hours' ? 'secondary' : 'primary'}
+                    sx={{ mt: 0.5 }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Balance Status
+                  </Typography>
+                  <Typography variant="body1">{balance.status || 'N/A'}</Typography>
                 </Grid>
               </Grid>
             </CardContent>

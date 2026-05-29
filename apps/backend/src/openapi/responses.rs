@@ -88,6 +88,18 @@ success_envelope!(ActivePlansEnvelope, Vec<Plan>);
 success_envelope!(PlayerPlanEnvelope, PlayerPlanResponse);
 success_envelope!(PlayerPlanFlatEnvelope, PlayerPlan);
 success_envelope!(ValidationResultEnvelope, ValidationResult);
+success_envelope!(
+    BalanceEnvelope,
+    crate::models::PlayerPlanBalanceResponse
+);
+success_envelope!(
+    BalanceFlatEnvelope,
+    crate::models::PlayerPlanBalance
+);
+success_envelope!(
+    BalanceValidationEnvelope,
+    crate::models::BalanceValidationResult
+);
 success_envelope!(UnitEnvelope, Unit);
 success_envelope!(SessionEnvelope, UsageSessionResponse);
 success_envelope!(SessionFlatEnvelope, UsageSession);
@@ -109,6 +121,11 @@ pagination_envelope!(
     PlayerPlanPaginationEnvelope,
     PlayerPlanPaginationPage,
     PlayerPlanResponse
+);
+pagination_envelope!(
+    BalancePaginationEnvelope,
+    BalancePaginationPage,
+    crate::models::PlayerPlanBalanceResponse
 );
 pagination_envelope!(UnitPaginationEnvelope, UnitPaginationPage, Unit);
 pagination_envelope!(

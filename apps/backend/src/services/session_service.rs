@@ -9,14 +9,13 @@ use crate::models::{
     UsageSessionResponse,
 };
 use crate::realtime::OutboxService;
-use crate::repositories::{PlanRepository, SessionRepository};
-use crate::services::{DeviceService, EventService, PlayerPlanService};
+use crate::repositories::SessionRepository;
+use crate::services::{BalanceService, DeviceService, EventService};
 
 pub struct SessionService {
     repo: SessionRepository,
-    plan_repo: PlanRepository,
     devices: DeviceService,
-    player_plans: Arc<PlayerPlanService>,
+    balances: Arc<BalanceService>,
     events: EventService,
     outbox: OutboxService,
 }
@@ -25,15 +24,14 @@ impl SessionService {
     pub fn new(
         pool: PgPool,
         devices: DeviceService,
-        player_plans: Arc<PlayerPlanService>,
+        balances: Arc<BalanceService>,
         events: EventService,
         outbox: OutboxService,
     ) -> Self {
         Self {
-            repo: SessionRepository::new(pool.clone()),
-            plan_repo: PlanRepository::new(pool),
+            repo: SessionRepository::new(pool),
             devices,
-            player_plans,
+            balances,
             events,
             outbox,
         }
@@ -71,19 +69,19 @@ impl SessionService {
     ) -> Result<UsageSession, AppError> {
         let active = self
             .repo
-            .find_active_by_player_plan(dto.player_plan_id)
+            .find_active_by_balance(dto.balance_id)
             .await?;
         if !active.is_empty() {
             return Err(AppError::Conflict(format!(
-                "Player plan already has an active session (ID: {})",
+                "Balance already has an active session (ID: {})",
                 active[0].id
             )));
         }
 
         let start_time = dto.start_time.unwrap_or_else(Utc::now);
         let validation = self
-            .player_plans
-            .validate_plan_access(dto.player_plan_id, Some(start_time))
+            .balances
+            .validate_access(dto.balance_id, Some(start_time))
             .await?;
 
         if !validation.valid {
@@ -91,7 +89,7 @@ impl SessionService {
                 "Cannot start session: {}",
                 validation
                     .reason
-                    .unwrap_or_else(|| "Plan access denied".to_string())
+                    .unwrap_or_else(|| "Balance access denied".to_string())
             )));
         }
 
@@ -146,18 +144,13 @@ impl SessionService {
         let duration_minutes = ((duration_ms as f64) / (1000.0 * 60.0)).ceil() as i32;
         let duration_minutes = duration_minutes.max(0);
 
-        let player_plan = self.player_plans.get_by_id(session.player_plan_id).await?;
-        let plan = self
-            .plan_repo
-            .find_by_id(player_plan.plan_id)
-            .await?
-            .ok_or_else(|| {
-                AppError::NotFound(format!("Plan with ID {} not found", player_plan.plan_id))
-            })?;
+        let balance_id = session.balance_id.ok_or_else(|| {
+            AppError::BadRequest("Session has no linked balance (legacy session)".to_string())
+        })?;
 
         let time_credits_consumed = dto
             .time_credits_consumed
-            .unwrap_or_else(|| ((duration_minutes as f64) * plan.per_minute_rate).ceil() as i32);
+            .unwrap_or(duration_minutes);
 
         let updated = self
             .repo
@@ -170,24 +163,12 @@ impl SessionService {
             )
             .await?;
 
-        if player_plan.remaining_time_credits.is_some() {
-            if let Err(error) = self
-                .player_plans
-                .deduct_time_credits(session.player_plan_id, time_credits_consumed)
-                .await
-            {
-                tracing::warn!("Failed to deduct time credits: {error}");
-            }
-        }
-
-        if plan.plan_type == "session_based" {
-            if let Err(error) = self
-                .player_plans
-                .deduct_session_count(session.player_plan_id)
-                .await
-            {
-                tracing::warn!("Failed to deduct session count: {error}");
-            }
+        if let Err(error) = self
+            .balances
+            .deduct_minutes(balance_id, time_credits_consumed, Some(updated.id))
+            .await
+        {
+            tracing::warn!("Failed to deduct minutes from balance: {error}");
         }
 
         let _ = self

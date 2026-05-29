@@ -19,7 +19,7 @@ impl SessionRepository {
 
     const SELECT: &'static str = r#"
         SELECT id,
-               "playerPlanId" as player_plan_id,
+               "balanceId" as balance_id,
                "deviceId" as device_id,
                "shiftId" as shift_id,
                "startTime" as start_time,
@@ -49,22 +49,23 @@ impl SessionRepository {
     ) -> Result<Option<UsageSessionResponse>, AppError> {
         let row = sqlx::query_as::<_, UsageSessionRow>(
             r#"
-            SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
+            SELECT s.id, s."balanceId" as balance_id, s."deviceId" as device_id,
                    s."shiftId" as shift_id, s."startTime" as start_time, s."endTime" as end_time,
                    s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
                    s."createdBy" as created_by, s."updatedBy" as updated_by,
                    s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
-                   pp."playerId" as pp_player_id, pp."planId" as pp_plan_id,
-                   pp."remainingTimeCredits" as pp_remaining_time_credits, pp.status::text as pp_status,
+                   b."playerId" as bal_player_id, b.kind::text as bal_kind,
+                   b."remainingMinutes" as bal_remaining_minutes, b.status::text as bal_status,
+                   b."sourcePlanId" as bal_source_plan_id,
                    u.username as player_username, u."firstName" as player_first_name,
                    u."lastName" as player_last_name,
                    p.name as plan_name, p."planType"::text as plan_type, p."timeCredits" as plan_time_credits,
                    d.name as device_name, d."deviceType"::text as device_type,
                    d.location as device_location, d.status::text as device_status
             FROM usage_sessions s
-            LEFT JOIN player_plans pp ON pp.id = s."playerPlanId" AND pp."deletedAt" IS NULL
-            LEFT JOIN users u ON u.id = pp."playerId" AND u."deletedAt" IS NULL
-            LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL
+            LEFT JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
+            LEFT JOIN users u ON u.id = b."playerId" AND u."deletedAt" IS NULL
+            LEFT JOIN plans p ON p.id = b."sourcePlanId" AND p."deletedAt" IS NULL
             LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
             WHERE s.id = $1 AND s."deletedAt" IS NULL
             "#,
@@ -75,16 +76,16 @@ impl SessionRepository {
         Ok(row.map(|r| r.into_response()))
     }
 
-    pub async fn find_active_by_player_plan(
+    pub async fn find_active_by_balance(
         &self,
-        player_plan_id: Uuid,
+        balance_id: Uuid,
     ) -> Result<Vec<UsageSession>, AppError> {
         let query = format!(
-            "{} WHERE \"playerPlanId\" = $1 AND \"endTime\" IS NULL AND \"deletedAt\" IS NULL",
+            "{} WHERE \"balanceId\" = $1 AND \"endTime\" IS NULL AND \"deletedAt\" IS NULL",
             Self::SELECT
         );
         let sessions = sqlx::query_as::<_, UsageSession>(&query)
-            .bind(player_plan_id)
+            .bind(balance_id)
             .fetch_all(&self.pool)
             .await?;
         Ok(sessions)
@@ -99,22 +100,23 @@ impl SessionRepository {
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT s.id, s."playerPlanId" as player_plan_id, s."deviceId" as device_id,
+            r#"SELECT s.id, s."balanceId" as balance_id, s."deviceId" as device_id,
                s."shiftId" as shift_id, s."startTime" as start_time, s."endTime" as end_time,
                s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
                s."createdBy" as created_by, s."updatedBy" as updated_by,
                s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
-               pp."playerId" as pp_player_id, pp."planId" as pp_plan_id,
-               pp."remainingTimeCredits" as pp_remaining_time_credits, pp.status::text as pp_status,
+               b."playerId" as bal_player_id, b.kind::text as bal_kind,
+               b."remainingMinutes" as bal_remaining_minutes, b.status::text as bal_status,
+               b."sourcePlanId" as bal_source_plan_id,
                u.username as player_username, u."firstName" as player_first_name,
                u."lastName" as player_last_name,
                p.name as plan_name, p."planType"::text as plan_type, p."timeCredits" as plan_time_credits,
                d.name as device_name, d."deviceType"::text as device_type,
                d.location as device_location, d.status::text as device_status
                FROM usage_sessions s
-               LEFT JOIN player_plans pp ON pp.id = s."playerPlanId" AND pp."deletedAt" IS NULL
-               LEFT JOIN users u ON u.id = pp."playerId" AND u."deletedAt" IS NULL
-               LEFT JOIN plans p ON p.id = pp."planId" AND p."deletedAt" IS NULL
+               LEFT JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
+               LEFT JOIN users u ON u.id = b."playerId" AND u."deletedAt" IS NULL
+               LEFT JOIN plans p ON p.id = b."sourcePlanId" AND p."deletedAt" IS NULL
                LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
                WHERE s."deletedAt" IS NULL"#,
         );
@@ -161,9 +163,9 @@ impl SessionRepository {
         prefix: &str,
     ) {
         let col = |name: &str| format!("{prefix}.\"{name}\"");
-        if let Some(player_plan_id) = filters.player_plan_id {
-            builder.push(format!(" AND {} = ", col("playerPlanId")));
-            builder.push_bind(player_plan_id);
+        if let Some(balance_id) = filters.balance_id {
+            builder.push(format!(" AND {} = ", col("balanceId")));
+            builder.push_bind(balance_id);
         }
         if let Some(device_id) = filters.device_id {
             builder.push(format!(" AND {} = ", col("deviceId")));
@@ -175,8 +177,8 @@ impl SessionRepository {
         }
         if let Some(player_id) = filters.player_id {
             builder.push(format!(
-                " AND {} IN (SELECT id FROM player_plans WHERE \"playerId\" = ",
-                col("playerPlanId")
+                " AND {} IN (SELECT id FROM player_plan_balances WHERE \"playerId\" = ",
+                col("balanceId")
             ));
             builder.push_bind(player_id);
             builder.push(" AND \"deletedAt\" IS NULL)");
@@ -207,12 +209,12 @@ impl SessionRepository {
         let session = sqlx::query_as::<_, UsageSession>(
             r#"
             INSERT INTO usage_sessions (
-                id, "playerPlanId", "deviceId", "shiftId", "startTime",
+                id, "balanceId", "deviceId", "shiftId", "startTime",
                 "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5, NOW(), NOW())
             RETURNING id,
-                      "playerPlanId" as player_plan_id,
+                      "balanceId" as balance_id,
                       "deviceId" as device_id,
                       "shiftId" as shift_id,
                       "startTime" as start_time,
@@ -226,7 +228,7 @@ impl SessionRepository {
                       "deletedAt" as deleted_at
             "#,
         )
-        .bind(dto.player_plan_id)
+        .bind(dto.balance_id)
         .bind(dto.device_id)
         .bind(dto.shift_id)
         .bind(start_time)
@@ -255,7 +257,7 @@ impl SessionRepository {
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
             RETURNING id,
-                      "playerPlanId" as player_plan_id,
+                      "balanceId" as balance_id,
                       "deviceId" as device_id,
                       "shiftId" as shift_id,
                       "startTime" as start_time,

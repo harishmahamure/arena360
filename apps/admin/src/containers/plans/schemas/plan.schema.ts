@@ -31,25 +31,39 @@ export const deviceSubTypeOptions = [
 
 export const PlanTypeValues = {
   TIME_BASED: 'time_based',
-  SESSION_BASED: 'session_based',
-  UNLIMITED_DAILY: 'unlimited_daily',
-  HOURLY_RENTAL: 'hourly_rental',
-  MONTHLY_SUBSCRIPTION: 'monthly_subscription',
   WEEKEND_SPECIAL: 'weekend_special',
 } as const;
 
 export type PlanTypeType = (typeof PlanTypeValues)[keyof typeof PlanTypeValues];
 
 export const planTypeOptions = [
-  { value: PlanTypeValues.TIME_BASED, label: 'Time Based' },
-  { value: PlanTypeValues.SESSION_BASED, label: 'Session Based' },
-  { value: PlanTypeValues.UNLIMITED_DAILY, label: 'Unlimited Daily' },
-  { value: PlanTypeValues.HOURLY_RENTAL, label: 'Hourly Rental' },
-  {
-    value: PlanTypeValues.MONTHLY_SUBSCRIPTION,
-    label: 'Monthly Subscription',
-  },
-  { value: PlanTypeValues.WEEKEND_SPECIAL, label: 'Weekend Special' },
+  { value: PlanTypeValues.TIME_BASED, label: 'Time Plan' },
+  { value: PlanTypeValues.WEEKEND_SPECIAL, label: 'Happy Hours' },
+];
+
+export const WEEKDAY_OPTIONS = [
+  { value: 'monday', label: 'Monday' },
+  { value: 'tuesday', label: 'Tuesday' },
+  { value: 'wednesday', label: 'Wednesday' },
+  { value: 'thursday', label: 'Thursday' },
+  { value: 'friday', label: 'Friday' },
+  { value: 'saturday', label: 'Saturday' },
+  { value: 'sunday', label: 'Sunday' },
+];
+
+export const MONTH_OPTIONS = [
+  { value: 1, label: 'January' },
+  { value: 2, label: 'February' },
+  { value: 3, label: 'March' },
+  { value: 4, label: 'April' },
+  { value: 5, label: 'May' },
+  { value: 6, label: 'June' },
+  { value: 7, label: 'July' },
+  { value: 8, label: 'August' },
+  { value: 9, label: 'September' },
+  { value: 10, label: 'October' },
+  { value: 11, label: 'November' },
+  { value: 12, label: 'December' },
 ];
 
 export const createPlanSchema = yup.object({
@@ -67,31 +81,12 @@ export const createPlanSchema = yup.object({
     .oneOf(Object.values(PlanTypeValues), 'Please select a valid plan type')
     .required(validationMessages.required('Plan Type')),
 
-  durationMinutes: yup
-    .number()
-    .positive('Duration must be greater than 0')
-    .integer('Duration must be a whole number')
-    .optional()
-    .nullable()
-    .transform((value) => (Number.isNaN(value) ? undefined : value))
-    .when('planType', {
-      is: PlanTypeValues.TIME_BASED,
-      then: (schema) => schema.required('Duration is required for time-based plans'),
-    }),
-
   validityDays: yup
     .number()
     .positive('Validity days must be greater than 0')
     .integer('Validity days must be a whole number')
-    .optional()
-    .nullable()
-    .transform((value) => (Number.isNaN(value) ? undefined : value))
-    .default(30)
-    .when('planType', {
-      is: (val: string) =>
-        val === PlanTypeValues.UNLIMITED_DAILY || val === PlanTypeValues.MONTHLY_SUBSCRIPTION,
-      then: (schema) => schema.required('Validity days is required for this plan type'),
-    }),
+    .required(validationMessages.required('Validity days'))
+    .default(7),
 
   timeWindowStart: yup
     .string()
@@ -103,7 +98,7 @@ export const createPlanSchema = yup.object({
     .nullable()
     .when('planType', {
       is: PlanTypeValues.WEEKEND_SPECIAL,
-      then: (schema) => schema.required('Time window start is required for weekend special'),
+      then: (schema) => schema.required('Time window start is required for Happy Hours'),
     }),
 
   timeWindowEnd: yup
@@ -116,7 +111,7 @@ export const createPlanSchema = yup.object({
     .nullable()
     .when('planType', {
       is: PlanTypeValues.WEEKEND_SPECIAL,
-      then: (schema) => schema.required('Time window end is required for weekend special'),
+      then: (schema) => schema.required('Time window end is required for Happy Hours'),
     })
     .test('time-window-order', 'End time must be after start time', function (value) {
       const { timeWindowStart } = this.parent;
@@ -128,37 +123,7 @@ export const createPlanSchema = yup.object({
     .number()
     .positive('Time credits must be greater than 0')
     .integer('Time credits must be a whole number')
-    .optional()
-    .nullable()
-    .transform((value) => (Number.isNaN(value) ? undefined : value))
-    .when('planType', {
-      is: PlanTypeValues.TIME_BASED,
-      then: (schema) => schema.required('Time credits are required for time-based plans'),
-    }),
-
-  perMinuteRate: yup
-    .number()
-    .positive('Per minute rate must be greater than 0')
-    .optional()
-    .nullable()
-    .default(1.0)
-    .transform((value) => (Number.isNaN(value) ? undefined : value))
-    .when('planType', {
-      is: PlanTypeValues.HOURLY_RENTAL,
-      then: (schema) => schema.required('Per minute rate is required for hourly rental'),
-    }),
-
-  maxSessions: yup
-    .number()
-    .positive('Max sessions must be greater than 0')
-    .integer('Max sessions must be a whole number')
-    .optional()
-    .nullable()
-    .transform((value) => (Number.isNaN(value) ? undefined : value))
-    .when('planType', {
-      is: PlanTypeValues.SESSION_BASED,
-      then: (schema) => schema.required('Max sessions is required for session-based plans'),
-    }),
+    .required(validationMessages.required('Time credits')),
 
   isActive: yup.boolean().optional().default(true),
 
@@ -173,6 +138,18 @@ export const createPlanSchema = yup.object({
     .oneOf(Object.values(DeviceSubType), 'Please select a valid device sub type')
     .optional()
     .nullable(),
+
+  allowedDays: yup
+    .array()
+    .of(yup.string().oneOf(WEEKDAY_OPTIONS.map((d) => d.value)).required())
+    .optional()
+    .nullable(),
+
+  allowedMonths: yup
+    .array()
+    .of(yup.number().min(1).max(12).required())
+    .optional()
+    .nullable(),
 });
 
 export type CreatePlanFormData = yup.InferType<typeof createPlanSchema>;
@@ -182,14 +159,13 @@ export const createPlanDefaultValues: CreatePlanFormData = {
   description: '',
   price: 0,
   planType: PlanTypeValues.TIME_BASED,
-  durationMinutes: undefined,
-  validityDays: 30,
+  validityDays: 7,
   timeWindowStart: undefined,
   timeWindowEnd: undefined,
-  timeCredits: undefined,
-  perMinuteRate: 1.0,
-  maxSessions: undefined,
+  timeCredits: 300,
   isActive: true,
   deviceType: undefined,
   deviceSubType: undefined,
+  allowedDays: undefined,
+  allowedMonths: undefined,
 };

@@ -183,12 +183,12 @@ export default function SessionsPage() {
   const columns: Column<SessionResponse>[] = useMemo(
     () => [
       {
-        id: 'playerPlan',
+        id: 'balance',
         label: 'Player',
         minWidth: 150,
         format: (value) => {
-          const playerPlan = value as SessionResponse['playerPlan'];
-          return playerPlan?.player?.username || 'N/A';
+          const balance = value as SessionResponse['balance'];
+          return balance?.player?.username || 'N/A';
         },
       },
       {
@@ -224,9 +224,9 @@ export default function SessionsPage() {
           const session = enrichedSessions.find((session) => session.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
-          const remainingTimeCredits = session?.playerPlan?.remainingTimeCredits ?? 0;
+          const remainingMinutes = session?.balance?.remainingMinutes ?? 0;
 
-          if (!session?.playerPlan || !startTime) {
+          if (!session?.balance || !startTime) {
             if (endTime) {
               return formatTimeAgo(endTime);
             }
@@ -234,7 +234,7 @@ export default function SessionsPage() {
           }
 
           const expectedEndTime = new Date(
-            new Date(startTime || '').getTime() + remainingTimeCredits * 60 * 1000,
+            new Date(startTime || '').getTime() + remainingMinutes * 60 * 1000,
           );
 
           const remainingTime = expectedEndTime.getTime() - Date.now();

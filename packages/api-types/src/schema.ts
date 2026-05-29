@@ -555,9 +555,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_player_plans"];
+        get: operations["list_balances"];
         put?: never;
-        post: operations["assign_plan"];
+        post: operations["purchase_balance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -571,7 +571,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_best_plan"];
+        get: operations["get_best_balance"];
         put?: never;
         post?: never;
         delete?: never;
@@ -587,7 +587,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_my_active_plans"];
+        get: operations["list_my_active_balances"];
         put?: never;
         post?: never;
         delete?: never;
@@ -603,7 +603,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_player_plan"];
+        get: operations["get_balance"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1208,6 +1208,81 @@ export interface components {
             role: string;
             username: string;
         };
+        BalanceEnvelope: {
+            data: components["schemas"]["PlayerPlanBalanceResponse"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        BalanceFilterDto: {
+            deviceSubType?: string | null;
+            deviceType?: string | null;
+            kind?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            /** Format: uuid */
+            playerId?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+            status?: string | null;
+            usableOnly?: boolean | null;
+        };
+        BalanceFlatEnvelope: {
+            data: components["schemas"]["PlayerPlanBalance"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        BalancePaginationEnvelope: {
+            data: components["schemas"]["BalancePaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        BalancePaginationPage: {
+            data: components["schemas"]["PlayerPlanBalanceResponse"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        BalancePlanSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            planType: string;
+            /** Format: double */
+            price: number;
+            /** Format: int32 */
+            timeCredits: number;
+        };
+        BalancePlayerSummary: {
+            firstName?: string | null;
+            /** Format: uuid */
+            id: string;
+            lastName?: string | null;
+            username: string;
+        };
+        BalanceValidationEnvelope: {
+            data: components["schemas"]["BalanceValidationResult"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        BalanceValidationResult: {
+            reason?: string | null;
+            valid: boolean;
+        };
         CashDeposit: {
             /** Format: double */
             amount: number;
@@ -1498,17 +1573,13 @@ export interface components {
             unitPrice?: number | null;
         };
         CreatePlanDto: {
+            allowedDays?: unknown;
+            allowedMonths?: unknown;
             description?: string | null;
             deviceSubType?: string | null;
             deviceType?: string | null;
-            /** Format: int32 */
-            durationMinutes?: number | null;
             isActive?: boolean | null;
-            /** Format: int32 */
-            maxSessions?: number | null;
             name: string;
-            /** Format: double */
-            perMinuteRate?: number | null;
             planType: string;
             /** Format: double */
             price: number;
@@ -1538,9 +1609,9 @@ export interface components {
         };
         CreateSessionDto: {
             /** Format: uuid */
-            deviceId: string;
+            balanceId: string;
             /** Format: uuid */
-            playerPlanId: string;
+            deviceId: string;
             /** Format: uuid */
             shiftId?: string | null;
             /** Format: date-time */
@@ -2028,6 +2099,8 @@ export interface components {
             };
         };
         Plan: {
+            allowedDays?: unknown;
+            allowedMonths?: unknown;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -2037,16 +2110,10 @@ export interface components {
             description?: string | null;
             deviceSubType?: string | null;
             deviceType?: string | null;
-            /** Format: int32 */
-            durationMinutes: number;
             /** Format: uuid */
             id: string;
             isActive: boolean;
-            /** Format: int32 */
-            maxSessions?: number | null;
             name: string;
-            /** Format: double */
-            perMinuteRate: number;
             planType: string;
             /** Format: double */
             price: number;
@@ -2151,6 +2218,68 @@ export interface components {
             /** Format: uuid */
             updatedBy?: string | null;
         };
+        PlayerPlanBalance: {
+            allowedDays?: unknown;
+            allowedMonths?: unknown;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            deviceSubType?: string | null;
+            deviceType?: string | null;
+            /** Format: date-time */
+            expiryDate: string;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            /** Format: uuid */
+            playerId: string;
+            /** Format: int32 */
+            remainingMinutes: number;
+            /** Format: uuid */
+            sourcePlanId?: string | null;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            windowEnd?: string | null;
+            windowStart?: string | null;
+        };
+        PlayerPlanBalanceResponse: {
+            allowedDays?: unknown;
+            allowedMonths?: unknown;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            deviceSubType?: string | null;
+            deviceType?: string | null;
+            /** Format: date-time */
+            expiryDate: string;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            plan?: null | components["schemas"]["BalancePlanSummary"];
+            player?: null | components["schemas"]["BalancePlayerSummary"];
+            /** Format: uuid */
+            playerId: string;
+            /** Format: int32 */
+            remainingMinutes: number;
+            /** Format: uuid */
+            sourcePlanId?: string | null;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            windowEnd?: string | null;
+            windowStart?: string | null;
+        };
         PlayerPlanEnvelope: {
             data: components["schemas"]["PlayerPlanResponse"];
             /** Format: int32 */
@@ -2188,6 +2317,29 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        PlayerPlanLedger: {
+            /** Format: int32 */
+            balanceAfter: number;
+            /** Format: uuid */
+            balanceId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: int32 */
+            deltaMinutes: number;
+            /** Format: date-time */
+            expiryAfter: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            playerId: string;
+            reason: string;
+            /** Format: uuid */
+            sessionId?: string | null;
+            /** Format: uuid */
+            transactionId?: string | null;
         };
         PlayerPlanPaginationEnvelope: {
             data: components["schemas"]["PlayerPlanPaginationPage"];
@@ -2325,6 +2477,14 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        PurchaseBalanceDto: {
+            /** Format: uuid */
+            planId: string;
+            /** Format: uuid */
+            playerId: string;
+            /** Format: uuid */
+            transactionId?: string | null;
+        };
         ReconcileCashRegisterDto: {
             reconciliationNotes?: string | null;
         };
@@ -2392,6 +2552,18 @@ export interface components {
             id: string;
             name: string;
         };
+        SessionBalanceSummary: {
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            plan?: null | components["schemas"]["SessionPlanSummary"];
+            player?: null | components["schemas"]["SessionPlayerSummary"];
+            /** Format: uuid */
+            playerId: string;
+            /** Format: int32 */
+            remainingMinutes: number;
+            status: string;
+        };
         SessionDeviceSummary: {
             deviceType: string;
             /** Format: uuid */
@@ -2409,6 +2581,8 @@ export interface components {
         };
         SessionFilterDto: {
             /** Format: uuid */
+            balanceId?: string | null;
+            /** Format: uuid */
             deviceId?: string | null;
             /** Format: int32 */
             isActive?: number | null;
@@ -2418,8 +2592,6 @@ export interface components {
             page?: number | null;
             /** Format: uuid */
             playerId?: string | null;
-            /** Format: uuid */
-            playerPlanId?: string | null;
             /** Format: uuid */
             shiftId?: string | null;
             sortBy?: string | null;
@@ -2461,19 +2633,6 @@ export interface components {
             planType: string;
             /** Format: int32 */
             timeCredits: number;
-        };
-        SessionPlayerPlanSummary: {
-            /** Format: uuid */
-            id: string;
-            plan?: null | components["schemas"]["SessionPlanSummary"];
-            /** Format: uuid */
-            planId: string;
-            player?: null | components["schemas"]["SessionPlayerSummary"];
-            /** Format: uuid */
-            playerId: string;
-            /** Format: int32 */
-            remainingTimeCredits?: number | null;
-            status: string;
         };
         SessionPlayerSummary: {
             firstName?: string | null;
@@ -2907,17 +3066,13 @@ export interface components {
             openingDenominations?: unknown;
         };
         UpdatePlanDto: {
+            allowedDays?: unknown;
+            allowedMonths?: unknown;
             description?: string | null;
             deviceSubType?: string | null;
             deviceType?: string | null;
-            /** Format: int32 */
-            durationMinutes?: number | null;
             isActive?: boolean | null;
-            /** Format: int32 */
-            maxSessions?: number | null;
             name?: string | null;
-            /** Format: double */
-            perMinuteRate?: number | null;
             planType?: string | null;
             /** Format: double */
             price?: number | null;
@@ -2975,6 +3130,8 @@ export interface components {
             value: unknown;
         };
         UsageSession: {
+            /** Format: uuid */
+            balanceId?: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -2990,8 +3147,6 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            playerPlanId: string;
-            /** Format: uuid */
             shiftId?: string | null;
             /** Format: date-time */
             startTime: string;
@@ -3003,6 +3158,9 @@ export interface components {
             updatedBy?: string | null;
         };
         UsageSessionResponse: {
+            balance?: null | components["schemas"]["SessionBalanceSummary"];
+            /** Format: uuid */
+            balanceId?: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -3018,9 +3176,6 @@ export interface components {
             endTime?: string | null;
             /** Format: uuid */
             id: string;
-            playerPlan?: null | components["schemas"]["SessionPlayerPlanSummary"];
-            /** Format: uuid */
-            playerPlanId: string;
             /** Format: uuid */
             shiftId?: string | null;
             /** Format: date-time */
@@ -5983,7 +6138,7 @@ export interface operations {
             };
         };
     };
-    list_player_plans: {
+    list_balances: {
         parameters: {
             query?: never;
             header?: never;
@@ -5992,13 +6147,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List player plans */
+            /** @description List player plan balances */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlayerPlanPaginationEnvelope"];
+                    "application/json": components["schemas"]["BalancePaginationEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -6030,7 +6185,7 @@ export interface operations {
             };
         };
     };
-    assign_plan: {
+    purchase_balance: {
         parameters: {
             query?: never;
             header?: never;
@@ -6039,17 +6194,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AssignPlanDto"];
+                "application/json": components["schemas"]["PurchaseBalanceDto"];
             };
         };
         responses: {
-            /** @description Assign plan to player */
+            /** @description Purchase or recharge a balance */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlayerPlanFlatEnvelope"];
+                    "application/json": components["schemas"]["BalanceFlatEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -6090,7 +6245,7 @@ export interface operations {
             };
         };
     };
-    get_best_plan: {
+    get_best_balance: {
         parameters: {
             query?: never;
             header?: never;
@@ -6099,13 +6254,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Get best active player plan */
+            /** @description Get best active balance */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlayerPlanFlatEnvelope"];
+                    "application/json": components["schemas"]["BalanceFlatEnvelope"];
                 };
             };
             /** @description Unauthorized */
@@ -6137,7 +6292,7 @@ export interface operations {
             };
         };
     };
-    list_my_active_plans: {
+    list_my_active_balances: {
         parameters: {
             query?: never;
             header?: never;
@@ -6146,13 +6301,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List my active player plans */
+            /** @description List my active balances */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlayerPlanPaginationEnvelope"];
+                    "application/json": components["schemas"]["BalancePaginationEnvelope"];
                 };
             };
             /** @description Unauthorized */
@@ -6175,25 +6330,25 @@ export interface operations {
             };
         };
     };
-    get_player_plan: {
+    get_balance: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Player plan ID */
+                /** @description Balance ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Get player plan */
+            /** @description Get balance */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PlayerPlanEnvelope"];
+                    "application/json": components["schemas"]["BalanceEnvelope"];
                 };
             };
             /** @description Unauthorized */
@@ -6239,20 +6394,20 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Player plan ID */
+                /** @description Balance ID */
                 id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Validate player plan access */
+            /** @description Validate balance access */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationResultEnvelope"];
+                    "application/json": components["schemas"]["BalanceValidationEnvelope"];
                 };
             };
             /** @description Unauthorized */

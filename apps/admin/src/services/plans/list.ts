@@ -2,10 +2,6 @@ import { http } from '@gaming-cafe/utils';
 
 export enum PlanType {
   TIME_BASED = 'time_based',
-  SESSION_BASED = 'session_based',
-  UNLIMITED_DAILY = 'unlimited_daily',
-  HOURLY_RENTAL = 'hourly_rental',
-  MONTHLY_SUBSCRIPTION = 'monthly_subscription',
   WEEKEND_SPECIAL = 'weekend_special',
 }
 
@@ -15,18 +11,17 @@ export interface PlanResponse {
   description?: string;
   price: string;
   planType: PlanType;
-  durationMinutes?: number;
   validityDays: number;
   timeWindowStart?: string;
   timeWindowEnd?: string;
   timeCredits?: number;
-  perMinuteRate: number;
-  maxSessions?: number;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
   deviceSubType?: string;
   deviceType?: string;
+  allowedDays?: string[];
+  allowedMonths?: number[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface GetPlansResponse {

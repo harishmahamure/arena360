@@ -3699,14 +3699,14 @@
         "tags": [
           "player-plans"
         ],
-        "operationId": "list_player_plans",
+        "operationId": "list_balances",
         "responses": {
           "200": {
-            "description": "List player plans",
+            "description": "List player plan balances",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPlanPaginationEnvelope"
+                  "$ref": "#/components/schemas/BalancePaginationEnvelope"
                 }
               }
             }
@@ -3752,12 +3752,12 @@
         "tags": [
           "player-plans"
         ],
-        "operationId": "assign_plan",
+        "operationId": "purchase_balance",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AssignPlanDto"
+                "$ref": "#/components/schemas/PurchaseBalanceDto"
               }
             }
           },
@@ -3765,11 +3765,11 @@
         },
         "responses": {
           "201": {
-            "description": "Assign plan to player",
+            "description": "Purchase or recharge a balance",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPlanFlatEnvelope"
+                  "$ref": "#/components/schemas/BalanceFlatEnvelope"
                 }
               }
             }
@@ -3827,14 +3827,14 @@
         "tags": [
           "player-plans"
         ],
-        "operationId": "get_best_plan",
+        "operationId": "get_best_balance",
         "responses": {
           "200": {
-            "description": "Get best active player plan",
+            "description": "Get best active balance",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPlanFlatEnvelope"
+                  "$ref": "#/components/schemas/BalanceFlatEnvelope"
                 }
               }
             }
@@ -3882,14 +3882,14 @@
         "tags": [
           "player-plans"
         ],
-        "operationId": "list_my_active_plans",
+        "operationId": "list_my_active_balances",
         "responses": {
           "200": {
-            "description": "List my active player plans",
+            "description": "List my active balances",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPlanPaginationEnvelope"
+                  "$ref": "#/components/schemas/BalancePaginationEnvelope"
                 }
               }
             }
@@ -3927,12 +3927,12 @@
         "tags": [
           "player-plans"
         ],
-        "operationId": "get_player_plan",
+        "operationId": "get_balance",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "Player plan ID",
+            "description": "Balance ID",
             "required": true,
             "schema": {
               "type": "string",
@@ -3942,11 +3942,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Get player plan",
+            "description": "Get balance",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPlanEnvelope"
+                  "$ref": "#/components/schemas/BalanceEnvelope"
                 }
               }
             }
@@ -4009,7 +4009,7 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Player plan ID",
+            "description": "Balance ID",
             "required": true,
             "schema": {
               "type": "string",
@@ -4019,11 +4019,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Validate player plan access",
+            "description": "Validate balance access",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValidationResultEnvelope"
+                  "$ref": "#/components/schemas/BalanceValidationEnvelope"
                 }
               }
             }
@@ -7790,6 +7790,283 @@
           }
         }
       },
+      "BalanceEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PlayerPlanBalanceResponse"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "BalanceFilterDto": {
+        "type": "object",
+        "properties": {
+          "deviceSubType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "playerId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "sortBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortOrder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usableOnly": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "BalanceFlatEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PlayerPlanBalance"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "BalancePaginationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BalancePaginationPage"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "BalancePaginationPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlayerPlanBalanceResponse"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "BalancePlanSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "planType",
+          "price",
+          "timeCredits"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "planType": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "timeCredits": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "BalancePlayerSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "username"
+        ],
+        "properties": {
+          "firstName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "BalanceValidationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BalanceValidationResult"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "BalanceValidationResult": {
+        "type": "object",
+        "required": [
+          "valid"
+        ],
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid": {
+            "type": "boolean"
+          }
+        }
+      },
       "CashDeposit": {
         "type": "object",
         "required": [
@@ -8844,6 +9121,8 @@
           "planType"
         ],
         "properties": {
+          "allowedDays": {},
+          "allowedMonths": {},
           "description": {
             "type": [
               "string",
@@ -8862,35 +9141,14 @@
               "null"
             ]
           },
-          "durationMinutes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "isActive": {
             "type": [
               "boolean",
               "null"
             ]
           },
-          "maxSessions": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "name": {
             "type": "string"
-          },
-          "perMinuteRate": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
           },
           "planType": {
             "type": "string"
@@ -9001,15 +9259,15 @@
       "CreateSessionDto": {
         "type": "object",
         "required": [
-          "playerPlanId",
+          "balanceId",
           "deviceId"
         ],
         "properties": {
-          "deviceId": {
+          "balanceId": {
             "type": "string",
             "format": "uuid"
           },
-          "playerPlanId": {
+          "deviceId": {
             "type": "string",
             "format": "uuid"
           },
@@ -10728,15 +10986,15 @@
           "name",
           "price",
           "planType",
-          "durationMinutes",
           "validityDays",
           "timeCredits",
-          "perMinuteRate",
           "isActive",
           "createdAt",
           "updatedAt"
         ],
         "properties": {
+          "allowedDays": {},
+          "allowedMonths": {},
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -10773,10 +11031,6 @@
               "null"
             ]
           },
-          "durationMinutes": {
-            "type": "integer",
-            "format": "int32"
-          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -10784,19 +11038,8 @@
           "isActive": {
             "type": "boolean"
           },
-          "maxSessions": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "name": {
             "type": "string"
-          },
-          "perMinuteRate": {
-            "type": "number",
-            "format": "double"
           },
           "planType": {
             "type": "string"
@@ -11145,6 +11388,224 @@
           }
         }
       },
+      "PlayerPlanBalance": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "kind",
+          "remainingMinutes",
+          "expiryDate",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "allowedDays": {},
+          "allowedMonths": {},
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deviceSubType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expiryDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sourcePlanId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "windowEnd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "windowStart": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PlayerPlanBalanceResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "kind",
+          "remainingMinutes",
+          "expiryDate",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "allowedDays": {},
+          "allowedMonths": {},
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deviceSubType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expiryDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BalancePlanSummary"
+              }
+            ]
+          },
+          "player": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BalancePlayerSummary"
+              }
+            ]
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sourcePlanId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "windowEnd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "windowStart": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "PlayerPlanEnvelope": {
         "type": "object",
         "required": [
@@ -11299,6 +11760,73 @@
           },
           "timestamp": {
             "type": "string"
+          }
+        }
+      },
+      "PlayerPlanLedger": {
+        "type": "object",
+        "required": [
+          "id",
+          "balanceId",
+          "playerId",
+          "deltaMinutes",
+          "reason",
+          "balanceAfter",
+          "expiryAfter",
+          "createdAt"
+        ],
+        "properties": {
+          "balanceAfter": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "balanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "deltaMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "expiryAfter": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "transactionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -11773,6 +12301,30 @@
           }
         }
       },
+      "PurchaseBalanceDto": {
+        "type": "object",
+        "required": [
+          "playerId",
+          "planId"
+        ],
+        "properties": {
+          "planId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transactionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "ReconcileCashRegisterDto": {
         "type": "object",
         "properties": {
@@ -12001,6 +12553,56 @@
           }
         }
       },
+      "SessionBalanceSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "kind",
+          "remainingMinutes",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionPlanSummary"
+              }
+            ]
+          },
+          "player": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionPlayerSummary"
+              }
+            ]
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "SessionDeviceSummary": {
         "type": "object",
         "required": [
@@ -12059,6 +12661,13 @@
       "SessionFilterDto": {
         "type": "object",
         "properties": {
+          "balanceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "deviceId": {
             "type": [
               "string",
@@ -12088,13 +12697,6 @@
             "format": "int64"
           },
           "playerId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "playerPlanId": {
             "type": [
               "string",
               "null"
@@ -12242,59 +12844,6 @@
           "timeCredits": {
             "type": "integer",
             "format": "int32"
-          }
-        }
-      },
-      "SessionPlayerPlanSummary": {
-        "type": "object",
-        "required": [
-          "id",
-          "playerId",
-          "planId",
-          "status"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "plan": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SessionPlanSummary"
-              }
-            ]
-          },
-          "planId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "player": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SessionPlayerSummary"
-              }
-            ]
-          },
-          "playerId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "remainingTimeCredits": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "status": {
-            "type": "string"
           }
         }
       },
@@ -13890,6 +14439,8 @@
       "UpdatePlanDto": {
         "type": "object",
         "properties": {
+          "allowedDays": {},
+          "allowedMonths": {},
           "description": {
             "type": [
               "string",
@@ -13908,38 +14459,17 @@
               "null"
             ]
           },
-          "durationMinutes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "isActive": {
             "type": [
               "boolean",
               "null"
             ]
           },
-          "maxSessions": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "name": {
             "type": [
               "string",
               "null"
             ]
-          },
-          "perMinuteRate": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
           },
           "planType": {
             "type": [
@@ -14203,13 +14733,19 @@
         "type": "object",
         "required": [
           "id",
-          "playerPlanId",
           "deviceId",
           "startTime",
           "createdAt",
           "updatedAt"
         ],
         "properties": {
+          "balanceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -14250,10 +14786,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "playerPlanId": {
-            "type": "string",
-            "format": "uuid"
-          },
           "shiftId": {
             "type": [
               "string",
@@ -14289,13 +14821,29 @@
         "type": "object",
         "required": [
           "id",
-          "playerPlanId",
           "deviceId",
           "startTime",
           "createdAt",
           "updatedAt"
         ],
         "properties": {
+          "balance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionBalanceSummary"
+              }
+            ]
+          },
+          "balanceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -14343,20 +14891,6 @@
             "format": "date-time"
           },
           "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "playerPlan": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SessionPlayerPlanSummary"
-              }
-            ]
-          },
-          "playerPlanId": {
             "type": "string",
             "format": "uuid"
           },

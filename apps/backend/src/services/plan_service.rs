@@ -1,3 +1,4 @@
+use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -5,16 +6,15 @@ use crate::error::AppError;
 use crate::models::{parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto};
 use crate::repositories::{PlanCreateValues, PlanRepository};
 
-struct PlanTypeValidation<'a> {
-    plan_type: &'a str,
-    duration_minutes: Option<i32>,
-    time_credits: Option<i32>,
-    max_sessions: Option<i32>,
-    validity_days: Option<i32>,
-    per_minute_rate: Option<f64>,
-    time_window_start: Option<&'a str>,
-    time_window_end: Option<&'a str>,
-}
+const VALID_DAYS: &[&str] = &[
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+];
 
 pub struct PlanService {
     repo: PlanRepository,
@@ -52,10 +52,8 @@ impl PlanService {
     ) -> Result<Plan, AppError> {
         self.validate_create(&dto)?;
 
-        let duration_minutes = dto.duration_minutes.unwrap_or(60);
         let validity_days = dto.validity_days.unwrap_or(30);
-        let time_credits = dto.time_credits.unwrap_or(duration_minutes);
-        let per_minute_rate = dto.per_minute_rate.unwrap_or(1.0);
+        let time_credits = dto.time_credits.unwrap_or(60);
 
         let time_window_start = dto
             .time_window_start
@@ -68,10 +66,8 @@ impl PlanService {
             .create(
                 PlanCreateValues {
                     dto: &dto,
-                    duration_minutes,
                     validity_days,
                     time_credits,
-                    per_minute_rate,
                     time_window_start,
                     time_window_end,
                 },
@@ -96,14 +92,6 @@ impl PlanService {
             }
         }
 
-        if let Some(rate) = dto.per_minute_rate {
-            if rate <= 0.0 {
-                return Err(AppError::BadRequest(
-                    "perMinuteRate must be greater than 0".to_string(),
-                ));
-            }
-        }
-
         let existing_start = existing
             .time_window_start
             .map(|t| t.format("%H:%M:%S").to_string());
@@ -112,19 +100,20 @@ impl PlanService {
             .map(|t| t.format("%H:%M:%S").to_string());
 
         let plan_type = dto.plan_type.as_deref().unwrap_or(&existing.plan_type);
-        self.validate_plan_type(PlanTypeValidation {
+        self.validate_plan_type(
             plan_type,
-            duration_minutes: dto.duration_minutes.or(Some(existing.duration_minutes)),
-            time_credits: dto.time_credits.or(Some(existing.time_credits)),
-            max_sessions: dto.max_sessions.or(existing.max_sessions),
-            validity_days: dto.validity_days.or(Some(existing.validity_days)),
-            per_minute_rate: dto.per_minute_rate.or(Some(existing.per_minute_rate)),
-            time_window_start: dto
-                .time_window_start
+            dto.time_credits.or(Some(existing.time_credits)),
+            dto.validity_days.or(Some(existing.validity_days)),
+            dto.time_window_start
                 .as_deref()
                 .or(existing_start.as_deref()),
-            time_window_end: dto.time_window_end.as_deref().or(existing_end.as_deref()),
-        })?;
+            dto.time_window_end.as_deref().or(existing_end.as_deref()),
+        )?;
+
+        Self::validate_allowed_days(dto.allowed_days.as_ref().or(existing.allowed_days.as_ref()))?;
+        Self::validate_allowed_months(
+            dto.allowed_months.as_ref().or(existing.allowed_months.as_ref()),
+        )?;
 
         let time_window_start = match dto.time_window_start.as_deref() {
             Some(value) => Some(parse_time(value)?),
@@ -136,7 +125,15 @@ impl PlanService {
         };
 
         self.repo
-            .update(id, &dto, time_window_start, time_window_end, actor_id)
+            .update(
+                id,
+                &dto,
+                time_window_start,
+                time_window_end,
+                dto.allowed_days.as_ref(),
+                dto.allowed_months.as_ref(),
+                actor_id,
+            )
             .await
     }
 
@@ -152,73 +149,58 @@ impl PlanService {
             ));
         }
 
-        let per_minute_rate = dto.per_minute_rate.unwrap_or(1.0);
-        if per_minute_rate <= 0.0 {
+        let validity_days = dto.validity_days.unwrap_or(30);
+        let time_credits = dto.time_credits.unwrap_or(60);
+
+        self.validate_plan_type(
+            &dto.plan_type,
+            Some(time_credits),
+            Some(validity_days),
+            dto.time_window_start.as_deref(),
+            dto.time_window_end.as_deref(),
+        )?;
+
+        Self::validate_allowed_days(dto.allowed_days.as_ref())?;
+        Self::validate_allowed_months(dto.allowed_months.as_ref())?;
+
+        Ok(())
+    }
+
+    fn validate_plan_type(
+        &self,
+        plan_type: &str,
+        time_credits: Option<i32>,
+        validity_days: Option<i32>,
+        time_window_start: Option<&str>,
+        time_window_end: Option<&str>,
+    ) -> Result<(), AppError> {
+        match plan_type {
+            "time_based" | "weekend_special" => {}
+            other => {
+                return Err(AppError::BadRequest(format!(
+                    "Only time_based and weekend_special (Happy Hours) plan types are supported, got '{other}'"
+                )));
+            }
+        }
+
+        if time_credits.unwrap_or(0) <= 0 {
             return Err(AppError::BadRequest(
-                "perMinuteRate must be greater than 0".to_string(),
+                "Plans require timeCredits > 0".to_string(),
             ));
         }
 
-        let duration_minutes = dto.duration_minutes.unwrap_or(60);
-        let validity_days = dto.validity_days.unwrap_or(30);
-        let time_credits = dto.time_credits.unwrap_or(duration_minutes);
+        if validity_days.unwrap_or(0) <= 0 {
+            return Err(AppError::BadRequest(
+                "Plans require validityDays > 0".to_string(),
+            ));
+        }
 
-        self.validate_plan_type(PlanTypeValidation {
-            plan_type: &dto.plan_type,
-            duration_minutes: Some(duration_minutes),
-            time_credits: Some(time_credits),
-            max_sessions: dto.max_sessions,
-            validity_days: Some(validity_days),
-            per_minute_rate: Some(per_minute_rate),
-            time_window_start: dto.time_window_start.as_deref(),
-            time_window_end: dto.time_window_end.as_deref(),
-        })
-    }
-
-    fn validate_plan_type(&self, input: PlanTypeValidation<'_>) -> Result<(), AppError> {
-        let PlanTypeValidation {
-            plan_type,
-            duration_minutes,
-            time_credits,
-            max_sessions,
-            validity_days,
-            per_minute_rate,
-            time_window_start,
-            time_window_end,
-        } = input;
-        match plan_type {
-            "time_based" if duration_minutes.unwrap_or(0) <= 0 => {
-                return Err(AppError::BadRequest(
-                    "time_based plans require durationMinutes > 0".to_string(),
-                ));
-            }
-            "time_based" if time_credits.unwrap_or(0) <= 0 => {
-                return Err(AppError::BadRequest(
-                    "time_based plans require timeCredits > 0".to_string(),
-                ));
-            }
-            "session_based" if max_sessions.unwrap_or(0) <= 0 => {
-                return Err(AppError::BadRequest(
-                    "session_based plans require maxSessions > 0".to_string(),
-                ));
-            }
-            "unlimited_daily" if validity_days.unwrap_or(0) <= 0 => {
-                return Err(AppError::BadRequest(
-                    "unlimited_daily plans require validityDays > 0".to_string(),
-                ));
-            }
-            "hourly_rental" if per_minute_rate.unwrap_or(0.0) <= 0.0 => {
-                return Err(AppError::BadRequest(
-                    "hourly_rental plans require perMinuteRate > 0".to_string(),
-                ));
-            }
-            "weekend_special" if time_window_start.is_none() || time_window_end.is_none() => {
-                return Err(AppError::BadRequest(
-                    "weekend_special plans require both timeWindowStart and timeWindowEnd"
-                        .to_string(),
-                ));
-            }
-            _ => {}
+        if plan_type == "weekend_special"
+            && (time_window_start.is_none() || time_window_end.is_none())
+        {
+            return Err(AppError::BadRequest(
+                "Happy Hours plans require both timeWindowStart and timeWindowEnd".to_string(),
+            ));
         }
 
         if let (Some(start), Some(end)) = (time_window_start, time_window_end) {
@@ -229,6 +211,42 @@ impl PlanService {
             }
         }
 
+        Ok(())
+    }
+
+    fn validate_allowed_days(value: Option<&Value>) -> Result<(), AppError> {
+        let Some(val) = value else { return Ok(()) };
+        let arr = val.as_array().ok_or_else(|| {
+            AppError::BadRequest("allowedDays must be a JSON array of day names".to_string())
+        })?;
+        for item in arr {
+            let day = item.as_str().ok_or_else(|| {
+                AppError::BadRequest("Each allowedDays entry must be a string".to_string())
+            })?;
+            if !VALID_DAYS.contains(&day) {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid day name '{day}'. Valid: monday..sunday"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_allowed_months(value: Option<&Value>) -> Result<(), AppError> {
+        let Some(val) = value else { return Ok(()) };
+        let arr = val.as_array().ok_or_else(|| {
+            AppError::BadRequest("allowedMonths must be a JSON array of month numbers".to_string())
+        })?;
+        for item in arr {
+            let month = item.as_i64().ok_or_else(|| {
+                AppError::BadRequest("Each allowedMonths entry must be an integer".to_string())
+            })?;
+            if !(1..=12).contains(&month) {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid month {month}. Must be 1-12"
+                )));
+            }
+        }
         Ok(())
     }
 }

@@ -29,7 +29,7 @@ export default function EditPlanPage() {
     queryKey: ['plan', id],
     queryFn: () => getPlanById(id as string),
     enabled: !!id,
-    staleTime: 1000 * 30, // 30 seconds
+    staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     refetchOnReconnect: true,
@@ -56,23 +56,20 @@ export default function EditPlanPage() {
         price: data.price,
         planType: data.planType as PlanType,
         validityDays: data.validityDays ?? undefined,
-        perMinuteRate: data.perMinuteRate ?? undefined,
         isActive: data.isActive,
         deviceType: data.deviceType,
         deviceSubType: data.deviceSubType,
       };
 
-      // Add conditional fields based on plan type
-      if (data.durationMinutes) payload.durationMinutes = data.durationMinutes;
       if (data.timeCredits) payload.timeCredits = data.timeCredits;
-      if (data.maxSessions) payload.maxSessions = data.maxSessions;
       if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
       if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
+      if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
+      if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
 
       await updatePlan(id as string, payload);
       setSuccess('Plan updated successfully!');
 
-      // Navigate back to plans list after a short delay
       setTimeout(() => {
         navigate('/plans');
       }, 1500);
@@ -119,16 +116,15 @@ export default function EditPlanPage() {
           description: plan?.description || '',
           price: plan?.price ? parseFloat(plan.price) : 0,
           planType: plan?.planType || PlanType.TIME_BASED,
-          durationMinutes: plan?.durationMinutes,
-          validityDays: plan?.validityDays || 30,
+          validityDays: plan?.validityDays || 7,
           timeWindowStart: plan?.timeWindowStart,
           timeWindowEnd: plan?.timeWindowEnd,
           timeCredits: plan?.timeCredits,
-          perMinuteRate: plan?.perMinuteRate || 1.0,
-          maxSessions: plan?.maxSessions,
           isActive: plan?.isActive ?? true,
           deviceSubType: plan?.deviceSubType as DeviceSubType,
           deviceType: plan?.deviceType as DeviceType,
+          allowedDays: plan?.allowedDays ?? undefined,
+          allowedMonths: plan?.allowedMonths ?? undefined,
         }}
         mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}

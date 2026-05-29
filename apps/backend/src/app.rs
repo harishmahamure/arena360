@@ -13,10 +13,10 @@ use crate::middleware::auth_middleware;
 use crate::openapi::ApiDoc;
 use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
-    AuthService, CashDepositService, CashRegisterService, ConfigService, DeviceService,
-    EventService, ExpenseCategoryService, ExpenseService, PlanService, PlayerPlanService,
-    ProductService, SessionService, ShiftService, StatsService, TransactionService, UnitService,
-    UserService, VendorService,
+    AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
+    DeviceService, EventService, ExpenseCategoryService, ExpenseService, PlanService,
+    PlayerPlanService, ProductService, SessionService, ShiftService, StatsService,
+    TransactionService, UnitService, UserService, VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -31,6 +31,7 @@ pub struct AppState {
     pub devices: DeviceService,
     pub plans: PlanService,
     pub player_plans: Arc<PlayerPlanService>,
+    pub balances: Arc<BalanceService>,
     pub units: UnitService,
     pub sessions: SessionService,
     pub shifts: ShiftService,
@@ -62,6 +63,7 @@ pub async fn build_state() -> Arc<AppState> {
 
     let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
+    let balances = Arc::new(BalanceService::new(pool.clone()));
 
     // Spawn the realtime dispatcher
     let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
@@ -74,8 +76,9 @@ pub async fn build_state() -> Arc<AppState> {
         devices: devices.clone(),
         plans: PlanService::new(pool.clone()),
         player_plans: player_plans.clone(),
+        balances: balances.clone(),
         units: UnitService::new(pool.clone()),
-        sessions: SessionService::new(pool.clone(), devices, player_plans.clone(), events.clone(), outbox.clone()),
+        sessions: SessionService::new(pool.clone(), devices, balances.clone(), events.clone(), outbox.clone()),
         shifts: {
             let cash_reg = Arc::new(CashRegisterService::new(pool.clone()));
             let mut s = ShiftService::new(pool.clone());
@@ -84,7 +87,7 @@ pub async fn build_state() -> Arc<AppState> {
         },
         cash_registers: Arc::new(CashRegisterService::new(pool.clone())),
         cash_deposits: CashDepositService::new(pool.clone(), outbox.clone()),
-        transactions: TransactionService::new(pool.clone(), player_plans, events.clone(), outbox.clone()),
+        transactions: TransactionService::new(pool.clone(), balances, events.clone(), outbox.clone()),
         products: ProductService::new(pool.clone()),
         expense_categories: ExpenseCategoryService::new(pool.clone()),
         vendors: VendorService::new(pool.clone()),
@@ -160,24 +163,24 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/player-plans",
-            get(handlers::player_plans::list_player_plans)
-                .post(handlers::player_plans::assign_plan),
+            get(handlers::balances::list_balances)
+                .post(handlers::balances::purchase_balance),
         )
         .route(
             "/player-plans/best-plan",
-            get(handlers::player_plans::get_best_plan),
+            get(handlers::balances::get_best_balance),
         )
         .route(
             "/player-plans/my-active-plans",
-            get(handlers::player_plans::list_my_active_plans),
+            get(handlers::balances::list_my_active_balances),
         )
         .route(
             "/player-plans/{id}/validate",
-            post(handlers::player_plans::validate_access),
+            post(handlers::balances::validate_access),
         )
         .route(
             "/player-plans/{id}",
-            get(handlers::player_plans::get_player_plan),
+            get(handlers::balances::get_balance),
         )
         .route(
             "/units",

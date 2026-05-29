@@ -72,11 +72,7 @@ impl PlayerPlanService {
         let purchase_date = dto.purchase_date.unwrap_or_else(Utc::now);
         let expiry_date = purchase_date + Duration::days(plan.validity_days as i64);
 
-        let remaining_usage_count = if plan.plan_type == "session_based" {
-            plan.max_sessions
-        } else {
-            None
-        };
+        let remaining_usage_count: Option<i32> = None;
 
         let remaining_time_credits = Some(plan.time_credits);
 

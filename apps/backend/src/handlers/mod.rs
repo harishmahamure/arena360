@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod balances;
 pub mod cash_deposits;
 pub mod cash_registers;
 pub mod config;

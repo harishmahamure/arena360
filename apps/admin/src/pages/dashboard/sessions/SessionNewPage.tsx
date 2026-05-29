@@ -12,6 +12,7 @@ import {
 } from '../../../containers/sessions/schemas/session-schema';
 import { useEnrichedPlayerPlans } from '../../../hooks/useEnrichedSessions';
 import { DeviceStatus, getDevices } from '../../../services/devices/list';
+import { PlanType } from '../../../services/plans/list';
 import { getPlayers } from '../../../services/players/list';
 import { startSession } from '../../../services/sessions/add';
 
@@ -54,12 +55,12 @@ export default function NewSessionPage() {
       );
   }, [enrichedPlayerPlans, selectedPlayer?.id, navigate]);
 
-  const playerPlanOptions =
+  const balanceOptions =
     enrichedPlayerPlans.map((pp) => ({
       value: pp.id,
-      label: `${pp.plan?.name || 'Unknown'} - ${
-        pp.player?.username || 'Unknown Plan'
-      } (${pp?.remainingTimeCredits || 0} credits remaining)`,
+      label: `${pp.plan?.name} - ${
+        pp.plan?.planType === PlanType.TIME_BASED ? 'Time Plan' : 'Happy Hours'
+      } (${pp.remainingMinutes} min remaining)`,
     })) || [];
 
   const deviceOptions =
@@ -88,14 +89,14 @@ export default function NewSessionPage() {
       },
     },
     {
-      name: 'playerPlanId',
-      label: 'Player Plan',
+      name: 'balanceId',
+      label: 'Player Balance',
       type: 'select',
-      placeholder: 'Select a player plan',
+      placeholder: 'Select a player balance',
       required: true,
       fullWidth: true,
-      options: playerPlanOptions,
-      helperText: 'Select the player plan to use for this session',
+      options: balanceOptions,
+      helperText: 'Select the player balance to use for this session',
     },
     {
       name: 'deviceId',
@@ -124,13 +125,12 @@ export default function NewSessionPage() {
 
     try {
       await startSession({
-        playerPlanId: data.playerPlanId,
+        balanceId: data.balanceId,
         deviceId: data.deviceId,
       });
 
       setSuccess('Session started successfully!');
 
-      // Navigate back to sessions list after a short delay
       setTimeout(() => {
         navigate('/sessions');
       }, 1500);

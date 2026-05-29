@@ -7,10 +7,10 @@ export const startSessionSchema = yup.object({
     .uuid('Please select a valid player')
     .required(validationMessages.required('Player')),
 
-  playerPlanId: yup
+  balanceId: yup
     .string()
-    .uuid('Please select a valid player plan')
-    .required(validationMessages.required('Player Plan')),
+    .uuid('Please select a valid player balance')
+    .required(validationMessages.required('Player Balance')),
 
   deviceId: yup
     .string()
@@ -24,7 +24,7 @@ export type StartSessionFormData = yup.InferType<typeof startSessionSchema>;
 
 export const startSessionDefaultValues: StartSessionFormData = {
   playerId: '',
-  playerPlanId: '',
+  balanceId: '',
   deviceId: '',
   startTime: undefined,
 };

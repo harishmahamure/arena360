@@ -464,13 +464,13 @@ impl StatsService {
 
     async fn plan_stats(&self) -> Result<PlanStatsDto, AppError> {
         let active: (i64,) = sqlx::query_as(
-            r#"SELECT COUNT(*) FROM player_plans WHERE status = 'active' AND "deletedAt" IS NULL"#,
+            r#"SELECT COUNT(*) FROM player_plan_balances WHERE status = 'active' AND "deletedAt" IS NULL"#,
         )
         .fetch_one(&self.pool)
         .await
         .unwrap_or((0,));
         let expired: (i64,) = sqlx::query_as(
-            r#"SELECT COUNT(*) FROM player_plans WHERE status = 'expired' AND "deletedAt" IS NULL"#,
+            r#"SELECT COUNT(*) FROM player_plan_balances WHERE status = 'expired' AND "deletedAt" IS NULL"#,
         )
         .fetch_one(&self.pool)
         .await

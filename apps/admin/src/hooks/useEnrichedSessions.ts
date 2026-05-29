@@ -39,7 +39,7 @@ export function useEnrichedPlayerPlans(playerId?: string) {
     return playerPlansData.data.map((pp) => ({
       ...pp,
       player: pp.player ?? playerMap.get(pp.playerId),
-      plan: pp.plan ?? planMap.get(pp.planId),
+      plan: pp.plan ?? (pp.sourcePlanId ? planMap.get(pp.sourcePlanId) : undefined),
     }));
   }, [playerPlansData?.data, playersData?.data, plansData?.data]);
 
@@ -75,24 +75,27 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
     if (!sessions) return [];
 
     const deviceMap = new Map(devicesData?.data?.map((d) => [d.id, d]) ?? []);
-    const playerPlanMap = new Map(playerPlansData?.data?.map((pp) => [pp.id, pp]) ?? []);
+    const balanceMap = new Map(playerPlansData?.data?.map((pp) => [pp.id, pp]) ?? []);
     const playerMap = new Map(playersData?.data?.map((p) => [p.id, p]) ?? []);
     const planMap = new Map(plansData?.data?.map((p) => [p.id, p]) ?? []);
 
     return sessions.map((session): SessionResponse => {
-      const flatPlan = playerPlanMap.get(session.playerPlanId);
-      const player = flatPlan?.player ?? (flatPlan ? playerMap.get(flatPlan.playerId) : undefined);
-      const plan = flatPlan?.plan ?? (flatPlan ? planMap.get(flatPlan.planId) : undefined);
+      const balance = balanceMap.get(session.balanceId);
+      const player =
+        balance?.player ?? (balance ? playerMap.get(balance.playerId) : undefined);
+      const plan =
+        balance?.plan ??
+        (balance?.sourcePlanId ? planMap.get(balance.sourcePlanId) : undefined);
 
-      const enrichedPlayerPlan =
-        session.playerPlan ??
-        (flatPlan
+      const enrichedBalance =
+        session.balance ??
+        (balance
           ? {
-              id: flatPlan.id,
-              playerId: flatPlan.playerId,
-              planId: flatPlan.planId,
-              status: flatPlan.status,
-              remainingTimeCredits: flatPlan.remainingTimeCredits,
+              id: balance.id,
+              playerId: balance.playerId,
+              kind: balance.kind,
+              remainingMinutes: balance.remainingMinutes,
+              status: balance.status,
               player: player
                 ? {
                     id: player.id,
@@ -100,7 +103,7 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
                     firstName: player.firstName,
                     lastName: player.lastName,
                   }
-                : flatPlan.player,
+                : balance.player,
               plan: plan
                 ? {
                     id: plan.id,
@@ -108,21 +111,14 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
                     planType: plan.planType,
                     timeCredits: plan.timeCredits ?? 0,
                   }
-                : flatPlan.plan
-                  ? {
-                      id: flatPlan.plan.id,
-                      name: flatPlan.plan.name,
-                      planType: flatPlan.plan.planType,
-                      timeCredits: flatPlan.plan.timeCredits,
-                    }
-                  : undefined,
+                : balance.plan,
             }
           : undefined);
 
       return {
         ...session,
         device: session.device ?? deviceMap.get(session.deviceId),
-        playerPlan: enrichedPlayerPlan,
+        balance: enrichedBalance,
       };
     });
   }, [sessions, devicesData?.data, playerPlansData?.data, playersData?.data, plansData?.data]);

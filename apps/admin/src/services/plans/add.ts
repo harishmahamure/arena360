@@ -6,14 +6,15 @@ export interface CreatePlanPayload {
   description?: string;
   price: number;
   planType: PlanType;
-  durationMinutes?: number;
   validityDays?: number;
   timeWindowStart?: string;
   timeWindowEnd?: string;
   timeCredits?: number;
-  perMinuteRate?: number;
-  maxSessions?: number;
   isActive?: boolean;
+  deviceType?: string;
+  deviceSubType?: string;
+  allowedDays?: string[];
+  allowedMonths?: number[];
 }
 
 export const addPlan = async (payload: CreatePlanPayload) => {

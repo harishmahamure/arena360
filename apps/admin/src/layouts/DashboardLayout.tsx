@@ -27,18 +27,18 @@ export default function DashboardLayout() {
     if (!data?.data || isLoading) return [];
 
     return data.data
-      .filter((session) => session.playerPlan?.remainingTimeCredits != null)
+      .filter((session) => session.balance?.remainingMinutes != null)
       .map((session) => {
-        const remainingTimeCredits = session.playerPlan?.remainingTimeCredits ?? 0;
+        const remainingMinutes = session.balance?.remainingMinutes ?? 0;
         const startTime = new Date(session.startTime).getTime();
-        const expectedEndTime = startTime + remainingTimeCredits * 60 * 1000;
+        const expectedEndTime = startTime + remainingMinutes * 60 * 1000;
         const remainingTime = (expectedEndTime - Date.now()) / 1000;
 
         return {
           id: session.id,
           remainingTime,
           sessionDetails: {
-            playerName: session.playerPlan?.player?.username ?? 'Unknown',
+            playerName: session.balance?.player?.username ?? 'Unknown',
             deviceName: session.device?.name ?? 'Unknown',
           },
         };

@@ -5,27 +5,27 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{
-    AssignPlanDto, CreateLineItemDto, CreateTransactionDto, Transaction, TransactionFilterDto,
-    TransactionWithLineItems, UpdateTransactionDto,
+    CreateLineItemDto, CreateTransactionDto, PurchaseBalanceDto, Transaction,
+    TransactionFilterDto, TransactionWithLineItems, UpdateTransactionDto,
 };
 use crate::realtime::OutboxService;
 use crate::repositories::{TransactionProductRepository, TransactionRepository};
-use crate::services::{EventService, PlayerPlanService};
+use crate::services::{BalanceService, EventService};
 
 pub struct TransactionService {
     repo: TransactionRepository,
     line_item_repo: TransactionProductRepository,
-    player_plans: Arc<PlayerPlanService>,
+    balances: Arc<BalanceService>,
     events: EventService,
     outbox: OutboxService,
 }
 
 impl TransactionService {
-    pub fn new(pool: PgPool, player_plans: Arc<PlayerPlanService>, events: EventService, outbox: OutboxService) -> Self {
+    pub fn new(pool: PgPool, balances: Arc<BalanceService>, events: EventService, outbox: OutboxService) -> Self {
         Self {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
             repo: TransactionRepository::new(pool),
-            player_plans,
+            balances,
             events,
             outbox,
         }
@@ -305,13 +305,12 @@ impl TransactionService {
 
         if dto.transaction_type == "plan_purchase" && payment_status == "completed" {
             if let Some(plan_id) = dto.plan_id {
-                self.player_plans
-                    .assign_plan_to_player(
-                        AssignPlanDto {
+                self.balances
+                    .purchase_or_recharge(
+                        PurchaseBalanceDto {
                             player_id: dto.player_id,
                             plan_id,
                             transaction_id: Some(transaction.id),
-                            purchase_date: Some(transaction.transaction_date),
                         },
                         actor_id,
                     )

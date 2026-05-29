@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   type CreatePlanFormData,
+  MONTH_OPTIONS,
+  WEEKDAY_OPTIONS,
   createPlanDefaultValues,
   createPlanSchema,
   deviceSubTypeOptions,
@@ -43,7 +45,7 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
   },
   {
     name: 'price',
-    label: 'Price ($)',
+    label: 'Price',
     type: 'number',
     placeholder: '29.99',
     required: true,
@@ -55,54 +57,26 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
     name: 'validityDays',
     label: 'Validity Days',
     type: 'number',
-    placeholder: '30',
+    placeholder: '7',
     gridCols: 4,
     min: 1,
     helperText: 'Number of days plan remains valid',
   },
   {
-    name: 'durationMinutes',
-    label: 'Duration (Minutes)',
-    type: 'number',
-    placeholder: '120',
-    gridCols: 4,
-    min: 1,
-    helperText: 'Required for time-based plans',
-    /** @deprecated 'showWhen' is not a valid property for FieldConfig and has been removed */
-    // showWhen: (values: CreatePlanFormData) =>
-    //   values.planType === PlanTypeValues.TIME_BASED,
-  },
-  {
     name: 'timeCredits',
     label: 'Time Credits (Minutes)',
     type: 'number',
-    placeholder: '120',
+    placeholder: '300',
     gridCols: 4,
     min: 1,
-    helperText: 'Available time credits (for time-based plans)',
-  },
-  {
-    name: 'maxSessions',
-    label: 'Max Sessions',
-    type: 'number',
-    placeholder: '5',
-    gridCols: 4,
-    min: 1,
-    helperText: 'Maximum number of sessions allowed',
-  },
-  {
-    name: 'perMinuteRate',
-    label: 'Per Minute Rate',
-    type: 'number',
-    placeholder: '1.0',
-    gridCols: 4,
-    min: 0.01,
-    helperText: 'Rate per minute (for hourly rental)',
+    required: true,
+    helperText: 'Available time credits in minutes',
   },
   {
     name: 'deviceType',
     label: 'Device Type',
     type: 'select',
+    gridCols: 6,
     options: deviceTypeOptions,
     helperText: 'Select the type of device',
   },
@@ -110,6 +84,7 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
     name: 'deviceSubType',
     label: 'Device Sub Type',
     type: 'select',
+    gridCols: 6,
     options: deviceSubTypeOptions,
     helperText: 'Select the sub type of device',
   },
@@ -117,17 +92,33 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
     name: 'timeWindowStart',
     label: 'Time Window Start (HH:MM:SS)',
     type: 'text',
-    placeholder: '07:00:00',
+    placeholder: '06:00:00',
     gridCols: 6,
-    helperText: 'Start time for time window restrictions',
+    helperText: 'Required for Happy Hours plans',
   },
   {
     name: 'timeWindowEnd',
     label: 'Time Window End (HH:MM:SS)',
     type: 'text',
-    placeholder: '23:00:00',
+    placeholder: '11:59:00',
     gridCols: 6,
-    helperText: 'End time for time window restrictions',
+    helperText: 'Required for Happy Hours plans',
+  },
+  {
+    name: 'allowedDays',
+    label: 'Allowed Days',
+    type: 'multiselect',
+    gridCols: 6,
+    options: WEEKDAY_OPTIONS,
+    helperText: 'Restrict to specific days (leave empty for all days)',
+  },
+  {
+    name: 'allowedMonths',
+    label: 'Allowed Months',
+    type: 'multiselect',
+    gridCols: 6,
+    options: MONTH_OPTIONS,
+    helperText: 'Restrict to specific months (leave empty for all months)',
   },
   {
     name: 'isActive',
@@ -161,23 +152,21 @@ export default function AddNewPlanPage() {
         description: data.description || '',
         price: data.price,
         planType: data.planType as PlanType,
-        validityDays: data.validityDays || 30,
-        perMinuteRate: data.perMinuteRate || 1.0,
+        validityDays: data.validityDays || 7,
+        timeCredits: data.timeCredits,
         isActive: data.isActive ?? true,
+        deviceType: data.deviceType || undefined,
+        deviceSubType: data.deviceSubType || undefined,
       };
 
-      // Add conditional fields based on plan type
-      if (data.durationMinutes) payload.durationMinutes = data.durationMinutes;
-      if (data.timeCredits) payload.timeCredits = data.timeCredits;
-      if (data.maxSessions) payload.maxSessions = data.maxSessions;
       if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
       if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
+      if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
+      if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
 
       await addPlan(payload);
 
       setSuccess('Plan created successfully!');
-
-      // Navigate back to plans list after a short delay
       setTimeout(() => {
         navigate('/plans');
       }, 1500);

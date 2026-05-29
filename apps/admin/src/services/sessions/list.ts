@@ -14,12 +14,12 @@ export interface SessionPlanSummary {
   timeCredits: number;
 }
 
-export interface SessionPlayerPlanSummary {
+export interface SessionBalanceSummary {
   id: string;
   playerId: string;
-  planId: string;
+  kind: string;
+  remainingMinutes: number;
   status: string;
-  remainingTimeCredits?: number | null;
   player?: SessionPlayerSummary | null;
   plan?: SessionPlanSummary | null;
 }
@@ -34,7 +34,7 @@ export interface SessionDeviceSummary {
 
 export interface SessionResponse {
   id: string;
-  playerPlanId: string;
+  balanceId: string;
   deviceId: string;
   startTime: string;
   endTime?: string | null;
@@ -43,7 +43,7 @@ export interface SessionResponse {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
-  playerPlan?: SessionPlayerPlanSummary | null;
+  balance?: SessionBalanceSummary | null;
   device?: SessionDeviceSummary | null;
 }
 
