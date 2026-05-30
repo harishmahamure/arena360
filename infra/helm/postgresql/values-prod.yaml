@@ -18,7 +18,7 @@ pgbouncer:
     annotations: {}
     loadBalancerIP: ""
   config:
-    poolMode: transaction
+    poolMode: session
     maxClientConn: 300
     defaultPoolSize: 30
     reservePoolSize: 10

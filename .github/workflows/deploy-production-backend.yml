@@ -11,7 +11,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -60,6 +60,7 @@ jobs:
           kubectl create secret generic arena360-backend-secrets \
             --namespace "${{ env.NAMESPACE }}" \
             --from-literal=DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            --from-literal=MIGRATION_DATABASE_URL='${{ secrets.MIGRATION_DATABASE_URL }}' \
             --from-literal=JWT_SECRET='${{ secrets.JWT_SECRET }}' \
             --from-literal=ZEPTOMAIL_TOKEN='${{ secrets.ZEPTOMAIL_TOKEN }}' \
             --from-literal=STORAGE_ENDPOINT='${{ secrets.STORAGE_ENDPOINT }}' \
@@ -68,6 +69,62 @@ jobs:
             --from-literal=STORAGE_SECRET_KEY='${{ secrets.STORAGE_SECRET_KEY }}' \
             --from-literal=STORAGE_PUBLIC_URL='${{ secrets.STORAGE_PUBLIC_URL }}' \
             --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Upload backend migrations
+        run: |
+          kubectl create configmap arena360-backend-migrations \
+            --namespace "${{ env.NAMESPACE }}" \
+            --from-file=apps/backend/migrations \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Run database migrations
+        run: |
+          kubectl delete job arena360-backend-migrate --namespace "${{ env.NAMESPACE }}" --ignore-not-found
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: arena360-backend-migrate
+            namespace: ${{ env.NAMESPACE }}
+          spec:
+            backoffLimit: 1
+            activeDeadlineSeconds: 1200
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: arena360-backend-migrate
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: migrate
+                    image: rust:1.82-slim
+                    imagePullPolicy: IfNotPresent
+                    env:
+                      - name: DATABASE_URL
+                        valueFrom:
+                          secretKeyRef:
+                            name: arena360-backend-secrets
+                            key: MIGRATION_DATABASE_URL
+                    command:
+                      - /bin/sh
+                      - -ec
+                      - |
+                        apt-get update
+                        apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates
+                        cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
+                        sqlx migrate run --source /migrations
+                    volumeMounts:
+                      - name: migrations
+                        mountPath: /migrations
+                        readOnly: true
+                volumes:
+                  - name: migrations
+                    configMap:
+                      name: arena360-backend-migrations
+          EOF
+          kubectl wait --for=condition=complete job/arena360-backend-migrate \
+            --namespace "${{ env.NAMESPACE }}" \
+            --timeout=20m
 
       - name: Deploy backend
         run: |
