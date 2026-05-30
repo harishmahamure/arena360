@@ -58,7 +58,7 @@ jobs:
       - name: Tauri build (Windows bundle)
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL || 'http://192.168.50.218:3001' }}
-        run: pnpm --filter @gaming-cafe/kiosk tauri:build
+        run: 'echo "VITE_API_URL: $VITE_API_URL" && pnpm --filter @gaming-cafe/kiosk tauri:build'
 
       # Publish the installers so they can be downloaded from the workflow
       # run's "Artifacts" section. The NSIS installer (.exe) is the

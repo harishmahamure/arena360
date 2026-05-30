@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { HudTimer } from '../components/HudTimer';
+import { KioskTopBar } from '../components/KioskTopBar';
 import { LauncherGrid } from '../components/LauncherGrid';
 import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
@@ -18,6 +18,7 @@ function formatGrace(ms: number): string {
 export function SessionPage() {
   const {
     playerName,
+    deviceName,
     activeSession,
     wsConnected,
     online,
@@ -127,45 +128,45 @@ export function SessionPage() {
   }
 
   return (
-    <section className="panel session panel-wide">
-      <div className="session-header">
-        <h1>Welcome, {playerName}</h1>
-        {typeof remaining === 'number' ? <HudTimer remainingMinutes={remaining} /> : null}
-      </div>
+    <div className="session-shell">
+      <KioskTopBar
+        playerName={playerName}
+        remainingMinutes={remaining}
+        deviceName={deviceName}
+        onEndSession={() => setConfirmEnd(true)}
+      />
 
-      {!online ? (
-        <div className="maintenance-banner" role="alert">
-          <p className="error-headline">Connection lost</p>
-          <p className="error-detail">
-            Reconnecting… your time keeps counting. The station will lock in{' '}
-            {formatGrace(offlineLeft ?? OFFLINE_GRACE_MS)} if the connection doesn't return.
-          </p>
-        </div>
-      ) : null}
-
-      <LauncherGrid onError={(m) => pushToast(m, 'warning')} />
-
-      <p className="meta">Realtime: {wsConnected ? 'connected' : 'reconnecting…'}</p>
-
-      {confirmEnd ? (
-        <div className="confirm-end" role="alertdialog">
-          <p>End your session now? Unsaved game progress may be lost.</p>
-          <div className="confirm-end-actions">
-            <button type="button" className="danger" onClick={() => void endSession('voluntary')}>
-              Yes, end session
-            </button>
-            <button type="button" className="secondary" onClick={() => setConfirmEnd(false)}>
-              Keep playing
-            </button>
+      <section className="panel session panel-wide">
+        {!online ? (
+          <div className="maintenance-banner" role="alert">
+            <p className="error-headline">Connection lost</p>
+            <p className="error-detail">
+              Reconnecting… your time keeps counting. The station will lock in{' '}
+              {formatGrace(offlineLeft ?? OFFLINE_GRACE_MS)} if the connection doesn't return.
+            </p>
           </div>
-        </div>
-      ) : (
-        <button type="button" className="secondary" onClick={() => setConfirmEnd(true)}>
-          End session
-        </button>
-      )}
+        ) : null}
+
+        {confirmEnd ? (
+          <div className="confirm-end" role="alertdialog">
+            <p>End your session now? Unsaved game progress may be lost.</p>
+            <div className="confirm-end-actions">
+              <button type="button" className="danger" onClick={() => void endSession('voluntary')}>
+                Yes, end session
+              </button>
+              <button type="button" className="secondary" onClick={() => setConfirmEnd(false)}>
+                Keep playing
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <LauncherGrid onError={(m) => pushToast(m, 'warning')} />
+
+        <p className="meta">Realtime: {wsConnected ? 'connected' : 'reconnecting…'}</p>
+      </section>
 
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
-    </section>
+    </div>
   );
 }

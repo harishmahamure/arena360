@@ -651,3 +651,159 @@ progress {
   gap: 1rem;
   margin-top: 1rem;
 }
+
+/* ---- Session shell: top bar + launcher sections ---- */
+.session-shell {
+  width: min(1100px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.kiosk-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--gz-radius-md, 12px);
+  background: rgba(20, 26, 42, 0.82);
+  border: 1px solid var(--kiosk-border);
+  backdrop-filter: blur(20px);
+}
+
+.kiosk-topbar-brand {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.kiosk-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.kiosk-audio,
+.kiosk-profile {
+  position: relative;
+}
+
+.kiosk-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--kiosk-surface-alt);
+  color: var(--kiosk-on-surface);
+  border: 1px solid var(--kiosk-border);
+}
+
+.kiosk-popover {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 30;
+  padding: 0.85rem;
+  border-radius: var(--gz-radius-md, 12px);
+  background: var(--kiosk-surface);
+  border: 1px solid var(--kiosk-border);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.kiosk-audio-popover {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 220px;
+}
+
+.kiosk-audio-popover input[type="range"] {
+  flex: 1;
+  accent-color: var(--gz-color-primary, #ff6900);
+}
+
+.kiosk-audio-value {
+  min-width: 2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--kiosk-on-surface-muted);
+}
+
+.kiosk-profile-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: var(--kiosk-surface-alt);
+  color: var(--kiosk-on-surface);
+  border: 1px solid var(--kiosk-border);
+}
+
+.kiosk-profile-name {
+  font-weight: 600;
+}
+
+.kiosk-profile-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--gz-color-primary, #ff6900);
+  font-weight: 600;
+}
+
+.kiosk-profile-menu {
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.kiosk-profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.kiosk-profile-label {
+  color: var(--kiosk-on-surface-muted);
+  font-size: 0.85rem;
+}
+
+.kiosk-profile-strong {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.kiosk-profile-end {
+  margin-top: 0.25rem;
+}
+
+.launcher-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.launcher-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.launcher-section-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.allow-list-category {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}

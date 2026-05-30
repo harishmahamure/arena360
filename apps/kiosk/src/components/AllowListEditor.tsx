@@ -3,9 +3,13 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   addLaunchEntry,
   allowListPaths,
+  categorizeByName,
+  entryCategory,
+  type LaunchCategory,
   type LaunchEntry,
   loadLaunchEntries,
   removeLaunchEntry,
+  setEntryCategory,
 } from '../lib/allowList';
 import {
   launchAllowed,
@@ -19,6 +23,12 @@ interface ScanProgress {
   scanned: number;
   total: number;
 }
+
+const CATEGORY_OPTIONS: { value: LaunchCategory; label: string }[] = [
+  { value: 'game', label: 'Game' },
+  { value: 'launcher', label: 'Launcher' },
+  { value: 'util', label: 'Utility' },
+];
 
 /** Derive a friendly display name from an executable path's file name. */
 function suggestName(path: string): string {
@@ -38,6 +48,7 @@ export function AllowListEditor() {
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [manualName, setManualName] = useState('');
   const [manualPath, setManualPath] = useState('');
+  const [manualCategory, setManualCategory] = useState<LaunchCategory>('game');
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,16 +83,27 @@ export function AllowListEditor() {
   function addManual(e: React.FormEvent) {
     e.preventDefault();
     if (!manualName.trim() || !manualPath.trim()) return;
-    setEntries(addLaunchEntry({ name: manualName.trim(), executablePath: manualPath.trim() }));
+    setEntries(
+      addLaunchEntry({
+        name: manualName.trim(),
+        executablePath: manualPath.trim(),
+        category: manualCategory,
+      }),
+    );
     setManualName('');
     setManualPath('');
+    setManualCategory('game');
   }
 
   async function browse() {
     const path = await pickExecutable();
     if (!path) return;
     setManualPath(path);
-    if (!manualName.trim()) setManualName(suggestName(path));
+    if (!manualName.trim()) {
+      const name = suggestName(path);
+      setManualName(name);
+      setManualCategory(categorizeByName(name));
+    }
   }
 
   function remove(id: string) {
@@ -117,6 +139,20 @@ export function AllowListEditor() {
                 <span className="allow-list-name">{entry.name}</span>
                 <span className="allow-list-path">{entry.executablePath}</span>
                 <span className="allow-list-actions">
+                  <select
+                    className="allow-list-category"
+                    value={entryCategory(entry)}
+                    aria-label={`Section for ${entry.name}`}
+                    onChange={(e) =>
+                      setEntries(setEntryCategory(entry.id, e.target.value as LaunchCategory))
+                    }
+                  >
+                    {CATEGORY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     className="secondary"
@@ -179,6 +215,17 @@ export function AllowListEditor() {
             onChange={(e) => setManualPath(e.target.value)}
             placeholder="C:\\Path\\To\\game.exe"
           />
+          <select
+            value={manualCategory}
+            aria-label="Section"
+            onChange={(e) => setManualCategory(e.target.value as LaunchCategory)}
+          >
+            {CATEGORY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
           <button type="button" className="secondary" onClick={() => void browse()}>
             Browse…
           </button>
