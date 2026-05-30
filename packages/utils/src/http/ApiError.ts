@@ -5,7 +5,8 @@ export class ApiError extends Error {
   readonly code?: ErrorCode | string;
   readonly errorLabel?: string;
   readonly timestamp?: string;
-  readonly details?: unknown[];
+  /** Structured error details from the server envelope (object or array). */
+  readonly details?: unknown;
 
   constructor(options: {
     message: string;
@@ -13,7 +14,7 @@ export class ApiError extends Error {
     code?: ErrorCode | string;
     errorLabel?: string;
     timestamp?: string;
-    details?: unknown[];
+    details?: unknown;
     cause?: unknown;
   }) {
     super(options.message, options.cause !== undefined ? { cause: options.cause } : undefined);
@@ -31,6 +32,7 @@ export class ApiError extends Error {
       message: string;
       error: string;
       timestamp?: string;
+      details?: unknown;
     },
     cause?: unknown,
   ): ApiError {
@@ -42,6 +44,7 @@ export class ApiError extends Error {
       code,
       errorLabel: body.error,
       timestamp: body.timestamp,
+      details: body.details,
       cause,
     });
   }

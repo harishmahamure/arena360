@@ -1,13 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AllowListEditor } from '../components/AllowListEditor';
 import { useKiosk } from '../context/KioskProvider';
 
+const SETUP_IDLE_MS = 15 * 60 * 1000;
+
 export function SetupPage() {
-  const { requestAdminOtp, adminLogin, exitSetup, error } = useKiosk();
+  const { requestAdminOtp, adminLogin, exitSetup, factoryReset, error } = useKiosk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
   const [busy, setBusy] = useState(false);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-lock setup mode after 15 minutes of inactivity (ADR-0020).
+  useEffect(() => {
+    if (!authenticated) return;
+    const reset = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => void exitSetup(), SETUP_IDLE_MS);
+    };
+    const events = ['pointerdown', 'keydown', 'pointermove'] as const;
+    for (const evt of events) window.addEventListener(evt, reset);
+    reset();
+    return () => {
+      for (const evt of events) window.removeEventListener(evt, reset);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [authenticated, exitSetup]);
 
   async function requestOtp(e: React.FormEvent) {
     e.preventDefault();
@@ -28,11 +49,31 @@ export function SetupPage() {
     setBusy(true);
     try {
       await adminLogin(username, password, otp, sessionOtpId);
+      // adminLogin relaxes lockdown but stays in setup; reveal the editor.
+      setAuthenticated(true);
     } catch {
       // context error
     } finally {
       setBusy(false);
     }
+  }
+
+  // Setup mode: while authenticated and still on the page, show the allow-list editor.
+  if (authenticated) {
+    return (
+      <section className="panel panel-wide">
+        <h1>Setup — allow-list</h1>
+        <AllowListEditor />
+        <div className="setup-actions">
+          <button type="button" className="secondary" onClick={() => void exitSetup()}>
+            Done — re-lock
+          </button>
+          <button type="button" className="link danger" onClick={() => void factoryReset()}>
+            Factory reset
+          </button>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -72,7 +113,7 @@ export function SetupPage() {
           </label>
           {error ? <p className="error">{error}</p> : null}
           <button type="submit" disabled={busy}>
-            Verify and exit setup
+            Verify and open setup
           </button>
         </form>
       )}

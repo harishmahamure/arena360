@@ -28,12 +28,25 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Gaming Cafe",
+    "category": "Game",
+    "shortDescription": "Locked-down gaming cafe kiosk client",
+    "longDescription": "Arena360 kiosk client: device registration, player sessions, lockdown and launcher for gaming cafe stations.",
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
   }
 }

@@ -1,10 +1,12 @@
 import { LockdownOverlay } from '../components/LockdownOverlay';
 import { KioskProvider, useKiosk } from '../context/KioskProvider';
+import { AlreadyInSessionPage } from '../pages/AlreadyInSessionPage';
 import { IdlePage } from '../pages/IdlePage';
 import { PlayerLoginPage } from '../pages/PlayerLoginPage';
 import { RegistrationPage } from '../pages/RegistrationPage';
 import { SessionPage } from '../pages/SessionPage';
 import { SetupPage } from '../pages/SetupPage';
+import '@gaming-cafe/theme/tokens.css';
 import './app.css';
 
 function KioskShell() {
@@ -17,6 +19,7 @@ function KioskShell() {
   else if (phase === 'setup') content = <SetupPage />;
   else if (phase === 'player-login') content = <PlayerLoginPage />;
   else if (phase === 'session') content = <SessionPage />;
+  else if (phase === 'already-in-session') content = <AlreadyInSessionPage />;
 
   return <LockdownOverlay visible={locked}>{content}</LockdownOverlay>;
 }

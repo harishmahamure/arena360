@@ -15,6 +15,8 @@ export interface DeviceResponse {
   registrationStatus?: string;
   registrationCode?: string | null;
   registrationCodeExpiresAt?: string | null;
+  /** Stored hardware fingerprint JSON (mac/serial/biosUuid/...). */
+  registeredKiosk?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;

@@ -5,6 +5,7 @@ import { Box, Chip, Paper, Typography } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { KioskFingerprintCard } from '../../../components/KioskFingerprintCard';
 import { KioskRegistrationCard } from '../../../components/KioskRegistrationCard';
 import {
   type CreateDeviceFormData,
@@ -243,6 +244,13 @@ export default function EditDevicePage() {
           onCodeUpdated={() => {
             void queryClient.invalidateQueries({ queryKey: ['device', id] });
           }}
+        />
+      )}
+
+      {deviceData && (
+        <KioskFingerprintCard
+          registeredKiosk={deviceData.registeredKiosk}
+          registrationStatus={deviceData.registrationStatus}
         />
       )}
 

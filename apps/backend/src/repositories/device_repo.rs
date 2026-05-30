@@ -348,6 +348,23 @@ impl DeviceRepository {
         device.ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
     }
 
+    /// Persist a refreshed fingerprint snapshot (single-component drift, ADR-0017).
+    pub async fn update_fingerprint(
+        &self,
+        id: Uuid,
+        fingerprint_json: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"UPDATE devices SET "registeredKiosk" = $2, "updatedAt" = NOW()
+               WHERE id = $1 AND "deletedAt" IS NULL"#,
+        )
+        .bind(id)
+        .bind(fingerprint_json)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn redeem_registration(
         &self,
         id: Uuid,
@@ -395,8 +412,6 @@ impl DeviceRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        device.ok_or_else(|| {
-            AppError::unauthorized_code("DEVICE_REGISTRATION_INVALID")
-        })
+        device.ok_or_else(|| AppError::unauthorized_code("DEVICE_REGISTRATION_INVALID"))
     }
 }

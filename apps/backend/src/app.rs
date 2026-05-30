@@ -262,6 +262,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/sessions/{id}", get(handlers::sessions::get_session))
         .route("/sessions/{id}/end", patch(handlers::sessions::end_session))
+        .route("/kiosk/sessions", post(handlers::kiosk::start_session))
+        .route(
+            "/kiosk/sessions/current",
+            get(handlers::kiosk::current_session),
+        )
+        .route(
+            "/kiosk/sessions/{id}/end",
+            patch(handlers::kiosk::end_session),
+        )
         .route(
             "/transactions",
             get(handlers::transactions::list_transactions)

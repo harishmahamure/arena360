@@ -1,0 +1,64 @@
+name: Kiosk CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/kiosk/**'
+      - 'packages/**'
+      - '.github/workflows/kiosk-ci.yml'
+  pull_request:
+    paths:
+      - 'apps/kiosk/**'
+      - 'packages/**'
+      - '.github/workflows/kiosk-ci.yml'
+
+jobs:
+  kiosk-windows:
+    name: Build & test kiosk (windows)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo (kiosk)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/kiosk/src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome lint
+        run: pnpm biome check apps/kiosk packages
+
+      - name: Typecheck
+        run: pnpm --filter @gaming-cafe/kiosk typecheck
+
+      - name: Frontend unit tests
+        run: pnpm --filter @gaming-cafe/kiosk test
+
+      - name: Rust clippy (kiosk)
+        run: cargo clippy --all-targets --manifest-path apps/kiosk/src-tauri/Cargo.toml -- -D warnings
+
+      - name: Rust unit tests (kiosk)
+        run: cargo test --manifest-path apps/kiosk/src-tauri/Cargo.toml
+
+      - name: Tauri build (Windows bundle)
+        run: pnpm --filter @gaming-cafe/kiosk tauri:build

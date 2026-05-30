@@ -88,7 +88,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LoginDto"
+                "$ref": "#/components/schemas/PlayerLoginDto"
               }
             }
           },
@@ -2228,6 +2228,49 @@
         ]
       }
     },
+    "/devices/register": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "register_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Device registered"
+          },
+          "401": {
+            "description": "Invalid registration code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/devices/{id}": {
       "get": {
         "tags": [
@@ -2409,6 +2452,76 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/devices/{id}/registration-code": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "issue_registration_code",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registration code issued"
           },
           "401": {
             "description": "Unauthorized",
@@ -3630,6 +3743,195 @@
             }
           }
         }
+      }
+    },
+    "/kiosk/sessions": {
+      "post": {
+        "tags": [
+          "kiosk"
+        ],
+        "summary": "Start (or resume) a kiosk session for the authenticated player on the\nauthenticated device. Enforces the global single-session rule (ADR-0017).",
+        "operationId": "start_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartKioskSessionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session started or resumed"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — no usable balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict — PLAYER_ALREADY_IN_SESSION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk/sessions/current": {
+      "get": {
+        "tags": [
+          "kiosk"
+        ],
+        "summary": "The authenticated player's current open session, or `null` when none.\nPolled by the kiosk HUD to resync the countdown and detect remote ends.",
+        "operationId": "current_session",
+        "responses": {
+          "200": {
+            "description": "Current session or null"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk/sessions/{id}/end": {
+      "patch": {
+        "tags": [
+          "kiosk"
+        ],
+        "summary": "End the player's own session. The session's balance must belong to the\nauthenticated player.",
+        "operationId": "end_session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndKioskSessionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session ended"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — not the player's session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/plans": {
@@ -10483,6 +10785,33 @@
           }
         }
       },
+      "DeviceFingerprintDto": {
+        "type": "object",
+        "required": [
+          "mac",
+          "serial",
+          "biosUuid",
+          "platform",
+          "collectedAt"
+        ],
+        "properties": {
+          "biosUuid": {
+            "type": "string"
+          },
+          "collectedAt": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          }
+        }
+      },
       "DevicePaginationEnvelope": {
         "type": "object",
         "required": [
@@ -10542,6 +10871,36 @@
           }
         }
       },
+      "DeviceRegisterResponseDto": {
+        "type": "object",
+        "required": [
+          "accessToken",
+          "device"
+        ],
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "device": {
+            "$ref": "#/components/schemas/RegisteredDeviceDto"
+          }
+        }
+      },
+      "DeviceRegistrationCodeResponseDto": {
+        "type": "object",
+        "required": [
+          "registrationCode",
+          "expiresAt"
+        ],
+        "properties": {
+          "expiresAt": {
+            "type": "string"
+          },
+          "registrationCode": {
+            "type": "string"
+          }
+        }
+      },
       "DeviceStatsDto": {
         "type": "object",
         "required": [
@@ -10564,6 +10923,18 @@
           }
         }
       },
+      "EndKioskSessionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of: voluntary, auto, force, offline_reconcile (defaults to voluntary)."
+          }
+        }
+      },
       "EndSessionDto": {
         "type": "object",
         "properties": {
@@ -10573,6 +10944,13 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of: voluntary, auto, force, offline_reconcile. Echoed into the\n`session.ended` realtime event. Persistence is gated on ADR-0021."
           },
           "timeCreditsConsumed": {
             "type": [
@@ -11338,6 +11716,39 @@
           "shiftId": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "KioskSessionResponseDto": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "balanceId",
+          "deviceId",
+          "startTime",
+          "remainingMinutes",
+          "resumed"
+        ],
+        "properties": {
+          "balanceId": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "remainingMinutes": {
+            "type": "number",
+            "format": "double"
+          },
+          "resumed": {
+            "type": "boolean",
+            "description": "True when an existing open session on this device was resumed (crash recovery)."
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string"
           }
         }
       },
@@ -12155,6 +12566,32 @@
             "type": "boolean"
           },
           "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PlayerLoginDto": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "fingerprint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeviceFingerprintDto",
+                "description": "Current hardware fingerprint; when present the backend enforces the\ndrift policy (ADR-0017) before issuing a player token."
+              }
+            ]
+          },
+          "password": {
+            "type": "string"
+          },
+          "username": {
             "type": "string"
           }
         }
@@ -13209,6 +13646,55 @@
           }
         }
       },
+      "RegisterDeviceDto": {
+        "type": "object",
+        "required": [
+          "registrationCode",
+          "fingerprint",
+          "name"
+        ],
+        "properties": {
+          "deviceSubType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fingerprint": {
+            "$ref": "#/components/schemas/DeviceFingerprintDto"
+          },
+          "ipAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "registrationCode": {
+            "type": "string"
+          },
+          "serialNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "RegisterDto": {
         "type": "object",
         "required": [
@@ -13278,6 +13764,37 @@
             "type": "boolean"
           },
           "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "RegisteredDeviceDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "registrationStatus",
+          "deviceType",
+          "deviceSubType",
+          "status"
+        ],
+        "properties": {
+          "deviceSubType": {
+            "type": "string"
+          },
+          "deviceType": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "registrationStatus": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           }
         }
@@ -14406,6 +14923,18 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "StartKioskSessionDto": {
+        "type": "object",
+        "properties": {
+          "balanceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional balance to spend; when omitted the backend picks the best\nusable balance for the device type."
           }
         }
       },
@@ -16524,6 +17053,10 @@
     {
       "name": "sessions",
       "description": "Usage sessions"
+    },
+    {
+      "name": "kiosk",
+      "description": "Kiosk player session lifecycle"
     },
     {
       "name": "transactions",

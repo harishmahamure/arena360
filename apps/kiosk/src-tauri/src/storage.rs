@@ -1,3 +1,24 @@
+//! Kiosk token persistence (ADR-0017, K2 `kiosk-secure-token-storage`).
+//!
+//! Tokens are stored as JSON in the per-user, app-scoped data directory
+//! (`app_data_dir()/tokens.json`), not in the OS keychain. Rationale:
+//!
+//! - The kiosk runs as a **single dedicated local account** in a locked-down
+//!   venue; the threat model is a walk-up player, not the machine owner. The
+//!   app-data dir is already ACL-scoped to that account.
+//! - Tokens are **short-lived** (device token rotates on re-registration; the
+//!   player token is ≤ 24 h and cleared on logout), so long-term secret
+//!   protection adds little over filesystem ACLs.
+//! - The OS keychain (DPAPI/Keychain/libsecret) adds cross-platform complexity
+//!   and, on a shared-login kiosk, would be readable by the same account
+//!   anyway — no real isolation gain.
+//! - Lifecycle is explicit: `clear_player_token` on logout (player only),
+//!   `clear_all_tokens` on factory reset (device + player).
+//!
+//! If a future ADR tightens the threat model (e.g. multi-tenant machine),
+//! swap the read/write helpers for a keychain-backed store; the command
+//! surface here stays unchanged.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

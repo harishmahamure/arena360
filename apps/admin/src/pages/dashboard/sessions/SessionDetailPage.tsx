@@ -7,6 +7,11 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   GridLegacy as Grid,
   Paper,
@@ -24,7 +29,7 @@ import { getPlanById } from '../../../services/plans/getById';
 import { getPlayerPlanById } from '../../../services/player-plans/getById';
 import { getPlayerById } from '../../../services/players/getById';
 import { getSessionById } from '../../../services/sessions/getById';
-import { endSession } from '../../../services/sessions/update';
+import { endSession, forceEndSession } from '../../../services/sessions/update';
 
 const formatDuration = (minutes?: number | null) => {
   if (!minutes) return 'N/A';
@@ -39,6 +44,8 @@ export default function ViewSessionPage() {
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmForce, setConfirmForce] = useState(false);
+  const [isForcing, setIsForcing] = useState(false);
 
   const {
     data: session,
@@ -154,6 +161,23 @@ export default function ViewSessionPage() {
       setError(err instanceof Error ? err.message : 'Failed to end session');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleForceEnd = async () => {
+    setIsForcing(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      await forceEndSession(id as string);
+      setConfirmForce(false);
+      setSuccess('Session force-ended. The kiosk has been notified.');
+      await refetch();
+      setTimeout(() => navigate('/sessions'), 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to force-end session');
+    } finally {
+      setIsForcing(false);
     }
   };
 
@@ -396,9 +420,27 @@ export default function ViewSessionPage() {
         {isActive && (
           <Card variant="outlined">
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <Stop color="error" />
-                <Typography variant="h6">End Session</Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1,
+                  mb: 2,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Stop color="error" />
+                  <Typography variant="h6">End Session</Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  color="error"
+                  disabled={isForcing}
+                  onClick={() => setConfirmForce(true)}
+                >
+                  Force-end (kiosk)
+                </Button>
               </Box>
               <Divider sx={{ mb: 3 }} />
               <FormBuilder<EndSessionFormData>
@@ -432,6 +474,24 @@ export default function ViewSessionPage() {
           </Box>
         )}
       </Paper>
+
+      <Dialog open={confirmForce} onClose={() => setConfirmForce(false)}>
+        <DialogTitle>Force-end this session?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            The player's kiosk will show a 5-minute grace warning and then lock and close their
+            apps. Use this for stuck or unattended stations.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmForce(false)} disabled={isForcing}>
+            Cancel
+          </Button>
+          <Button color="error" variant="contained" onClick={handleForceEnd} disabled={isForcing}>
+            {isForcing ? 'Ending…' : 'Force-end'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

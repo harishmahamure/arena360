@@ -8,6 +8,7 @@ pub mod devices;
 pub mod expense_categories;
 pub mod expenses;
 pub mod health;
+pub mod kiosk;
 pub mod plans;
 pub mod player_plans;
 pub mod products;

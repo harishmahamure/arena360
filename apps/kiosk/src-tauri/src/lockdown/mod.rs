@@ -1,7 +1,7 @@
 mod keyboard;
 
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockdownState {
@@ -9,7 +9,19 @@ pub enum LockdownState {
     SetupRelaxed,
 }
 
+impl LockdownState {
+    fn as_str(self) -> &'static str {
+        match self {
+            LockdownState::Locked => "Locked",
+            LockdownState::SetupRelaxed => "SetupRelaxed",
+        }
+    }
+}
+
 static STATE: Mutex<LockdownState> = Mutex::new(LockdownState::Locked);
+/// Serializes whole transitions (state write + window mode + hook toggle) so
+/// concurrent `set_lockdown_state` calls cannot interleave window operations.
+static TRANSITION: Mutex<()> = Mutex::new(());
 
 fn parse_state(raw: &str) -> Result<LockdownState, String> {
     match raw {
@@ -58,25 +70,56 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
 #[tauri::command]
 pub fn set_lockdown_state(app: AppHandle, state: String) -> Result<(), String> {
     let state = parse_state(&state)?;
+    // Hold the transition lock for the whole operation so concurrent callers
+    // serialize rather than interleaving window/hook changes.
+    let _txn = TRANSITION.lock().map_err(|e| e.to_string())?;
     {
         let mut guard = STATE.lock().map_err(|e| e.to_string())?;
         *guard = state;
     }
-    apply_window_mode(&app, state)
+    apply_window_mode(&app, state)?;
+    // Notify the webview so React can reconcile UI with the native state.
+    let _ = app.emit("lockdown-changed", state.as_str());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn get_lockdown_state() -> Result<String, String> {
     let guard = STATE.lock().map_err(|e| e.to_string())?;
-    Ok(match *guard {
-        LockdownState::Locked => "Locked".to_string(),
-        LockdownState::SetupRelaxed => "SetupRelaxed".to_string(),
-    })
+    Ok(guard.as_str().to_string())
 }
 
 pub fn init_locked_on_startup(app: &AppHandle) {
+    let _txn = TRANSITION.lock().expect("transition lock");
     if let Ok(mut guard) = STATE.lock() {
         *guard = LockdownState::Locked;
     }
     let _ = apply_window_mode(app, LockdownState::Locked);
+    let _ = app.emit("lockdown-changed", LockdownState::Locked.as_str());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_state, LockdownState};
+
+    #[test]
+    fn parses_known_states() {
+        assert_eq!(parse_state("Locked").unwrap(), LockdownState::Locked);
+        assert_eq!(
+            parse_state("SetupRelaxed").unwrap(),
+            LockdownState::SetupRelaxed
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_state() {
+        assert!(parse_state("Wide-Open").is_err());
+    }
+
+    #[test]
+    fn round_trips_through_as_str() {
+        for state in [LockdownState::Locked, LockdownState::SetupRelaxed] {
+            assert_eq!(parse_state(state.as_str()).unwrap(), state);
+        }
+    }
 }

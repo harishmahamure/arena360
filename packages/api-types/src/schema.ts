@@ -372,6 +372,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["register_device"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{id}": {
         parameters: {
             query?: never;
@@ -386,6 +402,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_device"];
+        trace?: never;
+    };
+    "/devices/{id}/registration-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["issue_registration_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/devices/{id}/status": {
@@ -562,6 +594,66 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/kiosk/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start (or resume) a kiosk session for the authenticated player on the
+         *     authenticated device. Enforces the global single-session rule (ADR-0017).
+         */
+        post: operations["start_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kiosk/sessions/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The authenticated player's current open session, or `null` when none.
+         *     Polled by the kiosk HUD to resync the countdown and detect remote ends.
+         */
+        get: operations["current_session"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kiosk/sessions/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * End the player's own session. The session's balance must belong to the
+         *     authenticated player.
+         */
+        patch: operations["end_session"];
         trace?: never;
     };
     "/plans": {
@@ -1898,6 +1990,13 @@ export interface components {
             sortOrder?: string | null;
             status?: string | null;
         };
+        DeviceFingerprintDto: {
+            biosUuid: string;
+            collectedAt: string;
+            mac: string;
+            platform: string;
+            serial: string;
+        };
         DevicePaginationEnvelope: {
             data: components["schemas"]["DevicePaginationPage"];
             /** Format: int32 */
@@ -1916,6 +2015,14 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        DeviceRegisterResponseDto: {
+            accessToken: string;
+            device: components["schemas"]["RegisteredDeviceDto"];
+        };
+        DeviceRegistrationCodeResponseDto: {
+            expiresAt: string;
+            registrationCode: string;
+        };
         DeviceStatsDto: {
             /** Format: int64 */
             activeDevices: number;
@@ -1923,9 +2030,18 @@ export interface components {
             /** Format: int64 */
             totalDevices: number;
         };
+        EndKioskSessionDto: {
+            /** @description One of: voluntary, auto, force, offline_reconcile (defaults to voluntary). */
+            reason?: string | null;
+        };
         EndSessionDto: {
             /** Format: date-time */
             endTime?: string | null;
+            /**
+             * @description One of: voluntary, auto, force, offline_reconcile. Echoed into the
+             *     `session.ended` realtime event. Persistence is gated on ADR-0021.
+             */
+            reason?: string | null;
             /** Format: int32 */
             timeCreditsConsumed?: number | null;
         };
@@ -2143,6 +2259,16 @@ export interface components {
             notes?: string | null;
             /** Format: uuid */
             shiftId: string;
+        };
+        KioskSessionResponseDto: {
+            balanceId: string;
+            deviceId: string;
+            /** Format: double */
+            remainingMinutes: number;
+            /** @description True when an existing open session on this device was resumed (crash recovery). */
+            resumed: boolean;
+            sessionId: string;
+            startTime: string;
         };
         LegacyHealthResponse: {
             details: unknown;
@@ -2393,6 +2519,11 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        PlayerLoginDto: {
+            fingerprint?: null | components["schemas"]["DeviceFingerprintDto"];
+            password: string;
+            username: string;
         };
         PlayerPlan: {
             /** Format: date-time */
@@ -2697,6 +2828,16 @@ export interface components {
         ReconcileCashRegisterDto: {
             reconciliationNotes?: string | null;
         };
+        RegisterDeviceDto: {
+            deviceSubType?: string | null;
+            deviceType?: string | null;
+            fingerprint: components["schemas"]["DeviceFingerprintDto"];
+            ipAddress?: string | null;
+            location?: string | null;
+            name: string;
+            registrationCode: string;
+            serialNumber?: string | null;
+        };
         RegisterDto: {
             firstName?: string | null;
             lastName?: string | null;
@@ -2714,6 +2855,14 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        RegisteredDeviceDto: {
+            deviceSubType: string;
+            deviceType: string;
+            id: string;
+            name: string;
+            registrationStatus: string;
+            status: string;
         };
         RejectDepositDto: {
             rejectionReason: string;
@@ -3022,6 +3171,13 @@ export interface components {
             endDate?: string | null;
             shiftStart?: string | null;
             startDate?: string | null;
+        };
+        StartKioskSessionDto: {
+            /**
+             * @description Optional balance to spend; when omitted the backend picks the best
+             *     usable balance for the device type.
+             */
+            balanceId?: string | null;
         };
         StatsQuery: {
             endDate?: string | null;
@@ -3658,7 +3814,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoginDto"];
+                "application/json": components["schemas"]["PlayerLoginDto"];
             };
         };
         responses: {
@@ -5168,6 +5324,46 @@ export interface operations {
             };
         };
     };
+    register_device: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterDeviceDto"];
+            };
+        };
+        responses: {
+            /** @description Device registered */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid registration code */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_device: {
         parameters: {
             query?: never;
@@ -5308,6 +5504,63 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    issue_registration_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Registration code issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {
@@ -6269,6 +6522,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    start_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartKioskSessionDto"];
+            };
+        };
+        responses: {
+            /** @description Session started or resumed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden — no usable balance */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict — PLAYER_ALREADY_IN_SESSION */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    current_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current session or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    end_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndKioskSessionDto"];
+            };
+        };
+        responses: {
+            /** @description Session ended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden — not the player's session */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Internal server error */

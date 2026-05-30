@@ -113,7 +113,8 @@ impl AuthService {
             return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
         }
 
-        // Fingerprint drift enforcement deferred to be-fingerprint-drift (ADR-0017).
+        // Fingerprint drift is enforced in the player-login handler (ADR-0017)
+        // before this call, using the optional fingerprint in PlayerLoginDto.
 
         let user = self.authenticate_player(&dto.username, &dto.password).await?;
 

@@ -27,7 +27,13 @@ export class KioskRealtimeClient {
   private disposed = false;
 
   connect(): void {
-    if (this.disposed) return;
+    // Re-arm: a prior disconnect() sets `disposed` to suppress auto-reconnect,
+    // but an explicit connect() means the caller wants a live socket again.
+    this.disposed = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     const token = tokenCache.device;
     if (!token) return;
 

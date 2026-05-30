@@ -63,3 +63,40 @@ pub struct DeviceRegistrationCodeResponseDto {
     pub registrationCode: String,
     pub expiresAt: String,
 }
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct StartKioskSessionDto {
+    /// Optional balance to spend; when omitted the backend picks the best
+    /// usable balance for the device type.
+    pub balanceId: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Serialize, ToSchema)]
+pub struct KioskSessionResponseDto {
+    pub sessionId: String,
+    pub balanceId: String,
+    pub deviceId: String,
+    pub startTime: String,
+    pub remainingMinutes: f64,
+    /// True when an existing open session on this device was resumed (crash recovery).
+    pub resumed: bool,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, Default, ToSchema)]
+pub struct EndKioskSessionDto {
+    /// One of: voluntary, auto, force, offline_reconcile (defaults to voluntary).
+    pub reason: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PlayerLoginDto {
+    pub username: String,
+    pub password: String,
+    /// Current hardware fingerprint; when present the backend enforces the
+    /// drift policy (ADR-0017) before issuing a player token.
+    pub fingerprint: Option<DeviceFingerprintDto>,
+}

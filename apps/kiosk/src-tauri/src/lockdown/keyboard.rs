@@ -1,3 +1,14 @@
+//! Low-level keyboard hook used during lockdown.
+//!
+//! Blocks Alt+Tab, the Windows keys, Alt+F4, and Ctrl+Shift+Esc. **Limitation:**
+//! Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user
+//! mode by design — it always reaches the Windows Secure Desktop. Full CAD
+//! suppression requires the `DisableLockWorkstation` /
+//! `DisableTaskMgr` group-policy keys plus a kiosk/assigned-access account; this
+//! is documented for deployment and is out of scope for the app binary. After a
+//! user returns from the Secure Desktop we re-assert fullscreen on window focus
+//! (see `apply_window_mode`).
+
 #[cfg(target_os = "windows")]
 mod win {
     use std::sync::atomic::{AtomicBool, Ordering};

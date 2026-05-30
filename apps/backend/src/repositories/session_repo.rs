@@ -137,6 +137,39 @@ impl SessionRepository {
         ))
     }
 
+    /// Find or idempotently create the per-venue system kiosk shift (ADR-0017
+    /// D10). The well-known marker is `notes = 'KIOSK_SYSTEM'`. A shift row
+    /// requires a `userId`, so we attribute it to the oldest admin user.
+    /// Returns `None` when no admin user exists yet (session then has no shift).
+    pub async fn find_or_create_system_kiosk_shift(&self) -> Result<Option<Uuid>, AppError> {
+        if let Some((id,)) = sqlx::query_as::<_, (Uuid,)>(
+            r#"SELECT id FROM shifts WHERE notes = 'KIOSK_SYSTEM' AND status = 'active' LIMIT 1"#,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        {
+            return Ok(Some(id));
+        }
+
+        let created = sqlx::query_as::<_, (Uuid,)>(
+            r#"
+            INSERT INTO shifts (id, "userId", "clockIn", notes, status, "createdBy", "updatedBy", "createdAt", "updatedAt")
+            SELECT gen_random_uuid(), u.id, NOW(), 'KIOSK_SYSTEM', 'active', u.id, u.id, NOW(), NOW()
+            FROM (
+                SELECT id FROM users
+                WHERE role = 'admin' AND "deletedAt" IS NULL
+                ORDER BY "createdAt" ASC
+                LIMIT 1
+            ) u
+            RETURNING id
+            "#,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(created.map(|(id,)| id))
+    }
+
     pub async fn list(
         &self,
         filters: &SessionFilterDto,

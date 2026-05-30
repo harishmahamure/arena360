@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
-    created, ok, ApiResult, AuthResponseDto, LoginDto, OtpPendingResponse, RegisterDto,
-    RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
+    created, ok, ApiResult, AuthResponseDto, LoginDto, OtpPendingResponse, PlayerLoginDto,
+    RegisterDto, RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
 };
 use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, DeviceUser};
@@ -109,7 +109,7 @@ pub async fn verify_otp(
 #[utoipa::path(
     post,
     path = "/auth/login/player",
-    request_body = LoginDto,
+    request_body = PlayerLoginDto,
     responses(
         (status = 200, description = "Authenticated", body = AuthResponseEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
@@ -123,11 +123,28 @@ pub async fn verify_otp(
 pub async fn login_player(
     State(state): State<Arc<AppState>>,
     device_user: DeviceUser,
-    Json(dto): Json<LoginDto>,
+    Json(dto): Json<PlayerLoginDto>,
 ) -> ApiResult<AuthResponseDto> {
     let device_id = device_user.device_id()?;
     let device = state.devices.get_by_id(device_id).await?;
-    let result = state.auth.login_player(&device, dto).await?;
+
+    if let Some(fingerprint) = &dto.fingerprint {
+        state
+            .devices
+            .verify_fingerprint_drift(&device, fingerprint)
+            .await?;
+    }
+
+    let result = state
+        .auth
+        .login_player(
+            &device,
+            LoginDto {
+                username: dto.username,
+                password: dto.password,
+            },
+        )
+        .await?;
     ok(result)
 }
 

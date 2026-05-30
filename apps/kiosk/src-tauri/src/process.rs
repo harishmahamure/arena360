@@ -181,3 +181,30 @@ pub fn clear_tracked_processes() -> Result<(), String> {
     TRACKED.lock().map_err(|e| e.to_string())?.clear();
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{is_allowed, normalize_path};
+
+    #[test]
+    fn normalize_lowercases_and_unifies_separators() {
+        assert_eq!(normalize_path("C:\\Games\\Steam.EXE"), "c:/games/steam.exe");
+    }
+
+    #[test]
+    fn empty_allow_list_permits_everything() {
+        assert!(is_allowed("C:/anything.exe", &[]));
+    }
+
+    #[test]
+    fn allow_list_matches_by_suffix_case_insensitively() {
+        let allow = vec!["C:\\Program Files\\Steam\\steam.exe".to_string()];
+        assert!(is_allowed("c:/program files/steam/STEAM.exe", &allow));
+    }
+
+    #[test]
+    fn allow_list_rejects_unlisted_executable() {
+        let allow = vec!["C:\\Games\\steam.exe".to_string()];
+        assert!(!is_allowed("C:\\Windows\\System32\\cmd.exe", &allow));
+    }
+}
