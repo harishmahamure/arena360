@@ -12,8 +12,9 @@ pgbouncer:
   replicaCount: 2
   externalService:
     enabled: true
-    type: LoadBalancer
+    type: NodePort
     port: 5433
+    nodePort: 30433
     annotations: {}
     loadBalancerIP: ""
   config:

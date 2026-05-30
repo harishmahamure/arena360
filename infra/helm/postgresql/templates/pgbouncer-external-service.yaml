@@ -20,6 +20,9 @@ spec:
       targetPort: pgbouncer
       protocol: TCP
       name: pgbouncer
+      {{- if and (eq .Values.pgbouncer.externalService.type "NodePort") .Values.pgbouncer.externalService.nodePort }}
+      nodePort: {{ .Values.pgbouncer.externalService.nodePort }}
+      {{- end }}
   selector:
     {{- include "arena360-postgresql.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: pgbouncer

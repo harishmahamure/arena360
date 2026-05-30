@@ -39,8 +39,9 @@ pgbouncer:
     port: 5432
   externalService:
     enabled: false
-    type: LoadBalancer
+    type: NodePort
     port: 5433
+    nodePort: 30433
     annotations: {}
     loadBalancerIP: ""
   auth:
