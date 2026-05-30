@@ -12,6 +12,7 @@
 //! is filesystem/registry only and completes well under the 60 s budget.
 
 use serde::Serialize;
+use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize)]
@@ -484,7 +485,6 @@ fn first_level_dirs(root: &std::path::Path) -> Vec<std::path::PathBuf> {
 fn scan_fixed_drives() -> Vec<ScanCandidate> {
     use std::collections::{HashSet, VecDeque};
     use std::fs;
-    use std::path::PathBuf;
 
     let mut out = Vec::new();
     let mut seen_dirs = HashSet::new();
@@ -518,9 +518,7 @@ fn scan_fixed_drives() -> Vec<ScanCandidate> {
 }
 
 #[cfg(target_os = "windows")]
-fn fixed_drive_roots() -> Vec<std::path::PathBuf> {
-    use std::path::PathBuf;
-
+fn fixed_drive_roots() -> Vec<PathBuf> {
     ('A'..='Z')
         .map(|letter| PathBuf::from(format!("{letter}:\\")))
         .filter(|path| path.exists())
