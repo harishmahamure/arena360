@@ -2,8 +2,8 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::dto::auth_dto::{
-    AuthResponseDto, AuthUserDto, ChangePasswordDto, LoginDto, RegisterDto, RegisterResponseDto,
-    VerifyOtpDto,
+    ActiveSessionDto, AuthResponseDto, AuthUserDto, ChangePasswordDto, LoginDto, RegisterDto,
+    RegisterResponseDto, VerifyOtpDto,
 };
 use crate::handlers;
 use crate::models::{
@@ -71,6 +71,7 @@ impl Modify for SecurityAddon {
         handlers::health::health_check_legacy,
         handlers::auth::login_admin,
         handlers::auth::login_staff,
+        handlers::auth::login_player,
         handlers::auth::verify_otp,
         handlers::auth::register,
         handlers::stats::dashboard_stats,
@@ -189,6 +190,7 @@ impl Modify for SecurityAddon {
             OtpPendingEnvelope,
             AuthResponseDto,
             AuthUserDto,
+            ActiveSessionDto,
             AuthResponseEnvelope,
             RegisterResponseDto,
             RegisterResponseEnvelope,

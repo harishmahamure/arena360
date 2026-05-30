@@ -15,6 +15,7 @@ fn admin_claims() -> gaming_cafe_api::dto::JwtUserClaims {
         roles: vec!["admin".to_string()],
         appId: "test".to_string(),
         orgIds: vec![],
+        deviceId: None,
     }
 }
 

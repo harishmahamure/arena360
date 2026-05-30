@@ -8,6 +8,16 @@ use crate::models::{
     CreateSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse, UsageSessionRow,
 };
 
+#[derive(Debug, Clone)]
+pub struct PlayerOpenSession {
+    pub session_id: Uuid,
+    pub device_id: Uuid,
+    pub device_name: String,
+    pub start_time: DateTime<Utc>,
+    pub balance_id: Uuid,
+    pub remaining_minutes: i32,
+}
+
 pub struct SessionRepository {
     pool: PgPool,
 }
@@ -89,6 +99,42 @@ impl SessionRepository {
             .fetch_all(&self.pool)
             .await?;
         Ok(sessions)
+    }
+
+    pub async fn find_open_session_for_player(
+        &self,
+        player_id: Uuid,
+    ) -> Result<Option<PlayerOpenSession>, AppError> {
+        let row = sqlx::query_as::<_, (Uuid, Uuid, String, DateTime<Utc>, Uuid, i32)>(
+            r#"
+            SELECT s.id, s."deviceId", COALESCE(d.name, 'Unknown'), s."startTime",
+                   s."balanceId", COALESCE(b."remainingMinutes", 0)
+            FROM usage_sessions s
+            INNER JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
+            LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
+            WHERE b."playerId" = $1
+              AND s."endTime" IS NULL
+              AND s."deletedAt" IS NULL
+            ORDER BY s."startTime" DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(player_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(session_id, device_id, device_name, start_time, balance_id, remaining_minutes)| {
+                PlayerOpenSession {
+                    session_id,
+                    device_id,
+                    device_name,
+                    start_time,
+                    balance_id,
+                    remaining_minutes,
+                }
+            },
+        ))
     }
 
     pub async fn list(

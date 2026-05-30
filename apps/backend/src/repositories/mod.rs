@@ -30,7 +30,7 @@ pub use ledger_repo::LedgerRepository;
 pub use plan_repo::{PlanCreateValues, PlanRepository};
 pub use player_plan_repo::PlayerPlanRepository;
 pub use product_repo::ProductRepository;
-pub use session_repo::SessionRepository;
+pub use session_repo::{PlayerOpenSession, SessionRepository};
 pub use shift_repo::ShiftRepository;
 pub use transaction_product_repo::TransactionProductRepository;
 pub use transaction_repo::TransactionRepository;

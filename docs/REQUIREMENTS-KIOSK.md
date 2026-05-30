@@ -126,7 +126,7 @@ flowchart TD
   mgmt --> scan[Tauri scan_installed_software]
   scan --> reconcile[Reconcile with allow-list Steam Riot Chrome G Hub NVIDIA audio]
   reconcile --> curate[Operator confirms or edits launch entries]
-  curate --> persist[Persist allow-list to backend for device]
+  curate --> persist[Persist allow-list to localStorage on device]
   persist --> status[Set device status operational or maintenance]
   status --> ready[Device ready for player login]
 ```
@@ -207,7 +207,7 @@ Legacy platform IDs (`US-KIOSK-*`, `US-SESSION-*`, `US-AUTH-003`) map to these e
 | US-KSCAN-002 | As the kiosk, I want to detect Chrome, Logitech G Hub, NVIDIA Control Panel, and Windows sound settings / approved audio apps, so utilities are launchable without escaping lockdown. | Must | — |
 | US-KSCAN-003 | As an operator in setup mode, I want to review scan results and build a per-device allow-list (executable path, display name, icon, category: game / launcher / utility), so only approved software is shown to players. | Must | US-DEVICE-002 |
 | US-KSCAN-004 | As the kiosk, I want to show only allow-listed entries whose executable still exists on disk, so broken installs are hidden. | Must | — |
-| US-KSCAN-005 | As the kiosk, I want to persist the allow-list to the backend linked to `deviceId`, so admin can edit remotely and kiosk syncs on login. | Should | — |
+| US-KSCAN-005 | As the kiosk, I want to persist the allow-list to the backend linked to `deviceId`, so admin can edit remotely and kiosk syncs on login. | Won't (v1) | Deferred per [ADR-0019](adr/0019-kiosk-device-allow-list.md) — allow-list in WebView `localStorage` on device only |
 | US-KSCAN-006 | As the kiosk, I want to re-run scan on demand in setup mode after operator installs new games, so the list stays current. | Should | — |
 | US-KSCAN-007 | As a player, I want to search/filter the launcher grid by name, so large libraries are usable. | Could | — |
 
@@ -554,24 +554,33 @@ Legacy platform IDs (`US-KIOSK-*`, `US-SESSION-*`, `US-AUTH-003`) map to these e
 | WebSocket | `GET /realtime`, ADR-0013 |
 | Admin device schema | `apps/admin/src/containers/devices/schemas/device-schema.ts` |
 
-### 7.2 Gaps (required before kiosk v1 — API / auth)
+### 7.2 Gaps — spec vs implementation
 
-| Gap | PRD requirement |
-|-----|-----------------|
-| **No player login endpoint** | `POST /auth/login/player` (username + password) → player JWT |
-| **No device registration API** | `POST /devices/register` with one-time code + fingerprint → device JWT |
-| **Sessions are staff-only today** | Player- or device-scoped endpoints to start/end own session on registered device |
-| **WS ACL blocks device channel** | Extend `realtime/acl.rs` so device JWT may subscribe to `device:{ownId}` only |
-| **Allow-list persistence** | New table or JSON column on `devices` for launch entries (path, name, category, icon hash) |
-| **Fingerprint storage** | Persist parsed fingerprint on `registeredKiosk` or dedicated columns; drift rules in service layer |
-| **Realtime recharge events** | Standardize event types e.g. `balance.updated` with `remainingMinutes`, `balanceId` |
-| **Shift binding** | Clarify whether kiosk-started sessions require active staff shift or use system shift |
-| **One session per player** | Today: one active session per `balanceId` only. Required: reject login/session create if player already has any `usage_sessions` row with `endTime IS NULL` on another device (`US-KAUTH-006`) |
+#### Resolved by ADR (K0 complete)
+
+| Topic | ADR | Decision summary |
+|-------|-----|------------------|
+| Player + device JWT auth, shift binding, single-session rule | [ADR-0017](adr/0017-kiosk-player-device-auth.md) | Dual-header HTTP; system kiosk shift; resume crash session on same device |
+| WebSocket ACL + event payload schemas | [ADR-0018](adr/0018-kiosk-ws-device-acl.md) | Device JWT may subscribe `device:{ownId}`; camelCase event payloads |
+| Allow-list storage | [ADR-0019](adr/0019-kiosk-device-allow-list.md) | Client `localStorage` only — no backend table or API v1 |
+| Windows lockdown + process IPC | [ADR-0020](adr/0020-kiosk-windows-lockdown.md) | `Locked` / `SetupRelaxed` state machine; Tauri command surface |
+
+#### Remaining implementation gaps (K1+ — spec'd, not yet coded)
+
+| Gap | PRD requirement | ADR / task |
+|-----|-----------------|------------|
+| **No player login endpoint** | `POST /auth/login/player` → player JWT | ADR-0017; `be-player-auth-endpoint` |
+| **No device registration API** | `POST /devices/register` with one-time code + fingerprint → device JWT | ADR-0017; `be-device-registration-api` |
+| **Sessions are staff-only today** | Player/device-scoped session start/end on registered device | ADR-0017; `be-kiosk-session-routes` |
+| **WS ACL blocks device channel** | Extend `realtime/acl.rs` for device JWT subscribe | ADR-0018; `be-ws-device-acl` |
+| **Fingerprint drift enforcement** | Compare MAC+serial+biosUuid on device requests | ADR-0017; `be-fingerprint-drift` |
+| **Realtime recharge events** | Publish `balance.updated` per ADR-0018 schema | ADR-0018; `be-recharge-events` |
+| **Contracts error codes** | `PLAYER_ALREADY_IN_SESSION`, `DEVICE_FINGERPRINT_MISMATCH`, etc. | ADR-0017; first K1 auth PR |
 
 ### 7.3 Data model notes
 
 - **Minutes wallet** is `player_plan_balances.remainingMinutes`, not `users.creditLimit` (tab/credit is separate AR feature).
-- **Games table** removed; launcher data is device-local + allow-list sync, not `device_games`.
+- **Games table** removed; launcher data is device-local allow-list in WebView `localStorage` (no backend sync v1) per ADR-0019, not `device_games`.
 - Session end reason enum should include at least: `voluntary`, `ENDED_AUTO`, `force`, `offline_reconcile`.
 
 ---
@@ -620,33 +629,33 @@ Design tokens: consume `packages/theme` CSS variables (`--gz-*`) per ADR-0007; n
 
 ---
 
-## 10. ADR follow-ups (before implementation)
+## 10. ADR status (K0 complete)
 
-Per `.cursor/rules/20-adr-discipline.mdc`, the following **DRAFT ADRs** are required before coding. This PRD does not implement them.
+K0 architectural decisions are **Accepted**. Implementation tracked in [PLANNER-KIOSK.md](PLANNER-KIOSK.md).
 
-| Draft ADR topic | Touches | Summary |
-|---------------|---------|---------|
-| Re-introduce `apps/kiosk` in monorepo | ADR-0002, `turbo.json`, `pnpm-workspace.yaml` | **Accepted:** [0016-kiosk-monorepo-reintroduce.md](adr/0016-kiosk-monorepo-reintroduce.md) — reverse 2026-05-27 deferral |
-| Player + device authentication | New | Player login, device JWT, token lifetimes, secure storage contract |
-| Kiosk WebSocket ACL | ADR-0013 | Device token may subscribe only to `device:{ownId}`; event schema for recharge |
-| Device launch allow-list storage | New | Schema for per-device executables; sync protocol |
-| Windows lockdown & process APIs | ADR-0002 | Rust commands: hook hotkeys, enumerate/kill process trees, fingerprint WMI |
+| ADR | Title | Status |
+|-----|-------|--------|
+| [0016-kiosk-monorepo-reintroduce.md](adr/0016-kiosk-monorepo-reintroduce.md) | Re-introduce `apps/kiosk` in monorepo | Accepted |
+| [0017-kiosk-player-device-auth.md](adr/0017-kiosk-player-device-auth.md) | Player + device JWT authentication | Accepted |
+| [0018-kiosk-ws-device-acl.md](adr/0018-kiosk-ws-device-acl.md) | Device WebSocket ACL + event schemas (amends ADR-0013) | Accepted |
+| [0019-kiosk-device-allow-list.md](adr/0019-kiosk-device-allow-list.md) | Client-side allow-list in `localStorage` (no backend v1) | Accepted |
+| [0020-kiosk-windows-lockdown.md](adr/0020-kiosk-windows-lockdown.md) | Windows lockdown and process APIs | Accepted |
 
 ---
 
 ## 11. Open questions
 
-| # | Question | Owner | Blocks |
-|---|----------|-------|--------|
-| OQ-1 | Must kiosk-started sessions bind to an active **staff shift**, or is a device-level “system” shift acceptable? | Product + backend | Session create API |
-| OQ-2 | Exact WebSocket event names and payloads for balance recharge? | Backend | `US-KSESSION-007` |
-| OQ-3 | Player JWT lifetime and refresh strategy on long sessions (>8 h)? | Security | `US-KAUTH-*` |
-| OQ-4 | Should closing the launched game **auto-end** the session or return to launcher with session still running? | Product | `US-KPROC-*`, `US-KSESSION-008` |
-| OQ-5 | Maximum concurrent launched apps per session (1 vs many)? | Product | Process tracker |
-| OQ-6 | Per-cafe policy: sound on reminders default on or off? | Operator config | `US-KSESSION-003` |
-| OQ-7 | Offline grace duration: 10 min proposed — confirm vs ggLeap behavior? | Product | `US-KOFFLINE-001` |
-| OQ-8 | Icon extraction for allow-list tiles (embedded exe icon vs manual upload)? | UX | `US-KSCAN-003` |
-| OQ-9 | Same-device re-login after kiosk crash: resume open session or auto-end stale and start fresh? | Product + backend | `US-KAUTH-006` scenario 4 |
+| # | Question | Owner | Status / resolution |
+|---|----------|-------|---------------------|
+| OQ-1 | Must kiosk-started sessions bind to an active **staff shift**, or is a device-level “system” shift acceptable? | Product + backend | **Resolved** — system kiosk shift per venue ([ADR-0017](adr/0017-kiosk-player-device-auth.md)) |
+| OQ-2 | Exact WebSocket event names and payloads for balance recharge? | Backend | **Resolved** — camelCase schemas ([ADR-0018](adr/0018-kiosk-ws-device-acl.md)) |
+| OQ-3 | Player JWT lifetime and refresh strategy on long sessions (>8 h)? | Security | **Resolved** — 24 h fixed, no refresh token v1 ([ADR-0017](adr/0017-kiosk-player-device-auth.md)) |
+| OQ-4 | Should closing the launched game **auto-end** the session or return to launcher with session still running? | Product | Open — `US-KPROC-*`, `US-KSESSION-008` |
+| OQ-5 | Maximum concurrent launched apps per session (1 vs many)? | Product | Open — process tracker |
+| OQ-6 | Per-cafe policy: sound on reminders default on or off? | Operator config | Open — `US-KSESSION-003` |
+| OQ-7 | Offline grace duration: 10 min proposed — confirm vs ggLeap behavior? | Product | Open — `US-KOFFLINE-001` |
+| OQ-8 | Icon extraction for allow-list tiles (embedded exe icon vs manual upload)? | UX | **Resolved** — local `.exe` extraction ([ADR-0019](adr/0019-kiosk-device-allow-list.md)) |
+| OQ-9 | Same-device re-login after kiosk crash: resume open session or auto-end stale and start fresh? | Product + backend | **Resolved** — resume on same device ([ADR-0017](adr/0017-kiosk-player-device-auth.md)) |
 
 ---
 

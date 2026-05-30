@@ -21,6 +21,8 @@ pub struct ErrorEnvelope {
     pub message: String,
     pub error: String,
     pub timestamp: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, ToSchema)]

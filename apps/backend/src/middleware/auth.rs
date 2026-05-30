@@ -65,6 +65,16 @@ pub fn require_admin_or_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
     }
 }
 
+pub fn require_device(claims: &JwtUserClaims) -> Result<(), AppError> {
+    if claims.is_device() {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "Device access required".to_string(),
+        ))
+    }
+}
+
 fn is_public(path: &str) -> bool {
     if PUBLIC_EXACT.contains(&path) {
         return true;
@@ -163,5 +173,36 @@ where
             .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
         require_admin_or_staff(&claims)?;
         Ok(AdminOrStaff(claims))
+    }
+}
+
+pub struct DeviceUser(pub JwtUserClaims);
+
+impl DeviceUser {
+    pub fn device_id(&self) -> Result<uuid::Uuid, AppError> {
+        require_device(&self.0)?;
+        self.0
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Internal("Invalid device ID in token".to_string()))
+    }
+}
+
+impl<S> axum::extract::FromRequestParts<S> for DeviceUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let claims = parts
+            .extensions
+            .get::<JwtUserClaims>()
+            .cloned()
+            .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
+        require_device(&claims)?;
+        Ok(DeviceUser(claims))
     }
 }

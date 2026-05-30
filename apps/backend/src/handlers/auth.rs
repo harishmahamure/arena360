@@ -8,7 +8,7 @@ use crate::dto::{
     RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
 };
 use crate::error::AppError;
-use crate::middleware::AdminOrStaff;
+use crate::middleware::{AdminOrStaff, DeviceUser};
 use crate::models::ClockInDto;
 use crate::openapi::responses::{
     AuthResponseEnvelope, ErrorEnvelope, OtpPendingEnvelope, RegisterResponseEnvelope,
@@ -103,6 +103,31 @@ pub async fn verify_otp(
     Json(dto): Json<VerifyOtpDto>,
 ) -> ApiResult<AuthResponseDto> {
     let result = state.auth.verify_otp(dto).await?;
+    ok(result)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/login/player",
+    request_body = LoginDto,
+    responses(
+        (status = 200, description = "Authenticated", body = AuthResponseEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 409, description = "Conflict", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "auth"
+)]
+pub async fn login_player(
+    State(state): State<Arc<AppState>>,
+    device_user: DeviceUser,
+    Json(dto): Json<LoginDto>,
+) -> ApiResult<AuthResponseDto> {
+    let device_id = device_user.device_id()?;
+    let device = state.devices.get_by_id(device_id).await?;
+    let result = state.auth.login_player(&device, dto).await?;
     ok(result)
 }
 

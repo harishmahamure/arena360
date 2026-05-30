@@ -1735,14 +1735,15 @@ Should/Could stories map to the same epic tasks; verification deferred unless pr
 - **2026-05-30**: K2 `kiosk-workspace-wire` + `kiosk-app-scaffold` in progress (greenfield; archive tarball unavailable).
 - **2026-05-30**: `kiosk-adr-player-auth` done — `DRAFT-0017-kiosk-player-device-auth.md` Proposed; OQ-1/OQ-3/OQ-9 resolved (D10–D12); K1 auth tasks blocked until ADR Accepted.
 - **2026-05-30**: **K0 complete** — ADR-0017–0020 Accepted; OQ-2/OQ-8 resolved (D13–D16); `be-allow-list-storage` + `admin-device-allow-list` cancelled; **K1 unblocked**.
+- **2026-05-30**: User confirmed all K0 ADR approvals; REQUIREMENTS-KIOSK.md §7/10/11 synced to Accepted ADRs.
 
 ---
 
 ## How to use this file
 
-1. Complete **K0 ADRs** and obtain user approval before K1/K2.
+1. **K0 complete** — ADR-0016–0020 Accepted; proceed with K1/K2 implementation.
 2. Set task status `in_progress` → `done` → `verified` with evidence.
 3. Platform consolidation tasks stay in [PLANNER.md](PLANNER.md).
-4. **First sprint after K0:** `be-player-auth-endpoint`, `be-device-registration-api`, `be-single-session-rule`, `kiosk-app-scaffold`, `kiosk-workspace-wire`.
+4. **First sprint (K1/K2):** `be-device-registration-api`, `be-player-auth-endpoint`, `be-single-session-rule`, `kiosk-shared-packages` (`kiosk-app-scaffold` + `kiosk-workspace-wire` already `verified`).
 
 ---

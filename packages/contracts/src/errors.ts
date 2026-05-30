@@ -24,9 +24,13 @@ export enum ErrorCode {
   DEVICE_UNDER_MAINTENANCE = 'DEVICE_UNDER_MAINTENANCE',
   DEVICE_OUT_OF_SERVICE = 'DEVICE_OUT_OF_SERVICE',
   DEVICE_NOT_OPERATIONAL = 'DEVICE_NOT_OPERATIONAL',
+  DEVICE_NOT_REGISTERED = 'DEVICE_NOT_REGISTERED',
+  DEVICE_FINGERPRINT_MISMATCH = 'DEVICE_FINGERPRINT_MISMATCH',
+  DEVICE_REGISTRATION_INVALID = 'DEVICE_REGISTRATION_INVALID',
 
   // Session errors
   ACTIVE_SESSION_EXISTS = 'ACTIVE_SESSION_EXISTS',
+  PLAYER_ALREADY_IN_SESSION = 'PLAYER_ALREADY_IN_SESSION',
   SESSION_NOT_FOUND = 'SESSION_NOT_FOUND',
   SESSION_ALREADY_ENDED = 'SESSION_ALREADY_ENDED',
 
@@ -69,8 +73,13 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.DEVICE_UNDER_MAINTENANCE]: 'The device is currently under maintenance',
   [ErrorCode.DEVICE_OUT_OF_SERVICE]: 'The device is out of service',
   [ErrorCode.DEVICE_NOT_OPERATIONAL]: 'The device is not operational',
+  [ErrorCode.DEVICE_NOT_REGISTERED]: 'Device is not registered',
+  [ErrorCode.DEVICE_FINGERPRINT_MISMATCH]:
+    'Device hardware fingerprint mismatch — re-register with staff',
+  [ErrorCode.DEVICE_REGISTRATION_INVALID]: 'Registration code is invalid or expired',
 
   [ErrorCode.ACTIVE_SESSION_EXISTS]: 'An active session already exists for this player plan',
+  [ErrorCode.PLAYER_ALREADY_IN_SESSION]: 'You are already logged in on another device',
   [ErrorCode.SESSION_NOT_FOUND]: 'Session not found',
   [ErrorCode.SESSION_ALREADY_ENDED]: 'Session has already been ended',
 

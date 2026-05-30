@@ -125,6 +125,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/ready", get(handlers::health::ready_check))
         .route("/auth/login/admin", post(handlers::auth::login_admin))
         .route("/auth/login/staff", post(handlers::auth::login_staff))
+        .route("/auth/login/player", post(handlers::auth::login_player))
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/verify-otp", post(handlers::auth::verify_otp))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))

@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/login/player": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["login_player"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login/staff": {
         parameters: {
             query?: never;
@@ -1231,6 +1247,14 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        ActiveSessionDto: {
+            balanceId: string;
+            id: string;
+            /** Format: double */
+            remainingMinutes: number;
+            /** Format: date-time */
+            startTime: string;
+        };
         AddMemberDto: {
             /** Format: uuid */
             userId: string;
@@ -1253,6 +1277,7 @@ export interface components {
         };
         AuthResponseDto: {
             accessToken: string;
+            activeSession?: null | components["schemas"]["ActiveSessionDto"];
             shiftId?: string | null;
             user: components["schemas"]["AuthUserDto"];
         };
@@ -1902,6 +1927,7 @@ export interface components {
             timeCreditsConsumed?: number | null;
         };
         ErrorEnvelope: {
+            details?: unknown;
             error: string;
             message: string;
             /** Format: int32 */
@@ -3602,6 +3628,66 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    login_player: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginDto"];
+            };
+        };
+        responses: {
+            /** @description Authenticated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponseEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

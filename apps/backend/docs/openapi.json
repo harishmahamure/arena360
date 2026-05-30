@@ -78,6 +78,81 @@
         }
       }
     },
+    "/auth/login/player": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "login_player",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/auth/login/staff": {
       "post": {
         "tags": [
@@ -8001,6 +8076,31 @@
           }
         }
       },
+      "ActiveSessionDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "startTime",
+          "balanceId",
+          "remainingMinutes"
+        ],
+        "properties": {
+          "balanceId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "remainingMinutes": {
+            "type": "number",
+            "format": "double"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "AddMemberDto": {
         "type": "object",
         "required": [
@@ -8075,6 +8175,16 @@
         "properties": {
           "accessToken": {
             "type": "string"
+          },
+          "activeSession": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActiveSessionDto"
+              }
+            ]
           },
           "shiftId": {
             "type": [
@@ -10469,6 +10579,7 @@
           "timestamp"
         ],
         "properties": {
+          "details": {},
           "error": {
             "type": "string"
           },

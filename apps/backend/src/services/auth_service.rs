@@ -3,22 +3,24 @@ use std::sync::Arc;
 use bcrypt::verify;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
+use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::dto::{
-    AuthResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse, RateLimitClaims, StaffLoginDto,
-    VerifyOtpDto,
+    ActiveSessionDto, AuthResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse, RateLimitClaims,
+    StaffLoginDto, VerifyOtpDto,
 };
 use crate::error::AppError;
-use crate::models::User;
-use crate::repositories::UserRepository;
+use crate::models::{Device, User};
+use crate::repositories::{SessionRepository, UserRepository};
 use crate::services::totp_util::verify_totp_code;
 use crate::services::{MailService, OtpRateLimiter};
 
 pub struct AuthService {
     user_repo: UserRepository,
+    session_repo: SessionRepository,
     mail_service: MailService,
     otp_limiter: OtpRateLimiter,
     settings: Arc<Settings>,
@@ -28,6 +30,7 @@ impl AuthService {
     pub fn new(pool: PgPool, settings: Arc<Settings>) -> Self {
         Self {
             user_repo: UserRepository::new(pool.clone()),
+            session_repo: SessionRepository::new(pool),
             mail_service: MailService::new(settings.as_ref()),
             otp_limiter: OtpRateLimiter::new(),
             settings,
@@ -71,7 +74,6 @@ impl AuthService {
                 Some(code) if !code.is_empty() => code,
                 _ => {
                     tracing::error!("TOTP code is required but not provided or empty");
-                    // Return 400 for missing TOTP code so frontend can transition to step 2
                     return Err(AppError::BadRequest("TOTP code is required".to_string()));
                 }
             };
@@ -92,7 +94,143 @@ impl AuthService {
             accessToken: token,
             user: user.to_auth_user(),
             shiftId: None,
+            activeSession: None,
         })
+    }
+
+    pub async fn login_player(
+        &self,
+        device: &Device,
+        dto: LoginDto,
+    ) -> Result<AuthResponseDto, AppError> {
+        if device.registration_status != "registered" {
+            return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
+        }
+
+        if device.status == "under_maintenance" {
+            return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
+        }
+
+        // Fingerprint drift enforcement deferred to be-fingerprint-drift (ADR-0017).
+
+        let user = self.authenticate_player(&dto.username, &dto.password).await?;
+
+        let open_session = self
+            .session_repo
+            .find_open_session_for_player(user.id)
+            .await?;
+
+        let active_session = if let Some(session) = open_session {
+            if session.device_id != device.id {
+                return Err(AppError::conflict_code(
+                    "PLAYER_ALREADY_IN_SESSION",
+                    Some(json!({
+                        "deviceId": session.device_id.to_string(),
+                        "deviceName": session.device_name,
+                        "sessionId": session.session_id.to_string(),
+                        "sessionStartTime": session.start_time.to_rfc3339(),
+                    })),
+                ));
+            }
+
+            Some(ActiveSessionDto {
+                id: session.session_id.to_string(),
+                startTime: session.start_time,
+                balanceId: session.balance_id.to_string(),
+                remainingMinutes: session.remaining_minutes as f64,
+            })
+        } else {
+            None
+        };
+
+        let token = self.generate_player_token(&user, device.id)?;
+
+        Ok(AuthResponseDto {
+            accessToken: token,
+            user: user.to_auth_user(),
+            shiftId: None,
+            activeSession: active_session,
+        })
+    }
+
+    pub async fn authenticate_player(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<User, AppError> {
+        let user = self
+            .user_repo
+            .find_by_username_with_password(username)
+            .await?
+            .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
+
+        if user.role.as_deref() != Some("player") {
+            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
+        }
+
+        self.verify_password_for_player(password, user.password_hash.as_deref())?;
+        self.ensure_active_for_player(&user)?;
+
+        Ok(user)
+    }
+
+    pub fn generate_device_token(&self, device_id: Uuid) -> Result<String, AppError> {
+        let now = Utc::now();
+        let exp_duration = parse_duration(&self.settings.jwt_device_expiration);
+        let id = device_id.to_string();
+
+        let claims = JwtUserClaims {
+            sub: id.clone(),
+            permissions: vec![],
+            allowedTenants: vec![],
+            rateLimit: Some(RateLimitClaims { qps: 100 }),
+            iss: "gamezone".to_string(),
+            aud: serde_json::json!("gamezone"),
+            iat: Some(now.timestamp()),
+            exp: Some((now + exp_duration).timestamp()),
+            userId: id.clone(),
+            tenantId: "dualshock-arena".to_string(),
+            roles: vec!["device".to_string()],
+            appId: "game-zone-kiosk".to_string(),
+            orgIds: vec![],
+            deviceId: Some(id),
+        };
+
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(self.settings.jwt_secret.as_bytes()),
+        )
+        .map_err(AppError::Jwt)
+    }
+
+    pub fn generate_player_token(&self, user: &User, device_id: Uuid) -> Result<String, AppError> {
+        let now = Utc::now();
+        let exp_duration = parse_duration(&self.settings.jwt_player_expiration);
+
+        let claims = JwtUserClaims {
+            sub: user.id.to_string(),
+            permissions: vec![],
+            allowedTenants: vec![],
+            rateLimit: Some(RateLimitClaims { qps: 100 }),
+            iss: "gamezone".to_string(),
+            aud: serde_json::json!("gamezone"),
+            iat: Some(now.timestamp()),
+            exp: Some((now + exp_duration).timestamp()),
+            userId: user.id.to_string(),
+            tenantId: "dualshock-arena".to_string(),
+            roles: vec!["player".to_string()],
+            appId: "game-zone-kiosk".to_string(),
+            orgIds: vec![],
+            deviceId: Some(device_id.to_string()),
+        };
+
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(self.settings.jwt_secret.as_bytes()),
+        )
+        .map_err(AppError::Jwt)
     }
 
     pub async fn authenticate_staff(
@@ -170,6 +308,7 @@ impl AuthService {
             accessToken: token,
             user: user.to_auth_user(),
             shiftId: None,
+            activeSession: None,
         })
     }
 
@@ -189,6 +328,7 @@ impl AuthService {
             accessToken: token,
             user: user.to_auth_user(),
             shiftId: None,
+            activeSession: None,
         })
     }
 
@@ -230,11 +370,34 @@ impl AuthService {
         }
     }
 
+    fn verify_password_for_player(
+        &self,
+        password: &str,
+        hash: Option<&str>,
+    ) -> Result<(), AppError> {
+        let Some(hash) = hash else {
+            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
+        };
+        if verify(password, hash).unwrap_or(false) {
+            Ok(())
+        } else {
+            Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))
+        }
+    }
+
     fn ensure_active(&self, user: &User) -> Result<(), AppError> {
         if user.is_active {
             Ok(())
         } else {
             Err(AppError::Unauthorized("User is not active".to_string()))
+        }
+    }
+
+    fn ensure_active_for_player(&self, user: &User) -> Result<(), AppError> {
+        if user.is_active {
+            Ok(())
+        } else {
+            Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))
         }
     }
 
@@ -261,6 +424,7 @@ impl AuthService {
             roles: vec![role],
             appId: "game-zone-backend".to_string(),
             orgIds: vec![],
+            deviceId: None,
         };
 
         encode(

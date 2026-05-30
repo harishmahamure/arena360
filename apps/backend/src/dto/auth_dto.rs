@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -55,11 +56,22 @@ pub struct OtpPendingResponse {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Serialize, ToSchema)]
+pub struct ActiveSessionDto {
+    pub id: String,
+    pub startTime: DateTime<Utc>,
+    pub balanceId: String,
+    pub remainingMinutes: f64,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AuthResponseDto {
     pub accessToken: String,
     pub user: AuthUserDto,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shiftId: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activeSession: Option<ActiveSessionDto>,
 }
 
 #[allow(non_snake_case)]
@@ -101,6 +113,8 @@ pub struct JwtUserClaims {
     pub roles: Vec<String>,
     pub appId: String,
     pub orgIds: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deviceId: Option<String>,
 }
 
 impl JwtUserClaims {
@@ -112,12 +126,27 @@ impl JwtUserClaims {
         self.roles.iter().any(|r| r == "staff")
     }
 
+    pub fn is_device(&self) -> bool {
+        self.roles.iter().any(|r| r == "device")
+    }
+
+    pub fn is_player(&self) -> bool {
+        self.roles.iter().any(|r| r == "player")
+    }
+
     pub fn is_admin_or_staff(&self) -> bool {
         self.is_admin() || self.is_staff()
     }
 
     pub fn user_id_uuid(&self) -> Option<uuid::Uuid> {
         uuid::Uuid::parse_str(&self.userId).ok()
+    }
+
+    pub fn device_id_uuid(&self) -> Option<uuid::Uuid> {
+        self.deviceId
+            .as_ref()
+            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+            .or_else(|| self.user_id_uuid())
     }
 }
 
@@ -142,6 +171,26 @@ mod jwt_tests {
             roles: vec!["admin".to_string()],
             appId: "game-zone-backend".to_string(),
             orgIds: vec![],
+            deviceId: None,
+        }
+    }
+
+    fn player_claims(now: chrono::DateTime<Utc>, device_id: &str) -> JwtUserClaims {
+        JwtUserClaims {
+            sub: "player-id".to_string(),
+            permissions: vec![],
+            allowedTenants: vec![],
+            rateLimit: Some(RateLimitClaims { qps: 100 }),
+            iss: "gamezone".to_string(),
+            aud: serde_json::json!("gamezone"),
+            iat: Some(now.timestamp()),
+            exp: Some((now + Duration::hours(24)).timestamp()),
+            userId: "player-id".to_string(),
+            tenantId: "dualshock-arena".to_string(),
+            roles: vec!["player".to_string()],
+            appId: "game-zone-kiosk".to_string(),
+            orgIds: vec![],
+            deviceId: Some(device_id.to_string()),
         }
     }
 
@@ -168,5 +217,33 @@ mod jwt_tests {
             &validation,
         )
         .expect("decode with second-based iat");
+    }
+
+    #[test]
+    fn player_jwt_roundtrip_includes_device_id() {
+        let secret = "your-secret-key-must-be-at-least-32-characters-long";
+        let now = Utc::now();
+        let claims = player_claims(now, "device-uuid");
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("encode");
+
+        let mut validation = Validation::default();
+        validation.validate_exp = true;
+        validation.set_audience(&["gamezone"]);
+        validation.set_issuer(&["gamezone"]);
+
+        let decoded = decode::<JwtUserClaims>(
+            &token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &validation,
+        )
+        .expect("decode player token");
+
+        assert_eq!(decoded.claims.deviceId.as_deref(), Some("device-uuid"));
+        assert!(decoded.claims.is_player());
     }
 }
