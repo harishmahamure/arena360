@@ -33,6 +33,7 @@ pgbouncer:
     tag: latest
     pullPolicy: IfNotPresent
   replicaCount: 2
+  containerPort: 6432
   service:
     type: ClusterIP
     port: 5432

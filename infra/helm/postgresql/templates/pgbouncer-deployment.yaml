@@ -38,6 +38,10 @@ spec:
               value: {{ .Values.postgresql.auth.database | quote }}
             - name: PGBOUNCER_AUTH_TYPE
               value: plain
+            - name: PGBOUNCER_AUTH_FILE
+              value: /etc/pgbouncer/userlist.txt
+            - name: PGBOUNCER_LISTEN_PORT
+              value: {{ .Values.pgbouncer.containerPort | quote }}
             - name: PGBOUNCER_POOL_MODE
               value: {{ .Values.pgbouncer.config.poolMode | quote }}
             - name: PGBOUNCER_MAX_CLIENT_CONN
@@ -48,7 +52,7 @@ spec:
               value: {{ .Values.pgbouncer.config.reservePoolSize | quote }}
           ports:
             - name: pgbouncer
-              containerPort: 5432
+              containerPort: {{ .Values.pgbouncer.containerPort }}
               protocol: TCP
           livenessProbe:
             tcpSocket:
@@ -62,6 +66,18 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.pgbouncer.resources | nindent 12 }}
+          volumeMounts:
+            - name: userlist
+              mountPath: /etc/pgbouncer/userlist.txt
+              subPath: {{ .Values.pgbouncer.auth.userlistKey }}
+              readOnly: true
+      volumes:
+        - name: userlist
+          secret:
+            secretName: {{ .Values.pgbouncer.auth.existingSecret | default (include "arena360-postgresql.secretName" .) }}
+            items:
+              - key: {{ .Values.pgbouncer.auth.userlistKey }}
+                path: {{ .Values.pgbouncer.auth.userlistKey }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
