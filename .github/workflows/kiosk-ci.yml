@@ -51,7 +51,13 @@ jobs:
       - name: Rust clippy (kiosk)
         run: cargo clippy --all-targets --manifest-path apps/kiosk/src-tauri/Cargo.toml -- -D warnings
 
+      # Inject the kiosk's build-time config. VITE_API_URL is baked into the
+      # web bundle by Vite at build time, so it must be set here (not at
+      # runtime). Configure it as a repo/environment variable in
+      # Settings > Secrets and variables > Actions > Variables.
       - name: Tauri build (Windows bundle)
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'http://192.168.50.218:3001' }}
         run: pnpm --filter @gaming-cafe/kiosk tauri:build
 
       # Publish the installers so they can be downloaded from the workflow
