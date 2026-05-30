@@ -1,6 +1,9 @@
 //! Low-level keyboard hook used during lockdown.
 //!
-//! Blocks Alt+Tab, the Windows keys, Alt+F4, and Ctrl+Shift+Esc. **Limitation:**
+//! Blocks every global Windows shortcut that can break out of the kiosk:
+//! both Windows keys and any `Win`+key combo, Alt+Tab, Alt+Esc, Alt+F4,
+//! Alt+Space (system menu), Ctrl+Esc (Start menu), Ctrl+Shift+Esc (Task
+//! Manager), and the Menu/Apps (context-menu) key. **Limitation:**
 //! Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user
 //! mode by design — it always reaches the Windows Secure Desktop. Full CAD
 //! suppression requires the `DisableLockWorkstation` /
@@ -16,7 +19,8 @@ mod win {
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_LWIN, VK_MENU, VK_RWIN, VK_TAB,
+        GetAsyncKeyState, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_LWIN, VK_MENU, VK_RWIN,
+        VK_SPACE, VK_TAB,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
@@ -34,42 +38,51 @@ mod win {
     static HOOK: OnceLock<HookHandle> = OnceLock::new();
     static ENABLED: AtomicBool = AtomicBool::new(false);
 
+    /// `true` if `vk` is currently held down (high bit of the async key state).
+    unsafe fn is_down(vk: i32) -> bool {
+        GetAsyncKeyState(vk) & 0x8000u16 as i16 != 0
+    }
+
+    /// Decide whether a key-down event is a global Windows shortcut that must be
+    /// swallowed during lockdown. `Ctrl+Alt+Del` is intentionally absent — it is
+    /// a Secure Attention Sequence the OS handles before any user-mode hook.
+    unsafe fn should_block(vk: u32) -> bool {
+        let alt = is_down(VK_MENU.0 as i32);
+        let ctrl = is_down(VK_CONTROL.0 as i32);
+        let win = is_down(VK_LWIN.0 as i32) || is_down(VK_RWIN.0 as i32);
+
+        // Either Windows key, or any combo while a Windows key is held
+        // (Win+R/E/D/L/Tab/number, etc.).
+        if vk == VK_LWIN.0 as u32 || vk == VK_RWIN.0 as u32 || win {
+            return true;
+        }
+        // Context-menu (Apps) key.
+        if vk == VK_APPS.0 as u32 {
+            return true;
+        }
+        // Alt-based: Alt+Tab, Alt+Esc, Alt+F4, Alt+Space (system menu).
+        if alt
+            && (vk == VK_TAB.0 as u32
+                || vk == VK_ESCAPE.0 as u32
+                || vk == VK_F4.0 as u32
+                || vk == VK_SPACE.0 as u32)
+        {
+            return true;
+        }
+        // Ctrl+Esc (Start menu) and Ctrl+Shift+Esc (Task Manager).
+        if ctrl && vk == VK_ESCAPE.0 as u32 {
+            return true;
+        }
+        false
+    }
+
     unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 && ENABLED.load(Ordering::SeqCst) {
-            let kb = *(lparam.0 as *const KBDLLHOOKSTRUCT);
-            let vk = kb.vkCode;
-
-            // Block Alt+Tab, Win keys, Ctrl+Esc (0x1B with ctrl), Alt+F4
-            let alt_down = GetAsyncKeyState(VK_MENU.0 as i32) & 0x8000u16 as i16 != 0;
-            let win_down = GetAsyncKeyState(VK_LWIN.0 as i32) & 0x8000u16 as i16 != 0
-                || GetAsyncKeyState(VK_RWIN.0 as i32) & 0x8000u16 as i16 != 0;
-
-            if vk == VK_TAB.0 as u32 && alt_down {
-                return LRESULT(1);
-            }
-            if vk == VK_LWIN.0 as u32 || vk == VK_RWIN.0 as u32 {
-                return LRESULT(1);
-            }
-            if vk == 0x1B && alt_down {
-                // Alt+F4
-                return LRESULT(1);
-            }
-            if vk == 0x1B && win_down {
-                // Win+ shortcuts that include escape menu
-                return LRESULT(1);
-            }
-            if win_down {
-                return LRESULT(1);
-            }
-
-            if wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize {
-                // Block Ctrl+Shift+Esc (task manager) — vk 0x1B with ctrl+shift
-                if vk == 0x1B {
-                    let ctrl = GetAsyncKeyState(0x11) & 0x8000u16 as i16 != 0;
-                    let shift = GetAsyncKeyState(0x10) & 0x8000u16 as i16 != 0;
-                    if ctrl && shift {
-                        return LRESULT(1);
-                    }
+            let is_keydown = wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
+            if is_keydown {
+                let kb = *(lparam.0 as *const KBDLLHOOKSTRUCT);
+                if should_block(kb.vkCode) {
+                    return LRESULT(1);
                 }
             }
         }
