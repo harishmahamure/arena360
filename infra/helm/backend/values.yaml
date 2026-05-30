@@ -1,0 +1,133 @@
+replicaCount: 2
+
+image:
+  repository: harishmahamure/arena360
+  tag: backend-prod-latest
+  pullPolicy: Always
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  hosts:
+    - host: api.arena360.cloud
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+env:
+  PORT: "3000"
+  RUST_ENV: production
+  DATABASE_MAX_CONNECTIONS: "10"
+  JWT_ACCESS_EXPIRATION: 15m
+  JWT_PLAYER_EXPIRATION: 24h
+  JWT_DEVICE_EXPIRATION: 365d
+  BCRYPT_SALT_ROUNDS: "10"
+  CAFE_TZ: Asia/Kolkata
+  STORAGE_REGION: us-east-1
+  STORAGE_PRESIGN_EXPIRY_SECS: "900"
+
+envFromSecrets:
+  - envName: DATABASE_URL
+    name: arena360-backend-secrets
+    key: DATABASE_URL
+  - envName: JWT_SECRET
+    name: arena360-backend-secrets
+    key: JWT_SECRET
+  - envName: ZEPTOMAIL_TOKEN
+    name: arena360-backend-secrets
+    key: ZEPTOMAIL_TOKEN
+  - envName: STORAGE_ENDPOINT
+    name: arena360-backend-secrets
+    key: STORAGE_ENDPOINT
+    optional: true
+  - envName: STORAGE_BUCKET
+    name: arena360-backend-secrets
+    key: STORAGE_BUCKET
+    optional: true
+  - envName: STORAGE_ACCESS_KEY
+    name: arena360-backend-secrets
+    key: STORAGE_ACCESS_KEY
+    optional: true
+  - envName: STORAGE_SECRET_KEY
+    name: arena360-backend-secrets
+    key: STORAGE_SECRET_KEY
+    optional: true
+  - envName: STORAGE_PUBLIC_URL
+    name: arena360-backend-secrets
+    key: STORAGE_PUBLIC_URL
+    optional: true
+
+configMap:
+  enabled: true
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

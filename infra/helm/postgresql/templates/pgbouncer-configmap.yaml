@@ -1,0 +1,25 @@
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "arena360-postgresql.fullname" . }}-pgbouncer
+  labels:
+    {{- include "arena360-postgresql.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+data:
+  pgbouncer.ini: |
+    [databases]
+    {{ .Values.postgresql.auth.database }} = host={{ include "arena360-postgresql.postgresServiceName" . }} port={{ .Values.postgresql.service.port }} dbname={{ .Values.postgresql.auth.database }}
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 5432
+    auth_type = plain
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = {{ .Values.pgbouncer.config.poolMode }}
+    max_client_conn = {{ .Values.pgbouncer.config.maxClientConn }}
+    default_pool_size = {{ .Values.pgbouncer.config.defaultPoolSize }}
+    reserve_pool_size = {{ .Values.pgbouncer.config.reservePoolSize }}
+    server_reset_query = {{ .Values.pgbouncer.config.serverResetQuery }}
+    ignore_startup_parameters = extra_float_digits
+{{- end }}

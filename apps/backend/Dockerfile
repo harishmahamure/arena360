@@ -13,13 +13,13 @@ RUN touch src/main.rs && cargo build --release
 
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/gaming-cafe-api /usr/local/bin/
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/api/v1/health || exit 1
+    CMD curl -f http://localhost:3000/health/live || exit 1
 
 CMD ["gaming-cafe-api"]

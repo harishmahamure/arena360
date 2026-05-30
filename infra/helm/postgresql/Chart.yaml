@@ -1,0 +1,6 @@
+apiVersion: v2
+name: arena360-postgresql
+description: Arena360 PostgreSQL database with PgBouncer pooling
+type: application
+version: 0.1.0
+appVersion: "16"

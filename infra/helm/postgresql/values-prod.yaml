@@ -1,0 +1,27 @@
+postgresql:
+  auth:
+    username: arena360
+    database: arena360
+    existingSecret: arena360-postgresql-secrets
+  persistence:
+    enabled: true
+    storageClassName: ""
+    size: 50Gi
+
+pgbouncer:
+  replicaCount: 2
+  externalService:
+    enabled: true
+    type: LoadBalancer
+    port: 5432
+    annotations: {}
+    loadBalancerIP: ""
+  config:
+    poolMode: transaction
+    maxClientConn: 300
+    defaultPoolSize: 30
+    reservePoolSize: 10
+
+secret:
+  create: false
+  name: arena360-postgresql-secrets

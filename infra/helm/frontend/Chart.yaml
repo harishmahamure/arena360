@@ -1,0 +1,6 @@
+apiVersion: v2
+name: arena360-frontend-new
+description: Arena360 admin frontend served under /v2
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

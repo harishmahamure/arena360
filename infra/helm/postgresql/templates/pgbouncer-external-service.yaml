@@ -1,0 +1,26 @@
+{{- if and .Values.pgbouncer.enabled .Values.pgbouncer.externalService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "arena360-postgresql.pgbouncerServiceName" . }}-external
+  labels:
+    {{- include "arena360-postgresql.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+  {{- with .Values.pgbouncer.externalService.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.pgbouncer.externalService.type }}
+  {{- if .Values.pgbouncer.externalService.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.pgbouncer.externalService.loadBalancerIP | quote }}
+  {{- end }}
+  ports:
+    - port: {{ .Values.pgbouncer.externalService.port }}
+      targetPort: pgbouncer
+      protocol: TCP
+      name: pgbouncer
+  selector:
+    {{- include "arena360-postgresql.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+{{- end }}
