@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 
 export interface TokenStore {
   deviceToken?: string;
@@ -56,6 +57,28 @@ export interface ScanCandidate {
 
 export async function scanInstalledSoftware(): Promise<ScanCandidate[]> {
   return invoke<ScanCandidate[]>('scan_installed_software');
+}
+
+/**
+ * Open the native OS file picker so an admin can browse for an executable to
+ * add to the allow-list. Returns the absolute path, or `null` when the user
+ * cancels or the dialog is unavailable (e.g. plain browser dev).
+ */
+export async function pickExecutable(): Promise<string | null> {
+  try {
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      title: 'Select an application',
+      filters: [
+        { name: 'Programs', extensions: ['exe', 'bat', 'cmd', 'com', 'lnk'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    });
+    return typeof selected === 'string' ? selected : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface TrackedProcess {

@@ -7,11 +7,28 @@ import {
   loadLaunchEntries,
   removeLaunchEntry,
 } from '../lib/allowList';
-import { launchAllowed, type ScanCandidate, scanInstalledSoftware } from '../lib/tauriCommands';
+import {
+  launchAllowed,
+  pickExecutable,
+  type ScanCandidate,
+  scanInstalledSoftware,
+} from '../lib/tauriCommands';
+import { IconFallback } from './IconFallback';
 
 interface ScanProgress {
   scanned: number;
   total: number;
+}
+
+/** Derive a friendly display name from an executable path's file name. */
+function suggestName(path: string): string {
+  const base = path.split(/[\\/]/).pop() ?? path;
+  const stem = base.replace(/\.(exe|bat|cmd|com|lnk|app)$/i, '');
+  return stem
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function AllowListEditor() {
@@ -60,6 +77,13 @@ export function AllowListEditor() {
     setManualPath('');
   }
 
+  async function browse() {
+    const path = await pickExecutable();
+    if (!path) return;
+    setManualPath(path);
+    if (!manualName.trim()) setManualName(suggestName(path));
+  }
+
   function remove(id: string) {
     setEntries(removeLaunchEntry(id));
   }
@@ -89,6 +113,7 @@ export function AllowListEditor() {
           <ul className="allow-list">
             {entries.map((entry) => (
               <li key={entry.id} className={entry.present === false ? 'missing' : undefined}>
+                <IconFallback name={entry.name} size={28} className="allow-list-icon" />
                 <span className="allow-list-name">{entry.name}</span>
                 <span className="allow-list-path">{entry.executablePath}</span>
                 <span className="allow-list-actions">
@@ -121,6 +146,7 @@ export function AllowListEditor() {
           <ul className="allow-list">
             {candidates.map((c) => (
               <li key={c.executablePath} className={c.present ? undefined : 'missing'}>
+                <IconFallback name={c.name} size={28} className="allow-list-icon" />
                 <span className="allow-list-name">{c.name}</span>
                 <span className="allow-list-path">{c.executablePath}</span>
                 <span className="allow-list-actions">
@@ -140,7 +166,8 @@ export function AllowListEditor() {
       </div>
 
       <div className="allow-list-section">
-        <h2>Add manually</h2>
+        <h2>Add an application</h2>
+        <p className="hint">Browse for an executable, or paste its full path.</p>
         <form onSubmit={addManual} className="allow-list-manual">
           <input
             value={manualName}
@@ -152,6 +179,9 @@ export function AllowListEditor() {
             onChange={(e) => setManualPath(e.target.value)}
             placeholder="C:\\Path\\To\\game.exe"
           />
+          <button type="button" className="secondary" onClick={() => void browse()}>
+            Browse…
+          </button>
           <button type="submit">Add</button>
         </form>
       </div>

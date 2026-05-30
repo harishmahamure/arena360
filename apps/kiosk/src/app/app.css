@@ -7,13 +7,15 @@
   color-scheme: dark;
   font-family: var(--gz-font-sans, system-ui, sans-serif);
 
-  /* dark-context surface aliases */
-  --kiosk-bg: var(--gz-color-secondary-dark, #0f0f1a);
-  --kiosk-surface: var(--gz-color-secondary, #1a1a2e);
-  --kiosk-surface-alt: var(--gz-color-secondary-light, #2d2d44);
-  --kiosk-on-surface: #e8ecf4;
-  --kiosk-on-surface-muted: #94a3b8;
-  --kiosk-border: #2a3550;
+  /* dark-context surface aliases — sourced from the shared ggCircuit dark
+     tokens (@gaming-cafe/theme/tokens.css), with legacy fallbacks. */
+  --kiosk-bg: var(--gz-dark-bg, #0b0f1a);
+  --kiosk-surface: var(--gz-dark-surface, #141a2a);
+  --kiosk-surface-alt: var(--gz-dark-surface-alt, #1c2436);
+  --kiosk-surface-raised: var(--gz-dark-surface-raised, #222c42);
+  --kiosk-on-surface: var(--gz-dark-on-surface, #e8ecf4);
+  --kiosk-on-surface-muted: var(--gz-dark-on-surface-muted, #94a3b8);
+  --kiosk-border: var(--gz-dark-border, #2a3550);
 
   background: var(--kiosk-bg);
   color: var(--kiosk-on-surface);
@@ -81,6 +83,16 @@ input {
   border: 1px solid var(--kiosk-border);
   background: var(--kiosk-surface-alt);
   color: inherit;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+input:focus,
+input:focus-visible {
+  outline: none;
+  border-color: var(--gz-color-primary, #ff6900);
+  box-shadow: 0 0 0 3px rgba(255, 105, 0, 0.25);
 }
 
 button {
@@ -238,17 +250,24 @@ select {
 
 .allow-list li {
   display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: "name actions" "path actions";
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "icon name actions" "icon path actions";
   gap: 0.1rem 0.75rem;
   align-items: center;
   padding: 0.5rem 0.75rem;
   border-radius: var(--gz-radius-sm, 8px);
   background: var(--kiosk-surface-alt);
+  border: 1px solid var(--kiosk-border);
 }
 
 .allow-list li.missing {
   opacity: 0.55;
+}
+
+.allow-list-icon {
+  grid-area: icon;
+  color: var(--gz-color-primary, #ff6900);
+  opacity: 0.9;
 }
 
 .allow-list-name {
@@ -374,6 +393,11 @@ progress {
   cursor: default;
 }
 
+.launcher-tile-icon {
+  color: var(--gz-color-primary, #ff6900);
+  opacity: 0.85;
+}
+
 .launcher-tile-name {
   font-weight: 600;
 }
@@ -471,22 +495,25 @@ progress {
 .kiosk-bg-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(15, 15, 26, 0.55) 0%, rgba(15, 15, 26, 0.82) 100%);
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 105, 0, 0.28) 0%, transparent 45%),
+    radial-gradient(circle at 82% 82%, rgba(59, 130, 246, 0.16) 0%, transparent 45%),
+    linear-gradient(180deg, rgba(11, 15, 26, 0.72) 0%, rgba(11, 15, 26, 0.9) 100%);
 }
 
 .login-home-content {
   position: relative;
   z-index: 1;
-  width: min(420px, 92vw);
+  width: min(440px, 92vw);
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  padding: 2rem;
-  border-radius: var(--gz-radius-md, 12px);
-  background: rgba(26, 26, 46, 0.72);
-  border: 1px solid var(--kiosk-border);
-  backdrop-filter: blur(8px);
-  box-shadow: var(--gz-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.35));
+  padding: 2.25rem;
+  border-radius: var(--gz-radius-lg, 16px);
+  background: rgba(20, 26, 42, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
 }
 
 .login-home-brand {
@@ -567,7 +594,15 @@ progress {
 }
 
 .game-card-thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, var(--kiosk-surface-alt), var(--kiosk-surface));
+}
+
+.game-card-fallback-icon {
+  color: var(--gz-color-primary, #ff6900);
+  opacity: 0.85;
 }
 
 .game-card-overlay {

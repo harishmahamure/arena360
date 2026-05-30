@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { allowListPaths, type LaunchEntry, loadLaunchEntries } from '../lib/allowList';
 import { fetchActiveGames, type Game } from '../lib/games';
 import { launchAllowed } from '../lib/tauriCommands';
+import { IconFallback } from './IconFallback';
 
 interface LauncherGridProps {
   /** Disable launching (e.g. during force-end grace). */
@@ -81,7 +82,9 @@ export function LauncherGrid({ disabled, onError }: LauncherGridProps) {
               {game.thumbnailUrl ? (
                 <img className="game-card-thumb" src={game.thumbnailUrl} alt="" />
               ) : (
-                <div className="game-card-thumb game-card-thumb-empty" />
+                <span className="game-card-thumb game-card-thumb-empty">
+                  <IconFallback name={game.name} size={56} className="game-card-fallback-icon" />
+                </span>
               )}
               <span className="game-card-overlay">
                 {game.logoUrl ? (
@@ -115,6 +118,7 @@ export function LauncherGrid({ disabled, onError }: LauncherGridProps) {
           disabled={disabled || launchingKey !== null}
           onClick={() => void launch(entry.id, entry)}
         >
+          <IconFallback name={entry.name} size={36} className="launcher-tile-icon" />
           <span className="launcher-tile-name">{entry.name}</span>
           {launchingKey === entry.id ? (
             <span className="launcher-tile-status">Launching…</span>

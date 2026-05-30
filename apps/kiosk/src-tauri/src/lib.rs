@@ -11,6 +11,7 @@ use lockdown::init_locked_on_startup;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             init_locked_on_startup(app.handle());
             Ok(())

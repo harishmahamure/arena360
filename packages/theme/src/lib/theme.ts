@@ -380,4 +380,116 @@ const responsiveTheme = responsiveFontSizes(theme, {
   factor: 2,
 });
 
+/**
+ * Dark (ggCircuit-style) surfaces with the same orange accent. Used to render
+ * the admin login over a video background; the dashboard keeps the light
+ * `theme` until a full dark conversion lands. Slate scale mirrors the kiosk
+ * `--gz-dark-*` tokens so both apps read the same values.
+ */
+export const darkSurfaces = {
+  background: '#0B0F1A',
+  paper: '#141A2A',
+  paperAlt: '#1C2436',
+  border: '#2A3550',
+  onSurface: '#E8ECF4',
+  onSurfaceMuted: '#94A3B8',
+};
+
+const darkBaseTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: colors.primary,
+    secondary: colors.secondary,
+    success: colors.success,
+    warning: colors.warning,
+    error: colors.error,
+    info: colors.info,
+    grey: colors.grey,
+    background: {
+      default: darkSurfaces.background,
+      paper: darkSurfaces.paper,
+    },
+    text: {
+      primary: darkSurfaces.onSurface,
+      secondary: darkSurfaces.onSurfaceMuted,
+      disabled: alpha(darkSurfaces.onSurfaceMuted, 0.5),
+    },
+    divider: darkSurfaces.border,
+    action: {
+      active: colors.primary.main,
+      hover: alpha(colors.primary.main, 0.12),
+      selected: alpha(colors.primary.main, 0.2),
+      disabled: alpha(darkSurfaces.onSurfaceMuted, 0.4),
+      disabledBackground: alpha(darkSurfaces.onSurfaceMuted, 0.12),
+    },
+  },
+
+  typography: theme.typography,
+  shape: { borderRadius: 12 },
+  breakpoints: {
+    values: { xs: 0, sm: 640, md: 768, lg: 1024, xl: 1280 },
+  },
+
+  components: {
+    MuiButton: {
+      defaultProps: { disableElevation: true },
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+          padding: '10px 20px',
+          fontWeight: 600,
+          transition: 'all 0.2s ease-in-out',
+        },
+        contained: {
+          '&:hover': {
+            transform: 'translateY(-1px)',
+            boxShadow: '0px 4px 12px rgba(255, 105, 0, 0.4)',
+          },
+        },
+        containedPrimary: {
+          background: `linear-gradient(135deg, ${colors.primary.main} 0%, ${colors.primary.dark} 100%)`,
+          '&:hover': {
+            background: `linear-gradient(135deg, ${colors.primary.light} 0%, ${colors.primary.main} 100%)`,
+          },
+        },
+      },
+    },
+
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          backgroundColor: alpha(darkSurfaces.paperAlt, 0.6),
+          '& .MuiOutlinedInput-notchedOutline': {
+            borderColor: darkSurfaces.border,
+          },
+          '&:hover .MuiOutlinedInput-notchedOutline': {
+            borderColor: alpha(colors.primary.main, 0.5),
+          },
+        },
+      },
+    },
+
+    MuiToggleButton: {
+      styleOverrides: {
+        root: {
+          color: darkSurfaces.onSurfaceMuted,
+          borderColor: darkSurfaces.border,
+          '&.Mui-selected': {
+            color: colors.primary.contrastText,
+            backgroundColor: alpha(colors.primary.main, 0.9),
+            '&:hover': { backgroundColor: colors.primary.main },
+          },
+        },
+      },
+    },
+  },
+});
+
+const darkTheme = responsiveFontSizes(darkBaseTheme, {
+  breakpoints: ['sm', 'md', 'lg'],
+  factor: 2,
+});
+
+export { darkTheme };
+
 export default responsiveTheme;

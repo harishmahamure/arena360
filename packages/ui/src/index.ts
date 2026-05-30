@@ -25,7 +25,12 @@ export { FormBuilder, useFormBuilder } from './lib/components/FormBuilder';
 export { FormSkeleton } from './lib/components/FormSkeleton';
 // Form Components
 export * from './lib/components/forms';
+export type { GameCardProps } from './lib/components/GameCard';
+// GameCard + default icon fallback (ggCircuit-style design primitives)
+export { GameCard } from './lib/components/GameCard';
 export { GridSkeleton } from './lib/components/GridSkeleton';
+export type { FallbackIconKind, IconFallbackProps } from './lib/components/IconFallback';
+export { defaultIconKind, IconFallback } from './lib/components/IconFallback';
 export type { ListViewPageProps } from './lib/components/ListViewPage';
 // ListViewPage
 export { ListViewPage } from './lib/components/ListViewPage';

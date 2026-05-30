@@ -20,6 +20,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
+# Native OS file-open dialog for the setup allow-list editor (browse for an
+# executable). Within the ADR-0019/0020 allow-list feature boundary.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Asset caching downloads (DRAFT-0022). rustls avoids a system OpenSSL dependency.

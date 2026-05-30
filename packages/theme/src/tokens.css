@@ -30,6 +30,17 @@
   --gz-color-border: #e4e4e7;
   --gz-color-divider: #e4e4e7;
 
+  /* dark surfaces (ggCircuit-style) — slate scale with the orange accent.
+     Mirrors `darkColor` in tokens.ts. The kiosk shell reads these directly. */
+  --gz-dark-bg: #0b0f1a;
+  --gz-dark-surface: #141a2a;
+  --gz-dark-surface-alt: #1c2436;
+  --gz-dark-surface-raised: #222c42;
+  --gz-dark-on-surface: #e8ecf4;
+  --gz-dark-on-surface-muted: #94a3b8;
+  --gz-dark-border: #2a3550;
+  --gz-dark-divider: #2a3550;
+
   /* spacing */
   --gz-space-1: 4px;
   --gz-space-2: 8px;
