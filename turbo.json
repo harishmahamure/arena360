@@ -36,6 +36,22 @@
     },
     "clean": {
       "cache": false
+    },
+    "tauri:dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "tauri:build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig.json",
+        "vite.config.*",
+        "tauri.conf.json",
+        "src-tauri/**"
+      ],
+      "outputs": ["src-tauri/target/release/**"]
     }
   }
 }
