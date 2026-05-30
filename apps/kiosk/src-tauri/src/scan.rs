@@ -360,7 +360,7 @@ fn read_steam_libraryfolders(steam_root: &std::path::Path) -> Vec<std::path::Pat
     };
     for line in text.lines() {
         if let Some(path) = extract_quoted_value(line, "path") {
-            out.push(PathBuf::from(path.replace("\\\\", "\\")));
+            out.push(std::path::PathBuf::from(path.replace("\\\\", "\\")));
         }
     }
     out
@@ -407,8 +407,6 @@ fn extract_quoted_value(line: &str, key: &str) -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn scan_store_folders() -> Vec<ScanCandidate> {
-    use std::path::PathBuf;
-
     let mut roots: Vec<(String, PathBuf)> = Vec::new();
     for drive in fixed_drive_roots() {
         roots.push(("Riot".to_string(), drive.join("Riot Games")));
