@@ -64,7 +64,9 @@ impl GameRepository {
         } else {
             "ASC"
         };
-        builder.push(format!(" ORDER BY {sort_col} {sort_order}, name ASC LIMIT "));
+        builder.push(format!(
+            " ORDER BY {sort_col} {sort_order}, name ASC LIMIT "
+        ));
         builder.push_bind(limit);
         builder.push(" OFFSET ");
         builder.push_bind(offset);
@@ -89,7 +91,11 @@ impl GameRepository {
         Ok(PaginationResult::new(games, total.0, page, limit))
     }
 
-    pub async fn create(&self, dto: &CreateGameDto, actor_id: Option<Uuid>) -> Result<Game, AppError> {
+    pub async fn create(
+        &self,
+        dto: &CreateGameDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Game, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
             INSERT INTO games (

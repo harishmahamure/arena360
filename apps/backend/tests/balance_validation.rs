@@ -11,7 +11,14 @@ fn make_balance(
     hours_until_expiry: i64,
     window: Option<(NaiveTime, NaiveTime)>,
 ) -> PlayerPlanBalance {
-    make_balance_scoped(remaining_minutes, status, hours_until_expiry, window, None, None)
+    make_balance_scoped(
+        remaining_minutes,
+        status,
+        hours_until_expiry,
+        window,
+        None,
+        None,
+    )
 }
 
 fn make_balance_scoped(
@@ -155,14 +162,28 @@ fn device_scope_rejects_null_scope() {
 #[test]
 fn device_scope_rejects_wrong_subtype() {
     let device = sample_device();
-    let balance = make_balance_scoped(60, balance_status::ACTIVE, 24, None, Some("PC"), Some("OTHER"));
+    let balance = make_balance_scoped(
+        60,
+        balance_status::ACTIVE,
+        24,
+        None,
+        Some("PC"),
+        Some("OTHER"),
+    );
     assert!(!BalanceService::device_scope_matches(&balance, &device));
 }
 
 #[test]
 fn validate_balance_with_device_rejects_mismatch() {
     let device = sample_device();
-    let balance = make_balance_scoped(60, balance_status::ACTIVE, 24, None, Some("PC"), Some("OTHER"));
+    let balance = make_balance_scoped(
+        60,
+        balance_status::ACTIVE,
+        24,
+        None,
+        Some("PC"),
+        Some("OTHER"),
+    );
     let result = BalanceService::validate_balance(&balance, Some(&device), None);
     assert!(!result.valid);
     assert_eq!(
@@ -196,7 +217,10 @@ fn validation_failure_code_maps_no_minutes() {
 #[test]
 fn plan_kind_mapping() {
     assert_eq!(gaming_cafe_api::models::plan_kind::TIME, "time");
-    assert_eq!(gaming_cafe_api::models::plan_kind::HAPPY_HOURS, "happy_hours");
+    assert_eq!(
+        gaming_cafe_api::models::plan_kind::HAPPY_HOURS,
+        "happy_hours"
+    );
 }
 
 #[test]
@@ -255,7 +279,10 @@ fn time_plan_active_recharge_resets_expiry() {
         fresh_expiry,
         now,
     );
-    assert_eq!(result, fresh_expiry, "Time plan recharge always resets expiry");
+    assert_eq!(
+        result, fresh_expiry,
+        "Time plan recharge always resets expiry"
+    );
 }
 
 #[test]
@@ -271,7 +298,10 @@ fn time_plan_expired_recharge_resets_expiry() {
         fresh_expiry,
         now,
     );
-    assert_eq!(result, fresh_expiry, "Expired time plan recharge resets expiry");
+    assert_eq!(
+        result, fresh_expiry,
+        "Expired time plan recharge resets expiry"
+    );
 }
 
 #[test]
@@ -287,7 +317,10 @@ fn time_plan_exhausted_recharge_resets_expiry() {
         fresh_expiry,
         now,
     );
-    assert_eq!(result, fresh_expiry, "Exhausted time plan recharge resets expiry");
+    assert_eq!(
+        result, fresh_expiry,
+        "Exhausted time plan recharge resets expiry"
+    );
 }
 
 #[test]

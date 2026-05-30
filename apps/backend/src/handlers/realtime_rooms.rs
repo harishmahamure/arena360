@@ -79,7 +79,9 @@ pub async fn add_member(
     Json(dto): Json<AddMemberDto>,
 ) -> ApiResult<serde_json::Value> {
     if !state.rooms.room_exists(room_id).await? {
-        return Err(crate::error::AppError::NotFound("Room not found".to_string()));
+        return Err(crate::error::AppError::NotFound(
+            "Room not found".to_string(),
+        ));
     }
     state.rooms.add_member(room_id, dto.user_id).await?;
     ok(serde_json::json!({ "message": "Member added" }))

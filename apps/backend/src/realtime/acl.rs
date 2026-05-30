@@ -66,11 +66,9 @@ pub fn can_subscribe(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), 
 
 pub fn can_publish(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), AppError> {
     match channel {
-        ChannelId::Public | ChannelId::Admin | ChannelId::Staff | ChannelId::Device(_) => {
-            Err(AppError::Forbidden(
-                "Only the system can publish to this channel".to_string(),
-            ))
-        }
+        ChannelId::Public | ChannelId::Admin | ChannelId::Staff | ChannelId::Device(_) => Err(
+            AppError::Forbidden("Only the system can publish to this channel".to_string()),
+        ),
         ChannelId::User(user_id) => {
             let caller_id = claims.user_id_uuid();
             if caller_id == Some(*user_id) || claims.is_admin() {
@@ -113,7 +111,11 @@ pub async fn device_has_player_session(
     Ok(row.is_some())
 }
 
-pub async fn is_room_member(pool: &PgPool, room_name: &str, user_id: Uuid) -> Result<bool, AppError> {
+pub async fn is_room_member(
+    pool: &PgPool,
+    room_name: &str,
+    user_id: Uuid,
+) -> Result<bool, AppError> {
     let row: Option<(i64,)> = sqlx::query_as(
         r#"SELECT 1::bigint FROM realtime_room_members rm
            JOIN realtime_rooms r ON r.id = rm.room_id

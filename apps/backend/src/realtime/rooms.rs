@@ -68,16 +68,17 @@ impl RoomService {
     }
 
     pub async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<Room>, AppError> {
-        let rows: Vec<(Uuid, String, Option<String>, Option<Uuid>, DateTime<Utc>)> = sqlx::query_as(
-            r#"SELECT r.id, r.name, r.description, r.created_by, r.created_at
+        let rows: Vec<(Uuid, String, Option<String>, Option<Uuid>, DateTime<Utc>)> =
+            sqlx::query_as(
+                r#"SELECT r.id, r.name, r.description, r.created_by, r.created_at
                FROM realtime_rooms r
                JOIN realtime_room_members m ON m.room_id = r.id
                WHERE m.user_id = $1
                ORDER BY r.name"#,
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await?;
+            )
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows
             .into_iter()
@@ -105,13 +106,12 @@ impl RoomService {
     }
 
     pub async fn remove_member(&self, room_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
-        let result = sqlx::query(
-            r#"DELETE FROM realtime_room_members WHERE room_id = $1 AND user_id = $2"#,
-        )
-        .bind(room_id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query(r#"DELETE FROM realtime_room_members WHERE room_id = $1 AND user_id = $2"#)
+                .bind(room_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("Member not found in room".to_string()));
@@ -120,12 +120,11 @@ impl RoomService {
     }
 
     pub async fn room_exists(&self, room_id: Uuid) -> Result<bool, AppError> {
-        let row: Option<(i64,)> = sqlx::query_as(
-            r#"SELECT 1::bigint FROM realtime_rooms WHERE id = $1"#,
-        )
-        .bind(room_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row: Option<(i64,)> =
+            sqlx::query_as(r#"SELECT 1::bigint FROM realtime_rooms WHERE id = $1"#)
+                .bind(room_id)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.is_some())
     }
 }

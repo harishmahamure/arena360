@@ -66,7 +66,17 @@ impl CashDepositService {
             "staff_id": staff_id.to_string(),
             "entity_type": "cash_deposit",
         });
-        let _ = self.outbox.publish("admin", "approval.requested", payload, Some("admin"), None, true).await;
+        let _ = self
+            .outbox
+            .publish(
+                "admin",
+                "approval.requested",
+                payload,
+                Some("admin"),
+                None,
+                true,
+            )
+            .await;
 
         let entry = CreateCashRegisterEntryDto {
             entry_type: "cash_out".to_string(),
@@ -102,15 +112,28 @@ impl CashDepositService {
             "status": "approved",
             "entity_type": "cash_deposit",
         });
-        let _ = self.outbox.publish(
-            &format!("user:{}", deposit.initiated_by),
-            "approval.decided",
-            payload.clone(),
-            None,
-            Some(deposit.initiated_by),
-            true,
-        ).await;
-        let _ = self.outbox.publish("admin", "cash_deposit.status_changed", payload, Some("admin"), None, true).await;
+        let _ = self
+            .outbox
+            .publish(
+                &format!("user:{}", deposit.initiated_by),
+                "approval.decided",
+                payload.clone(),
+                None,
+                Some(deposit.initiated_by),
+                true,
+            )
+            .await;
+        let _ = self
+            .outbox
+            .publish(
+                "admin",
+                "cash_deposit.status_changed",
+                payload,
+                Some("admin"),
+                None,
+                true,
+            )
+            .await;
 
         Ok(deposit)
     }
@@ -135,15 +158,28 @@ impl CashDepositService {
                 "status": "rejected",
                 "entity_type": "cash_deposit",
             });
-            let _ = self.outbox.publish(
-                &format!("user:{}", deposit.initiated_by),
-                "approval.decided",
-                payload.clone(),
-                None,
-                Some(deposit.initiated_by),
-                true,
-            ).await;
-            let _ = self.outbox.publish("admin", "cash_deposit.status_changed", payload, Some("admin"), None, true).await;
+            let _ = self
+                .outbox
+                .publish(
+                    &format!("user:{}", deposit.initiated_by),
+                    "approval.decided",
+                    payload.clone(),
+                    None,
+                    Some(deposit.initiated_by),
+                    true,
+                )
+                .await;
+            let _ = self
+                .outbox
+                .publish(
+                    "admin",
+                    "cash_deposit.status_changed",
+                    payload,
+                    Some("admin"),
+                    None,
+                    true,
+                )
+                .await;
         }
 
         let register = self

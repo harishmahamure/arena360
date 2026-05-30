@@ -36,6 +36,7 @@ pub struct CreateSessionDto {
 pub struct EndSessionDto {
     pub end_time: Option<DateTime<Utc>>,
     pub time_credits_consumed: Option<i32>,
+    pub staff_totp: Option<String>,
     /// One of: voluntary, auto, force, offline_reconcile. Echoed into the
     /// `session.ended` realtime event. Persistence is gated on ADR-0021.
     pub reason: Option<String>,

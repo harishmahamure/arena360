@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::dto::{
-    ActiveSessionDto, AuthResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse, RateLimitClaims,
-    StaffLoginDto, VerifyOtpDto,
+    ActiveSessionDto, AuthResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse,
+    RateLimitClaims, StaffLoginDto, VerifyOtpDto,
 };
 use crate::error::AppError;
 use crate::models::{Device, User};
@@ -116,7 +116,9 @@ impl AuthService {
         // Fingerprint drift is enforced in the player-login handler (ADR-0017)
         // before this call, using the optional fingerprint in PlayerLoginDto.
 
-        let user = self.authenticate_player(&dto.username, &dto.password).await?;
+        let user = self
+            .authenticate_player(&dto.username, &dto.password)
+            .await?;
 
         let open_session = self
             .session_repo

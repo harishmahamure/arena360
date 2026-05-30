@@ -90,14 +90,8 @@ success_envelope!(ActivePlansEnvelope, Vec<Plan>);
 success_envelope!(PlayerPlanEnvelope, PlayerPlanResponse);
 success_envelope!(PlayerPlanFlatEnvelope, PlayerPlan);
 success_envelope!(ValidationResultEnvelope, ValidationResult);
-success_envelope!(
-    BalanceEnvelope,
-    crate::models::PlayerPlanBalanceResponse
-);
-success_envelope!(
-    BalanceFlatEnvelope,
-    crate::models::PlayerPlanBalance
-);
+success_envelope!(BalanceEnvelope, crate::models::PlayerPlanBalanceResponse);
+success_envelope!(BalanceFlatEnvelope, crate::models::PlayerPlanBalance);
 success_envelope!(
     BalanceValidationEnvelope,
     crate::models::BalanceValidationResult
@@ -112,8 +106,15 @@ success_envelope!(
 );
 success_envelope!(ProductEnvelope, Product);
 success_envelope!(GameEnvelope, crate::models::Game);
-pagination_envelope!(GamePaginationEnvelope, GamePaginationPage, crate::models::Game);
-success_envelope!(PresignResponseEnvelope, crate::handlers::uploads::PresignResponse);
+pagination_envelope!(
+    GamePaginationEnvelope,
+    GamePaginationPage,
+    crate::models::Game
+);
+success_envelope!(
+    PresignResponseEnvelope,
+    crate::handlers::uploads::PresignResponse
+);
 success_envelope!(UserEnvelope, User);
 success_envelope!(ConfigurationEnvelope, crate::models::Configuration);
 success_envelope!(ConfigurationListEnvelope, Vec<crate::models::Configuration>);
@@ -204,7 +205,10 @@ pagination_envelope!(
 );
 
 success_envelope!(CreditSummaryEnvelope, crate::models::CreditSummary);
-success_envelope!(PlayerCreditDetailEnvelope, crate::models::PlayerCreditDetail);
+success_envelope!(
+    PlayerCreditDetailEnvelope,
+    crate::models::PlayerCreditDetail
+);
 success_envelope!(CreditSettlementEnvelope, crate::models::CreditSettlement);
 pagination_envelope!(
     CreditPlayerPaginationEnvelope,

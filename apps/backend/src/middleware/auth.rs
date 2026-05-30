@@ -76,9 +76,7 @@ pub fn require_device(claims: &JwtUserClaims) -> Result<(), AppError> {
     if claims.is_device() {
         Ok(())
     } else {
-        Err(AppError::Forbidden(
-            "Device access required".to_string(),
-        ))
+        Err(AppError::Forbidden("Device access required".to_string()))
     }
 }
 
@@ -265,17 +263,15 @@ where
         let player_claims = decode_token(&app_state, player_token)?;
 
         if !player_claims.roles.iter().any(|r| r == "player") {
-            return Err(AppError::Forbidden(
-                "Player access required".to_string(),
-            ));
+            return Err(AppError::Forbidden("Player access required".to_string()));
         }
 
-        let player_device = player_claims.device_id_uuid().ok_or_else(|| {
-            AppError::Unauthorized("Player token missing deviceId".to_string())
-        })?;
-        let kiosk_device = device_claims.user_id_uuid().ok_or_else(|| {
-            AppError::Internal("Invalid device ID in token".to_string())
-        })?;
+        let player_device = player_claims
+            .device_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Player token missing deviceId".to_string()))?;
+        let kiosk_device = device_claims
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Internal("Invalid device ID in token".to_string()))?;
 
         if player_device != kiosk_device {
             return Err(AppError::Forbidden(

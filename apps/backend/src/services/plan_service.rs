@@ -113,7 +113,9 @@ impl PlanService {
 
         Self::validate_allowed_days(dto.allowed_days.as_ref().or(existing.allowed_days.as_ref()))?;
         Self::validate_allowed_months(
-            dto.allowed_months.as_ref().or(existing.allowed_months.as_ref()),
+            dto.allowed_months
+                .as_ref()
+                .or(existing.allowed_months.as_ref()),
         )?;
         Self::validate_device_scope(
             dto.device_type

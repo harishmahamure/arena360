@@ -360,4 +360,38 @@ impl SessionRepository {
 
         session.ok_or_else(|| AppError::NotFound(format!("Active session with ID {id} not found")))
     }
+
+    pub async fn update_time_credits_consumed(
+        &self,
+        id: Uuid,
+        time_credits_consumed: i32,
+    ) -> Result<UsageSession, AppError> {
+        let session = sqlx::query_as::<_, UsageSession>(
+            r#"
+            UPDATE usage_sessions SET
+                "timeCreditsConsumed" = $2,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
+            RETURNING id,
+                      "balanceId" as balance_id,
+                      "deviceId" as device_id,
+                      "shiftId" as shift_id,
+                      "startTime" as start_time,
+                      "endTime" as end_time,
+                      "durationMinutes" as duration_minutes,
+                      "timeCreditsConsumed" as time_credits_consumed,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
+                      "createdAt" as created_at,
+                      "updatedAt" as updated_at,
+                      "deletedAt" as deleted_at
+            "#,
+        )
+        .bind(id)
+        .bind(time_credits_consumed)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        session.ok_or_else(|| AppError::NotFound(format!("Active session with ID {id} not found")))
+    }
 }

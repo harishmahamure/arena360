@@ -410,9 +410,7 @@ impl BalanceService {
                 if !allowed.is_empty() && !allowed.contains(&current_month) {
                     return BalanceValidationResult {
                         valid: false,
-                        reason: Some(format!(
-                            "Outside allowed months (current: {current_month})"
-                        )),
+                        reason: Some(format!("Outside allowed months (current: {current_month})")),
                     };
                 }
             }
@@ -434,9 +432,7 @@ impl BalanceService {
                 if !allowed.is_empty() && !allowed.contains(&day_name) {
                     return BalanceValidationResult {
                         valid: false,
-                        reason: Some(format!(
-                            "Outside allowed days (current: {day_name})"
-                        )),
+                        reason: Some(format!("Outside allowed days (current: {day_name})")),
                     };
                 }
             }
@@ -469,7 +465,10 @@ impl BalanceService {
         let now = Utc::now();
         for balance in balances.iter_mut() {
             if balance.status == balance_status::ACTIVE && balance.expiry_date < now {
-                let _ = self.repo.set_status(balance.id, balance_status::EXPIRED).await;
+                let _ = self
+                    .repo
+                    .set_status(balance.id, balance_status::EXPIRED)
+                    .await;
                 balance.status = balance_status::EXPIRED.to_string();
             }
         }

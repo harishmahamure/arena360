@@ -44,10 +44,7 @@ pub async fn list_games(
     security(("bearer_auth" = [])),
     tag = "games"
 )]
-pub async fn get_game(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Game> {
+pub async fn get_game(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<Game> {
     let game = state.games.get_by_id(id).await?;
     ok(game)
 }

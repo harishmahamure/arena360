@@ -50,7 +50,9 @@ pub struct AppState {
     pub events: EventService,
     pub outbox: OutboxService,
     pub rooms: RoomService,
-    pub ws_connections: Arc<tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>>,
+    pub ws_connections: Arc<
+        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
+    >,
 }
 
 pub async fn build_state() -> Arc<AppState> {
@@ -62,8 +64,9 @@ pub async fn build_state() -> Arc<AppState> {
 
     let outbox = OutboxService::new(pool.clone());
     let rooms = RoomService::new(pool.clone());
-    let ws_connections: Arc<tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>> =
-        Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    let ws_connections: Arc<
+        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
+    > = Arc::new(tokio::sync::RwLock::new(Vec::new()));
 
     let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
@@ -85,7 +88,13 @@ pub async fn build_state() -> Arc<AppState> {
         player_plans: player_plans.clone(),
         balances: balances.clone(),
         units: UnitService::new(pool.clone()),
-        sessions: SessionService::new(pool.clone(), devices, balances.clone(), events.clone(), outbox.clone()),
+        sessions: SessionService::new(
+            pool.clone(),
+            devices,
+            balances.clone(),
+            events.clone(),
+            outbox.clone(),
+        ),
         shifts: {
             let cash_reg = Arc::new(CashRegisterService::new(pool.clone()));
             let mut s = ShiftService::new(pool.clone());
@@ -184,8 +193,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/player-plans",
-            get(handlers::balances::list_balances)
-                .post(handlers::balances::purchase_balance),
+            get(handlers::balances::list_balances).post(handlers::balances::purchase_balance),
         )
         .route(
             "/player-plans/best-plan",
@@ -199,10 +207,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/player-plans/{id}/validate",
             post(handlers::balances::validate_access),
         )
-        .route(
-            "/player-plans/{id}",
-            get(handlers::balances::get_balance),
-        )
+        .route("/player-plans/{id}", get(handlers::balances::get_balance))
         .route(
             "/units",
             get(handlers::units::list_units).post(handlers::units::create_unit),
@@ -270,6 +275,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/kiosk/sessions/current",
             get(handlers::kiosk::current_session),
+        )
+        .route(
+            "/kiosk/sessions/{id}/heartbeat",
+            patch(handlers::kiosk::heartbeat_session),
         )
         .route(
             "/kiosk/sessions/{id}/end",
@@ -376,7 +385,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/users/{id}/credit-limit",
             patch(handlers::credit::update_credit_limit),
         )
-        .route("/credit/accounts", get(handlers::credit::list_credit_accounts))
+        .route(
+            "/credit/accounts",
+            get(handlers::credit::list_credit_accounts),
+        )
         .route(
             "/credit/players/{id}",
             get(handlers::credit::get_player_credit),
@@ -388,8 +400,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
         .route(
             "/realtime/rooms",
-            get(handlers::realtime_rooms::list_rooms)
-                .post(handlers::realtime_rooms::create_room),
+            get(handlers::realtime_rooms::list_rooms).post(handlers::realtime_rooms::create_room),
         )
         .route(
             "/realtime/rooms/{id}/members",

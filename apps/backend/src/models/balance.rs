@@ -149,14 +149,12 @@ pub struct BalanceRow {
 
 impl BalanceRow {
     pub fn into_response(self) -> PlayerPlanBalanceResponse {
-        let player = self
-            .player_username
-            .map(|username| BalancePlayerSummary {
-                id: self.player_id,
-                username,
-                first_name: self.player_first_name,
-                last_name: self.player_last_name,
-            });
+        let player = self.player_username.map(|username| BalancePlayerSummary {
+            id: self.player_id,
+            username,
+            first_name: self.player_first_name,
+            last_name: self.player_last_name,
+        });
         let plan = self.plan_name.map(|name| BalancePlanSummary {
             id: self.source_plan_id.unwrap_or_default(),
             name,

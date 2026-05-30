@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { useSelector } from '../../../hooks/store';
 import { useEnrichedSessions } from '../../../hooks/useEnrichedSessions';
 import { getSessions, type SessionResponse } from '../../../services/sessions/list';
 import { endSession } from '../../../services/sessions/update';
@@ -133,6 +134,7 @@ export default function SessionsPage() {
   });
 
   const enrichedSessions = useEnrichedSessions(data?.data);
+  const currentUserRole = useSelector((state) => state.auth.role);
 
   const navigate = useNavigate();
 
@@ -154,7 +156,12 @@ export default function SessionsPage() {
   const handleEndSession = useCallback(
     async (id: string) => {
       try {
-        await endSession(id);
+        const staffTotp =
+          currentUserRole === 'staff'
+            ? window.prompt('Enter your staff TOTP code to end this session')?.trim()
+            : undefined;
+        if (currentUserRole === 'staff' && !staffTotp) return;
+        await endSession(id, { staffTotp });
         toast.success('Session ended successfully');
         // Refetch the data
         refetch();
@@ -162,7 +169,7 @@ export default function SessionsPage() {
         toast.error('Failed to end session');
       }
     },
-    [refetch],
+    [currentUserRole, refetch],
   );
 
   const handleSearch = useCallback(

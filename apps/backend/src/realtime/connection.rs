@@ -106,14 +106,8 @@ pub async fn run(
                         }
                     };
 
-                    handle_client_frame(
-                        frame,
-                        &conn_clone,
-                        &outgoing_tx,
-                        &pool_clone,
-                        &outbox,
-                    )
-                    .await;
+                    handle_client_frame(frame, &conn_clone, &outgoing_tx, &pool_clone, &outbox)
+                        .await;
                 }
                 Message::Close(_) => break,
                 Message::Ping(data) => {

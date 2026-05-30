@@ -14,8 +14,8 @@ use crate::models::{
     SetCreditLimitDto, SettleCreditDto,
 };
 use crate::openapi::responses::{
-    CreditPlayerPaginationEnvelope, CreditSettlementEnvelope, CreditSummaryEnvelope,
-    ErrorEnvelope, PlayerCreditDetailEnvelope,
+    CreditPlayerPaginationEnvelope, CreditSettlementEnvelope, CreditSummaryEnvelope, ErrorEnvelope,
+    PlayerCreditDetailEnvelope,
 };
 
 #[utoipa::path(
@@ -84,9 +84,9 @@ pub async fn create_settlement(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<SettleCreditDto>,
 ) -> ApiResult<CreditSettlement> {
-    let user_id = claims.user_id_uuid().ok_or_else(|| {
-        AppError::BadRequest("Invalid user ID in token".to_string())
-    })?;
+    let user_id = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::BadRequest("Invalid user ID in token".to_string()))?;
 
     let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
         AppError::BadRequest("No active shift found for current user".to_string())

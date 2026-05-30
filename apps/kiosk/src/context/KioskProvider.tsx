@@ -101,6 +101,8 @@ interface KioskContextValue {
   endSession: (reason?: string) => Promise<void>;
   /** Re-sync remaining minutes from the server; detects remote/auto end. */
   syncSession: () => Promise<void>;
+  /** Server-authoritative usage heartbeat; deducts newly elapsed session time. */
+  heartbeatSession: () => Promise<void>;
   /** Dismiss the single-login conflict screen back to idle. */
   dismissConflict: () => void;
   factoryReset: () => Promise<void>;
@@ -168,6 +170,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
             // SessionPage countdown triggers process cleanup at expiry (D14).
             setForceEndGraceEndsAt(Date.now() + 5 * 60 * 1000);
           } else {
+            void killTrackedProcesses();
+            void clearTrackedProcesses();
             setActiveSession(null);
             setPlayerName(null);
             void clearPlayerSession();
@@ -506,6 +510,33 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }
   }, [connectWs, deviceId, flushEndIntents]);
 
+  const heartbeatSession = useCallback(async () => {
+    const sessionId = activeSession?.id;
+    if (!sessionId) return;
+    try {
+      const res = await getHttpClient().patch<KioskSessionResponse>(
+        `/kiosk/sessions/${sessionId}/heartbeat`,
+        {},
+      );
+      setOnline(true);
+      setActiveSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              remainingMinutes: res.remainingMinutes,
+            }
+          : {
+              id: res.sessionId,
+              startTime: res.startTime,
+              balanceId: res.balanceId,
+              remainingMinutes: res.remainingMinutes,
+            },
+      );
+    } catch {
+      setOnline(false);
+    }
+  }, [activeSession?.id]);
+
   const dismissConflict = useCallback(() => {
     setConflictDevice(null);
     setPlayerName(null);
@@ -558,6 +589,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     startSession,
     endSession,
     syncSession,
+    heartbeatSession,
     dismissConflict,
     factoryReset,
   };

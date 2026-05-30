@@ -67,12 +67,11 @@ async fn login_player_happy_and_error_paths() {
         return;
     };
 
-    let device_row = sqlx::query_as::<_, (Uuid,)>(
-        r#"SELECT id FROM devices WHERE "deletedAt" IS NULL LIMIT 1"#,
-    )
-    .fetch_optional(&state.db)
-    .await
-    .expect("query device");
+    let device_row =
+        sqlx::query_as::<_, (Uuid,)>(r#"SELECT id FROM devices WHERE "deletedAt" IS NULL LIMIT 1"#)
+            .fetch_optional(&state.db)
+            .await
+            .expect("query device");
 
     let Some((device_id,)) = device_row else {
         eprintln!("skip: no device in database");
@@ -111,9 +110,12 @@ async fn login_player_happy_and_error_paths() {
         .await
         .unwrap();
     assert_eq!(bad_pw.status(), StatusCode::UNAUTHORIZED);
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(bad_pw.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(bad_pw.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["message"], "AUTH_INVALID_CREDENTIALS");
 
     // 403 unregistered device
@@ -141,9 +143,12 @@ async fn login_player_happy_and_error_paths() {
         .await
         .unwrap();
     assert_eq!(unreg.status(), StatusCode::FORBIDDEN);
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(unreg.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(unreg.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(body["message"], "DEVICE_NOT_REGISTERED");
 
     // restore registered for happy path — password unknown; verify token structure only if env provides it
@@ -155,31 +160,33 @@ async fn login_player_happy_and_error_paths() {
     .await
     .expect("mark registered again");
 
-    let player_token = state.auth.generate_player_token(
-        &gaming_cafe_api::models::User {
-            id: player_id,
-            email: None,
-            username: username.clone(),
-            password_hash: None,
-            is_active: true,
-            first_name: None,
-            last_name: None,
-            phone_number: None,
-            role: Some("player".to_string()),
-            credit_limit: 0.0,
-            session_otp_id: None,
-            session_otp: None,
-            totp_secret: None,
-            totp_enabled: false,
-            created_by: None,
-            updated_by: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            deleted_at: None,
-        },
-        device_id,
-    )
-    .expect("player token");
+    let player_token = state
+        .auth
+        .generate_player_token(
+            &gaming_cafe_api::models::User {
+                id: player_id,
+                email: None,
+                username: username.clone(),
+                password_hash: None,
+                is_active: true,
+                first_name: None,
+                last_name: None,
+                phone_number: None,
+                role: Some("player".to_string()),
+                credit_limit: 0.0,
+                session_otp_id: None,
+                session_otp: None,
+                totp_secret: None,
+                totp_enabled: false,
+                created_by: None,
+                updated_by: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                deleted_at: None,
+            },
+            device_id,
+        )
+        .expect("player token");
     assert!(!player_token.is_empty());
 
     let _ = player_id;

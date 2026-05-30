@@ -58,6 +58,8 @@ pub async fn presign_upload(
     Json(req): Json<PresignRequest>,
 ) -> ApiResult<PresignResponse> {
     let key = crate::services::StorageService::game_asset_key(&req.fileName);
-    let presigned = state.storage.presign_put(&key, req.contentType.as_deref())?;
+    let presigned = state
+        .storage
+        .presign_put(&key, req.contentType.as_deref())?;
     ok(PresignResponse::from(presigned))
 }

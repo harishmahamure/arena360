@@ -86,7 +86,10 @@ impl DeviceService {
         let fingerprint_json = serde_json::to_string(&dto.fingerprint)
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        let device = self.repo.provision(&dto, &fingerprint_json, actor_id).await?;
+        let device = self
+            .repo
+            .provision(&dto, &fingerprint_json, actor_id)
+            .await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;

@@ -24,6 +24,7 @@ import {
   type EndSessionFormData,
   endSessionSchema,
 } from '../../../containers/sessions/schemas/session-schema';
+import { useSelector } from '../../../hooks/store';
 import { getDeviceById } from '../../../services/devices/getById';
 import { getPlanById } from '../../../services/plans/getById';
 import { getPlayerPlanById } from '../../../services/player-plans/getById';
@@ -46,6 +47,7 @@ export default function ViewSessionPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmForce, setConfirmForce] = useState(false);
   const [isForcing, setIsForcing] = useState(false);
+  const currentUserRole = useSelector((state) => state.auth.role);
 
   const {
     data: session,
@@ -146,8 +148,14 @@ export default function ViewSessionPage() {
     setSuccess(undefined);
 
     try {
+      const staffTotp =
+        currentUserRole === 'staff'
+          ? window.prompt('Enter your staff TOTP code to end this session')?.trim()
+          : undefined;
+      if (currentUserRole === 'staff' && !staffTotp) return;
       await endSession(id as string, {
         endTime: data.endTime || undefined,
+        staffTotp,
       });
 
       setSuccess('Session ended successfully!');
@@ -169,7 +177,12 @@ export default function ViewSessionPage() {
     setError(undefined);
     setSuccess(undefined);
     try {
-      await forceEndSession(id as string);
+      const staffTotp =
+        currentUserRole === 'staff'
+          ? window.prompt('Enter your staff TOTP code to force-end this session')?.trim()
+          : undefined;
+      if (currentUserRole === 'staff' && !staffTotp) return;
+      await forceEndSession(id as string, staffTotp);
       setConfirmForce(false);
       setSuccess('Session force-ended. The kiosk has been notified.');
       await refetch();

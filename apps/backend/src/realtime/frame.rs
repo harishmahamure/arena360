@@ -5,10 +5,19 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientFrame {
-    Subscribe { channels: Vec<String> },
-    Unsubscribe { channels: Vec<String> },
-    Ack { msg_id: i64 },
-    Publish { channel: String, payload: serde_json::Value },
+    Subscribe {
+        channels: Vec<String>,
+    },
+    Unsubscribe {
+        channels: Vec<String>,
+    },
+    Ack {
+        msg_id: i64,
+    },
+    Publish {
+        channel: String,
+        payload: serde_json::Value,
+    },
     Ping,
 }
 

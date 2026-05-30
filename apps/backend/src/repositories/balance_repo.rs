@@ -5,9 +5,7 @@ use uuid::Uuid;
 
 use crate::dto::PaginationResult;
 use crate::error::AppError;
-use crate::models::{
-    BalanceFilterDto, BalanceRow, PlayerPlanBalance, PlayerPlanBalanceResponse,
-};
+use crate::models::{BalanceFilterDto, BalanceRow, PlayerPlanBalance, PlayerPlanBalanceResponse};
 
 pub struct BalanceRepository {
     pool: PgPool,
@@ -271,11 +269,7 @@ impl BalanceRepository {
         Ok(balance)
     }
 
-    pub async fn set_status(
-        &self,
-        id: Uuid,
-        status: &str,
-    ) -> Result<(), AppError> {
+    pub async fn set_status(&self, id: Uuid, status: &str) -> Result<(), AppError> {
         sqlx::query(
             r#"UPDATE player_plan_balances SET
                    status = $2::balance_status, "updatedAt" = NOW()
@@ -367,10 +361,7 @@ impl BalanceRepository {
         Ok(PaginationResult::new(data, total.0, page, limit))
     }
 
-    fn apply_filters<'a>(
-        builder: &mut QueryBuilder<'a, Postgres>,
-        filters: &'a BalanceFilterDto,
-    ) {
+    fn apply_filters<'a>(builder: &mut QueryBuilder<'a, Postgres>, filters: &'a BalanceFilterDto) {
         if let Some(player_id) = filters.player_id {
             builder.push(" AND b.\"playerId\" = ");
             builder.push_bind(player_id);

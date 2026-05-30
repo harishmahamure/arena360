@@ -1,10 +1,10 @@
 pub mod balance;
-pub mod credit;
 pub mod cash_deposit;
 pub mod cash_register;
 pub mod configuration;
-pub mod device;
+pub mod credit;
 pub mod db_enums;
+pub mod device;
 pub mod expense;
 pub mod expense_category;
 pub mod game;
@@ -21,12 +21,12 @@ pub mod user;
 pub mod vendor;
 
 pub use balance::*;
-pub use credit::*;
 pub use cash_deposit::*;
 pub use cash_register::*;
 pub use configuration::*;
-pub use device::*;
+pub use credit::*;
 pub use db_enums::*;
+pub use device::*;
 pub use expense::*;
 pub use expense_category::*;
 pub use game::*;

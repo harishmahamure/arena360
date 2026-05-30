@@ -29,7 +29,11 @@ impl GameService {
             .ok_or_else(|| AppError::NotFound(format!("Game with ID {id} not found")))
     }
 
-    pub async fn create(&self, dto: CreateGameDto, actor_id: Option<Uuid>) -> Result<Game, AppError> {
+    pub async fn create(
+        &self,
+        dto: CreateGameDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Game, AppError> {
         if dto.name.trim().is_empty() {
             return Err(AppError::BadRequest("Game name is required".to_string()));
         }

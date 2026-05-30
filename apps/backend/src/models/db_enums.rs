@@ -34,8 +34,17 @@ pub const PRODUCT_CATEGORIES: &[&str] = &["beverage", "snack", "meal", "other"];
 pub const DEFAULT_PRODUCT_CATEGORY: &str = "other";
 
 pub const UNIT_TYPES: &[&str] = &[
-    "piece", "box", "carton", "pack", "bottle", "can", "kilogram", "gram", "liter",
-    "milliliter", "other",
+    "piece",
+    "box",
+    "carton",
+    "pack",
+    "bottle",
+    "can",
+    "kilogram",
+    "gram",
+    "liter",
+    "milliliter",
+    "other",
 ];
 pub const DEFAULT_UNIT_TYPE: &str = "other";
 

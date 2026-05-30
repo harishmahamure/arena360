@@ -102,19 +102,14 @@ impl Dispatcher {
             }
 
             if row.durable {
-                let _ =
-                    DeliveryService::insert_delivery(&self.pool, row.id, conn.user_id).await;
+                let _ = DeliveryService::insert_delivery(&self.pool, row.id, conn.user_id).await;
             }
 
             let _ = conn.outgoing_tx.send(event_frame.clone());
         }
     }
 
-    fn passes_audience_filter(
-        &self,
-        conn: &Connection,
-        row: &super::outbox::OutboxRow,
-    ) -> bool {
+    fn passes_audience_filter(&self, conn: &Connection, row: &super::outbox::OutboxRow) -> bool {
         if let Some(ref role) = row.audience_role {
             let has_role = conn.roles.iter().any(|r| r == role);
             if !has_role {
@@ -134,12 +129,14 @@ impl Dispatcher {
 
 /// Compute which user IDs should receive a room-targeted event.
 /// Not used in hot path — rooms go through channel subscription matching.
-pub async fn _room_members(pool: &PgPool, room_id: Uuid) -> Result<Vec<Uuid>, crate::error::AppError> {
-    let rows: Vec<(Uuid,)> = sqlx::query_as(
-        r#"SELECT user_id FROM realtime_room_members WHERE room_id = $1"#,
-    )
-    .bind(room_id)
-    .fetch_all(pool)
-    .await?;
+pub async fn _room_members(
+    pool: &PgPool,
+    room_id: Uuid,
+) -> Result<Vec<Uuid>, crate::error::AppError> {
+    let rows: Vec<(Uuid,)> =
+        sqlx::query_as(r#"SELECT user_id FROM realtime_room_members WHERE room_id = $1"#)
+            .bind(room_id)
+            .fetch_all(pool)
+            .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
 }

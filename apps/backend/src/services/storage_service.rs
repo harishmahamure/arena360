@@ -86,14 +86,22 @@ impl StorageService {
                 }
             })
             .collect();
-        let safe = if safe.is_empty() { "asset".to_string() } else { safe };
+        let safe = if safe.is_empty() {
+            "asset".to_string()
+        } else {
+            safe
+        };
         format!("games/{}/{}", Uuid::new_v4(), safe)
     }
 
     /// Issue a presigned PUT URL for the given object key. `content_type` is
     /// accepted for API symmetry; only `host` is signed so the client may set any
     /// content type on upload.
-    pub fn presign_put(&self, key: &str, _content_type: Option<&str>) -> Result<PresignedUpload, AppError> {
+    pub fn presign_put(
+        &self,
+        key: &str,
+        _content_type: Option<&str>,
+    ) -> Result<PresignedUpload, AppError> {
         let cfg = self
             .config
             .as_ref()
@@ -104,16 +112,26 @@ impl StorageService {
         let datestamp = now.format("%Y%m%d").to_string();
 
         let host = host_from_endpoint(&cfg.endpoint);
-        let canonical_uri = format!("/{}/{}", uri_encode(&cfg.bucket, false), uri_encode(key, false));
+        let canonical_uri = format!(
+            "/{}/{}",
+            uri_encode(&cfg.bucket, false),
+            uri_encode(key, false)
+        );
         let scope = format!("{datestamp}/{}/s3/aws4_request", cfg.region);
         let credential = format!("{}/{scope}", cfg.access_key);
 
         // Sorted canonical query string.
         let mut params: Vec<(String, String)> = vec![
-            ("X-Amz-Algorithm".to_string(), "AWS4-HMAC-SHA256".to_string()),
+            (
+                "X-Amz-Algorithm".to_string(),
+                "AWS4-HMAC-SHA256".to_string(),
+            ),
             ("X-Amz-Credential".to_string(), credential),
             ("X-Amz-Date".to_string(), amz_date.clone()),
-            ("X-Amz-Expires".to_string(), cfg.presign_expiry_secs.to_string()),
+            (
+                "X-Amz-Expires".to_string(),
+                cfg.presign_expiry_secs.to_string(),
+            ),
             ("X-Amz-SignedHeaders".to_string(), "host".to_string()),
         ];
         params.sort_by(|a, b| a.0.cmp(&b.0));
@@ -229,11 +247,18 @@ mod tests {
             public_base_url: "http://localhost:9000/assets".to_string(),
             presign_expiry_secs: 900,
         }));
-        let out = svc.presign_put("games/abc/cover.png", Some("image/png")).unwrap();
-        assert!(out.upload_url.starts_with("http://localhost:9000/assets/games/abc/cover.png?"));
+        let out = svc
+            .presign_put("games/abc/cover.png", Some("image/png"))
+            .unwrap();
+        assert!(out
+            .upload_url
+            .starts_with("http://localhost:9000/assets/games/abc/cover.png?"));
         assert!(out.upload_url.contains("X-Amz-Signature="));
         assert!(out.upload_url.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"));
-        assert_eq!(out.public_url, "http://localhost:9000/assets/games/abc/cover.png");
+        assert_eq!(
+            out.public_url,
+            "http://localhost:9000/assets/games/abc/cover.png"
+        );
     }
 
     #[test]

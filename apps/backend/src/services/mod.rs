@@ -1,9 +1,9 @@
 pub mod auth_service;
 pub mod balance_service;
-pub mod credit_service;
 pub mod cash_deposit_service;
 pub mod cash_register_service;
 pub mod config_service;
+pub mod credit_service;
 pub mod device_service;
 pub mod event_service;
 pub mod expense_category_service;
@@ -26,10 +26,10 @@ pub mod vendor_service;
 
 pub use auth_service::AuthService;
 pub use balance_service::BalanceService;
-pub use credit_service::CreditService;
 pub use cash_deposit_service::CashDepositService;
 pub use cash_register_service::CashRegisterService;
 pub use config_service::ConfigService;
+pub use credit_service::CreditService;
 pub use device_service::DeviceService;
 pub use event_service::EventService;
 pub use expense_category_service::ExpenseCategoryService;

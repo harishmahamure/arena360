@@ -98,6 +98,44 @@ pub async fn current_session(
     }))
 }
 
+/// Heartbeat the authenticated player's current kiosk session. This deducts
+/// newly elapsed usage server-side and returns authoritative remaining time.
+#[utoipa::path(
+    patch,
+    path = "/kiosk/sessions/{id}/heartbeat",
+    params(("id" = Uuid, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Session heartbeat accepted"),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden — not the player's session", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "kiosk"
+)]
+pub async fn heartbeat_session(
+    player: PlayerUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<KioskSessionResponseDto> {
+    let player_id = player.player_id()?;
+    let device_id = player.device_id()?;
+    let heartbeat = state
+        .sessions
+        .heartbeat_for_player(id, player_id, device_id)
+        .await?;
+
+    ok(KioskSessionResponseDto {
+        sessionId: heartbeat.session.id.to_string(),
+        balanceId: heartbeat.balance_id.to_string(),
+        deviceId: heartbeat.session.device_id.to_string(),
+        startTime: heartbeat.session.start_time.to_rfc3339(),
+        remainingMinutes: heartbeat.remaining_minutes as f64,
+        resumed: true,
+    })
+}
+
 /// End the player's own session. The session's balance must belong to the
 /// authenticated player.
 #[utoipa::path(
@@ -139,11 +177,10 @@ pub async fn end_session(
     // Idempotent end (D18): a replayed offline end-intent for an
     // already-closed session is a no-op, never a second deduction.
     if session.end_time.is_some() {
-        let remaining = session
-            .balance
-            .as_ref()
-            .map(|b| b.remaining_minutes)
-            .unwrap_or(0);
+        let remaining = match session.balance_id {
+            Some(balance_id) => state.balances.get_raw(balance_id).await?.remaining_minutes,
+            None => 0,
+        };
         return ok(KioskSessionResponseDto {
             sessionId: session.id.to_string(),
             balanceId: session
@@ -164,17 +201,17 @@ pub async fn end_session(
             EndSessionDto {
                 end_time: None,
                 time_credits_consumed: None,
+                staff_totp: None,
                 reason: Some(dto.reason.unwrap_or_else(|| "voluntary".to_string())),
             },
             None,
         )
         .await?;
 
-    let remaining = session
-        .balance
-        .as_ref()
-        .map(|b| b.remaining_minutes)
-        .unwrap_or(0);
+    let remaining = match ended.balance_id {
+        Some(balance_id) => state.balances.get_raw(balance_id).await?.remaining_minutes,
+        None => 0,
+    };
 
     ok(KioskSessionResponseDto {
         sessionId: ended.id.to_string(),

@@ -5,8 +5,9 @@ import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
 import { useSessionPoller } from '../hooks/useSessionPoller';
 import { OFFLINE_GRACE_MS } from '../lib/config';
+import { playRemainingTimeSound } from '../lib/sessionSounds';
 
-const REMINDER_THRESHOLDS = [10, 5, 1] as const;
+const REMINDER_THRESHOLDS = [10, 5, 2, 1] as const;
 
 function formatGrace(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -26,6 +27,7 @@ export function SessionPage() {
     startSession,
     endSession,
     syncSession,
+    heartbeatSession,
   } = useKiosk();
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -54,7 +56,22 @@ export function SessionPage() {
   }, [activeSession, startSession]);
 
   const remaining = activeSession?.remainingMinutes;
-  useSessionPoller(remaining, syncSession, Boolean(activeSession) && forceEndGraceEndsAt === null);
+  const activeSessionId = activeSession?.id;
+  useSessionPoller(
+    remaining,
+    syncSession,
+    Boolean(activeSession) &&
+      forceEndGraceEndsAt === null &&
+      (!wsConnected || (remaining ?? Number.POSITIVE_INFINITY) <= 1),
+  );
+
+  useEffect(() => {
+    if (!activeSessionId || forceEndGraceEndsAt !== null) return;
+    const id = setInterval(() => {
+      void heartbeatSession();
+    }, 120_000);
+    return () => clearInterval(id);
+  }, [activeSessionId, forceEndGraceEndsAt, heartbeatSession]);
 
   // Reminders + recharge toast when the authoritative value changes.
   useEffect(() => {
@@ -71,6 +88,7 @@ export function SessionPage() {
       if (remaining <= t && !firedRemindersRef.current.has(t)) {
         firedRemindersRef.current.add(t);
         pushToast(`${t} minute${t === 1 ? '' : 's'} remaining`, t === 1 ? 'warning' : 'info');
+        playRemainingTimeSound(t);
       }
     }
     prevMinutesRef.current = remaining;

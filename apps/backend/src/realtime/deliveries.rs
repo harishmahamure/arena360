@@ -49,17 +49,20 @@ impl DeliveryService {
         pool: &PgPool,
         subscriber_id: Uuid,
     ) -> Result<Vec<OutboxRow>, AppError> {
-        let rows = sqlx::query_as::<_, (
-            i64,
-            String,
-            String,
-            serde_json::Value,
-            Option<String>,
-            Option<Uuid>,
-            Option<Uuid>,
-            bool,
-            chrono::DateTime<chrono::Utc>,
-        )>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                String,
+                serde_json::Value,
+                Option<String>,
+                Option<Uuid>,
+                Option<Uuid>,
+                bool,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(
             r#"SELECT o.id, o.channel, o.event_type, o.payload,
                       o.audience_role, o.audience_user_id, o.audience_room_id,
                       o.durable, o.created_at
@@ -90,7 +93,11 @@ impl DeliveryService {
     }
 
     /// Retention: remove old rows.
-    pub async fn cleanup(pool: &PgPool, acked_days: i64, unacked_days: i64) -> Result<u64, AppError> {
+    pub async fn cleanup(
+        pool: &PgPool,
+        acked_days: i64,
+        unacked_days: i64,
+    ) -> Result<u64, AppError> {
         let acked_cutoff = Utc::now() - chrono::Duration::days(acked_days);
         let unacked_cutoff = Utc::now() - chrono::Duration::days(unacked_days);
 
