@@ -1,3 +1,4 @@
+import { IconFallback } from '@gaming-cafe/ui/primitives';
 import { useEffect, useMemo, useState } from 'react';
 import {
   allowListPaths,
@@ -8,7 +9,6 @@ import {
 } from '../lib/allowList';
 import { fetchActiveGames, type Game } from '../lib/games';
 import { launchAllowed } from '../lib/tauriCommands';
-import { IconFallback } from './IconFallback';
 
 interface LauncherGridProps {
   /** Disable launching (e.g. during force-end grace). */

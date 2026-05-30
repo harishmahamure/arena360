@@ -1,3 +1,4 @@
+import { IconFallback } from '@gaming-cafe/ui/primitives';
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -17,7 +18,6 @@ import {
   type ScanCandidate,
   scanInstalledSoftware,
 } from '../lib/tauriCommands';
-import { IconFallback } from './IconFallback';
 
 interface ScanProgress {
   scanned: number;

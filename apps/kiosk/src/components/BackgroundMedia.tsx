@@ -4,6 +4,7 @@ import { cachedAssetSrc } from '../lib/tauriCommands';
 
 interface BackgroundMediaProps {
   game?: Game;
+  showScrim?: boolean;
 }
 
 /**
@@ -11,7 +12,7 @@ interface BackgroundMediaProps {
  * per DRAFT-0022) when available, otherwise shows the thumbnail. Renders nothing
  * DB-less so the screen degrades to the plain dark surface.
  */
-export function BackgroundMedia({ game }: BackgroundMediaProps) {
+export function BackgroundMedia({ game, showScrim = true }: BackgroundMediaProps) {
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function BackgroundMedia({ game }: BackgroundMediaProps) {
     return (
       <div className="kiosk-bg" aria-hidden="true">
         <video className="kiosk-bg-video" src={videoSrc} autoPlay loop muted playsInline />
-        <div className="kiosk-bg-scrim" />
+        {showScrim ? <div className="kiosk-bg-scrim" /> : null}
       </div>
     );
   }
@@ -41,7 +42,7 @@ export function BackgroundMedia({ game }: BackgroundMediaProps) {
     return (
       <div className="kiosk-bg" aria-hidden="true">
         <div className="kiosk-bg-image" style={{ backgroundImage: `url(${game.thumbnailUrl})` }} />
-        <div className="kiosk-bg-scrim" />
+        {showScrim ? <div className="kiosk-bg-scrim" /> : null}
       </div>
     );
   }

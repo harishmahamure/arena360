@@ -1,5 +1,7 @@
+import { AuthFormField, AuthShell, AuthSubmitButton } from '@gaming-cafe/ui/primitives';
 import { useEffect, useState } from 'react';
 import { BackgroundMedia } from '../components/BackgroundMedia';
+import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
 import { KIOSK_LOGO_URL } from '../lib/config';
 import { fetchActiveGames, type Game, pickBackgroundGame } from '../lib/games';
@@ -60,81 +62,72 @@ export function LoginHomePage() {
   }
 
   return (
-    <section className="login-home">
-      <BackgroundMedia game={backgroundGame} />
+    <AuthShell
+      className="login-home"
+      backgroundSlot={<BackgroundMedia game={backgroundGame} showScrim={false} />}
+    >
+      <header className="gz-auth-form-header">
+        {KIOSK_LOGO_URL ? <img className="gz-auth-logo" src={KIOSK_LOGO_URL} alt="" /> : null}
+        <h1 className="gz-auth-heading">Welcome back</h1>
+        <p className="gz-auth-subtitle">Enter your credentials to start your session</p>
+      </header>
 
-      <div className="login-home-content">
-        <header className="login-home-brand">
-          {KIOSK_LOGO_URL ? (
-            <img className="login-home-logo" src={KIOSK_LOGO_URL} alt="" />
-          ) : (
-            <h1 className="login-home-title">{deviceName ?? 'Game Zone'}</h1>
-          )}
-          {deviceName ? <p className="login-home-station">{deviceName}</p> : null}
-        </header>
+      {maintenance ? (
+        <div className="maintenance-banner" role="alert">
+          <p className="error-headline">Station under maintenance</p>
+          <p className="error-detail">Please ask staff for assistance.</p>
+        </div>
+      ) : !online ? (
+        <div className="maintenance-banner" role="alert">
+          <p className="error-headline">Reconnecting…</p>
+          <p className="error-detail">Sign-in is unavailable until the connection returns.</p>
+        </div>
+      ) : null}
 
-        {maintenance ? (
-          <div className="maintenance-banner" role="alert">
-            <p className="error-headline">Station under maintenance</p>
-            <p className="error-detail">Please ask staff for assistance.</p>
+      <form className="gz-auth-form" onSubmit={onSubmit}>
+        <AuthFormField
+          label="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          disabled={blocked}
+          autoComplete="off"
+          required
+        />
+        <AuthFormField
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={blocked}
+          required
+        />
+
+        {lockout.locked ? (
+          <div className="gz-auth-error" role="alert">
+            <p className="error-headline">Too many attempts</p>
+            <p className="error-detail">
+              Sign-in is locked. Try again in {formatRetry(lockout.retryAt)} or ask staff for help.
+            </p>
           </div>
-        ) : !online ? (
-          <div className="maintenance-banner" role="alert">
-            <p className="error-headline">Reconnecting…</p>
-            <p className="error-detail">Sign-in is unavailable until the connection returns.</p>
+        ) : error ? (
+          <div className="gz-auth-error" role="alert">
+            {error.split('\n').map((line) => (
+              <p
+                key={line}
+                className={line.startsWith('No usable plan') ? 'error-headline' : 'error-detail'}
+              >
+                {line}
+              </p>
+            ))}
           </div>
         ) : null}
 
-        <form className="login-home-form" onSubmit={onSubmit}>
-          <label>
-            Username
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={blocked}
-              autoComplete="off"
-              required
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={blocked}
-              required
-            />
-          </label>
+        <AuthSubmitButton type="submit" busy={busy} disabled={blocked}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </AuthSubmitButton>
+      </form>
 
-          {lockout.locked ? (
-            <div className="error-panel" role="alert">
-              <p className="error-headline">Too many attempts</p>
-              <p className="error-detail">
-                Sign-in is locked. Try again in {formatRetry(lockout.retryAt)} or ask staff for
-                help.
-              </p>
-            </div>
-          ) : error ? (
-            <div className="error-panel" role="alert">
-              {error.split('\n').map((line) => (
-                <p
-                  key={line}
-                  className={line.startsWith('No usable plan') ? 'error-headline' : 'error-detail'}
-                >
-                  {line}
-                </p>
-              ))}
-            </div>
-          ) : null}
-
-          <button type="submit" className="attract-cta" disabled={busy || blocked}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
-
-        <p className="login-home-hint">Press Ctrl+Shift+A for administrator setup</p>
-      </div>
-    </section>
+      <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
+    </AuthShell>
   );
 }

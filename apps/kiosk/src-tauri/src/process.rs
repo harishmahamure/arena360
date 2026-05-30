@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,12 +16,12 @@ pub struct TrackedProcess {
 #[derive(Debug, Clone)]
 struct WatchEntry {
     executable_path: String,
-    arguments: Option<String>,
     pid: u32,
+    _window_handle: Option<isize>,
 }
 
 static TRACKED: Mutex<Vec<WatchEntry>> = Mutex::new(Vec::new());
-static WATCHDOG_RUNNING: Mutex<bool> = Mutex::new(false);
+static MONITOR_RUNNING: Mutex<bool> = Mutex::new(false);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,7 +51,12 @@ fn is_allowed(path: &str, allow_list: &[String]) -> bool {
 
 fn spawn_process(path: &str, args: Option<&str>) -> Result<u32, String> {
     let mut cmd = Command::new(path);
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(parent) = Path::new(path).parent() {
+        cmd.current_dir(parent);
+    }
     if let Some(a) = args {
         for part in a.split_whitespace() {
             cmd.arg(part);
@@ -86,7 +93,9 @@ fn is_running(pid: u32) -> bool {
 fn kill_pid(pid: u32) {
     #[cfg(target_os = "windows")]
     {
-        let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]).status();
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .status();
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -94,38 +103,152 @@ fn kill_pid(pid: u32) {
     }
 }
 
-fn start_watchdog_if_needed() {
-    let mut running = WATCHDOG_RUNNING.lock().expect("watchdog lock");
+#[cfg(target_os = "windows")]
+fn fullscreen_process_window(pid: u32) -> Option<isize> {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
+        SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, HWND_TOPMOST,
+        SWP_FRAMECHANGED, SWP_SHOWWINDOW, SW_MAXIMIZE, SW_RESTORE, WS_CAPTION, WS_MAXIMIZEBOX,
+        WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
+    };
+
+    struct Search {
+        pid: u32,
+        hwnd: HWND,
+    }
+
+    unsafe extern "system" fn enum_windows(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = &mut *(lparam.0 as *mut Search);
+        let mut window_pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut window_pid));
+        if window_pid == search.pid && IsWindowVisible(hwnd).as_bool() {
+            search.hwnd = hwnd;
+            return BOOL(0);
+        }
+        BOOL(1)
+    }
+
+    unsafe fn make_borderless_fullscreen(hwnd: HWND) {
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut monitor_info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+
+        if !GetMonitorInfoW(monitor, &mut monitor_info).as_bool() {
+            let _ = ShowWindow(hwnd, SW_MAXIMIZE);
+            return;
+        }
+
+        // Best-effort borderless fullscreen for normal Win32 windows. Some games
+        // own their swapchain/window mode and may ignore or later override this.
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let borderless = style
+            & !(WS_CAPTION.0
+                | WS_THICKFRAME.0
+                | WS_SYSMENU.0
+                | WS_MINIMIZEBOX.0
+                | WS_MAXIMIZEBOX.0);
+        let _ = SetWindowLongPtrW(hwnd, GWL_STYLE, borderless as isize);
+
+        let rect = monitor_info.rcMonitor;
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+        );
+    }
+
+    for _ in 0..24 {
+        let mut search = Search {
+            pid,
+            hwnd: HWND(std::ptr::null_mut()),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(enum_windows),
+                LPARAM(&mut search as *mut Search as isize),
+            );
+            if !search.hwnd.0.is_null() {
+                make_borderless_fullscreen(search.hwnd);
+                let _ = SetForegroundWindow(search.hwnd);
+                return Some(search.hwnd.0 as isize);
+            }
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn fullscreen_process_window(_pid: u32) -> Option<isize> {
+    None
+}
+
+fn main_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+    app.get_webview_window("main")
+        .or_else(|| app.webview_windows().values().next().cloned())
+        .ok_or_else(|| "Main window not found".to_string())
+}
+
+fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
+    let window = main_window(app)?;
+    window.show().map_err(|e| e.to_string())?;
+    let _ = window.unminimize();
+    window.set_decorations(false).map_err(|e| e.to_string())?;
+    window.set_fullscreen(true).map_err(|e| e.to_string())?;
+    window.set_always_on_top(false).map_err(|e| e.to_string())
+}
+
+fn restore_kiosk_window(app: &AppHandle) {
+    if let Ok(window) = main_window(app) {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_decorations(false);
+        let _ = window.set_fullscreen(true);
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_focus();
+    }
+}
+
+fn start_monitor_if_needed(app: AppHandle) {
+    let mut running = MONITOR_RUNNING.lock().expect("monitor lock");
     if *running {
         return;
     }
     *running = true;
     drop(running);
 
-    thread::spawn(|| {
-        loop {
-            thread::sleep(Duration::from_secs(1));
-            let mut entries = TRACKED.lock().expect("tracked lock").clone();
-            if entries.is_empty() {
-                continue;
-            }
-            for entry in &mut entries {
-                if is_running(entry.pid) {
-                    continue;
-                }
-                if let Ok(new_pid) = spawn_process(&entry.executable_path, entry.arguments.as_deref())
-                {
-                    entry.pid = new_pid;
-                }
-            }
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(2));
+        let is_empty = {
             let mut tracked = TRACKED.lock().expect("tracked lock");
-            *tracked = entries;
+            tracked.retain(|entry| is_running(entry.pid));
+            tracked.is_empty()
+        };
+        if is_empty {
+            restore_kiosk_window(&app);
+            if let Ok(mut running) = MONITOR_RUNNING.lock() {
+                *running = false;
+            }
+            break;
         }
     });
 }
 
 #[tauri::command]
 pub fn launch_allowed(
+    app: AppHandle,
     executable_path: String,
     allow_list: Vec<String>,
     arguments: Option<String>,
@@ -133,13 +256,15 @@ pub fn launch_allowed(
     if !is_allowed(&executable_path, &allow_list) {
         return Err("Executable not in allow-list".to_string());
     }
+    prepare_kiosk_for_game_mode(&app)?;
     let pid = spawn_process(&executable_path, arguments.as_deref())?;
+    let window_handle = fullscreen_process_window(pid);
     TRACKED.lock().map_err(|e| e.to_string())?.push(WatchEntry {
         executable_path,
-        arguments,
         pid,
+        _window_handle: window_handle,
     });
-    start_watchdog_if_needed();
+    start_monitor_if_needed(app);
     Ok(LaunchResult { pid })
 }
 

@@ -48,6 +48,30 @@ export async function getLockdownState(): Promise<LockdownState> {
   return invoke<LockdownState>('get_lockdown_state');
 }
 
+export async function getSystemVolume(): Promise<number> {
+  return invoke<number>('get_system_volume');
+}
+
+export async function setSystemVolume(volume: number): Promise<number> {
+  return invoke<number>('set_system_volume', { volume });
+}
+
+export async function openAudioSettings(): Promise<void> {
+  await invoke('open_audio_settings');
+}
+
+export async function lockWorkstation(): Promise<void> {
+  await invoke('lock_workstation');
+}
+
+export async function restartStation(): Promise<void> {
+  await invoke('restart_station');
+}
+
+export async function shutdownStation(): Promise<void> {
+  await invoke('shutdown_station');
+}
+
 export interface ScanCandidate {
   name: string;
   executablePath: string;

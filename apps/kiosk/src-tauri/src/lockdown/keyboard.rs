@@ -1,9 +1,10 @@
 //! Low-level keyboard hook used during lockdown.
 //!
-//! Blocks every global Windows shortcut that can break out of the kiosk:
-//! both Windows keys and any `Win`+key combo, Alt+Tab, Alt+Esc, Alt+F4,
-//! Alt+Space (system menu), Ctrl+Esc (Start menu), Ctrl+Shift+Esc (Task
-//! Manager), and the Menu/Apps (context-menu) key. **Limitation:**
+//! Blocks global Windows shell shortcuts that can break out of the kiosk:
+//! both Windows keys and any `Win`+key combo, Alt+Esc, Alt+F4, Alt+Space
+//! (system menu), Ctrl+Esc (Start menu), Ctrl+Shift+Esc (Task Manager), and
+//! the Menu/Apps (context-menu) key. Alt+Tab is intentionally allowed so
+//! players can switch between approved launched apps. **Limitation:**
 //! Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user
 //! mode by design — it always reaches the Windows Secure Desktop. Full CAD
 //! suppression requires the `DisableLockWorkstation` /
@@ -20,7 +21,7 @@ mod win {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_LWIN, VK_MENU, VK_RWIN,
-        VK_SPACE, VK_TAB,
+        VK_SPACE,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
@@ -60,13 +61,9 @@ mod win {
         if vk == VK_APPS.0 as u32 {
             return true;
         }
-        // Alt-based: Alt+Tab, Alt+Esc, Alt+F4, Alt+Space (system menu).
-        if alt
-            && (vk == VK_TAB.0 as u32
-                || vk == VK_ESCAPE.0 as u32
-                || vk == VK_F4.0 as u32
-                || vk == VK_SPACE.0 as u32)
-        {
+        // Alt-based shell escapes. Alt+Tab is deliberately allowed so players
+        // can switch between approved launched applications.
+        if alt && (vk == VK_ESCAPE.0 as u32 || vk == VK_F4.0 as u32 || vk == VK_SPACE.0 as u32) {
             return true;
         }
         // Ctrl+Esc (Start menu) and Ctrl+Shift+Esc (Task Manager).

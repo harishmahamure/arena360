@@ -1,6 +1,8 @@
+mod audio;
 mod cache;
 mod fingerprint;
 mod lockdown;
+mod power;
 mod process;
 mod scan;
 mod storage;
@@ -22,10 +24,16 @@ pub fn run() {
             storage::set_player_token,
             storage::clear_player_token,
             storage::clear_all_tokens,
+            audio::get_system_volume,
+            audio::set_system_volume,
+            audio::open_audio_settings,
             fingerprint::collect_fingerprint,
             scan::scan_installed_software,
             lockdown::set_lockdown_state,
             lockdown::get_lockdown_state,
+            power::lock_workstation,
+            power::restart_station,
+            power::shutdown_station,
             process::launch_allowed,
             process::get_tracked_processes,
             process::kill_tracked_processes,

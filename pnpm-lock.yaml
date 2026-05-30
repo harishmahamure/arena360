@@ -156,6 +156,9 @@ importers:
       '@gaming-cafe/theme':
         specifier: workspace:*
         version: link:../../packages/theme
+      '@gaming-cafe/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@gaming-cafe/utils':
         specifier: workspace:*
         version: link:../../packages/utils

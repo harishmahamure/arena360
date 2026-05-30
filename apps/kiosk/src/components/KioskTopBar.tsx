@@ -1,4 +1,7 @@
+import { SettingsGlyph, SpeakerGlyph } from '@gaming-cafe/ui/primitives';
+import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { getSystemVolume, openAudioSettings, setSystemVolume } from '../lib/tauriCommands';
 
 const VOLUME_KEY = 'gaming-cafe.kiosk.volume';
 
@@ -20,35 +23,19 @@ function readVolume(): number {
   }
 }
 
-function formatRemaining(minutes?: number): string {
-  if (typeof minutes !== 'number') return '--';
-  const total = Math.max(0, Math.floor(minutes));
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+function minutesToSeconds(minutes?: number): number | null {
+  if (typeof minutes !== 'number') return null;
+  return Math.max(0, Math.round(minutes * 60));
 }
 
-function SpeakerIcon({ muted }: { muted: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={22}
-      height={22}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 9v6h4l5 4V5L8 9H4z" />
-      {muted ? (
-        <path d="M16 9l5 5M21 9l-5 5" />
-      ) : (
-        <path d="M16 8.5a4 4 0 0 1 0 7M18.5 6a7 7 0 0 1 0 12" />
-      )}
-    </svg>
-  );
+function formatRemaining(totalSeconds: number | null): string {
+  if (totalSeconds === null) return '--';
+  const total = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
 /**
@@ -64,7 +51,25 @@ export function KioskTopBar({
 }: KioskTopBarProps) {
   const [open, setOpen] = useState<'audio' | 'profile' | null>(null);
   const [volume, setVolume] = useState<number>(() => readVolume());
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(() =>
+    minutesToSeconds(remainingMinutes),
+  );
   const barRef = useRef<HTMLDivElement | null>(null);
+  const hasRemainingTime = remainingSeconds !== null;
+
+  useEffect(() => {
+    let active = true;
+    getSystemVolume()
+      .then((systemVolume) => {
+        if (active) setVolume(systemVolume);
+      })
+      .catch(() => {
+        // Plain browser/dev fallback keeps the persisted UI value.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -73,6 +78,21 @@ export function KioskTopBar({
       // localStorage unavailable — non-fatal
     }
   }, [volume]);
+
+  useEffect(() => {
+    setRemainingSeconds(minutesToSeconds(remainingMinutes));
+  }, [remainingMinutes]);
+
+  useEffect(() => {
+    if (!hasRemainingTime) return;
+    const id = window.setInterval(() => {
+      setRemainingSeconds((current) => {
+        if (current === null) return null;
+        return Math.max(0, current - 1);
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [hasRemainingTime]);
 
   // Close any open popover on outside click / Escape.
   useEffect(() => {
@@ -91,7 +111,18 @@ export function KioskTopBar({
     };
   }, [open]);
 
-  const remainingLabel = formatRemaining(remainingMinutes);
+  const remainingLabel = formatRemaining(remainingSeconds);
+
+  async function changeVolume(next: number) {
+    const clamped = Math.min(100, Math.max(0, next));
+    setVolume(clamped);
+    try {
+      const actual = await setSystemVolume(clamped);
+      setVolume(actual);
+    } catch {
+      // Non-Windows/dev fallback remains UI-only.
+    }
+  }
 
   return (
     <div className="kiosk-topbar" ref={barRef}>
@@ -101,25 +132,39 @@ export function KioskTopBar({
         <div className="kiosk-audio">
           <button
             type="button"
-            className="kiosk-iconbtn"
+            className={`gz-icon-button kiosk-iconbtn${open === 'audio' ? ' is-active' : ''}`}
             aria-label="Volume"
             aria-expanded={open === 'audio'}
             onClick={() => setOpen((p) => (p === 'audio' ? null : 'audio'))}
           >
-            <SpeakerIcon muted={volume === 0} />
+            <SpeakerGlyph muted={volume === 0} size={22} />
           </button>
           {open === 'audio' ? (
-            <div className="kiosk-popover kiosk-audio-popover" role="dialog" aria-label="Volume">
-              <SpeakerIcon muted={volume === 0} />
+            <div
+              className="gz-popover kiosk-popover kiosk-audio-popover"
+              role="dialog"
+              aria-label="Volume"
+            >
+              <SpeakerGlyph muted={volume === 0} size={22} />
               <input
                 type="range"
                 min={0}
                 max={100}
                 value={volume}
+                style={{ '--kiosk-volume-percent': `${volume}%` } as CSSProperties}
                 aria-label="Volume level"
-                onChange={(e) => setVolume(Number.parseInt(e.target.value, 10))}
+                onChange={(e) => void changeVolume(Number.parseInt(e.target.value, 10))}
               />
-              <span className="kiosk-audio-value">{volume}</span>
+              <span className="kiosk-audio-value">{volume}%</span>
+              <button
+                type="button"
+                className="kiosk-audio-settings"
+                aria-label="Open Windows sound settings"
+                title="Sound settings"
+                onClick={() => void openAudioSettings()}
+              >
+                <SettingsGlyph size={20} />
+              </button>
             </div>
           ) : null}
         </div>
@@ -127,7 +172,7 @@ export function KioskTopBar({
         <div className="kiosk-profile">
           <button
             type="button"
-            className="kiosk-profile-pill"
+            className="gz-profile-pill kiosk-profile-pill"
             aria-expanded={open === 'profile'}
             onClick={() => setOpen((p) => (p === 'profile' ? null : 'profile'))}
           >
@@ -135,7 +180,7 @@ export function KioskTopBar({
             <span className="kiosk-profile-time">{remainingLabel}</span>
           </button>
           {open === 'profile' ? (
-            <div className="kiosk-popover kiosk-profile-menu" role="menu">
+            <div className="gz-popover kiosk-popover kiosk-profile-menu" role="menu">
               <div className="kiosk-profile-row">
                 <span className="kiosk-profile-label">Time remaining</span>
                 <span className="kiosk-profile-strong">{remainingLabel}</span>

@@ -39,11 +39,10 @@ pub fn collect_fingerprint() -> Result<FingerprintPayload, String> {
 
 #[cfg(target_os = "windows")]
 fn collect_windows() -> Result<FingerprintPayload, String> {
-    let serial = powershell("(Get-CimInstance -ClassName Win32_BIOS).SerialNumber")
+    let serial =
+        powershell("(Get-CimInstance -ClassName Win32_BIOS).SerialNumber").unwrap_or_default();
+    let bios_uuid = powershell("(Get-CimInstance -ClassName Win32_ComputerSystemProduct).UUID")
         .unwrap_or_default();
-    let bios_uuid =
-        powershell("(Get-CimInstance -ClassName Win32_ComputerSystemProduct).UUID")
-            .unwrap_or_default();
     let mac = powershell(
         "(Get-CimInstance -ClassName Win32_NetworkAdapter -Filter 'PhysicalAdapter=True AND NetEnabled=True' | Select-Object -First 1 -ExpandProperty MACAddress)",
     )

@@ -19,6 +19,7 @@
     "@gaming-cafe/api-types": "workspace:*",
     "@gaming-cafe/contracts": "workspace:*",
     "@gaming-cafe/theme": "workspace:*",
+    "@gaming-cafe/ui": "workspace:*",
     "@gaming-cafe/utils": "workspace:*",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
