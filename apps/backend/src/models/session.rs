@@ -208,7 +208,9 @@ impl UsageSessionRow {
         let device = self.device_name.map(|name| SessionDeviceSummary {
             id: self.device_id,
             name,
-            device_type: self.device_type.unwrap_or_else(|| "other".to_string()),
+            device_type: self
+                .device_type
+                .unwrap_or_else(|| super::DEFAULT_DEVICE_TYPE.to_string()),
             location: self.device_location,
             status: self
                 .device_status

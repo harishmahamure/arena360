@@ -16,21 +16,23 @@ use crate::error::AppError;
 use crate::models::{Device, User};
 use crate::repositories::{SessionRepository, UserRepository};
 use crate::services::totp_util::verify_totp_code;
-use crate::services::{MailService, OtpRateLimiter};
+use crate::services::{BalanceService, MailService, OtpRateLimiter};
 
 pub struct AuthService {
     user_repo: UserRepository,
     session_repo: SessionRepository,
+    balances: Arc<BalanceService>,
     mail_service: MailService,
     otp_limiter: OtpRateLimiter,
     settings: Arc<Settings>,
 }
 
 impl AuthService {
-    pub fn new(pool: PgPool, settings: Arc<Settings>) -> Self {
+    pub fn new(pool: PgPool, settings: Arc<Settings>, balances: Arc<BalanceService>) -> Self {
         Self {
             user_repo: UserRepository::new(pool.clone()),
             session_repo: SessionRepository::new(pool),
+            balances,
             mail_service: MailService::new(settings.as_ref()),
             otp_limiter: OtpRateLimiter::new(),
             settings,
@@ -133,6 +135,14 @@ impl AuthService {
                 ));
             }
 
+            let validation = self
+                .balances
+                .validate_access(session.balance_id, Some(device), None)
+                .await?;
+            if !validation.valid {
+                return Err(BalanceService::validation_to_app_error(validation));
+            }
+
             Some(ActiveSessionDto {
                 id: session.session_id.to_string(),
                 startTime: session.start_time,
@@ -140,6 +150,9 @@ impl AuthService {
                 remainingMinutes: session.remaining_minutes as f64,
             })
         } else {
+            self.balances
+                .require_usable_for_device(user.id, device)
+                .await?;
             None
         };
 

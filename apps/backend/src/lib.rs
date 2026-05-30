@@ -10,3 +10,4 @@ pub mod realtime;
 pub mod repositories;
 pub mod services;
 pub mod sse;
+pub mod validation;

@@ -81,7 +81,7 @@ impl SessionService {
         let start_time = dto.start_time.unwrap_or_else(Utc::now);
         let validation = self
             .balances
-            .validate_access(dto.balance_id, Some(start_time))
+            .validate_access(dto.balance_id, None, Some(start_time))
             .await?;
 
         if !validation.valid {

@@ -1,7 +1,8 @@
+use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
-use crate::dto::PaginationResult;
+use crate::dto::{PaginationResult, RegisterDeviceDto};
 use crate::error::AppError;
 use crate::models::{CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto};
 
@@ -21,6 +22,8 @@ impl DeviceRepository {
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                location, status::text as status, "registeredKiosk" as registered_kiosk,
                "registrationStatus"::text as registration_status,
+               "registrationCode" as registration_code,
+               "registrationCodeExpiresAt" as registration_code_expires_at,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -48,6 +51,7 @@ impl DeviceRepository {
             "SELECT id, name, \"serialNumber\" as serial_number, \"localIpAddress\" as local_ip_address, \
              \"deviceType\"::text as device_type, \"deviceSubType\"::text as device_sub_type, location, status::text as status, \
              \"registeredKiosk\" as registered_kiosk, \"registrationStatus\"::text as registration_status, \
+             \"registrationCode\" as registration_code, \"registrationCodeExpiresAt\" as registration_code_expires_at, \
              \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM devices WHERE \"deletedAt\" IS NULL",
@@ -136,8 +140,8 @@ impl DeviceRepository {
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3,
-                COALESCE($4::devices_devicetype_enum, 'other'::devices_devicetype_enum),
-                COALESCE($5::devices_devicesubtype_enum, 'other'::devices_devicesubtype_enum),
+                COALESCE($4::devices_devicetype_enum, 'OTHER'::devices_devicetype_enum),
+                COALESCE($5::devices_devicesubtype_enum, 'OTHER'::devices_devicesubtype_enum),
                 $6,
                 COALESCE($7::devices_status_enum, 'available'::devices_status_enum),
                 COALESCE($8::devices_registrationstatus_enum, 'unregistered'::devices_registrationstatus_enum),
@@ -148,6 +152,8 @@ impl DeviceRepository {
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       location, status::text as status, "registeredKiosk" as registered_kiosk,
                       "registrationStatus"::text as registration_status,
+                      "registrationCode" as registration_code,
+                      "registrationCodeExpiresAt" as registration_code_expires_at,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -193,6 +199,8 @@ impl DeviceRepository {
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       location, status::text as status, "registeredKiosk" as registered_kiosk,
                       "registrationStatus"::text as registration_status,
+                      "registrationCode" as registration_code,
+                      "registrationCodeExpiresAt" as registration_code_expires_at,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -224,6 +232,8 @@ impl DeviceRepository {
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       location, status::text as status, "registeredKiosk" as registered_kiosk,
                       "registrationStatus"::text as registration_status,
+                      "registrationCode" as registration_code,
+                      "registrationCodeExpiresAt" as registration_code_expires_at,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -276,5 +286,117 @@ impl DeviceRepository {
             }
         };
         Ok(exists.0)
+    }
+
+    pub async fn find_pending_by_registration_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<Device>, AppError> {
+        let normalized = code.trim().to_uppercase();
+        let query = format!(
+            r#"{}
+            WHERE UPPER("registrationCode") = $1
+              AND "registrationCodeUsedAt" IS NULL
+              AND "registrationCodeExpiresAt" > NOW()
+              AND "deletedAt" IS NULL
+            LIMIT 1"#,
+            Self::SELECT
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(normalized)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(device)
+    }
+
+    pub async fn set_registration_code(
+        &self,
+        id: Uuid,
+        code: &str,
+        expires_at: DateTime<Utc>,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
+        let device = sqlx::query_as::<_, Device>(
+            r#"
+            UPDATE devices SET
+                "registrationCode" = $2,
+                "registrationCodeExpiresAt" = $3,
+                "registrationCodeUsedAt" = NULL,
+                "registrationStatus" = 'unregistered'::devices_registrationstatus_enum,
+                "updatedBy" = COALESCE($4, "updatedBy"),
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL
+            RETURNING id, name, "serialNumber" as serial_number,
+                      "localIpAddress" as local_ip_address,
+                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      location, status::text as status, "registeredKiosk" as registered_kiosk,
+                      "registrationStatus"::text as registration_status,
+                      "registrationCode" as registration_code,
+                      "registrationCodeExpiresAt" as registration_code_expires_at,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
+                      "createdAt" as created_at, "updatedAt" as updated_at,
+                      "deletedAt" as deleted_at
+            "#,
+        )
+        .bind(id)
+        .bind(code)
+        .bind(expires_at)
+        .bind(actor_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        device.ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
+    }
+
+    pub async fn redeem_registration(
+        &self,
+        id: Uuid,
+        dto: &RegisterDeviceDto,
+        fingerprint_json: &str,
+    ) -> Result<Device, AppError> {
+        let device = sqlx::query_as::<_, Device>(
+            r#"
+            UPDATE devices SET
+                name = $2,
+                "serialNumber" = COALESCE($3, "serialNumber"),
+                "localIpAddress" = COALESCE($4, "localIpAddress"),
+                "deviceType" = COALESCE($5::devices_devicetype_enum, "deviceType"),
+                "deviceSubType" = COALESCE($6::devices_devicesubtype_enum, "deviceSubType"),
+                location = COALESCE($7, location),
+                "registeredKiosk" = $8,
+                "registrationStatus" = 'registered'::devices_registrationstatus_enum,
+                "registrationCode" = NULL,
+                "registrationCodeExpiresAt" = NULL,
+                "registrationCodeUsedAt" = NOW(),
+                "updatedAt" = NOW()
+            WHERE id = $1
+              AND "deletedAt" IS NULL
+              AND "registrationCodeUsedAt" IS NULL
+            RETURNING id, name, "serialNumber" as serial_number,
+                      "localIpAddress" as local_ip_address,
+                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                      location, status::text as status, "registeredKiosk" as registered_kiosk,
+                      "registrationStatus"::text as registration_status,
+                      "registrationCode" as registration_code,
+                      "registrationCodeExpiresAt" as registration_code_expires_at,
+                      "createdBy" as created_by, "updatedBy" as updated_by,
+                      "createdAt" as created_at, "updatedAt" as updated_at,
+                      "deletedAt" as deleted_at
+            "#,
+        )
+        .bind(id)
+        .bind(&dto.name)
+        .bind(&dto.serialNumber)
+        .bind(&dto.ipAddress)
+        .bind(&dto.deviceType)
+        .bind(&dto.deviceSubType)
+        .bind(&dto.location)
+        .bind(fingerprint_json)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        device.ok_or_else(|| {
+            AppError::unauthorized_code("DEVICE_REGISTRATION_INVALID")
+        })
     }
 }

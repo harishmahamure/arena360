@@ -1,13 +1,16 @@
+import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { Build, CheckCircle, Error as ErrorIcon, Schedule } from '@mui/icons-material';
 import { Box, Chip, Paper, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { KioskRegistrationCard } from '../../../components/KioskRegistrationCard';
 import {
   type CreateDeviceFormData,
   createDeviceSchema,
   deviceStatusOptions,
+  deviceSubTypeOptions,
   deviceTypeOptions,
 } from '../../../containers/devices/schemas/device-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
@@ -33,7 +36,17 @@ const editDeviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
     required: true,
     gridCols: 6,
     options: deviceTypeOptions,
-    helperText: 'Type of gaming device',
+    helperText: 'Must match plan device type for kiosk login',
+  },
+  {
+    name: 'deviceSubType',
+    label: 'Device Sub Type',
+    type: 'select',
+    placeholder: 'Select device sub type',
+    required: true,
+    gridCols: 6,
+    options: deviceSubTypeOptions,
+    helperText: 'Must match plan device sub type for kiosk login',
   },
   {
     name: 'serialNumber',
@@ -69,7 +82,7 @@ const editDeviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
   },
 ];
 
-const getStatusColor = (status: DeviceStatus) => {
+const getStatusColor = (status: DeviceStatusValue) => {
   switch (status) {
     case DeviceStatus.OPERATIONAL:
       return 'success';
@@ -86,7 +99,7 @@ const getStatusColor = (status: DeviceStatus) => {
   }
 };
 
-const getStatusIcon = (status: DeviceStatus) => {
+const getStatusIcon = (status: DeviceStatusValue) => {
   switch (status) {
     case DeviceStatus.OPERATIONAL:
       return <CheckCircle fontSize="small" />;
@@ -103,7 +116,7 @@ const getStatusIcon = (status: DeviceStatus) => {
   }
 };
 
-const getStatusLabel = (status: DeviceStatus) => {
+const getStatusLabel = (status: DeviceStatusValue) => {
   switch (status) {
     case DeviceStatus.OPERATIONAL:
       return 'Operational';
@@ -123,6 +136,7 @@ const getStatusLabel = (status: DeviceStatus) => {
 export default function EditDevicePage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const queryClient = useQueryClient();
   const { can } = usePermissions();
   const canWrite = can(Permission.DevicesWrite);
   const [error, setError] = useState<string | undefined>();
@@ -143,8 +157,8 @@ export default function EditDevicePage() {
     setError(undefined);
     setSuccess(undefined);
 
-    if (!data.name || !data.deviceType) {
-      setError('Device name and type are required');
+    if (!data.name || !data.deviceType || !data.deviceSubType) {
+      setError('Device name, type, and sub type are required');
       setIsSubmitting(false);
       return;
     }
@@ -153,10 +167,11 @@ export default function EditDevicePage() {
       await updateDevice(id as string, {
         name: data.name,
         deviceType: data.deviceType,
+        deviceSubType: data.deviceSubType,
         serialNumber: data.serialNumber || undefined,
         localIpAddress: data.localIpAddress || undefined,
         location: data.location || undefined,
-        status: data.status as DeviceStatus,
+        status: data.status as DeviceStatusValue,
       });
 
       setSuccess('Device updated successfully!');
@@ -218,12 +233,26 @@ export default function EditDevicePage() {
         )}
       </Box>
 
+      {deviceData && (
+        <KioskRegistrationCard
+          deviceId={deviceData.id}
+          registrationStatus={deviceData.registrationStatus}
+          registrationCode={deviceData.registrationCode}
+          expiresAt={deviceData.registrationCodeExpiresAt}
+          canWrite={canWrite}
+          onCodeUpdated={() => {
+            void queryClient.invalidateQueries({ queryKey: ['device', id] });
+          }}
+        />
+      )}
+
       <FormBuilder<CreateDeviceFormData>
         fields={editDeviceFormFields}
         schema={createDeviceSchema}
         defaultValues={{
           name: deviceData?.name || '',
-          deviceType: deviceData?.deviceType || '',
+          deviceType: (deviceData?.deviceType || '') as CreateDeviceFormData['deviceType'],
+          deviceSubType: (deviceData?.deviceSubType || '') as CreateDeviceFormData['deviceSubType'],
           serialNumber: deviceData?.serialNumber || '',
           localIpAddress: deviceData?.localIpAddress || '',
           location: deviceData?.location || '',

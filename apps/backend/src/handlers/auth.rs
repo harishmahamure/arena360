@@ -113,8 +113,8 @@ pub async fn verify_otp(
     responses(
         (status = 200, description = "Authenticated", body = AuthResponseEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
-        (status = 403, description = "Forbidden", body = ErrorEnvelope),
-        (status = 409, description = "Conflict", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden — device not registered, maintenance, or no usable plan (PLAN_EXPIRED, PLAN_EXHAUSTED, PLAN_NOT_ACTIVATED, TIME_WINDOW_VIOLATION, DEVICE_TYPE_NOT_ALLOWED)", body = ErrorEnvelope),
+        (status = 409, description = "Conflict — PLAYER_ALREADY_IN_SESSION", body = ErrorEnvelope),
         (status = 500, description = "Internal server error", body = ErrorEnvelope),
     ),
     security(("bearer_auth" = [])),

@@ -116,7 +116,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Forbidden — device not registered, maintenance, or no usable plan (PLAN_EXPIRED, PLAN_EXHAUSTED, PLAN_NOT_ACTIVATED, TIME_WINDOW_VIOLATION, DEVICE_TYPE_NOT_ALLOWED)",
             "content": {
               "application/json": {
                 "schema": {
@@ -126,7 +126,7 @@
             }
           },
           "409": {
-            "description": "Conflict",
+            "description": "Conflict — PLAYER_ALREADY_IN_SESSION",
             "content": {
               "application/json": {
                 "schema": {
@@ -10358,6 +10358,19 @@
               "string",
               "null"
             ]
+          },
+          "registrationCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registrationCodeExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           },
           "registrationStatus": {
             "type": "string"

@@ -1,50 +1,23 @@
+import {
+  PaymentMethod,
+  PaymentStatus,
+  paymentMethodOptions,
+  paymentStatusOptions,
+  TransactionType,
+  transactionTypeOptions,
+} from '@gaming-cafe/contracts';
 import { validationMessages } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
-// Enum values
-export const PaymentMethodValues = {
-  CASH: 'cash',
-  ONLINE: 'online',
-  SPLIT_PAYMENT: 'split_payment',
-  CREDIT: 'credit',
-} as const;
+export const PaymentMethodValues = PaymentMethod;
+export const PaymentStatusValues = PaymentStatus;
+export const TransactionTypeValues = TransactionType;
 
-export const PaymentStatusValues = {
-  PENDING: 'pending',
-  COMPLETED: 'completed',
-  FAILED: 'failed',
-  REFUNDED: 'refunded',
-  CANCELLED: 'cancelled',
-  CREDIT: 'credit',
-} as const;
+export type PaymentMethodType = (typeof PaymentMethod)[keyof typeof PaymentMethod];
+export type PaymentStatusType = (typeof PaymentStatus)[keyof typeof PaymentStatus];
+export type TransactionTypeType = (typeof TransactionType)[keyof typeof TransactionType];
 
-export const TransactionTypeValues = {
-  PLAN_PURCHASE: 'plan_purchase',
-  PRODUCT_PURCHASE: 'product_purchase',
-} as const;
-
-export type PaymentMethodType = (typeof PaymentMethodValues)[keyof typeof PaymentMethodValues];
-
-export type PaymentStatusType = (typeof PaymentStatusValues)[keyof typeof PaymentStatusValues];
-
-export type TransactionTypeType =
-  (typeof TransactionTypeValues)[keyof typeof TransactionTypeValues];
-
-// Options for select fields
-export const paymentMethodOptions = [
-  { value: PaymentMethodValues.CASH, label: 'Cash' },
-  { value: PaymentMethodValues.ONLINE, label: 'Online' },
-  { value: PaymentMethodValues.SPLIT_PAYMENT, label: 'Split Payment' },
-  { value: PaymentMethodValues.CREDIT, label: 'Credit (Tab)' },
-];
-
-export const paymentStatusOptions = [
-  { value: PaymentStatusValues.PENDING, label: 'Pending' },
-  { value: PaymentStatusValues.COMPLETED, label: 'Completed' },
-  { value: PaymentStatusValues.FAILED, label: 'Failed' },
-  { value: PaymentStatusValues.REFUNDED, label: 'Refunded' },
-  { value: PaymentStatusValues.CANCELLED, label: 'Cancelled' },
-];
+export { paymentMethodOptions, paymentStatusOptions, transactionTypeOptions };
 
 const productItemSchema = yup.object({
   productId: yup.string().uuid('Invalid product ID').required('Product is required'),
@@ -57,27 +30,26 @@ const productItemSchema = yup.object({
     .number()
     .positive('Cash amount must be positive')
     .when('paymentMethod', {
-      is: PaymentMethodValues.SPLIT_PAYMENT,
+      is: PaymentMethod.SPLIT_PAYMENT,
       then: (schema) => schema.required('Split payment method is required'),
     }),
   onlineAmount: yup
     .number()
     .positive('Online amount must be positive')
     .when('paymentMethod', {
-      is: PaymentMethodValues.SPLIT_PAYMENT,
+      is: PaymentMethod.SPLIT_PAYMENT,
       then: (schema) => schema.required('Online amount is required'),
     }),
 });
 
-// Create transaction schema
 export const createTransactionSchema = yup.object({
   playerId: yup.string().uuid('Invalid player ID').required(validationMessages.required('Player')),
 
   transactionType: yup
     .string()
-    .oneOf(Object.values(TransactionTypeValues), 'Please select a valid transaction type')
+    .oneOf(Object.values(TransactionType), 'Please select a valid transaction type')
     .required(validationMessages.required('Transaction Type'))
-    .default(TransactionTypeValues.PRODUCT_PURCHASE),
+    .default(TransactionType.PRODUCT_PURCHASE),
 
   productIds: yup
     .array()
@@ -87,7 +59,7 @@ export const createTransactionSchema = yup.object({
 
   paymentMethod: yup
     .string()
-    .oneOf(Object.values(PaymentMethodValues), 'Please select a valid payment method')
+    .oneOf(Object.values(PaymentMethod), 'Please select a valid payment method')
     .required(validationMessages.required('Payment Method')),
 
   notes: yup.string().max(500, 'Notes cannot exceed 500 characters').optional().nullable(),
@@ -96,14 +68,14 @@ export const createTransactionSchema = yup.object({
     .number()
     .positive('Cash amount must be positive')
     .when('paymentMethod', {
-      is: PaymentMethodValues.SPLIT_PAYMENT,
+      is: PaymentMethod.SPLIT_PAYMENT,
       then: (schema) => schema.required('Cash amount is required'),
     }),
   onlineAmount: yup
     .number()
     .positive('Online amount must be positive')
     .when('paymentMethod', {
-      is: PaymentMethodValues.SPLIT_PAYMENT,
+      is: PaymentMethod.SPLIT_PAYMENT,
       then: (schema) => schema.required('Online amount is required'),
     }),
 
@@ -114,18 +86,17 @@ export type CreateTransactionFormData = yup.InferType<typeof createTransactionSc
 
 export const createTransactionDefaultValues: CreateTransactionFormData = {
   playerId: '',
-  transactionType: TransactionTypeValues.PRODUCT_PURCHASE,
+  transactionType: TransactionType.PRODUCT_PURCHASE,
   productIds: [],
-  paymentMethod: PaymentMethodValues.CASH,
+  paymentMethod: PaymentMethod.CASH,
   notes: '',
   transactionDate: undefined,
 };
 
-// Update transaction status schema
 export const updateTransactionStatusSchema = yup.object({
   paymentStatus: yup
     .string()
-    .oneOf(Object.values(PaymentStatusValues), 'Please select a valid payment status')
+    .oneOf(Object.values(PaymentStatus), 'Please select a valid payment status')
     .required(validationMessages.required('Payment Status')),
 
   notes: yup.string().max(500, 'Notes cannot exceed 500 characters').optional().nullable(),
@@ -141,41 +112,41 @@ export const createPlanTransactionSchema = yup.object({
 
   transactionType: yup
     .string()
-    .oneOf(Object.values(TransactionTypeValues), 'Please select a valid transaction type')
+    .oneOf(Object.values(TransactionType), 'Please select a valid transaction type')
     .required(validationMessages.required('Transaction Type')),
 
   planId: yup
     .string()
     .uuid('Please select a valid plan')
     .when('transactionType', {
-      is: TransactionTypeValues.PLAN_PURCHASE,
+      is: TransactionType.PLAN_PURCHASE,
       then: (schema) => schema.required('Plan is required for plan purchase'),
     }),
   cashAmount: yup
     .number()
     .positive('Cash amount must be positive')
     .when('paymentMethod', {
-      is: PaymentMethodValues.SPLIT_PAYMENT,
+      is: PaymentMethod.SPLIT_PAYMENT,
       then: (schema) => schema.required('Cash amount is required'),
     }),
   onlineAmount: yup
     .number()
     .positive('Online amount must be positive')
     .when('paymentMethod', {
-      is: PaymentMethodValues.SPLIT_PAYMENT,
+      is: PaymentMethod.SPLIT_PAYMENT,
       then: (schema) => schema.required('Online amount is required'),
     }),
 
   paymentMethod: yup
     .string()
-    .oneOf(Object.values(PaymentMethodValues), 'Please select a valid payment method')
+    .oneOf(Object.values(PaymentMethod), 'Please select a valid payment method')
     .required(validationMessages.required('Payment Method')),
 
   paymentStatus: yup
     .string()
-    .oneOf(Object.values(PaymentStatusValues), 'Please select a valid payment status')
+    .oneOf(Object.values(PaymentStatus), 'Please select a valid payment status')
     .optional()
-    .default(PaymentStatusValues.PENDING),
+    .default(PaymentStatus.PENDING),
 
   notes: yup.string().max(500, validationMessages.max('Notes', 500)).optional().nullable(),
 
@@ -185,7 +156,7 @@ export const createPlanTransactionSchema = yup.object({
 export const updatePlanTransactionStatusSchema = yup.object({
   paymentStatus: yup
     .string()
-    .oneOf(Object.values(PaymentStatusValues), 'Please select a valid payment status')
+    .oneOf(Object.values(PaymentStatus), 'Please select a valid payment status')
     .required(validationMessages.required('Payment Status')),
 
   notes: yup.string().max(500, validationMessages.max('Notes', 500)).optional().nullable(),
@@ -199,15 +170,15 @@ export type UpdatePlanTransactionStatusFormData = yup.InferType<
 
 export const createPlanTransactionDefaultValues: CreatePlanTransactionFormData = {
   playerId: '',
-  transactionType: TransactionTypeValues.PLAN_PURCHASE,
+  transactionType: TransactionType.PLAN_PURCHASE,
   planId: '',
-  paymentMethod: PaymentMethodValues.CASH,
-  paymentStatus: PaymentStatusValues.PENDING,
+  paymentMethod: PaymentMethod.CASH,
+  paymentStatus: PaymentStatus.PENDING,
   notes: '',
   transactionDate: undefined,
 };
 
 export const updatePlanTransactionStatusDefaultValues: UpdatePlanTransactionStatusFormData = {
-  paymentStatus: PaymentStatusValues.COMPLETED,
+  paymentStatus: PaymentStatus.COMPLETED,
   notes: '',
 };

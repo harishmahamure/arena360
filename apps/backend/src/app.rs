@@ -65,6 +65,7 @@ pub async fn build_state() -> Arc<AppState> {
     let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
     let balances = Arc::new(BalanceService::new(pool.clone()));
+    let balances_for_auth = balances.clone();
 
     let credit = Arc::new(CreditService::new(pool.clone()));
 
@@ -73,7 +74,7 @@ pub async fn build_state() -> Arc<AppState> {
     tokio::spawn(dispatcher.run());
 
     Arc::new(AppState {
-        auth: AuthService::new(pool.clone(), settings.clone()),
+        auth: AuthService::new(pool.clone(), settings.clone(), balances_for_auth),
         config: ConfigService::new(pool.clone()),
         users: UserService::new(pool.clone()),
         devices: devices.clone(),
@@ -160,6 +161,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/devices/{id}/status",
             patch(handlers::devices::update_device_status),
+        )
+        .route("/devices/register", post(handlers::devices::register_device))
+        .route(
+            "/devices/{id}/registration-code",
+            post(handlers::devices::issue_registration_code),
         )
         .route("/plans/active", get(handlers::plans::get_active_plans))
         .route(

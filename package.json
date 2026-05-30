@@ -28,6 +28,7 @@
     "changeset": "changeset",
     "release": "changeset publish",
     "prepare": "simple-git-hooks",
+    "admin:dev": "pnpm --filter @gaming-cafe/admin dev",
     "backend:build": "cargo build --manifest-path apps/backend/Cargo.toml",
     "backend:build:release": "cargo build --release --manifest-path apps/backend/Cargo.toml",
     "backend:dev": "cargo run --manifest-path apps/backend/Cargo.toml",

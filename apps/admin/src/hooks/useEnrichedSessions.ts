@@ -81,11 +81,9 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
 
     return sessions.map((session): SessionResponse => {
       const balance = balanceMap.get(session.balanceId);
-      const player =
-        balance?.player ?? (balance ? playerMap.get(balance.playerId) : undefined);
+      const player = balance?.player ?? (balance ? playerMap.get(balance.playerId) : undefined);
       const plan =
-        balance?.plan ??
-        (balance?.sourcePlanId ? planMap.get(balance.sourcePlanId) : undefined);
+        balance?.plan ?? (balance?.sourcePlanId ? planMap.get(balance.sourcePlanId) : undefined);
 
       const enrichedBalance =
         session.balance ??

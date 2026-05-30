@@ -1,16 +1,29 @@
+import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Box, Paper, Typography } from '@mui/material';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Paper,
+  Typography,
+} from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import {
   type CreateDeviceFormData,
   createDeviceDefaultValues,
   createDeviceSchema,
   deviceStatusOptions,
+  deviceSubTypeOptions,
   deviceTypeOptions,
 } from '../../../../src/containers/devices/schemas/device-schema';
 import { addDevice } from '../../../services/devices/add';
-import { DeviceStatus } from '../../../services/devices/list';
+import { type DeviceResponse, DeviceStatus } from '../../../services/devices/list';
 
 export const deviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
   {
@@ -30,7 +43,17 @@ export const deviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
     required: true,
     gridCols: 6,
     options: deviceTypeOptions,
-    helperText: 'Type of gaming device',
+    helperText: 'Must match plan device type for kiosk login',
+  },
+  {
+    name: 'deviceSubType',
+    label: 'Device Sub Type',
+    type: 'select',
+    placeholder: 'Select device sub type',
+    required: true,
+    gridCols: 6,
+    options: deviceSubTypeOptions,
+    helperText: 'Must match plan device sub type for kiosk login',
   },
   {
     name: 'serialNumber',
@@ -70,34 +93,30 @@ export default function AddNewDevicePage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
+  const [createdDevice, setCreatedDevice] = useState<DeviceResponse | null>(null);
 
   const handleSubmit = async (data: CreateDeviceFormData) => {
     setLoading(true);
     setError(undefined);
-    setSuccess(undefined);
 
-    if (!data.name || !data.deviceType) {
-      setError('Device name and type are required');
+    if (!data.name || !data.deviceType || !data.deviceSubType) {
+      setError('Device name, type, and sub type are required');
       setLoading(false);
       return;
     }
 
     try {
-      await addDevice({
+      const device = await addDevice({
         name: data.name,
         deviceType: data.deviceType,
+        deviceSubType: data.deviceSubType,
         serialNumber: data.serialNumber || undefined,
         localIpAddress: data.localIpAddress || undefined,
         location: data.location || undefined,
-        status: (data.status as DeviceStatus) || DeviceStatus.OPERATIONAL,
+        status: (data.status as DeviceStatusValue) || DeviceStatus.OPERATIONAL,
       });
 
-      setSuccess('Device created successfully!');
-
-      setTimeout(() => {
-        navigate('/devices');
-      }, 1500);
+      setCreatedDevice(device);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create device');
     } finally {
@@ -109,13 +128,27 @@ export default function AddNewDevicePage() {
     navigate('/devices');
   };
 
+  const handleCopyCode = async () => {
+    if (!createdDevice?.registrationCode) return;
+    try {
+      await navigator.clipboard.writeText(createdDevice.registrationCode);
+      toast.success('Registration code copied');
+    } catch {
+      toast.error('Failed to copy code');
+    }
+  };
+
+  const handleDialogClose = () => {
+    if (createdDevice?.id) {
+      navigate(`/devices/${createdDevice.id}`);
+    } else {
+      navigate('/devices');
+    }
+    setCreatedDevice(null);
+  };
+
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 4,
-      }}
-    >
+    <Paper elevation={0} sx={{ p: 4 }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" fontWeight={600} gutterBottom>
           Add New Device
@@ -134,7 +167,6 @@ export default function AddNewDevicePage() {
         onCancel={handleCancel}
         loading={loading}
         error={error}
-        success={success}
         showCancel
         showReset
         submitLabel="Create Device"
@@ -143,6 +175,53 @@ export default function AddNewDevicePage() {
         buttonAlign="right"
         spacing={3}
       />
+
+      <Dialog open={createdDevice !== null} onClose={handleDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Device created — kiosk registration code</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enter this code on the kiosk at <strong>{createdDevice?.name}</strong>. It expires in 24
+            hours.
+          </Typography>
+          {createdDevice?.registrationCode ? (
+            <Box
+              sx={{
+                p: 2,
+                bgcolor: 'action.hover',
+                borderRadius: 1,
+                textAlign: 'center',
+              }}
+            >
+              <Typography
+                variant="h4"
+                component="p"
+                sx={{ fontFamily: 'monospace', letterSpacing: 4, fontWeight: 700 }}
+              >
+                {createdDevice.registrationCode}
+              </Typography>
+              {createdDevice.registrationCodeExpiresAt && (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  Expires {new Date(createdDevice.registrationCodeExpiresAt).toLocaleString()}
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="warning.main">
+              No code was returned. Open the device detail page to generate one.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          {createdDevice?.registrationCode && (
+            <Button startIcon={<ContentCopyIcon />} onClick={() => void handleCopyCode()}>
+              Copy code
+            </Button>
+          )}
+          <Button variant="contained" onClick={handleDialogClose}>
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 }

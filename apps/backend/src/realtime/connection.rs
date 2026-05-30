@@ -165,6 +165,29 @@ async fn handle_client_frame(
                     continue;
                 }
 
+                if let ChannelId::User(player_id) = channel {
+                    if conn_read.claims.is_device() {
+                        let device_id = conn_read.user_id;
+                        match acl::device_has_player_session(pool, device_id, player_id).await {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                let _ = tx.send(ServerFrame::error(
+                                    "FORBIDDEN_CHANNEL",
+                                    "No active session for player on this device".to_string(),
+                                ));
+                                continue;
+                            }
+                            Err(_) => {
+                                let _ = tx.send(ServerFrame::error(
+                                    "INTERNAL_ERROR",
+                                    "Failed to verify player session",
+                                ));
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 if let ChannelId::Room(ref name) = channel {
                     match acl::is_room_member(pool, name, conn_read.user_id).await {
                         Ok(true) => {}

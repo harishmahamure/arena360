@@ -11,6 +11,9 @@ use crate::models::{
 use crate::realtime::OutboxService;
 use crate::repositories::{TransactionProductRepository, TransactionRepository};
 use crate::services::{BalanceService, CreditService, EventService};
+use crate::validation::{
+    optional_payment_status, require_payment_method, require_payment_status, require_transaction_type,
+};
 
 pub struct TransactionService {
     repo: TransactionRepository,
@@ -275,11 +278,12 @@ impl TransactionService {
 
     pub async fn create(
         &self,
-        dto: CreateTransactionDto,
+        mut dto: CreateTransactionDto,
         actor_id: Option<Uuid>,
         actor_role: Option<&str>,
         cash_registers: &crate::services::CashRegisterService,
     ) -> Result<Transaction, AppError> {
+        sanitize_create_transaction(&mut dto)?;
         if dto.transaction_type == "product_purchase" {
             return self
                 .create_product_purchase(dto, actor_id, actor_role, cash_registers)
@@ -379,10 +383,13 @@ impl TransactionService {
     pub async fn update(
         &self,
         id: Uuid,
-        dto: UpdateTransactionDto,
+        mut dto: UpdateTransactionDto,
         actor_id: Option<Uuid>,
         cash_registers: &crate::services::CashRegisterService,
     ) -> Result<Transaction, AppError> {
+        if let Some(status) = dto.payment_status.take() {
+            dto.payment_status = Some(require_payment_status(Some(status))?);
+        }
         if dto.payment_status.is_none() && dto.notes.is_none() {
             return Err(AppError::BadRequest(
                 "At least one of paymentStatus or notes must be provided".to_string(),
@@ -420,4 +427,11 @@ impl TransactionService {
 
         Ok(updated)
     }
+}
+
+fn sanitize_create_transaction(dto: &mut CreateTransactionDto) -> Result<(), AppError> {
+    dto.transaction_type = require_transaction_type(Some(dto.transaction_type.clone()))?;
+    dto.payment_method = require_payment_method(Some(dto.payment_method.clone()))?;
+    dto.payment_status = optional_payment_status(dto.payment_status.clone())?;
+    Ok(())
 }

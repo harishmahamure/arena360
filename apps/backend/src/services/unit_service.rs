@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::models::{CreateUnitDto, Unit, UnitFilterDto, UpdateUnitDto};
 use crate::repositories::UnitRepository;
+use crate::validation::{optional_unit_type, require_unit_type};
 
 pub struct UnitService {
     repo: UnitRepository,
@@ -51,6 +52,8 @@ impl UnitService {
                 dto.abbreviation
             )));
         }
+        let mut dto = dto;
+        dto.r#type = Some(require_unit_type(dto.r#type)?);
         self.repo.create(&dto, actor_id).await
     }
 
@@ -78,6 +81,8 @@ impl UnitService {
                 )));
             }
         }
+        let mut dto = dto;
+        dto.r#type = optional_unit_type(dto.r#type)?;
         self.repo.update(id, &dto, actor_id).await
     }
 

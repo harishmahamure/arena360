@@ -1,42 +1,24 @@
+import {
+  DEVICE_SUB_TYPE_VALUES,
+  DEVICE_TYPE_VALUES,
+  DeviceStatus,
+  deviceStatusOptions,
+} from '@gaming-cafe/contracts';
 import { validationMessages } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
-// Enum values
-export const DeviceStatusValues = {
-  OPERATIONAL: 'operational',
-  UNDER_MAINTENANCE: 'under_maintenance',
-  OUT_OF_ORDER: 'out_of_service',
-  IN_USE: 'in_use',
-  AVAILABLE: 'available',
-} as const;
+export {
+  DeviceSubType,
+  DeviceType,
+  deviceSubTypeOptions,
+  deviceTypeOptions,
+} from '@gaming-cafe/contracts';
 
-export type DeviceStatusType = (typeof DeviceStatusValues)[keyof typeof DeviceStatusValues];
+export const DeviceStatusValues = DeviceStatus;
+export type DeviceStatusType = (typeof DeviceStatus)[keyof typeof DeviceStatus];
 
-// Options for select fields
-export const deviceStatusOptions = [
-  { value: DeviceStatusValues.OPERATIONAL, label: 'Operational' },
-  { value: DeviceStatusValues.UNDER_MAINTENANCE, label: 'Under Maintenance' },
-  { value: DeviceStatusValues.OUT_OF_ORDER, label: 'Out of Service' },
-  { value: DeviceStatusValues.IN_USE, label: 'In Use' },
-  { value: DeviceStatusValues.AVAILABLE, label: 'Available' },
-];
+export { deviceStatusOptions };
 
-// Common device types for game zones
-export const deviceTypeOptions = [
-  { value: 'PlayStation 5', label: 'PlayStation 5' },
-  { value: 'PlayStation 4', label: 'PlayStation 4' },
-  { value: 'Xbox Series X', label: 'Xbox Series X' },
-  { value: 'Xbox Series S', label: 'Xbox Series S' },
-  { value: 'Xbox One', label: 'Xbox One' },
-  { value: 'Nintendo Switch', label: 'Nintendo Switch' },
-  { value: 'Gaming PC', label: 'Gaming PC' },
-  { value: 'VR Headset', label: 'VR Headset' },
-  { value: 'Racing Simulator', label: 'Racing Simulator' },
-  { value: 'Arcade Machine', label: 'Arcade Machine' },
-  { value: 'Other', label: 'Other' },
-];
-
-// Create device schema
 export const createDeviceSchema = yup.object({
   name: yup
     .string()
@@ -58,34 +40,39 @@ export const createDeviceSchema = yup.object({
 
   deviceType: yup
     .string()
-    .max(100, 'Device type must not exceed 100 characters')
+    .oneOf([...DEVICE_TYPE_VALUES], 'Please select a valid device type')
     .required(validationMessages.required('Device Type')),
+
+  deviceSubType: yup
+    .string()
+    .oneOf([...DEVICE_SUB_TYPE_VALUES], 'Please select a valid device sub type')
+    .required(validationMessages.required('Device Sub Type')),
 
   location: yup.string().max(200, 'Location must not exceed 200 characters').optional().nullable(),
 
   status: yup
     .string()
-    .oneOf(Object.values(DeviceStatusValues), 'Please select a valid status')
+    .oneOf(Object.values(DeviceStatus), 'Please select a valid status')
     .optional()
-    .default(DeviceStatusValues.OPERATIONAL),
+    .default(DeviceStatus.OPERATIONAL),
 });
 
 export type CreateDeviceFormData = yup.InferType<typeof createDeviceSchema>;
 
-export const createDeviceDefaultValues: CreateDeviceFormData = {
+export const createDeviceDefaultValues = {
   name: '',
   serialNumber: '',
   localIpAddress: '',
   deviceType: '',
+  deviceSubType: '',
   location: '',
-  status: DeviceStatusValues.OPERATIONAL,
-};
+  status: DeviceStatus.OPERATIONAL,
+} as unknown as CreateDeviceFormData;
 
-// Update device status schema
 export const updateDeviceStatusSchema = yup.object({
   status: yup
     .string()
-    .oneOf(Object.values(DeviceStatusValues), 'Please select a valid status')
+    .oneOf(Object.values(DeviceStatus), 'Please select a valid status')
     .required(validationMessages.required('Status')),
 });
 

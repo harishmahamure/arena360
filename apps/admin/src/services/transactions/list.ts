@@ -1,28 +1,23 @@
+import {
+  type PaymentMethodValue,
+  PaymentStatus,
+  type PaymentStatusValue,
+  TransactionType,
+  type TransactionTypeValue,
+} from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
-import type { PaymentMethod } from '../transaction/list';
 
-export type { PaymentMethod };
-
-export enum TransactionType {
-  PLAN_PURCHASE = 'plan_purchase',
-  PRODUCT_PURCHASE = 'product_purchase',
-}
-
-export enum PaymentStatus {
-  PENDING = 'pending',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  REFUNDED = 'refunded',
-}
+export type { PaymentMethodValue as PaymentMethod };
+export { PaymentStatus, TransactionType };
 
 export interface TransactionResponse {
   id: string;
   playerId: string;
-  transactionType: TransactionType;
+  transactionType: TransactionTypeValue;
   planId?: string;
   amount: number;
-  paymentMethod: PaymentMethod;
-  paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethodValue;
+  paymentStatus: PaymentStatusValue;
   notes?: string;
   transactionDate: string;
   createdAt: string;
@@ -57,10 +52,10 @@ interface GetTransactionsResponse {
 
 export interface GetTransactionsFilters {
   playerId?: string;
-  transactionType?: TransactionType;
+  transactionType?: TransactionTypeValue;
   planId?: string;
-  paymentMethod?: PaymentMethod;
-  paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethodValue;
+  paymentStatus?: PaymentStatusValue;
   transactionDateFrom?: string;
   transactionDateTo?: string;
   minAmount?: number;

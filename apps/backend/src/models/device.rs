@@ -17,6 +17,10 @@ pub struct Device {
     pub status: String,
     pub registered_kiosk: Option<String>,
     pub registration_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_code_expires_at: Option<DateTime<Utc>>,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,

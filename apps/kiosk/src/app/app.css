@@ -1,27 +1,139 @@
 :root {
+  color-scheme: dark;
   font-family: system-ui, sans-serif;
-  line-height: 1.5;
-  color: #e8e8e8;
-  background-color: #121212;
+  background: #0b0f1a;
+  color: #e8ecf4;
 }
 
-.home {
+body {
+  margin: 0;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+.lockdown-root {
+  position: relative;
+  min-height: 100vh;
+}
+
+.lockdown-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: transparent;
+}
+
+.lockdown-content {
+  position: relative;
+  z-index: 9999;
+  min-height: 100vh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  margin: 0;
-  text-align: center;
   padding: 2rem;
 }
 
-.home h1 {
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
+.panel {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.home p {
-  opacity: 0.85;
-  max-width: 28rem;
+.panel h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+input {
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #2a3550;
+  background: #141b2e;
+  color: inherit;
+}
+
+button {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: #3b82f6;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: #1e293b;
+}
+
+button.link {
+  background: transparent;
+  color: #93c5fd;
+  text-align: left;
+  padding-left: 0;
+}
+
+button.danger {
+  color: #fca5a5;
+}
+
+.error {
+  color: #fca5a5;
+  margin: 0;
+}
+
+.error-panel {
+  padding: 1rem;
+  border-radius: 8px;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid #7f1d1d;
+}
+
+.error-headline {
+  color: #fecaca;
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.error-detail {
+  color: #fca5a5;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.meta {
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.session-timer {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.hint {
+  color: #94a3b8;
+  font-size: 0.85rem;
 }

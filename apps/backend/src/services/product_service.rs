@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::models::{CreateProductDto, Product, ProductFilterDto, UpdateProductDto};
 use crate::repositories::ProductRepository;
+use crate::validation::{optional_product_category, require_product_category};
 
 pub struct ProductService {
     repo: ProductRepository,
@@ -64,6 +65,8 @@ impl ProductService {
             }
         }
 
+        let mut dto = dto;
+        dto.category = Some(require_product_category(dto.category)?);
         self.repo.create(&dto, actor_id).await
     }
 
@@ -105,6 +108,8 @@ impl ProductService {
             }
         }
 
+        let mut dto = dto;
+        dto.category = optional_product_category(dto.category)?;
         self.repo.update(id, &dto, actor_id).await
     }
 

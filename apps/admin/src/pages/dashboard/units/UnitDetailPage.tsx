@@ -9,7 +9,6 @@ import {
 } from '../../../containers/units/schemas/unit-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getUnitById } from '../../../services/units/getById';
-import type { UnitType } from '../../../services/units/list';
 import { updateUnit } from '../../../services/units/update';
 import { unitFormFields } from './UnitNewPage';
 
@@ -94,7 +93,7 @@ export default function EditUnitPage() {
         defaultValues={{
           name: unit?.name,
           abbreviation: unit?.abbreviation,
-          type: unit?.type as unknown as UnitType,
+          type: unit?.type as CreateUnitFormData['type'],
           description: unit?.description,
           isActive: unit?.isActive,
         }}

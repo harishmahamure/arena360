@@ -1,31 +1,11 @@
+import { UnitType, unitTypeOptions } from '@gaming-cafe/contracts';
 import { optionalString, stringWithLength } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
-export const UnitTypeValues = {
-  BOX: 'box',
-  KILOGRAM: 'kilogram',
-  GRAM: 'gram',
-  LITER: 'liter',
-  MILLILITER: 'milliliter',
-  PIECE: 'piece',
-  PACK: 'pack',
-  DOZEN: 'dozen',
-  OTHER: 'other',
-} as const;
+export const UnitTypeValues = UnitType;
+export type UnitTypeType = (typeof UnitType)[keyof typeof UnitType];
 
-export type UnitTypeType = (typeof UnitTypeValues)[keyof typeof UnitTypeValues];
-
-export const unitTypeOptions = [
-  { value: UnitTypeValues.BOX, label: 'Box' },
-  { value: UnitTypeValues.KILOGRAM, label: 'Kilogram (kg)' },
-  { value: UnitTypeValues.GRAM, label: 'Gram (g)' },
-  { value: UnitTypeValues.LITER, label: 'Liter (L)' },
-  { value: UnitTypeValues.MILLILITER, label: 'Milliliter (ml)' },
-  { value: UnitTypeValues.PIECE, label: 'Piece' },
-  { value: UnitTypeValues.PACK, label: 'Pack' },
-  { value: UnitTypeValues.DOZEN, label: 'Dozen' },
-  { value: UnitTypeValues.OTHER, label: 'Other' },
-];
+export { unitTypeOptions };
 
 export const createUnitSchema = yup.object({
   name: stringWithLength('Unit name', undefined, 100, true),
@@ -34,9 +14,9 @@ export const createUnitSchema = yup.object({
 
   type: yup
     .string()
-    .oneOf(Object.values(UnitTypeValues), 'Please select a valid unit type')
+    .oneOf(Object.values(UnitType), 'Please select a valid unit type')
     .optional()
-    .default(UnitTypeValues.OTHER),
+    .default(UnitType.OTHER),
 
   description: optionalString(),
 
@@ -48,7 +28,7 @@ export type CreateUnitFormData = yup.InferType<typeof createUnitSchema>;
 export const createUnitDefaultValues: CreateUnitFormData = {
   name: '',
   abbreviation: '',
-  type: UnitTypeValues.OTHER,
+  type: UnitType.OTHER,
   description: '',
   isActive: true,
 };

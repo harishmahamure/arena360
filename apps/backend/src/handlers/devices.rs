@@ -7,7 +7,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
-use crate::dto::{created, ok, ApiResult};
+use crate::dto::{
+    created, ok, ApiResult, DeviceRegisterResponseDto, DeviceRegistrationCodeResponseDto,
+    RegisterDeviceDto, RegisteredDeviceDto,
+};
 use crate::middleware::AdminUser;
 use crate::models::{
     CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
@@ -78,6 +81,57 @@ pub async fn create_device(
 ) -> ApiResult<Device> {
     let device = state.devices.create(dto, claims.user_id_uuid()).await?;
     created(device)
+}
+
+#[utoipa::path(
+    post,
+    path = "/devices/register",
+    request_body = RegisterDeviceDto,
+    responses(
+        (status = 200, description = "Device registered"),
+        (status = 401, description = "Invalid registration code", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    tag = "devices"
+)]
+pub async fn register_device(
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<RegisterDeviceDto>,
+) -> ApiResult<DeviceRegisterResponseDto> {
+    let device = state.devices.register_kiosk(dto).await?;
+    let token = state.auth.generate_device_token(device.id)?;
+    ok(DeviceRegisterResponseDto {
+        accessToken: token,
+        device: RegisteredDeviceDto::from(device),
+    })
+}
+
+#[utoipa::path(
+    post,
+    path = "/devices/{id}/registration-code",
+    params(
+        ("id" = Uuid, Path, description = "Device ID"),
+    ),
+    responses(
+        (status = 200, description = "Registration code issued"),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "devices"
+)]
+pub async fn issue_registration_code(
+    AdminUser(claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<DeviceRegistrationCodeResponseDto> {
+    let result = state
+        .devices
+        .registration_code_response(id, claims.user_id_uuid())
+        .await?;
+    ok(result)
 }
 
 #[utoipa::path(

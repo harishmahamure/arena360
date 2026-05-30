@@ -27,7 +27,7 @@ export default function ProductTransactionDetailPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['transaction', id],
-    queryFn: () => getTransactionById(id!),
+    queryFn: () => getTransactionById(id as string),
     enabled: !!id,
   });
 

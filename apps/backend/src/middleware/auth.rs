@@ -1,6 +1,13 @@
-use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
+use axum::{
+    body::Body,
+    extract::{FromRef, State},
+    http::Request,
+    middleware::Next,
+    response::Response,
+};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::JwtUserClaims;
@@ -12,6 +19,7 @@ const PUBLIC_EXACT: &[&str] = &[
     "/auth/login/admin",
     "/auth/login/staff",
     "/auth/verify-otp",
+    "/devices/register",
     "/health/live",
     "/realtime",
 ];
@@ -204,5 +212,78 @@ where
             .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
         require_device(&claims)?;
         Ok(DeviceUser(claims))
+    }
+}
+
+pub struct PlayerUser(pub JwtUserClaims);
+
+impl PlayerUser {
+    pub fn player_id(&self) -> Result<Uuid, AppError> {
+        self.0
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Invalid player ID in token".to_string()))
+    }
+
+    pub fn device_id(&self) -> Result<Uuid, AppError> {
+        self.0
+            .device_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Player token missing deviceId".to_string()))
+    }
+}
+
+impl<S> axum::extract::FromRequestParts<S> for PlayerUser
+where
+    S: Send + Sync,
+    Arc<AppState>: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let app_state = Arc::<AppState>::from_ref(state);
+
+        let device_claims = parts
+            .extensions
+            .get::<JwtUserClaims>()
+            .cloned()
+            .ok_or_else(|| AppError::Unauthorized("Device authentication required".to_string()))?;
+        require_device(&device_claims)?;
+
+        let player_token = parts
+            .headers
+            .get("X-Player-Token")
+            .or_else(|| parts.headers.get("x-player-token"))
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer ").or(Some(v)))
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                AppError::Unauthorized("X-Player-Token required for player routes".to_string())
+            })?;
+
+        let player_claims = decode_token(&app_state, player_token)?;
+
+        if !player_claims.roles.iter().any(|r| r == "player") {
+            return Err(AppError::Forbidden(
+                "Player access required".to_string(),
+            ));
+        }
+
+        let player_device = player_claims.device_id_uuid().ok_or_else(|| {
+            AppError::Unauthorized("Player token missing deviceId".to_string())
+        })?;
+        let kiosk_device = device_claims.user_id_uuid().ok_or_else(|| {
+            AppError::Internal("Invalid device ID in token".to_string())
+        })?;
+
+        if player_device != kiosk_device {
+            return Err(AppError::Forbidden(
+                "Player token deviceId does not match device token".to_string(),
+            ));
+        }
+
+        Ok(PlayerUser(player_claims))
     }
 }

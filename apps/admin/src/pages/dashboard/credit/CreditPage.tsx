@@ -27,9 +27,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
-  paymentMethodOptions,
   type PaymentMethodType,
   PaymentMethodValues,
+  paymentMethodOptions,
 } from '../../../containers/transactions/schemas/transaction-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {

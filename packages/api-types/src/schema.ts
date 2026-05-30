@@ -1867,6 +1867,9 @@ export interface components {
             location?: string | null;
             name: string;
             registeredKiosk?: string | null;
+            registrationCode?: string | null;
+            /** Format: date-time */
+            registrationCodeExpiresAt?: string | null;
             registrationStatus: string;
             serialNumber?: string | null;
             status: string;
@@ -3677,7 +3680,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — device not registered, maintenance, or no usable plan (PLAN_EXPIRED, PLAN_EXHAUSTED, PLAN_NOT_ACTIVATED, TIME_WINDOW_VIOLATION, DEVICE_TYPE_NOT_ALLOWED) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3686,7 +3689,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Conflict */
+            /** @description Conflict — PLAYER_ALREADY_IN_SESSION */
             409: {
                 headers: {
                     [name: string]: unknown;

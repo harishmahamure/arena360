@@ -174,6 +174,6 @@ pub async fn validate_access(
         claims.is_admin_or_staff(),
         balance.player_id,
     )?;
-    let result = state.balances.validate_access(id, None).await?;
+    let result = state.balances.validate_access(id, None, None).await?;
     ok(result)
 }

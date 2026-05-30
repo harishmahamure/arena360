@@ -11,6 +11,7 @@
  * @see ADR-0008 for rationale on the two-package split
  */
 
+export * from './enums.js';
 export * from './errors.js';
 export * from './pagination.js';
 export * from './roles.js';

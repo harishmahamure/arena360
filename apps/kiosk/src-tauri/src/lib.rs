@@ -1,14 +1,32 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+mod fingerprint;
+mod lockdown;
+mod process;
+mod storage;
+
+use lockdown::init_locked_on_startup;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .setup(|app| {
+            init_locked_on_startup(app.handle());
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            storage::get_tokens,
+            storage::set_device_token,
+            storage::set_player_token,
+            storage::clear_player_token,
+            storage::clear_all_tokens,
+            fingerprint::collect_fingerprint,
+            lockdown::set_lockdown_state,
+            lockdown::get_lockdown_state,
+            process::launch_allowed,
+            process::get_tracked_processes,
+            process::kill_tracked_processes,
+            process::clear_tracked_processes,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

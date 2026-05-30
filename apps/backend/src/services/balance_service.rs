@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{
-    balance_status, ledger_reason, plan_kind, BalanceFilterDto, BalanceValidationResult, Plan,
-    PlayerPlanBalance, PlayerPlanBalanceResponse, PurchaseBalanceDto,
+    balance_status, ledger_reason, plan_kind, BalanceFilterDto, BalanceValidationResult, Device,
+    Plan, PlayerPlanBalance, PlayerPlanBalanceResponse, PurchaseBalanceDto,
 };
 use crate::repositories::{BalanceRepository, LedgerRepository, PlanRepository};
 
@@ -159,10 +159,114 @@ impl BalanceService {
     pub async fn validate_access(
         &self,
         balance_id: Uuid,
+        device: Option<&Device>,
         current_time: Option<DateTime<Utc>>,
     ) -> Result<BalanceValidationResult, AppError> {
         let balance = self.get_raw(balance_id).await?;
-        Ok(Self::validate_balance(&balance, current_time))
+        Ok(Self::validate_balance(&balance, device, current_time))
+    }
+
+    /// Whether balance purchase scope matches this kiosk device (exact type/subtype; NULL scope does not match).
+    pub fn device_scope_matches(balance: &PlayerPlanBalance, device: &Device) -> bool {
+        match (&balance.device_type, &balance.device_sub_type) {
+            (Some(dt), Some(dst)) => dt == &device.device_type && dst == &device.device_sub_type,
+            _ => false,
+        }
+    }
+
+    /// Maps a failed validation to a contract `ErrorCode` string for `AppError::forbidden_code`.
+    pub fn validation_failure_code(result: &BalanceValidationResult) -> &'static str {
+        let reason = result.reason.as_deref().unwrap_or("");
+        if reason.contains("expired") || reason.contains("Expired") {
+            return "PLAN_EXPIRED";
+        }
+        if reason.contains("exhausted")
+            || reason.contains("No minutes")
+            || reason.contains("Insufficient")
+        {
+            return "PLAN_EXHAUSTED";
+        }
+        if reason.contains("time window")
+            || reason.contains("allowed days")
+            || reason.contains("allowed months")
+            || reason.contains("Outside allowed")
+        {
+            return "TIME_WINDOW_VIOLATION";
+        }
+        if reason.contains("device") || reason.contains("Device") {
+            return "DEVICE_TYPE_NOT_ALLOWED";
+        }
+        if reason.contains("Balance is") {
+            return match reason {
+                r if r.contains("cancelled") => "PLAN_CANCELLED",
+                r if r.contains("expired") => "PLAN_EXPIRED",
+                _ => "PLAN_NOT_ACTIVATED",
+            };
+        }
+        "PLAN_NOT_ACTIVATED"
+    }
+
+    pub fn validation_to_app_error(result: BalanceValidationResult) -> AppError {
+        AppError::forbidden_code(Self::validation_failure_code(&result))
+    }
+
+    pub async fn find_usable_for_device(
+        &self,
+        player_id: Uuid,
+        device: &Device,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        self.require_usable_for_device(player_id, device).await
+    }
+
+    pub async fn require_usable_for_device(
+        &self,
+        player_id: Uuid,
+        device: &Device,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let result = self
+            .list(BalanceFilterDto {
+                player_id: Some(player_id),
+                status: Some(balance_status::ACTIVE.to_string()),
+                usable_only: Some(true),
+                limit: Some(100),
+                ..Default::default()
+            })
+            .await?;
+
+        let mut best: Option<(PlayerPlanBalance, i32)> = None;
+        let mut last_failure: Option<BalanceValidationResult> = None;
+        let mut had_scope_match = false;
+
+        for row in result.data {
+            let balance = self.get_raw(row.id).await?;
+            if !Self::device_scope_matches(&balance, device) {
+                continue;
+            }
+            had_scope_match = true;
+            let validation = Self::validate_balance(&balance, Some(device), None);
+            if validation.valid {
+                let minutes = balance.remaining_minutes;
+                if best.as_ref().is_none_or(|(_, m)| minutes > *m) {
+                    best = Some((balance, minutes));
+                }
+            } else {
+                last_failure = Some(validation);
+            }
+        }
+
+        if let Some((balance, _)) = best {
+            return Ok(balance);
+        }
+
+        if !had_scope_match {
+            return Err(AppError::forbidden_code("DEVICE_TYPE_NOT_ALLOWED"));
+        }
+
+        if let Some(failure) = last_failure {
+            return Err(Self::validation_to_app_error(failure));
+        }
+
+        Err(AppError::forbidden_code("PLAN_NOT_ACTIVATED"))
     }
 
     pub async fn deduct_minutes(
@@ -259,10 +363,23 @@ impl BalanceService {
         Ok(())
     }
 
-    fn validate_balance(
+    pub fn validate_balance(
         balance: &PlayerPlanBalance,
+        device: Option<&Device>,
         current_time: Option<DateTime<Utc>>,
     ) -> BalanceValidationResult {
+        if let Some(dev) = device {
+            if !Self::device_scope_matches(balance, dev) {
+                return BalanceValidationResult {
+                    valid: false,
+                    reason: Some(format!(
+                        "Plan not valid for device type {} / {}",
+                        dev.device_type, dev.device_sub_type
+                    )),
+                };
+            }
+        }
+
         let now = current_time.unwrap_or_else(Utc::now);
 
         if balance.status != balance_status::ACTIVE {

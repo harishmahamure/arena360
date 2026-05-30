@@ -1,3 +1,4 @@
+import type { PlanTypeValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
 import { Delete, Edit } from '@mui/icons-material';
 import { Box, Chip, debounce, Pagination } from '@mui/material';
@@ -7,7 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlan } from '../../../services/plans/delete';
-import { getPlans, type PlanResponse, type PlanType } from '../../../services/plans/list';
+import { getPlans, type PlanResponse } from '../../../services/plans/list';
 
 export default function PlansPage() {
   const [inputValue, setInputValue] = useState<string>('');
@@ -42,8 +43,8 @@ export default function PlansPage() {
       getPlans({
         search: debouncedSearch.length > 2 ? debouncedSearch : undefined,
         page: page,
-        planType: planType as PlanType | undefined,
-        isActive: isActive === 'true' ? 1 : isActive === 'false' ? 0 : undefined,
+        planType: planType as PlanTypeValue | undefined,
+        isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
       }),
   });
 
@@ -75,7 +76,20 @@ export default function PlansPage() {
       parts.push(row.allowedDays.map((d) => d.slice(0, 3)).join(', '));
     }
     if (row.allowedMonths?.length) {
-      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const monthNames = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       parts.push(row.allowedMonths.map((m) => monthNames[m - 1]).join(', '));
     }
     if (row.timeWindowStart && row.timeWindowEnd) {
