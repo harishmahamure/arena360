@@ -23,7 +23,15 @@ mod win {
         WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
     };
 
-    static HOOK: OnceLock<HHOOK> = OnceLock::new();
+    /// Newtype so the hook handle can live in a `static OnceLock`. `HHOOK`
+    /// wraps a raw `*mut c_void` (so it is `!Send + !Sync`), but the handle is
+    /// an opaque value only ever installed/removed/used on the main UI thread,
+    /// so sharing it is sound.
+    struct HookHandle(HHOOK);
+    unsafe impl Send for HookHandle {}
+    unsafe impl Sync for HookHandle {}
+
+    static HOOK: OnceLock<HookHandle> = OnceLock::new();
     static ENABLED: AtomicBool = AtomicBool::new(false);
 
     unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -66,7 +74,12 @@ mod win {
             }
         }
 
-        CallNextHookEx(HOOK.get().copied().unwrap_or_default(), code, wparam, lparam)
+        CallNextHookEx(
+            HOOK.get().map(|h| h.0).unwrap_or_default(),
+            code,
+            wparam,
+            lparam,
+        )
     }
 
     pub fn install() {
@@ -77,7 +90,7 @@ mod win {
             let module = GetModuleHandleW(None).unwrap_or_default();
             let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), module, 0)
                 .expect("keyboard hook");
-            let _ = HOOK.set(hook);
+            let _ = HOOK.set(HookHandle(hook));
         }
     }
 
@@ -85,7 +98,7 @@ mod win {
         ENABLED.store(false, Ordering::SeqCst);
         if let Some(hook) = HOOK.get() {
             unsafe {
-                let _ = UnhookWindowsHookEx(*hook);
+                let _ = UnhookWindowsHookEx(hook.0);
             }
         }
     }

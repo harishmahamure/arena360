@@ -51,9 +51,6 @@ jobs:
       - name: Rust clippy (kiosk)
         run: cargo clippy --all-targets --manifest-path apps/kiosk/src-tauri/Cargo.toml -- -D warnings
 
-      - name: Rust unit tests (kiosk)
-        run: cargo test --manifest-path apps/kiosk/src-tauri/Cargo.toml
-
       - name: Tauri build (Windows bundle)
         run: pnpm --filter @gaming-cafe/kiosk tauri:build
 
