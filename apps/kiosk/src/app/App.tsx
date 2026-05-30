@@ -1,8 +1,7 @@
 import { LockdownOverlay } from '../components/LockdownOverlay';
 import { KioskProvider, useKiosk } from '../context/KioskProvider';
 import { AlreadyInSessionPage } from '../pages/AlreadyInSessionPage';
-import { IdlePage } from '../pages/IdlePage';
-import { PlayerLoginPage } from '../pages/PlayerLoginPage';
+import { LoginHomePage } from '../pages/LoginHomePage';
 import { RegistrationPage } from '../pages/RegistrationPage';
 import { SessionPage } from '../pages/SessionPage';
 import { SetupPage } from '../pages/SetupPage';
@@ -15,9 +14,8 @@ function KioskShell() {
 
   let content = <p className="meta">Loading…</p>;
   if (phase === 'register') content = <RegistrationPage />;
-  else if (phase === 'idle') content = <IdlePage />;
+  else if (phase === 'login') content = <LoginHomePage />;
   else if (phase === 'setup') content = <SetupPage />;
-  else if (phase === 'player-login') content = <PlayerLoginPage />;
   else if (phase === 'session') content = <SessionPage />;
   else if (phase === 'already-in-session') content = <AlreadyInSessionPage />;
 

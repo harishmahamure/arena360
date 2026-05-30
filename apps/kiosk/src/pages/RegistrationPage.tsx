@@ -3,9 +3,23 @@ import { useEffect, useState } from 'react';
 import { useKiosk } from '../context/KioskProvider';
 import { collectFingerprint, type FingerprintPayload } from '../lib/tauriCommands';
 
+type Step = 'credentials' | 'otp' | 'device';
+
+/**
+ * First-time provisioning (DRAFT-0023): an administrator signs in on the device
+ * (username/password → OTP); the admin session then names and registers this PC.
+ * No registration code is involved.
+ */
 export function RegistrationPage() {
-  const { registerDevice, error } = useKiosk();
-  const [code, setCode] = useState('');
+  const { requestAdminOtp, verifyRegistrationOtp, provisionDevice, adminAuthenticated, error } =
+    useKiosk();
+
+  const [step, setStep] = useState<Step>('credentials');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
+
   const [name, setName] = useState('');
   const [deviceType, setDeviceType] = useState<string>(deviceTypeOptions[0]?.value ?? 'PC');
   const [deviceSubType, setDeviceSubType] = useState<string>(
@@ -21,12 +35,39 @@ export function RegistrationPage() {
       .catch(() => setFingerprint(null));
   }, []);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onCredentials(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
-      await registerDevice({
-        code: code.trim().toUpperCase(),
+      const transactionId = await requestAdminOtp(username, password);
+      setSessionOtpId(transactionId);
+      setStep('otp');
+    } catch {
+      // surfaced via context error
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sessionOtpId) return;
+    setBusy(true);
+    try {
+      await verifyRegistrationOtp(otp.trim(), sessionOtpId);
+      setStep('device');
+    } catch {
+      // surfaced via context error
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onProvision(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await provisionDevice({
         name: name.trim(),
         deviceType,
         deviceSubType,
@@ -34,27 +75,78 @@ export function RegistrationPage() {
         serialNumber: fingerprint?.serial,
       });
     } catch {
-      // error surfaced via context
+      // surfaced via context error
     } finally {
       setBusy(false);
     }
   }
 
+  if (step === 'credentials') {
+    return (
+      <section className="panel">
+        <h1>Set up this station</h1>
+        <p>Sign in with an administrator account to register this PC.</p>
+        <form onSubmit={onCredentials}>
+          <label>
+            Admin username
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="off"
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </label>
+          {error ? <p className="error">{error}</p> : null}
+          <button type="submit" disabled={busy}>
+            {busy ? 'Sending code…' : 'Continue'}
+          </button>
+        </form>
+      </section>
+    );
+  }
+
+  if (step === 'otp') {
+    return (
+      <section className="panel">
+        <h1>Enter verification code</h1>
+        <p>Enter the one-time code for {username}.</p>
+        <form onSubmit={onOtp}>
+          <label>
+            One-time code
+            <input
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+            />
+          </label>
+          {error ? <p className="error">{error}</p> : null}
+          <button type="submit" disabled={busy}>
+            {busy ? 'Verifying…' : 'Verify'}
+          </button>
+          <button type="button" className="link" onClick={() => setStep('credentials')}>
+            Back
+          </button>
+        </form>
+      </section>
+    );
+  }
+
   return (
     <section className="panel">
-      <h1>Register this kiosk</h1>
-      <p>Enter the one-time code from the admin portal.</p>
-      <form onSubmit={onSubmit}>
-        <label>
-          Registration code
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="ABC-123"
-            required
-            autoComplete="off"
-          />
-        </label>
+      <h1>Name this station</h1>
+      <p>{adminAuthenticated ? 'Administrator verified.' : ''} Describe this PC to finish setup.</p>
+      <form onSubmit={onProvision}>
         <label>
           Station name
           <input

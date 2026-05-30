@@ -1,8 +1,7 @@
-use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
-use crate::dto::{PaginationResult, RegisterDeviceDto};
+use crate::dto::{PaginationResult, ProvisionDeviceDto};
 use crate::error::AppError;
 use crate::models::{CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto};
 
@@ -22,12 +21,21 @@ impl DeviceRepository {
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                location, status::text as status, "registeredKiosk" as registered_kiosk,
                "registrationStatus"::text as registration_status,
-               "registrationCode" as registration_code,
-               "registrationCodeExpiresAt" as registration_code_expires_at,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM devices
+    "#;
+
+    const RETURNING: &'static str = r#"
+        RETURNING id, name, "serialNumber" as serial_number,
+                  "localIpAddress" as local_ip_address,
+                  "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                  location, status::text as status, "registeredKiosk" as registered_kiosk,
+                  "registrationStatus"::text as registration_status,
+                  "createdBy" as created_by, "updatedBy" as updated_by,
+                  "createdAt" as created_at, "updatedAt" as updated_at,
+                  "deletedAt" as deleted_at
     "#;
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Device>, AppError> {
@@ -47,15 +55,8 @@ impl DeviceRepository {
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
 
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, name, \"serialNumber\" as serial_number, \"localIpAddress\" as local_ip_address, \
-             \"deviceType\"::text as device_type, \"deviceSubType\"::text as device_sub_type, location, status::text as status, \
-             \"registeredKiosk\" as registered_kiosk, \"registrationStatus\"::text as registration_status, \
-             \"registrationCode\" as registration_code, \"registrationCodeExpiresAt\" as registration_code_expires_at, \
-             \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
-             \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
-             FROM devices WHERE \"deletedAt\" IS NULL",
-        );
+        let mut builder: QueryBuilder<Postgres> =
+            QueryBuilder::new(format!("{} WHERE \"deletedAt\" IS NULL", Self::SELECT));
 
         if let Some(status) = &filters.status {
             builder.push(" AND status::text = ");
@@ -132,7 +133,7 @@ impl DeviceRepository {
         dto: &CreateDeviceDto,
         actor_id: Option<Uuid>,
     ) -> Result<Device, AppError> {
-        let device = sqlx::query_as::<_, Device>(
+        let query = format!(
             r#"
             INSERT INTO devices (
                 id, name, "serialNumber", "localIpAddress", "deviceType", "deviceSubType",
@@ -147,30 +148,22 @@ impl DeviceRepository {
                 COALESCE($8::devices_registrationstatus_enum, 'unregistered'::devices_registrationstatus_enum),
                 $9, $9, NOW(), NOW()
             )
-            RETURNING id, name, "serialNumber" as serial_number,
-                      "localIpAddress" as local_ip_address,
-                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
-                      location, status::text as status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus"::text as registration_status,
-                      "registrationCode" as registration_code,
-                      "registrationCodeExpiresAt" as registration_code_expires_at,
-                      "createdBy" as created_by, "updatedBy" as updated_by,
-                      "createdAt" as created_at, "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {}
             "#,
-        )
-        .bind(&dto.name)
-        .bind(&dto.serial_number)
-        .bind(&dto.local_ip_address)
-        .bind(&dto.device_type)
-        .bind(&dto.device_sub_type)
-        .bind(&dto.location)
-        .bind(&dto.status)
-        .bind(&dto.registration_status)
-        .bind(actor_id)
-        .fetch_one(&self.pool)
-        .await?;
-
+            Self::RETURNING
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(&dto.name)
+            .bind(&dto.serial_number)
+            .bind(&dto.local_ip_address)
+            .bind(&dto.device_type)
+            .bind(&dto.device_sub_type)
+            .bind(&dto.location)
+            .bind(&dto.status)
+            .bind(&dto.registration_status)
+            .bind(actor_id)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(device)
     }
 
@@ -180,7 +173,7 @@ impl DeviceRepository {
         dto: &UpdateDeviceDto,
         actor_id: Option<Uuid>,
     ) -> Result<Device, AppError> {
-        let device = sqlx::query_as::<_, Device>(
+        let query = format!(
             r#"
             UPDATE devices SET
                 name = COALESCE($2, name),
@@ -194,55 +187,41 @@ impl DeviceRepository {
                 "updatedBy" = COALESCE($10, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
-            RETURNING id, name, "serialNumber" as serial_number,
-                      "localIpAddress" as local_ip_address,
-                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
-                      location, status::text as status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus"::text as registration_status,
-                      "registrationCode" as registration_code,
-                      "registrationCodeExpiresAt" as registration_code_expires_at,
-                      "createdBy" as created_by, "updatedBy" as updated_by,
-                      "createdAt" as created_at, "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {}
             "#,
-        )
-        .bind(id)
-        .bind(&dto.name)
-        .bind(&dto.serial_number)
-        .bind(&dto.local_ip_address)
-        .bind(&dto.device_type)
-        .bind(&dto.device_sub_type)
-        .bind(&dto.location)
-        .bind(&dto.status)
-        .bind(&dto.registration_status)
-        .bind(actor_id)
-        .fetch_optional(&self.pool)
-        .await?;
+            Self::RETURNING
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(id)
+            .bind(&dto.name)
+            .bind(&dto.serial_number)
+            .bind(&dto.local_ip_address)
+            .bind(&dto.device_type)
+            .bind(&dto.device_sub_type)
+            .bind(&dto.location)
+            .bind(&dto.status)
+            .bind(&dto.registration_status)
+            .bind(actor_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         device.ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
     }
 
     pub async fn update_status(&self, id: Uuid, status: &str) -> Result<Device, AppError> {
-        let device = sqlx::query_as::<_, Device>(
+        let query = format!(
             r#"
             UPDATE devices SET status = $2::devices_status_enum, "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
-            RETURNING id, name, "serialNumber" as serial_number,
-                      "localIpAddress" as local_ip_address,
-                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
-                      location, status::text as status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus"::text as registration_status,
-                      "registrationCode" as registration_code,
-                      "registrationCodeExpiresAt" as registration_code_expires_at,
-                      "createdBy" as created_by, "updatedBy" as updated_by,
-                      "createdAt" as created_at, "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {}
             "#,
-        )
-        .bind(id)
-        .bind(status)
-        .fetch_optional(&self.pool)
-        .await?;
+            Self::RETURNING
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(id)
+            .bind(status)
+            .fetch_optional(&self.pool)
+            .await?;
 
         device.ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
     }
@@ -288,66 +267,6 @@ impl DeviceRepository {
         Ok(exists.0)
     }
 
-    pub async fn find_pending_by_registration_code(
-        &self,
-        code: &str,
-    ) -> Result<Option<Device>, AppError> {
-        let normalized = code.trim().to_uppercase();
-        let query = format!(
-            r#"{}
-            WHERE UPPER("registrationCode") = $1
-              AND "registrationCodeUsedAt" IS NULL
-              AND "registrationCodeExpiresAt" > NOW()
-              AND "deletedAt" IS NULL
-            LIMIT 1"#,
-            Self::SELECT
-        );
-        let device = sqlx::query_as::<_, Device>(&query)
-            .bind(normalized)
-            .fetch_optional(&self.pool)
-            .await?;
-        Ok(device)
-    }
-
-    pub async fn set_registration_code(
-        &self,
-        id: Uuid,
-        code: &str,
-        expires_at: DateTime<Utc>,
-        actor_id: Option<Uuid>,
-    ) -> Result<Device, AppError> {
-        let device = sqlx::query_as::<_, Device>(
-            r#"
-            UPDATE devices SET
-                "registrationCode" = $2,
-                "registrationCodeExpiresAt" = $3,
-                "registrationCodeUsedAt" = NULL,
-                "registrationStatus" = 'unregistered'::devices_registrationstatus_enum,
-                "updatedBy" = COALESCE($4, "updatedBy"),
-                "updatedAt" = NOW()
-            WHERE id = $1 AND "deletedAt" IS NULL
-            RETURNING id, name, "serialNumber" as serial_number,
-                      "localIpAddress" as local_ip_address,
-                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
-                      location, status::text as status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus"::text as registration_status,
-                      "registrationCode" as registration_code,
-                      "registrationCodeExpiresAt" as registration_code_expires_at,
-                      "createdBy" as created_by, "updatedBy" as updated_by,
-                      "createdAt" as created_at, "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
-            "#,
-        )
-        .bind(id)
-        .bind(code)
-        .bind(expires_at)
-        .bind(actor_id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        device.ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
-    }
-
     /// Persist a refreshed fingerprint snapshot (single-component drift, ADR-0017).
     pub async fn update_fingerprint(
         &self,
@@ -365,53 +284,45 @@ impl DeviceRepository {
         Ok(())
     }
 
-    pub async fn redeem_registration(
+    /// Admin-authorized provisioning (DRAFT-0023): create a registered device with
+    /// its fingerprint snapshot in one step.
+    pub async fn provision(
         &self,
-        id: Uuid,
-        dto: &RegisterDeviceDto,
+        dto: &ProvisionDeviceDto,
         fingerprint_json: &str,
+        actor_id: Option<Uuid>,
     ) -> Result<Device, AppError> {
-        let device = sqlx::query_as::<_, Device>(
+        let query = format!(
             r#"
-            UPDATE devices SET
-                name = $2,
-                "serialNumber" = COALESCE($3, "serialNumber"),
-                "localIpAddress" = COALESCE($4, "localIpAddress"),
-                "deviceType" = COALESCE($5::devices_devicetype_enum, "deviceType"),
-                "deviceSubType" = COALESCE($6::devices_devicesubtype_enum, "deviceSubType"),
-                location = COALESCE($7, location),
-                "registeredKiosk" = $8,
-                "registrationStatus" = 'registered'::devices_registrationstatus_enum,
-                "registrationCode" = NULL,
-                "registrationCodeExpiresAt" = NULL,
-                "registrationCodeUsedAt" = NOW(),
-                "updatedAt" = NOW()
-            WHERE id = $1
-              AND "deletedAt" IS NULL
-              AND "registrationCodeUsedAt" IS NULL
-            RETURNING id, name, "serialNumber" as serial_number,
-                      "localIpAddress" as local_ip_address,
-                      "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
-                      location, status::text as status, "registeredKiosk" as registered_kiosk,
-                      "registrationStatus"::text as registration_status,
-                      "registrationCode" as registration_code,
-                      "registrationCodeExpiresAt" as registration_code_expires_at,
-                      "createdBy" as created_by, "updatedBy" as updated_by,
-                      "createdAt" as created_at, "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            INSERT INTO devices (
+                id, name, "serialNumber", "deviceType", "deviceSubType", location,
+                status, "registeredKiosk", "registrationStatus",
+                "createdBy", "updatedBy", "createdAt", "updatedAt"
+            )
+            VALUES (
+                gen_random_uuid(), $1, $2,
+                COALESCE($3::devices_devicetype_enum, 'OTHER'::devices_devicetype_enum),
+                COALESCE($4::devices_devicesubtype_enum, 'OTHER'::devices_devicesubtype_enum),
+                $5,
+                'available'::devices_status_enum,
+                $6,
+                'registered'::devices_registrationstatus_enum,
+                $7, $7, NOW(), NOW()
+            )
+            {}
             "#,
-        )
-        .bind(id)
-        .bind(&dto.name)
-        .bind(&dto.serialNumber)
-        .bind(&dto.ipAddress)
-        .bind(&dto.deviceType)
-        .bind(&dto.deviceSubType)
-        .bind(&dto.location)
-        .bind(fingerprint_json)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        device.ok_or_else(|| AppError::unauthorized_code("DEVICE_REGISTRATION_INVALID"))
+            Self::RETURNING
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(&dto.name)
+            .bind(&dto.serialNumber)
+            .bind(&dto.deviceType)
+            .bind(&dto.deviceSubType)
+            .bind(&dto.location)
+            .bind(fingerprint_json)
+            .bind(actor_id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(device)
     }
 }

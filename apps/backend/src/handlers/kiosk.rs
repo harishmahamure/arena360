@@ -103,6 +103,7 @@ pub async fn current_session(
 #[utoipa::path(
     patch,
     path = "/kiosk/sessions/{id}/end",
+    operation_id = "kiosk_end_session",
     params(("id" = Uuid, Path, description = "Session ID")),
     request_body = EndKioskSessionDto,
     responses(

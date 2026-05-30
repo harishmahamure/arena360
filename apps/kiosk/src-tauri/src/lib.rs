@@ -1,3 +1,4 @@
+mod cache;
 mod fingerprint;
 mod lockdown;
 mod process;
@@ -28,6 +29,7 @@ pub fn run() {
             process::get_tracked_processes,
             process::kill_tracked_processes,
             process::clear_tracked_processes,
+            cache::cache_asset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -372,7 +372,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/devices/register": {
+    "/devices/provision": {
         parameters: {
             query?: never;
             header?: never;
@@ -381,7 +381,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["register_device"];
+        post: operations["provision_device"];
         delete?: never;
         options?: never;
         head?: never;
@@ -402,22 +402,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_device"];
-        trace?: never;
-    };
-    "/devices/{id}/registration-code": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["issue_registration_code"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/devices/{id}/status": {
@@ -548,6 +532,38 @@ export interface paths {
         patch: operations["reject_expense"];
         trace?: never;
     };
+    "/games": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_games"];
+        put?: never;
+        post: operations["create_game"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/games/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_game"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_game"];
+        options?: never;
+        head?: never;
+        patch: operations["update_game"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -653,7 +669,7 @@ export interface paths {
          * End the player's own session. The session's balance must belong to the
          *     authenticated player.
          */
-        patch: operations["end_session"];
+        patch: operations["kiosk_end_session"];
         trace?: never;
     };
     "/plans": {
@@ -1179,6 +1195,22 @@ export interface paths {
         put: operations["update_unit"];
         post?: never;
         delete: operations["delete_unit"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["presign_upload"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1745,6 +1777,16 @@ export interface components {
             /** Format: uuid */
             vendorId?: string | null;
         };
+        CreateGameDto: {
+            isActive?: boolean | null;
+            launchRef?: string | null;
+            logoUrl?: string | null;
+            name: string;
+            /** Format: int32 */
+            sortOrder?: number | null;
+            thumbnailUrl?: string | null;
+            videoUrl?: string | null;
+        };
         CreateLineItemDto: {
             /** Format: uuid */
             productId: string;
@@ -1959,9 +2001,6 @@ export interface components {
             location?: string | null;
             name: string;
             registeredKiosk?: string | null;
-            registrationCode?: string | null;
-            /** Format: date-time */
-            registrationCodeExpiresAt?: string | null;
             registrationStatus: string;
             serialNumber?: string | null;
             status: string;
@@ -2018,10 +2057,6 @@ export interface components {
         DeviceRegisterResponseDto: {
             accessToken: string;
             device: components["schemas"]["RegisteredDeviceDto"];
-        };
-        DeviceRegistrationCodeResponseDto: {
-            expiresAt: string;
-            registrationCode: string;
         };
         DeviceStatsDto: {
             /** Format: int64 */
@@ -2233,6 +2268,67 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        /**
+         * @description Display-only game catalog entry (DRAFT-0022). Stores branding asset URLs that
+         *     the kiosk renders; launching stays client-side (ADR-0019).
+         */
+        Game: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            launchRef?: string | null;
+            logoUrl?: string | null;
+            name: string;
+            /** Format: int32 */
+            sortOrder: number;
+            thumbnailUrl?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            videoUrl?: string | null;
+        };
+        GameEnvelope: {
+            data: components["schemas"]["Game"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        GameFilterDto: {
+            isActive?: boolean | null;
+            /** Format: int64 */
+            limit?: number | null;
+            name?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+        };
+        GamePaginationEnvelope: {
+            data: components["schemas"]["GamePaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        GamePaginationPage: {
+            data: components["schemas"]["Game"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
         };
         HandoverDepositDto: {
             /** Format: double */
@@ -2751,6 +2847,27 @@ export interface components {
             /** Format: uuid */
             updatedBy?: string | null;
         };
+        PresignRequest: {
+            /** @description MIME type the client will upload with (e.g. `image/png`, `video/mp4`). */
+            contentType?: string | null;
+            /** @description Original file name; used to derive the object key and extension. */
+            fileName: string;
+        };
+        PresignResponse: {
+            /** @description Object key in the bucket. */
+            key: string;
+            /** @description Stable public URL to store on the game record. */
+            publicUrl: string;
+            /** @description Presigned PUT URL the client uploads the bytes to. */
+            uploadUrl: string;
+        };
+        PresignResponseEnvelope: {
+            data: components["schemas"]["PresignResponse"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         Product: {
             category: string;
             /** Format: date-time */
@@ -2817,6 +2934,18 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        /**
+         * @description Admin-authorized device provisioning payload (DRAFT-0023). Sent with an admin
+         *     bearer token to `POST /devices/provision`.
+         */
+        ProvisionDeviceDto: {
+            deviceSubType?: string | null;
+            deviceType?: string | null;
+            fingerprint: components["schemas"]["DeviceFingerprintDto"];
+            location?: string | null;
+            name: string;
+            serialNumber?: string | null;
+        };
         PurchaseBalanceDto: {
             /** Format: uuid */
             planId: string;
@@ -2827,16 +2956,6 @@ export interface components {
         };
         ReconcileCashRegisterDto: {
             reconciliationNotes?: string | null;
-        };
-        RegisterDeviceDto: {
-            deviceSubType?: string | null;
-            deviceType?: string | null;
-            fingerprint: components["schemas"]["DeviceFingerprintDto"];
-            ipAddress?: string | null;
-            location?: string | null;
-            name: string;
-            registrationCode: string;
-            serialNumber?: string | null;
         };
         RegisterDto: {
             firstName?: string | null;
@@ -3449,6 +3568,16 @@ export interface components {
             shiftId?: string | null;
             /** Format: uuid */
             vendorId?: string | null;
+        };
+        UpdateGameDto: {
+            isActive?: boolean | null;
+            launchRef?: string | null;
+            logoUrl?: string | null;
+            name?: string | null;
+            /** Format: int32 */
+            sortOrder?: number | null;
+            thumbnailUrl?: string | null;
+            videoUrl?: string | null;
         };
         UpdateOpeningBalanceDto: {
             /** Format: double */
@@ -5324,7 +5453,7 @@ export interface operations {
             };
         };
     };
-    register_device: {
+    provision_device: {
         parameters: {
             query?: never;
             header?: never;
@@ -5333,19 +5462,46 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RegisterDeviceDto"];
+                "application/json": components["schemas"]["ProvisionDeviceDto"];
             };
         };
         responses: {
-            /** @description Device registered */
+            /** @description Device provisioned; returns device token */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Invalid registration code */
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Device name already exists */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5504,63 +5660,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    issue_registration_code: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Registration code issued */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unauthorized */
             401: {
@@ -6457,6 +6556,245 @@ export interface operations {
             };
         };
     };
+    list_games: {
+        parameters: {
+            query?: {
+                isActive?: boolean | null;
+                name?: string | null;
+                page?: number | null;
+                limit?: number | null;
+                sortBy?: string | null;
+                sortOrder?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List games */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GamePaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGameDto"];
+            };
+        };
+        responses: {
+            /** @description Create game */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get game */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Soft-deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Game ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGameDto"];
+            };
+        };
+        responses: {
+            /** @description Update game */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     health_check_legacy: {
         parameters: {
             query?: never;
@@ -6629,7 +6967,7 @@ export interface operations {
             };
         };
     };
-    end_session: {
+    kiosk_end_session: {
         parameters: {
             query?: never;
             header?: never;
@@ -9262,6 +9600,57 @@ export interface operations {
                 };
             };
             /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    presign_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresignRequest"];
+            };
+        };
+        responses: {
+            /** @description Presigned upload issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresignResponseEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Storage not configured */
             500: {
                 headers: {
                     [name: string]: unknown;

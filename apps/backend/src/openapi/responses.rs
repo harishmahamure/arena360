@@ -111,6 +111,9 @@ success_envelope!(
     crate::models::TransactionWithLineItems
 );
 success_envelope!(ProductEnvelope, Product);
+success_envelope!(GameEnvelope, crate::models::Game);
+pagination_envelope!(GamePaginationEnvelope, GamePaginationPage, crate::models::Game);
+success_envelope!(PresignResponseEnvelope, crate::handlers::uploads::PresignResponse);
 success_envelope!(UserEnvelope, User);
 success_envelope!(ConfigurationEnvelope, crate::models::Configuration);
 success_envelope!(ConfigurationListEnvelope, Vec<crate::models::Configuration>);

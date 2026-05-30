@@ -9,6 +9,17 @@ function apiUrlFromEnv(): string {
 
 export const API_BASE_URL = apiUrlFromEnv();
 
+function stringFromEnv(key: string): string | null {
+  const raw =
+    typeof import.meta !== 'undefined'
+      ? (import.meta.env as Record<string, string | undefined>)?.[key]
+      : undefined;
+  return raw?.trim() ? raw.trim() : null;
+}
+
+/** Optional center brand logo for the login home (configured per venue). */
+export const KIOSK_LOGO_URL = stringFromEnv('VITE_KIOSK_LOGO_URL');
+
 function numberFromEnv(key: string, fallback: number): number {
   const raw =
     typeof import.meta !== 'undefined'

@@ -60,8 +60,6 @@ fn sample_device() -> Device {
         status: "available".to_string(),
         registered_kiosk: None,
         registration_status: "registered".to_string(),
-        registration_code: None,
-        registration_code_expires_at: None,
         created_by: None,
         updated_by: None,
         created_at: Utc::now(),

@@ -147,6 +147,9 @@ importers:
 
   apps/kiosk:
     dependencies:
+      '@gaming-cafe/api-types':
+        specifier: workspace:*
+        version: link:../../packages/api-types
       '@gaming-cafe/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

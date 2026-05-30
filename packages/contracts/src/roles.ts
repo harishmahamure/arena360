@@ -45,12 +45,15 @@ export enum Permission {
   VendorsWrite = 'vendors:write',
   ConfigRead = 'config:read',
   ConfigWrite = 'config:write',
+  GamesRead = 'games:read',
+  GamesWrite = 'games:write',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   admin: Object.values(Permission),
   staff: [
     Permission.StatsRead,
+    Permission.GamesRead,
     Permission.DevicesRead,
     Permission.PlansRead,
     Permission.ProductsRead,
@@ -74,6 +77,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.ExpensesRead,
   ],
   player: [
+    Permission.GamesRead,
     Permission.DevicesRead,
     Permission.PlansRead,
     Permission.ProductsRead,

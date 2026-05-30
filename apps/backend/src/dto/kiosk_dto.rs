@@ -13,17 +13,17 @@ pub struct DeviceFingerprintDto {
     pub collectedAt: String,
 }
 
+/// Admin-authorized device provisioning payload (DRAFT-0023). Sent with an admin
+/// bearer token to `POST /devices/provision`.
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct RegisterDeviceDto {
-    pub registrationCode: String,
+pub struct ProvisionDeviceDto {
     pub fingerprint: DeviceFingerprintDto,
     pub name: String,
     pub serialNumber: Option<String>,
     pub deviceType: Option<String>,
     pub deviceSubType: Option<String>,
     pub location: Option<String>,
-    pub ipAddress: Option<String>,
 }
 
 #[allow(non_snake_case)]
@@ -55,13 +55,6 @@ impl From<Device> for RegisteredDeviceDto {
 pub struct DeviceRegisterResponseDto {
     pub accessToken: String,
     pub device: RegisteredDeviceDto,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
-pub struct DeviceRegistrationCodeResponseDto {
-    pub registrationCode: String,
-    pub expiresAt: String,
 }
 
 #[allow(non_snake_case)]

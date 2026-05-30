@@ -1,8 +1,7 @@
-use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::dto::{DeviceFingerprintDto, DeviceRegistrationCodeResponseDto, RegisterDeviceDto};
+use crate::dto::{DeviceFingerprintDto, ProvisionDeviceDto};
 use crate::error::AppError;
 use crate::models::{
     CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
@@ -58,60 +57,40 @@ impl DeviceService {
             )));
         }
         let device = self.repo.create(&dto, actor_id).await?;
-        let device = self.issue_registration_code(device.id, actor_id).await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;
         Ok(device)
     }
 
-    pub async fn issue_registration_code(
+    /// Admin-authorized provisioning (DRAFT-0023): the admin is already
+    /// authenticated; create a registered device with its fingerprint snapshot.
+    pub async fn provision(
         &self,
-        id: Uuid,
+        mut dto: ProvisionDeviceDto,
         actor_id: Option<Uuid>,
     ) -> Result<Device, AppError> {
-        self.get_by_id(id).await?;
-        let code = new_registration_code();
-        let expires_at = Utc::now() + Duration::hours(24);
-        self.repo
-            .set_registration_code(id, &code, expires_at, actor_id)
-            .await
-    }
+        if dto.name.trim().is_empty() {
+            return Err(AppError::BadRequest("Device name is required".to_string()));
+        }
+        dto.deviceType = Some(require_device_type(dto.deviceType)?);
+        dto.deviceSubType = Some(require_device_sub_type(dto.deviceSubType)?);
 
-    pub async fn registration_code_response(
-        &self,
-        id: Uuid,
-        actor_id: Option<Uuid>,
-    ) -> Result<DeviceRegistrationCodeResponseDto, AppError> {
-        let device = self.issue_registration_code(id, actor_id).await?;
-        let expires_at = device
-            .registration_code_expires_at
-            .ok_or_else(|| AppError::Internal("Registration code expiry missing".to_string()))?;
-        let code = device
-            .registration_code
-            .ok_or_else(|| AppError::Internal("Registration code missing".to_string()))?;
-        Ok(DeviceRegistrationCodeResponseDto {
-            registrationCode: code,
-            expiresAt: expires_at.to_rfc3339(),
-        })
-    }
-
-    pub async fn register_kiosk(&self, mut dto: RegisterDeviceDto) -> Result<Device, AppError> {
-        dto.deviceType = optional_device_type(dto.deviceType)?;
-        dto.deviceSubType = optional_device_sub_type(dto.deviceSubType)?;
-
-        let pending = self
-            .repo
-            .find_pending_by_registration_code(&dto.registrationCode)
-            .await?
-            .ok_or_else(|| AppError::unauthorized_code("DEVICE_REGISTRATION_INVALID"))?;
+        if self.repo.name_exists(&dto.name, None).await? {
+            return Err(AppError::Conflict(format!(
+                "Device with name '{}' already exists",
+                dto.name
+            )));
+        }
 
         let fingerprint_json = serde_json::to_string(&dto.fingerprint)
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        self.repo
-            .redeem_registration(pending.id, &dto, &fingerprint_json)
-            .await
+        let device = self.repo.provision(&dto, &fingerprint_json, actor_id).await?;
+        self.events
+            .publish_device_status(&device.id.to_string(), &device.status);
+        self.publish_device_ws(&device).await;
+        Ok(device)
     }
 
     pub async fn update(
@@ -276,12 +255,6 @@ mod fingerprint_tests {
         let b = fp("CC:DD", "SN2", "UUID1");
         assert_eq!(fingerprint_drift_count(&a, &b), 2);
     }
-}
-
-fn new_registration_code() -> String {
-    let raw = Uuid::new_v4().to_string().replace('-', "");
-    let upper = raw.to_uppercase();
-    format!("{}-{}", &upper[..3], &upper[3..6])
 }
 
 fn prepare_create_dto(mut dto: CreateDeviceDto) -> Result<CreateDeviceDto, AppError> {

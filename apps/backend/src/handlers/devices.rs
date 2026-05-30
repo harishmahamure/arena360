@@ -8,8 +8,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
-    created, ok, ApiResult, DeviceRegisterResponseDto, DeviceRegistrationCodeResponseDto,
-    RegisterDeviceDto, RegisteredDeviceDto,
+    created, ok, ApiResult, DeviceRegisterResponseDto, ProvisionDeviceDto, RegisteredDeviceDto,
 };
 use crate::middleware::AdminUser;
 use crate::models::{
@@ -85,53 +84,30 @@ pub async fn create_device(
 
 #[utoipa::path(
     post,
-    path = "/devices/register",
-    request_body = RegisterDeviceDto,
+    path = "/devices/provision",
+    request_body = ProvisionDeviceDto,
     responses(
-        (status = 200, description = "Device registered"),
-        (status = 401, description = "Invalid registration code", body = ErrorEnvelope),
-        (status = 500, description = "Internal server error", body = ErrorEnvelope),
-    ),
-    tag = "devices"
-)]
-pub async fn register_device(
-    State(state): State<Arc<AppState>>,
-    Json(dto): Json<RegisterDeviceDto>,
-) -> ApiResult<DeviceRegisterResponseDto> {
-    let device = state.devices.register_kiosk(dto).await?;
-    let token = state.auth.generate_device_token(device.id)?;
-    ok(DeviceRegisterResponseDto {
-        accessToken: token,
-        device: RegisteredDeviceDto::from(device),
-    })
-}
-
-#[utoipa::path(
-    post,
-    path = "/devices/{id}/registration-code",
-    params(
-        ("id" = Uuid, Path, description = "Device ID"),
-    ),
-    responses(
-        (status = 200, description = "Registration code issued"),
+        (status = 200, description = "Device provisioned; returns device token"),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 403, description = "Forbidden", body = ErrorEnvelope),
-        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 409, description = "Device name already exists", body = ErrorEnvelope),
         (status = 500, description = "Internal server error", body = ErrorEnvelope),
     ),
     security(("bearer_auth" = [])),
     tag = "devices"
 )]
-pub async fn issue_registration_code(
+pub async fn provision_device(
     AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<DeviceRegistrationCodeResponseDto> {
-    let result = state
-        .devices
-        .registration_code_response(id, claims.user_id_uuid())
-        .await?;
-    ok(result)
+    Json(dto): Json<ProvisionDeviceDto>,
+) -> ApiResult<DeviceRegisterResponseDto> {
+    let device = state.devices.provision(dto, claims.user_id_uuid()).await?;
+    let token = state.auth.generate_device_token(device.id)?;
+    ok(DeviceRegisterResponseDto {
+        accessToken: token,
+        device: RegisteredDeviceDto::from(device),
+    })
 }
 
 #[utoipa::path(

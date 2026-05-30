@@ -20,6 +20,9 @@ import DevicesPage from './pages/dashboard/devices/DevicesPage';
 import ExpenseDetailPage from './pages/dashboard/expenses/ExpenseDetailPage';
 import ExpenseNewPage from './pages/dashboard/expenses/ExpenseNewPage';
 import ExpensesPage from './pages/dashboard/expenses/ExpensesPage';
+import GameDetailPage from './pages/dashboard/games/GameDetailPage';
+import GameNewPage from './pages/dashboard/games/GameNewPage';
+import GamesPage from './pages/dashboard/games/GamesPage';
 import PlanTransactionDetailPage from './pages/dashboard/plan-transactions/PlanTransactionDetailPage';
 import PlanTransactionNewPage from './pages/dashboard/plan-transactions/PlanTransactionNewPage';
 import PlanTransactionsPage from './pages/dashboard/plan-transactions/PlanTransactionsPage';
@@ -103,6 +106,15 @@ function App() {
                     <Route path="/products/new" element={<ProductNewPage />} />
                   </Route>
                   <Route path="/products/:id" element={<ProductDetailPage />} />
+                  <Route element={<RequirePermission permission={Permission.GamesRead} />}>
+                    <Route path="/games" element={<GamesPage />} />
+                  </Route>
+                  <Route element={<RequirePermission permission={Permission.GamesWrite} />}>
+                    <Route path="/games/new" element={<GameNewPage />} />
+                  </Route>
+                  <Route element={<RequirePermission permission={Permission.GamesRead} />}>
+                    <Route path="/games/:id" element={<GameDetailPage />} />
+                  </Route>
                   <Route path="/product-transactions" element={<ProductTransactionsPage />} />
                   <Route element={<RequirePermission permission={Permission.TransactionsWrite} />}>
                     <Route

@@ -7,6 +7,14 @@
 **Implements (deferred portion of)**: [ADR-0002](0002-kiosk-tauri-canonical.md)
 **Depends on**: [ADR-0019](0019-kiosk-device-allow-list.md) (`launch_allowed` validation)
 
+## Amendment 2026-05-30: setup entry via Ctrl+Shift+A
+
+The setup-mode entry point changes from the hidden 5-tap corner gesture to the
+keyboard shortcut **Ctrl+Shift+A**. The native low-level keyboard hook does not
+block this combination, so it reaches the webview while `Locked`. As before, the
+shortcut only reveals the admin login form; lockdown stays `Locked` until an admin
+authenticates (it then transitions to `SetupRelaxed`). The tap gesture is retired.
+
 ## Context
 
 [REQUIREMENTS-KIOSK.md](../REQUIREMENTS-KIOSK.md) §4.5–4.6 requires the kiosk to:

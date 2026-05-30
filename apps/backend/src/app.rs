@@ -15,8 +15,9 @@ use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
-    PlanService, PlayerPlanService, ProductService, SessionService, ShiftService, StatsService,
-    TransactionService, UnitService, UserService, VendorService,
+    GameService, PlanService, PlayerPlanService, ProductService, SessionService, ShiftService,
+    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
+    VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -39,6 +40,8 @@ pub struct AppState {
     pub cash_deposits: CashDepositService,
     pub transactions: TransactionService,
     pub products: ProductService,
+    pub games: GameService,
+    pub storage: StorageService,
     pub expense_categories: ExpenseCategoryService,
     pub vendors: VendorService,
     pub expenses: ExpenseService,
@@ -100,6 +103,8 @@ pub async fn build_state() -> Arc<AppState> {
         ),
         credit,
         products: ProductService::new(pool.clone()),
+        games: GameService::new(pool.clone()),
+        storage: StorageService::new(StorageConfig::from_env()),
         expense_categories: ExpenseCategoryService::new(pool.clone()),
         vendors: VendorService::new(pool.clone()),
         expenses: ExpenseService::new(
@@ -162,10 +167,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/devices/{id}/status",
             patch(handlers::devices::update_device_status),
         )
-        .route("/devices/register", post(handlers::devices::register_device))
         .route(
-            "/devices/{id}/registration-code",
-            post(handlers::devices::issue_registration_code),
+            "/devices/provision",
+            post(handlers::devices::provision_device),
         )
         .route("/plans/active", get(handlers::plans::get_active_plans))
         .route(
@@ -291,6 +295,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .patch(handlers::products::update_product)
                 .delete(handlers::products::delete_product),
         )
+        .route(
+            "/games",
+            get(handlers::games::list_games).post(handlers::games::create_game),
+        )
+        .route(
+            "/games/{id}",
+            get(handlers::games::get_game)
+                .patch(handlers::games::update_game)
+                .delete(handlers::games::delete_game),
+        )
+        .route("/uploads/presign", post(handlers::uploads::presign_upload))
         .route(
             "/expense-categories",
             get(handlers::expense_categories::list_expense_categories)

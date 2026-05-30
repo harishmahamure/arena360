@@ -29,9 +29,8 @@ import {
 export type AppPhase =
   | 'loading'
   | 'register'
-  | 'idle'
+  | 'login'
   | 'setup'
-  | 'player-login'
   | 'session'
   | 'already-in-session';
 
@@ -51,8 +50,7 @@ export interface ActiveSession {
   remainingMinutes: number;
 }
 
-export interface DeviceRegistrationInput {
-  code: string;
+export interface DeviceProvisionInput {
   name: string;
   deviceType: string;
   deviceSubType: string;
@@ -80,7 +78,12 @@ interface KioskContextValue {
   /** False when the backend is unreachable (failed polls); drives offline UX. */
   online: boolean;
   refresh: () => Promise<void>;
-  registerDevice: (input: DeviceRegistrationInput) => Promise<void>;
+  /** First-time provisioning: verify admin OTP, capturing the admin token. */
+  verifyRegistrationOtp: (otp: string, sessionOtpId: string) => Promise<void>;
+  /** First-time provisioning: register this device using the captured admin token. */
+  provisionDevice: (input: DeviceProvisionInput) => Promise<void>;
+  /** True once an admin OTP has been verified during registration. */
+  adminAuthenticated: boolean;
   enterSetup: () => Promise<void>;
   exitSetup: () => Promise<void>;
   adminLogin: (
@@ -90,7 +93,6 @@ interface KioskContextValue {
     sessionOtpId: string,
   ) => Promise<void>;
   requestAdminOtp: (username: string, password: string) => Promise<string>;
-  goToPlayerLogin: () => void;
   playerLogin: (username: string, password: string) => Promise<void>;
   playerLogout: () => Promise<void>;
   /** Start (or resume) the kiosk session for the signed-in player. */
@@ -144,6 +146,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [conflictDevice, setConflictDevice] = useState<string | null>(null);
   const [forceEndGraceEndsAt, setForceEndGraceEndsAt] = useState<number | null>(null);
   const [online, setOnline] = useState(true);
+  // Short-lived admin token captured during first-time provisioning (in memory only).
+  const [adminToken, setAdminToken] = useState<string | null>(null);
 
   const maintenance = deviceStatus === 'under_maintenance' || deviceStatus === 'out_of_service';
 
@@ -167,7 +171,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
             setActiveSession(null);
             setPlayerName(null);
             void clearPlayerSession();
-            setPhase('idle');
+            setPhase('login');
           }
         }
         if (frame.event_type === 'balance.updated') {
@@ -183,7 +187,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
             setDeviceStatus(payload.status);
             // If the station goes into maintenance while idle/login, kick back to idle.
             if (payload.status === 'under_maintenance' || payload.status === 'out_of_service') {
-              setPhase((prev) => (prev === 'player-login' ? 'idle' : prev));
+              setPhase((prev) => (prev === 'login' ? 'login' : prev));
             }
           }
         }
@@ -203,7 +207,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       await setLockdownState('Locked');
       return;
     }
-    setPhase('idle');
+    setPhase('login');
     await setLockdownState('Locked');
     setDeviceName(readStoredDeviceName());
     // Device id from JWT payload (base64 middle segment)
@@ -230,7 +234,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     void import('@tauri-apps/api/event').then(({ listen }) =>
       listen<string>('lockdown-changed', (event) => {
         if (event.payload === 'Locked') {
-          setPhase((prev) => (prev === 'setup' ? 'idle' : prev));
+          setPhase((prev) => (prev === 'setup' ? 'login' : prev));
         }
       }).then((fn) => {
         unlisten = fn;
@@ -239,19 +243,41 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     return () => unlisten?.();
   }, []);
 
-  const registerDevice = useCallback(
-    async (input: DeviceRegistrationInput) => {
+  const verifyRegistrationOtp = useCallback(async (otp: string, sessionOtpId: string) => {
+    setError(null);
+    try {
+      const http = getHttpClient();
+      const res = await http.post<{ accessToken: string }>('/auth/verify-otp', {
+        otp,
+        sessionOtpId,
+      });
+      setAdminToken(res.accessToken);
+    } catch (e) {
+      setError(toErrorMessage(e, 'Invalid or expired OTP'));
+      throw e;
+    }
+  }, []);
+
+  const provisionDevice = useCallback(
+    async (input: DeviceProvisionInput) => {
       setError(null);
+      if (!adminToken) {
+        setError('Administrator sign-in is required before registering this device.');
+        throw new Error('admin token missing');
+      }
       try {
         const http = getHttpClient();
         const fingerprint = await import('../lib/tauriCommands').then((m) =>
           m.collectFingerprint(),
         );
+        // The admin token authorizes the privileged provision call (DRAFT-0023).
+        // Provisioning runs before a device token exists, so seed the bearer with
+        // the admin token for this one request.
+        tokenCache.device = adminToken;
         const result = await http.post<{
           accessToken: string;
           device: { id: string; name: string };
-        }>('/devices/register', {
-          registrationCode: input.code,
+        }>('/devices/provision', {
           fingerprint,
           name: input.name,
           deviceType: input.deviceType,
@@ -263,15 +289,18 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         setDeviceId(result.device.id);
         setDeviceName(result.device.name);
         storeDeviceName(result.device.name);
-        setPhase('idle');
+        setAdminToken(null);
+        setPhase('login');
         await setLockdownState('Locked');
         connectWs(result.device.id);
       } catch (e) {
+        // Revert the temporary admin bearer so a failed attempt leaves no token.
+        tokenCache.device = undefined;
         setError(toErrorMessage(e, 'Device registration failed'));
         throw e;
       }
     },
-    [connectWs],
+    [adminToken, connectWs],
   );
 
   const enterSetup = useCallback(async () => {
@@ -283,8 +312,24 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const exitSetup = useCallback(async () => {
     await setLockdownState('Locked');
-    setPhase('idle');
+    setPhase('login');
   }, []);
+
+  // Setup entry via Ctrl+Shift+A (ADR-0020 amendment). The native keyboard hook
+  // does not block this combo, so it reaches the webview while Locked. It only
+  // reveals the admin login form; lockdown stays Locked until an admin signs in.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        if (phase !== 'setup' && phase !== 'register' && phase !== 'loading') {
+          void enterSetup();
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [phase, enterSetup]);
 
   const requestAdminOtp = useCallback(async (username: string, password: string) => {
     setError(null);
@@ -356,7 +401,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     await clearPlayerSession();
     setPlayerName(null);
     setActiveSession(null);
-    setPhase('idle');
+    setPhase('login');
     if (deviceId) connectWs(deviceId);
   }, [connectWs, deviceId]);
 
@@ -425,7 +470,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       setForceEndGraceEndsAt(null);
       await clearPlayerSession();
       setPlayerName(null);
-      setPhase('idle');
+      setPhase('login');
       if (deviceId) connectWs(deviceId);
     },
     [activeSession, connectWs, deviceId],
@@ -441,7 +486,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         setActiveSession(null);
         setPlayerName(null);
         await clearPlayerSession();
-        setPhase('idle');
+        setPhase('login');
         if (deviceId) connectWs(deviceId);
         return;
       }
@@ -465,7 +510,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setConflictDevice(null);
     setPlayerName(null);
     void clearPlayerSession();
-    setPhase('idle');
+    setPhase('login');
     if (deviceId) connectWs(deviceId);
   }, [connectWs, deviceId]);
 
@@ -501,12 +546,13 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     forceEndGraceEndsAt,
     online,
     refresh,
-    registerDevice,
+    verifyRegistrationOtp,
+    provisionDevice,
+    adminAuthenticated: adminToken !== null,
     enterSetup,
     exitSetup,
     adminLogin,
     requestAdminOtp,
-    goToPlayerLogin: () => setPhase('player-login'),
     playerLogin,
     playerLogout,
     startSession,

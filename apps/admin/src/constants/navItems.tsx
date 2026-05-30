@@ -12,6 +12,7 @@ import {
   Receipt,
   Sell,
   Settings,
+  SportsEsports,
   Store,
   WorkHistory,
 } from '@mui/icons-material';
@@ -83,6 +84,20 @@ export const adminNavItems: AdminNavItem[] = [
       },
       { title: 'Expiring Soon', path: '/products?stockExpiringSoon=true' },
       { title: 'Inactive Products', path: '/products?deleted=true' },
+    ],
+  },
+  {
+    title: 'Games',
+    path: '/games',
+    icon: <SportsEsports />,
+    requiredPermission: Permission.GamesRead,
+    children: [
+      { title: 'All Games', path: '/games' },
+      {
+        title: 'Add Game',
+        path: '/games/new',
+        requiredPermission: Permission.GamesWrite,
+      },
     ],
   },
   {

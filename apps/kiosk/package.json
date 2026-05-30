@@ -16,6 +16,7 @@
     "clean": "rimraf dist .turbo"
   },
   "dependencies": {
+    "@gaming-cafe/api-types": "workspace:*",
     "@gaming-cafe/contracts": "workspace:*",
     "@gaming-cafe/theme": "workspace:*",
     "@gaming-cafe/utils": "workspace:*",

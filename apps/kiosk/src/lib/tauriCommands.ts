@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 export interface TokenStore {
   deviceToken?: string;
@@ -85,4 +85,19 @@ export async function killTrackedProcesses(graceSeconds?: number): Promise<{ kil
 
 export async function clearTrackedProcesses(): Promise<void> {
   await invoke('clear_tracked_processes');
+}
+
+/**
+ * Download a remote asset into the on-device cache (once) and return a source
+ * the webview can render. Falls back to the remote URL when not running under
+ * Tauri (e.g. browser dev) or when caching fails (DRAFT-0022).
+ */
+export async function cachedAssetSrc(url: string): Promise<string> {
+  if (!url) return url;
+  try {
+    const path = await invoke<string>('cache_asset', { url });
+    return convertFileSrc(path);
+  } catch {
+    return url;
+  }
 }
