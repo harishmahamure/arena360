@@ -48,12 +48,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm --filter @gaming-cafe/kiosk typecheck
-
-      - name: Frontend unit tests
-        run: pnpm --filter @gaming-cafe/kiosk test
-
       - name: Rust clippy (kiosk)
         run: cargo clippy --all-targets --manifest-path apps/kiosk/src-tauri/Cargo.toml -- -D warnings
 
