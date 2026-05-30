@@ -13,7 +13,7 @@ pgbouncer:
   externalService:
     enabled: true
     type: LoadBalancer
-    port: 5432
+    port: 5433
     annotations: {}
     loadBalancerIP: ""
   config:
