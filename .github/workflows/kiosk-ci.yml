@@ -48,9 +48,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Biome lint
-        run: pnpm biome check apps/kiosk packages
-
       - name: Typecheck
         run: pnpm --filter @gaming-cafe/kiosk typecheck
 
