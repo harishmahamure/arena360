@@ -90,7 +90,17 @@ impl ExpenseService {
                 "amount": expense.amount,
                 "entity_type": "expense",
             });
-            let _ = self.outbox.publish("admin", "approval.requested", payload, Some("admin"), None, true).await;
+            let _ = self
+                .outbox
+                .publish(
+                    "admin",
+                    "approval.requested",
+                    payload,
+                    Some("admin"),
+                    None,
+                    true,
+                )
+                .await;
         }
 
         Ok(expense)
@@ -203,16 +213,29 @@ impl ExpenseService {
                 "entity_type": "expense",
             });
             if let Some(created_by) = expense.created_by {
-                let _ = self.outbox.publish(
-                    &format!("user:{created_by}"),
-                    "approval.decided",
-                    payload.clone(),
-                    None,
-                    Some(created_by),
-                    true,
-                ).await;
+                let _ = self
+                    .outbox
+                    .publish(
+                        &format!("user:{created_by}"),
+                        "approval.decided",
+                        payload.clone(),
+                        None,
+                        Some(created_by),
+                        true,
+                    )
+                    .await;
             }
-            let _ = self.outbox.publish("admin", "expense.status_changed", payload, Some("admin"), None, true).await;
+            let _ = self
+                .outbox
+                .publish(
+                    "admin",
+                    "expense.status_changed",
+                    payload,
+                    Some("admin"),
+                    None,
+                    true,
+                )
+                .await;
         }
 
         Ok(expense)
@@ -245,16 +268,29 @@ impl ExpenseService {
                 "entity_type": "expense",
             });
             if let Some(created_by) = expense.created_by {
-                let _ = self.outbox.publish(
-                    &format!("user:{created_by}"),
-                    "approval.decided",
-                    payload.clone(),
-                    None,
-                    Some(created_by),
-                    true,
-                ).await;
+                let _ = self
+                    .outbox
+                    .publish(
+                        &format!("user:{created_by}"),
+                        "approval.decided",
+                        payload.clone(),
+                        None,
+                        Some(created_by),
+                        true,
+                    )
+                    .await;
             }
-            let _ = self.outbox.publish("admin", "expense.status_changed", payload, Some("admin"), None, true).await;
+            let _ = self
+                .outbox
+                .publish(
+                    "admin",
+                    "expense.status_changed",
+                    payload,
+                    Some("admin"),
+                    None,
+                    true,
+                )
+                .await;
         }
 
         Ok(expense)

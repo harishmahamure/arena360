@@ -78,6 +78,81 @@
         }
       }
     },
+    "/auth/login/player": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "login_player",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerLoginDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — device not registered, maintenance, or no usable plan (PLAN_EXPIRED, PLAN_EXHAUSTED, PLAN_NOT_ACTIVATED, TIME_WINDOW_VIOLATION, DEVICE_TYPE_NOT_ALLOWED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict — PLAYER_ALREADY_IN_SESSION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/auth/login/staff": {
       "post": {
         "tags": [
@@ -2153,6 +2228,84 @@
         ]
       }
     },
+    "/devices/provision": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "provision_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionDeviceDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Device provisioned; returns device token"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Device name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/devices/{id}": {
       "get": {
         "tags": [
@@ -3477,6 +3630,374 @@
         ]
       }
     },
+    "/games": {
+      "get": {
+        "tags": [
+          "games"
+        ],
+        "operationId": "list_games",
+        "parameters": [
+          {
+            "name": "isActive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List games",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GamePaginationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "games"
+        ],
+        "operationId": "create_game",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGameDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Create game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/games/{id}": {
+      "get": {
+        "tags": [
+          "games"
+        ],
+        "operationId": "get_game",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Game ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "games"
+        ],
+        "operationId": "delete_game",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Game ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Soft-deleted"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "games"
+        ],
+        "operationId": "update_game",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Game ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGameDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Update game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -3555,6 +4076,195 @@
             }
           }
         }
+      }
+    },
+    "/kiosk/sessions": {
+      "post": {
+        "tags": [
+          "kiosk"
+        ],
+        "summary": "Start (or resume) a kiosk session for the authenticated player on the\nauthenticated device. Enforces the global single-session rule (ADR-0017).",
+        "operationId": "start_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartKioskSessionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session started or resumed"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — no usable balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict — PLAYER_ALREADY_IN_SESSION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk/sessions/current": {
+      "get": {
+        "tags": [
+          "kiosk"
+        ],
+        "summary": "The authenticated player's current open session, or `null` when none.\nPolled by the kiosk HUD to resync the countdown and detect remote ends.",
+        "operationId": "current_session",
+        "responses": {
+          "200": {
+            "description": "Current session or null"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk/sessions/{id}/end": {
+      "patch": {
+        "tags": [
+          "kiosk"
+        ],
+        "summary": "End the player's own session. The session's balance must belong to the\nauthenticated player.",
+        "operationId": "kiosk_end_session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndKioskSessionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session ended"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — not the player's session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/plans": {
@@ -6909,6 +7619,71 @@
         ]
       }
     },
+    "/uploads/presign": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "presign_upload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Presigned upload issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Storage not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/users": {
       "get": {
         "tags": [
@@ -8001,6 +8776,31 @@
           }
         }
       },
+      "ActiveSessionDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "startTime",
+          "balanceId",
+          "remainingMinutes"
+        ],
+        "properties": {
+          "balanceId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "remainingMinutes": {
+            "type": "number",
+            "format": "double"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "AddMemberDto": {
         "type": "object",
         "required": [
@@ -8075,6 +8875,16 @@
         "properties": {
           "accessToken": {
             "type": "string"
+          },
+          "activeSession": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActiveSessionDto"
+              }
+            ]
           },
           "shiftId": {
             "type": [
@@ -9452,6 +10262,54 @@
           }
         }
       },
+      "CreateGameDto": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "launchRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logoUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "thumbnailUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "videoUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CreateLineItemDto": {
         "type": "object",
         "required": [
@@ -10360,6 +11218,33 @@
           }
         }
       },
+      "DeviceFingerprintDto": {
+        "type": "object",
+        "required": [
+          "mac",
+          "serial",
+          "biosUuid",
+          "platform",
+          "collectedAt"
+        ],
+        "properties": {
+          "biosUuid": {
+            "type": "string"
+          },
+          "collectedAt": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          }
+        }
+      },
       "DevicePaginationEnvelope": {
         "type": "object",
         "required": [
@@ -10419,6 +11304,21 @@
           }
         }
       },
+      "DeviceRegisterResponseDto": {
+        "type": "object",
+        "required": [
+          "accessToken",
+          "device"
+        ],
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "device": {
+            "$ref": "#/components/schemas/RegisteredDeviceDto"
+          }
+        }
+      },
       "DeviceStatsDto": {
         "type": "object",
         "required": [
@@ -10441,6 +11341,18 @@
           }
         }
       },
+      "EndKioskSessionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of: voluntary, auto, force, offline_reconcile (defaults to voluntary)."
+          }
+        }
+      },
       "EndSessionDto": {
         "type": "object",
         "properties": {
@@ -10450,6 +11362,13 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of: voluntary, auto, force, offline_reconcile. Echoed into the\n`session.ended` realtime event. Persistence is gated on ADR-0021."
           },
           "timeCreditsConsumed": {
             "type": [
@@ -10469,6 +11388,7 @@
           "timestamp"
         ],
         "properties": {
+          "details": {},
           "error": {
             "type": "string"
           },
@@ -11131,6 +12051,214 @@
           }
         }
       },
+      "Game": {
+        "type": "object",
+        "description": "Display-only game catalog entry (DRAFT-0022). Stores branding asset URLs that\nthe kiosk renders; launching stays client-side (ADR-0019).",
+        "required": [
+          "id",
+          "name",
+          "isActive",
+          "sortOrder",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "launchRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logoUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "thumbnailUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "videoUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "GameEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Game"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "GameFilterDto": {
+        "type": "object",
+        "properties": {
+          "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "sortBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortOrder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "GamePaginationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GamePaginationPage"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "GamePaginationPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Game"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "HandoverDepositDto": {
         "type": "object",
         "required": [
@@ -11214,6 +12342,39 @@
           "shiftId": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "KioskSessionResponseDto": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "balanceId",
+          "deviceId",
+          "startTime",
+          "remainingMinutes",
+          "resumed"
+        ],
+        "properties": {
+          "balanceId": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "remainingMinutes": {
+            "type": "number",
+            "format": "double"
+          },
+          "resumed": {
+            "type": "boolean",
+            "description": "True when an existing open session on this device was resumed (crash recovery)."
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string"
           }
         }
       },
@@ -12035,6 +13196,32 @@
           }
         }
       },
+      "PlayerLoginDto": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "fingerprint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeviceFingerprintDto",
+                "description": "Current hardware fingerprint; when present the backend enforces the\ndrift policy (ADR-0017) before issuing a player token."
+              }
+            ]
+          },
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
       "PlayerPlan": {
         "type": "object",
         "required": [
@@ -12818,6 +14005,72 @@
           }
         }
       },
+      "PresignRequest": {
+        "type": "object",
+        "required": [
+          "fileName"
+        ],
+        "properties": {
+          "contentType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "MIME type the client will upload with (e.g. `image/png`, `video/mp4`)."
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Original file name; used to derive the object key and extension."
+          }
+        }
+      },
+      "PresignResponse": {
+        "type": "object",
+        "required": [
+          "uploadUrl",
+          "publicUrl",
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Object key in the bucket."
+          },
+          "publicUrl": {
+            "type": "string",
+            "description": "Stable public URL to store on the game record."
+          },
+          "uploadUrl": {
+            "type": "string",
+            "description": "Presigned PUT URL the client uploads the bytes to."
+          }
+        }
+      },
+      "PresignResponseEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PresignResponse"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "Product": {
         "type": "object",
         "required": [
@@ -13050,6 +14303,46 @@
           }
         }
       },
+      "ProvisionDeviceDto": {
+        "type": "object",
+        "description": "Admin-authorized device provisioning payload (DRAFT-0023). Sent with an admin\nbearer token to `POST /devices/provision`.",
+        "required": [
+          "fingerprint",
+          "name"
+        ],
+        "properties": {
+          "deviceSubType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fingerprint": {
+            "$ref": "#/components/schemas/DeviceFingerprintDto"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "serialNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "PurchaseBalanceDto": {
         "type": "object",
         "required": [
@@ -13154,6 +14447,37 @@
             "type": "boolean"
           },
           "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "RegisteredDeviceDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "registrationStatus",
+          "deviceType",
+          "deviceSubType",
+          "status"
+        ],
+        "properties": {
+          "deviceSubType": {
+            "type": "string"
+          },
+          "deviceType": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "registrationStatus": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           }
         }
@@ -14285,6 +15609,18 @@
           }
         }
       },
+      "StartKioskSessionDto": {
+        "type": "object",
+        "properties": {
+          "balanceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional balance to spend; when omitted the backend picks the best\nusable balance for the device type."
+          }
+        }
+      },
       "StatsQuery": {
         "type": "object",
         "properties": {
@@ -15251,6 +16587,54 @@
               "null"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "UpdateGameDto": {
+        "type": "object",
+        "properties": {
+          "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "launchRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logoUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortOrder": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "thumbnailUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "videoUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -16402,12 +17786,24 @@
       "description": "Usage sessions"
     },
     {
+      "name": "kiosk",
+      "description": "Kiosk player session lifecycle"
+    },
+    {
       "name": "transactions",
       "description": "Payment transactions"
     },
     {
       "name": "products",
       "description": "Products"
+    },
+    {
+      "name": "games",
+      "description": "Game media catalog"
+    },
+    {
+      "name": "uploads",
+      "description": "Object storage presigned uploads"
     },
     {
       "name": "shifts",

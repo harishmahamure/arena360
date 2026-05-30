@@ -1,8 +1,8 @@
+import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
-import type { PaymentStatus } from './list';
 
 export interface UpdateTransactionStatusRequest {
-  paymentStatus: PaymentStatus;
+  paymentStatus: PaymentStatusValue;
   notes?: string;
 }
 

@@ -1,3 +1,4 @@
+import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
 import {
   Build,
@@ -17,7 +18,7 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { type DeviceResponse, DeviceStatus, getDevices } from '../../../services/devices/list';
 import { formatDisplayDate } from '../../../utils/date';
 
-const getStatusColor = (status: DeviceStatus) => {
+const getStatusColor = (status: DeviceStatusValue) => {
   switch (status) {
     case DeviceStatus.OPERATIONAL:
       return 'success';
@@ -34,7 +35,7 @@ const getStatusColor = (status: DeviceStatus) => {
   }
 };
 
-const getStatusIcon = (status: DeviceStatus) => {
+const getStatusIcon = (status: DeviceStatusValue) => {
   switch (status) {
     case DeviceStatus.OPERATIONAL:
       return <CheckCircle fontSize="small" />;
@@ -51,7 +52,7 @@ const getStatusIcon = (status: DeviceStatus) => {
   }
 };
 
-const getStatusLabel = (status: DeviceStatus) => {
+const getStatusLabel = (status: DeviceStatusValue) => {
   switch (status) {
     case DeviceStatus.OPERATIONAL:
       return 'Operational';
@@ -69,12 +70,12 @@ const getStatusLabel = (status: DeviceStatus) => {
 };
 
 const getDeviceIcon = (deviceType: string) => {
-  const type = deviceType.toLowerCase();
-  if (type.includes('playstation') || type.includes('xbox') || type.includes('nintendo')) {
-    return <SportsEsports />;
-  }
-  if (type.includes('pc') || type.includes('computer')) {
+  const type = deviceType.toUpperCase();
+  if (type === 'PC') {
     return <Computer />;
+  }
+  if (type === 'PS5' || type === 'PS4' || type === 'CONSOLE') {
+    return <SportsEsports />;
   }
   return <Tv />;
 };
@@ -84,7 +85,7 @@ export default function DevicesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
-  const statusFilter = searchParams.get('status') as DeviceStatus | null;
+  const statusFilter = searchParams.get('status') as DeviceStatusValue | null;
   const typeFilter = searchParams.get('type');
 
   const navigate = useNavigate();
@@ -191,15 +192,31 @@ export default function DevicesPage() {
       format: (value) => (value as string) || '—',
     },
     {
+      id: 'registrationStatus',
+      label: 'Kiosk',
+      minWidth: 110,
+      align: 'center',
+      format: (value) => {
+        const status = value as string | undefined;
+        if (status === 'registered') {
+          return <Chip label="Registered" color="success" size="small" />;
+        }
+        if (status === 'unregistered') {
+          return <Chip label="Pending" color="warning" size="small" />;
+        }
+        return '—';
+      },
+    },
+    {
       id: 'status',
       label: 'Status',
       minWidth: 140,
       align: 'center',
       format: (value) => (
         <Chip
-          icon={getStatusIcon(value as DeviceStatus) ?? undefined}
-          label={getStatusLabel(value as DeviceStatus)}
-          color={getStatusColor(value as DeviceStatus)}
+          icon={getStatusIcon(value as DeviceStatusValue) ?? undefined}
+          label={getStatusLabel(value as DeviceStatusValue)}
+          color={getStatusColor(value as DeviceStatusValue)}
           size="small"
         />
       ),

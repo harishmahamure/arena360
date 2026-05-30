@@ -10,6 +10,7 @@
   },
   "workspaces": [
     "apps/admin",
+    "apps/kiosk",
     "packages/*"
   ],
   "scripts": {
@@ -27,13 +28,17 @@
     "changeset": "changeset",
     "release": "changeset publish",
     "prepare": "simple-git-hooks",
+    "admin:dev": "pnpm --filter @gaming-cafe/admin dev",
+    "admin:build": "pnpm --filter @gaming-cafe/admin build",
     "backend:build": "cargo build --manifest-path apps/backend/Cargo.toml",
     "backend:build:release": "cargo build --release --manifest-path apps/backend/Cargo.toml",
     "backend:dev": "cargo run --manifest-path apps/backend/Cargo.toml",
     "backend:run": "cargo run --manifest-path apps/backend/Cargo.toml",
     "backend:test": "cargo test --manifest-path apps/backend/Cargo.toml",
     "backend:clippy": "cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml -- -D warnings",
-    "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml"
+    "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml",
+    "kiosk:dev": "pnpm --filter @gaming-cafe/kiosk tauri:dev",
+    "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

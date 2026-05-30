@@ -28,9 +28,7 @@ pub async fn ws_upgrade(
 
     Ok(ws
         .protocols(["bearer"])
-        .on_upgrade(move |socket| {
-            connection::run(socket, claims, pool, connections, outbox)
-        }))
+        .on_upgrade(move |socket| connection::run(socket, claims, pool, connections, outbox)))
 }
 
 fn extract_ws_token(headers: &HeaderMap) -> Result<String, AppError> {
@@ -60,7 +58,10 @@ fn extract_ws_token(headers: &HeaderMap) -> Result<String, AppError> {
     ))
 }
 
-fn decode_token_for_ws(state: &AppState, token: &str) -> Result<crate::dto::JwtUserClaims, AppError> {
+fn decode_token_for_ws(
+    state: &AppState,
+    token: &str,
+) -> Result<crate::dto::JwtUserClaims, AppError> {
     use jsonwebtoken::{decode, DecodingKey, Validation};
 
     let mut validation = Validation::default();

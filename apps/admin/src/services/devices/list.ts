@@ -1,21 +1,22 @@
+import { DeviceStatus, type DeviceStatusValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
-// Enums for device
-export enum DeviceStatus {
-  OPERATIONAL = 'operational',
-  UNDER_MAINTENANCE = 'under_maintenance',
-  OUT_OF_SERVICE = 'out_of_service',
-  IN_USE = 'in_use',
-  AVAILABLE = 'available',
-}
+export { DeviceStatus };
+
 export interface DeviceResponse {
   id: string;
   name: string;
   serialNumber?: string;
   localIpAddress?: string;
   deviceType: string;
+  deviceSubType: string;
   location?: string;
-  status: DeviceStatus;
+  status: DeviceStatusValue;
+  registrationStatus?: string;
+  registrationCode?: string | null;
+  registrationCodeExpiresAt?: string | null;
+  /** Stored hardware fingerprint JSON (mac/serial/biosUuid/...). */
+  registeredKiosk?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
@@ -30,7 +31,7 @@ interface GetDevicesResponse {
 }
 
 export interface GetDevicesFilters {
-  status?: DeviceStatus;
+  status?: DeviceStatusValue;
   deviceType?: string;
   location?: string;
   name?: string;

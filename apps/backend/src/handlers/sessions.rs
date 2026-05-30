@@ -127,10 +127,23 @@ pub async fn create_session(
     tag = "sessions"
 )]
 pub async fn end_session(
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<EndSessionDto>,
 ) -> ApiResult<UsageSession> {
-    let session = state.sessions.end(id, dto, None).await?;
+    let actor_id = claims.user_id_uuid().ok_or_else(|| {
+        crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
+    })?;
+
+    if claims.is_staff() {
+        let code = dto.staff_totp.as_deref().ok_or_else(|| {
+            crate::error::AppError::BadRequest("Staff TOTP code is required".to_string())
+        })?;
+        let staff = state.users.get_by_id(actor_id).await?;
+        state.users.verify_staff_totp(&staff, code).await?;
+    }
+
+    let session = state.sessions.end(id, dto, Some(actor_id)).await?;
     ok(session)
 }

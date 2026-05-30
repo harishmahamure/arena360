@@ -1,0 +1,71 @@
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "arena360-postgresql.fullname" . }}-pgbouncer
+  labels:
+    {{- include "arena360-postgresql.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  replicas: {{ .Values.pgbouncer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "arena360-postgresql.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: pgbouncer
+  template:
+    metadata:
+      labels:
+        {{- include "arena360-postgresql.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: "{{ .Values.pgbouncer.image.repository }}:{{ .Values.pgbouncer.image.tag }}"
+          imagePullPolicy: {{ .Values.pgbouncer.image.pullPolicy }}
+          ports:
+            - name: pgbouncer
+              containerPort: 5432
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.pgbouncer.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer/pgbouncer.ini
+              subPath: pgbouncer.ini
+            - name: userlist
+              mountPath: /etc/pgbouncer/userlist.txt
+              subPath: {{ .Values.pgbouncer.auth.userlistKey }}
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "arena360-postgresql.fullname" . }}-pgbouncer
+        - name: userlist
+          secret:
+            secretName: {{ .Values.pgbouncer.auth.existingSecret | default (include "arena360-postgresql.secretName" .) }}
+            items:
+              - key: {{ .Values.pgbouncer.auth.userlistKey }}
+                path: {{ .Values.pgbouncer.auth.userlistKey }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

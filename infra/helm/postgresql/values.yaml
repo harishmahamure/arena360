@@ -1,0 +1,74 @@
+postgresql:
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: arena360
+    database: arena360
+    existingSecret: arena360-postgresql-secrets
+    passwordKey: password
+    postgresPasswordKey: postgres-password
+  service:
+    type: ClusterIP
+    port: 5432
+  persistence:
+    enabled: true
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+pgbouncer:
+  enabled: true
+  image:
+    repository: pgbouncer/pgbouncer
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  service:
+    type: ClusterIP
+    port: 5432
+  externalService:
+    enabled: false
+    type: LoadBalancer
+    port: 5432
+    annotations: {}
+    loadBalancerIP: ""
+  auth:
+    existingSecret: arena360-postgresql-secrets
+    userlistKey: pgbouncer-users.txt
+  config:
+    poolMode: transaction
+    maxClientConn: 200
+    defaultPoolSize: 25
+    reservePoolSize: 5
+    serverResetQuery: DISCARD ALL
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+secret:
+  create: false
+  name: arena360-postgresql-secrets
+  password: ""
+  postgresPassword: ""
+  # PgBouncer expects lines such as: "arena360" "plain-text-or-md5-password"
+  pgbouncerUsers: ""
+
+nameOverride: ""
+fullnameOverride: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}

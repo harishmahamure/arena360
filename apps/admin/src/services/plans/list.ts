@@ -1,16 +1,15 @@
+import { PlanType, type PlanTypeValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
-export enum PlanType {
-  TIME_BASED = 'time_based',
-  WEEKEND_SPECIAL = 'weekend_special',
-}
+export type { PlanTypeValue };
+export { PlanType };
 
 export interface PlanResponse {
   id: string;
   name: string;
   description?: string;
   price: string;
-  planType: PlanType;
+  planType: PlanTypeValue;
   validityDays: number;
   timeWindowStart?: string;
   timeWindowEnd?: string;
@@ -34,20 +33,16 @@ interface GetPlansResponse {
 
 export interface GetPlansFilters {
   search?: string;
-  planType?: PlanType;
+  planType?: PlanTypeValue;
   isActive?: 0 | 1;
-  minPrice?: number;
-  maxPrice?: number;
   page?: number;
   limit?: number;
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
 }
 
-export const getPlans = async (filters: GetPlansFilters = {}) => {
+export const getPlans = async (filters?: GetPlansFilters) => {
   return http.get<GetPlansResponse>('/plans', {
-    params: {
-      ...filters,
-    },
+    params: filters,
   });
 };

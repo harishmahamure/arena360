@@ -1,3 +1,4 @@
+import { PlanType, type PlanTypeValue } from '@gaming-cafe/contracts';
 import { FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -6,13 +7,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   type CreatePlanFormData,
   createPlanSchema,
-  type DeviceSubType,
-  type DeviceType,
 } from '../../../containers/plans/schemas/plan.schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import type { CreatePlanPayload } from '../../../services/plans/add';
 import { getPlanById } from '../../../services/plans/getById';
-import { PlanType } from '../../../services/plans/list';
 import { updatePlan } from '../../../services/plans/update';
 import { planFormFields } from './PlanNewPage';
 
@@ -54,11 +52,11 @@ export default function EditPlanPage() {
         name: data.name,
         description: data.description,
         price: data.price,
-        planType: data.planType as PlanType,
+        planType: data.planType as PlanTypeValue,
         validityDays: data.validityDays ?? undefined,
         isActive: data.isActive,
-        deviceType: data.deviceType,
-        deviceSubType: data.deviceSubType,
+        deviceType: data.deviceType ?? undefined,
+        deviceSubType: data.deviceSubType ?? undefined,
       };
 
       if (data.timeCredits) payload.timeCredits = data.timeCredits;
@@ -115,14 +113,17 @@ export default function EditPlanPage() {
           name: plan?.name || '',
           description: plan?.description || '',
           price: plan?.price ? parseFloat(plan.price) : 0,
-          planType: plan?.planType || PlanType.TIME_BASED,
+          planType:
+            plan?.planType === PlanType.WEEKEND_SPECIAL
+              ? PlanType.WEEKEND_SPECIAL
+              : PlanType.TIME_BASED,
           validityDays: plan?.validityDays || 7,
           timeWindowStart: plan?.timeWindowStart,
           timeWindowEnd: plan?.timeWindowEnd,
           timeCredits: plan?.timeCredits,
           isActive: plan?.isActive ?? true,
-          deviceSubType: plan?.deviceSubType as DeviceSubType,
-          deviceType: plan?.deviceType as DeviceType,
+          deviceSubType: (plan?.deviceSubType ?? undefined) as CreatePlanFormData['deviceSubType'],
+          deviceType: (plan?.deviceType ?? undefined) as CreatePlanFormData['deviceType'],
           allowedDays: plan?.allowedDays ?? undefined,
           allowedMonths: plan?.allowedMonths ?? undefined,
         }}

@@ -45,6 +45,11 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 # External services
 reqwest = { version = "0.12", features = ["json"] }
 
+# Object storage presigning (S3 SigV4) — DRAFT-0022
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
 [[bin]]
 name = "openapi-gen"
 path = "src/bin/openapi_gen.rs"

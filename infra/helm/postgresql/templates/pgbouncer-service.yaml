@@ -1,0 +1,19 @@
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "arena360-postgresql.pgbouncerServiceName" . }}
+  labels:
+    {{- include "arena360-postgresql.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+spec:
+  type: {{ .Values.pgbouncer.service.type }}
+  ports:
+    - port: {{ .Values.pgbouncer.service.port }}
+      targetPort: pgbouncer
+      protocol: TCP
+      name: pgbouncer
+  selector:
+    {{- include "arena360-postgresql.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: pgbouncer
+{{- end }}

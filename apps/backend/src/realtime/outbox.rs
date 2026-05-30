@@ -85,17 +85,20 @@ impl OutboxService {
     }
 
     pub async fn fetch_row(pool: &PgPool, id: i64) -> Result<Option<OutboxRow>, AppError> {
-        let row = sqlx::query_as::<_, (
-            i64,
-            String,
-            String,
-            Value,
-            Option<String>,
-            Option<Uuid>,
-            Option<Uuid>,
-            bool,
-            chrono::DateTime<chrono::Utc>,
-        )>(
+        let row = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                String,
+                Value,
+                Option<String>,
+                Option<Uuid>,
+                Option<Uuid>,
+                bool,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(
             r#"SELECT id, channel, event_type, payload,
                       audience_role, audience_user_id, audience_room_id,
                       durable, created_at

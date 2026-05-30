@@ -1,13 +1,14 @@
+import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
-import type { DeviceStatus } from './list';
 
 export interface UpdateDeviceRequest {
   name?: string;
   serialNumber?: string;
   localIpAddress?: string;
   deviceType?: string;
+  deviceSubType?: string;
   location?: string;
-  status?: DeviceStatus;
+  status?: DeviceStatusValue;
 }
 
 export const updateDevice = async (id: string, device: UpdateDeviceRequest) => {
@@ -15,7 +16,7 @@ export const updateDevice = async (id: string, device: UpdateDeviceRequest) => {
 };
 
 export interface UpdateDeviceStatusRequest {
-  status: DeviceStatus;
+  status: DeviceStatusValue;
 }
 
 export const updateDeviceStatus = async (id: string, data: UpdateDeviceStatusRequest) => {

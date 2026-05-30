@@ -1,19 +1,19 @@
+import type { PlanTypeValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
 import { Box, Paper, Typography } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   type CreatePlanFormData,
-  MONTH_OPTIONS,
-  WEEKDAY_OPTIONS,
   createPlanDefaultValues,
   createPlanSchema,
   deviceSubTypeOptions,
   deviceTypeOptions,
+  MONTH_OPTIONS,
   planTypeOptions,
+  WEEKDAY_OPTIONS,
 } from '../../../../src/containers/plans/schemas/plan.schema';
 import { addPlan, type CreatePlanPayload } from '../../../services/plans/add';
-import type { PlanType } from '../../../services/plans/list';
 
 export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
   {
@@ -151,7 +151,7 @@ export default function AddNewPlanPage() {
         name: data.name,
         description: data.description || '',
         price: data.price,
-        planType: data.planType as PlanType,
+        planType: data.planType as PlanTypeValue,
         validityDays: data.validityDays || 7,
         timeCredits: data.timeCredits,
         isActive: data.isActive ?? true,

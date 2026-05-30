@@ -1,0 +1,25 @@
+image:
+  repository: harishmahamure/arena360
+  tag: frontend-prod-latest
+  pullPolicy: Always
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: admin.arena360.cloud
+      paths:
+        - path: /v2(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: arena360-frontend-new-prod-tls
+      hosts:
+        - admin.arena360.cloud
+
+env:
+  VITE_API_URL: https://api.arena360.cloud
+  VITE_GATEWAY_URL: wss://api.arena360.cloud/realtime

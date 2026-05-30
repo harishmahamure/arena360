@@ -4,8 +4,7 @@ use uuid::Uuid;
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{
-    CreditAccountFilterDto, CreditPlayerRow, CreditSettlement, OutstandingTxnRow,
-    SettleItemDto,
+    CreditAccountFilterDto, CreditPlayerRow, CreditSettlement, OutstandingTxnRow, SettleItemDto,
 };
 
 pub struct CreditRepository {
@@ -159,9 +158,8 @@ impl CreditRepository {
             count_builder.push(")");
         }
 
-        count_builder.push(
-            " GROUP BY u.id HAVING COALESCE(SUM(t.amount - t.\"paidAmount\"), 0) > 0) sub",
-        );
+        count_builder
+            .push(" GROUP BY u.id HAVING COALESCE(SUM(t.amount - t.\"paidAmount\"), 0) > 0) sub");
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
 
@@ -358,9 +356,8 @@ impl CreditRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        let (is_active, role, credit_limit) = row.ok_or_else(|| {
-            AppError::BadRequest("player not eligible for credit".to_string())
-        })?;
+        let (is_active, role, credit_limit) =
+            row.ok_or_else(|| AppError::BadRequest("player not eligible for credit".to_string()))?;
 
         if !is_active || role != "player" {
             return Err(AppError::BadRequest(

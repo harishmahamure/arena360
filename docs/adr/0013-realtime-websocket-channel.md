@@ -4,6 +4,7 @@
 **Date**: 2026-05-28
 **Deciders**: Platform team
 **Supersedes**: ADR-0009 (real-time portion only — the rest of ADR-0009 remains accepted)
+**Amended by**: [ADR-0018](0018-kiosk-ws-device-acl.md) (device JWT ACL + kiosk event payload schemas only)
 
 ## Context
 

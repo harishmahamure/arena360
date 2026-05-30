@@ -39,6 +39,22 @@ export const tokens = {
     divider: '#E4E4E7',
   },
 
+  /**
+   * Dark surface scale (ggCircuit-style). Slate backgrounds with the same
+   * orange accent. Consumed by `muiDarkTheme` (admin login) and mirrored as
+   * the `--gz-dark-*` custom properties in `tokens.css` (kiosk shell).
+   */
+  darkColor: {
+    surface: '#141A2A',
+    surfaceAlt: '#1C2436',
+    surfaceRaised: '#222C42',
+    background: '#0B0F1A',
+    onSurface: '#E8ECF4',
+    onSurfaceMuted: '#94A3B8',
+    border: '#2A3550',
+    divider: '#2A3550',
+  },
+
   space: {
     1: '4px',
     2: '8px',

@@ -1,6 +1,7 @@
+import type { PaymentStatusValue, TransactionTypeValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 import type { PaymentMethodType } from '../../containers/transactions/schemas/transaction-schema';
-import type { PaymentStatus, TransactionResponse, TransactionType } from './list';
+import type { TransactionResponse } from './list';
 
 export interface LineItemPayload {
   productId: string;
@@ -10,10 +11,10 @@ export interface LineItemPayload {
 
 export interface CreateProductTransactionPayload {
   playerId: string;
-  transactionType: TransactionType;
+  transactionType: TransactionTypeValue;
   amount: number;
   paymentMethod: PaymentMethodType;
-  paymentStatus?: PaymentStatus;
+  paymentStatus?: PaymentStatusValue;
   notes?: string;
   transactionDate?: string;
   cashAmount?: number;

@@ -1,3 +1,4 @@
+import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
 import { capitalize, formatCurrency, formatTimeAgo } from '@gaming-cafe/utils';
 import { Visibility } from '@mui/icons-material';
@@ -12,9 +13,9 @@ import {
   PaymentStatus,
   type TransactionResponse,
   TransactionType,
-} from '../../../services/transactions/list';
+} from '../../../services/transaction/list';
 
-const getStatusColor = (status: PaymentStatus) => {
+const getStatusColor = (status: PaymentStatusValue) => {
   switch (status) {
     case PaymentStatus.COMPLETED:
       return 'success';
@@ -105,7 +106,7 @@ const columns: Column<TransactionResponse>[] = [
     format: (value) => (
       <Chip
         label={(value as string).charAt(0).toUpperCase() + (value as string).slice(1)}
-        color={getStatusColor(value as PaymentStatus)}
+        color={getStatusColor(value as PaymentStatusValue)}
         size="small"
       />
     ),
@@ -123,7 +124,7 @@ export default function PlanTransactionsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
-  const statusFilter = searchParams.get('status') as PaymentStatus | null;
+  const statusFilter = searchParams.get('status') as PaymentStatusValue | null;
 
   const navigate = useNavigate();
 

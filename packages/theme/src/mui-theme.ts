@@ -46,3 +46,48 @@ export const muiTheme: Theme = createTheme({
     values: tokens.breakpoint,
   },
 });
+
+/**
+ * Dark (ggCircuit-style) variant of {@link muiTheme}. Same orange accent on
+ * slate surfaces. Used to render the admin login on a dark video background;
+ * the dashboard keeps `muiTheme` until a full dark conversion lands.
+ */
+export const muiDarkTheme: Theme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: tokens.color.primary,
+      light: tokens.color.primaryLight,
+      dark: tokens.color.primaryDark,
+      contrastText: tokens.color.onPrimary,
+    },
+    secondary: {
+      main: tokens.color.secondaryLight,
+      light: tokens.color.secondary,
+      dark: tokens.color.secondaryDark,
+      contrastText: tokens.color.onSecondary,
+    },
+    success: { main: tokens.color.success },
+    warning: { main: tokens.color.warning },
+    error: { main: tokens.color.danger },
+    info: { main: tokens.color.info },
+    background: {
+      default: tokens.darkColor.background,
+      paper: tokens.darkColor.surface,
+    },
+    text: {
+      primary: tokens.darkColor.onSurface,
+      secondary: tokens.darkColor.onSurfaceMuted,
+    },
+    divider: tokens.darkColor.divider,
+  },
+  typography: {
+    fontFamily: tokens.typography.fontSans,
+  },
+  shape: {
+    borderRadius: Number.parseInt(tokens.radius.md, 10),
+  },
+  breakpoints: {
+    values: tokens.breakpoint,
+  },
+});

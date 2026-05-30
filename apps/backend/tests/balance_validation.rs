@@ -1,7 +1,8 @@
 use chrono::{DateTime, Duration, NaiveTime, Utc};
 use gaming_cafe_api::models::{
-    balance_status, plan_kind, BalanceValidationResult, PlayerPlanBalance,
+    balance_status, plan_kind, BalanceValidationResult, Device, PlayerPlanBalance,
 };
+use gaming_cafe_api::services::BalanceService;
 use uuid::Uuid;
 
 fn make_balance(
@@ -10,11 +11,29 @@ fn make_balance(
     hours_until_expiry: i64,
     window: Option<(NaiveTime, NaiveTime)>,
 ) -> PlayerPlanBalance {
+    make_balance_scoped(
+        remaining_minutes,
+        status,
+        hours_until_expiry,
+        window,
+        None,
+        None,
+    )
+}
+
+fn make_balance_scoped(
+    remaining_minutes: i32,
+    status: &str,
+    hours_until_expiry: i64,
+    window: Option<(NaiveTime, NaiveTime)>,
+    device_type: Option<&str>,
+    device_sub_type: Option<&str>,
+) -> PlayerPlanBalance {
     PlayerPlanBalance {
         id: Uuid::new_v4(),
         player_id: Uuid::new_v4(),
-        device_type: None,
-        device_sub_type: None,
+        device_type: device_type.map(str::to_string),
+        device_sub_type: device_sub_type.map(str::to_string),
         kind: "time".to_string(),
         remaining_minutes,
         expiry_date: Utc::now() + Duration::hours(hours_until_expiry),
@@ -33,46 +52,26 @@ fn make_balance(
 }
 
 fn validate(balance: &PlayerPlanBalance) -> BalanceValidationResult {
-    let now = Utc::now();
+    BalanceService::validate_balance(balance, None, None)
+}
 
-    if balance.status != balance_status::ACTIVE {
-        return BalanceValidationResult {
-            valid: false,
-            reason: Some(format!("Balance is {}", balance.status)),
-        };
-    }
-
-    if now > balance.expiry_date {
-        return BalanceValidationResult {
-            valid: false,
-            reason: Some("Balance expired".to_string()),
-        };
-    }
-
-    if balance.remaining_minutes <= 0 {
-        return BalanceValidationResult {
-            valid: false,
-            reason: Some("No minutes remaining".to_string()),
-        };
-    }
-
-    if let (Some(start), Some(end)) = (balance.window_start, balance.window_end) {
-        let current = now.time();
-        if current < start || current > end {
-            return BalanceValidationResult {
-                valid: false,
-                reason: Some(format!(
-                    "Outside allowed time window ({} - {})",
-                    start.format("%H:%M:%S"),
-                    end.format("%H:%M:%S")
-                )),
-            };
-        }
-    }
-
-    BalanceValidationResult {
-        valid: true,
-        reason: None,
+fn sample_device() -> Device {
+    Device {
+        id: Uuid::new_v4(),
+        name: "PC-01".to_string(),
+        serial_number: None,
+        local_ip_address: None,
+        device_type: "PC".to_string(),
+        device_sub_type: "HIGH_END_PCS".to_string(),
+        location: None,
+        status: "available".to_string(),
+        registered_kiosk: None,
+        registration_status: "registered".to_string(),
+        created_by: None,
+        updated_by: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        deleted_at: None,
     }
 }
 
@@ -140,9 +139,88 @@ fn cancelled_status_is_invalid() {
 }
 
 #[test]
+fn device_scope_matches_exact_pc_high_end() {
+    let device = sample_device();
+    let balance = make_balance_scoped(
+        60,
+        balance_status::ACTIVE,
+        24,
+        None,
+        Some("PC"),
+        Some("HIGH_END_PCS"),
+    );
+    assert!(BalanceService::device_scope_matches(&balance, &device));
+}
+
+#[test]
+fn device_scope_rejects_null_scope() {
+    let device = sample_device();
+    let balance = make_balance(60, balance_status::ACTIVE, 24, None);
+    assert!(!BalanceService::device_scope_matches(&balance, &device));
+}
+
+#[test]
+fn device_scope_rejects_wrong_subtype() {
+    let device = sample_device();
+    let balance = make_balance_scoped(
+        60,
+        balance_status::ACTIVE,
+        24,
+        None,
+        Some("PC"),
+        Some("OTHER"),
+    );
+    assert!(!BalanceService::device_scope_matches(&balance, &device));
+}
+
+#[test]
+fn validate_balance_with_device_rejects_mismatch() {
+    let device = sample_device();
+    let balance = make_balance_scoped(
+        60,
+        balance_status::ACTIVE,
+        24,
+        None,
+        Some("PC"),
+        Some("OTHER"),
+    );
+    let result = BalanceService::validate_balance(&balance, Some(&device), None);
+    assert!(!result.valid);
+    assert_eq!(
+        BalanceService::validation_failure_code(&result),
+        "DEVICE_TYPE_NOT_ALLOWED"
+    );
+}
+
+#[test]
+fn validation_failure_code_maps_expired() {
+    let balance = make_balance(60, balance_status::ACTIVE, -1, None);
+    let result = BalanceService::validate_balance(&balance, None, None);
+    assert!(!result.valid);
+    assert_eq!(
+        BalanceService::validation_failure_code(&result),
+        "PLAN_EXPIRED"
+    );
+}
+
+#[test]
+fn validation_failure_code_maps_no_minutes() {
+    let balance = make_balance(0, balance_status::ACTIVE, 24, None);
+    let result = BalanceService::validate_balance(&balance, None, None);
+    assert!(!result.valid);
+    assert_eq!(
+        BalanceService::validation_failure_code(&result),
+        "PLAN_EXHAUSTED"
+    );
+}
+
+#[test]
 fn plan_kind_mapping() {
     assert_eq!(gaming_cafe_api::models::plan_kind::TIME, "time");
-    assert_eq!(gaming_cafe_api::models::plan_kind::HAPPY_HOURS, "happy_hours");
+    assert_eq!(
+        gaming_cafe_api::models::plan_kind::HAPPY_HOURS,
+        "happy_hours"
+    );
 }
 
 #[test]
@@ -201,7 +279,10 @@ fn time_plan_active_recharge_resets_expiry() {
         fresh_expiry,
         now,
     );
-    assert_eq!(result, fresh_expiry, "Time plan recharge always resets expiry");
+    assert_eq!(
+        result, fresh_expiry,
+        "Time plan recharge always resets expiry"
+    );
 }
 
 #[test]
@@ -217,7 +298,10 @@ fn time_plan_expired_recharge_resets_expiry() {
         fresh_expiry,
         now,
     );
-    assert_eq!(result, fresh_expiry, "Expired time plan recharge resets expiry");
+    assert_eq!(
+        result, fresh_expiry,
+        "Expired time plan recharge resets expiry"
+    );
 }
 
 #[test]
@@ -233,7 +317,10 @@ fn time_plan_exhausted_recharge_resets_expiry() {
         fresh_expiry,
         now,
     );
-    assert_eq!(result, fresh_expiry, "Exhausted time plan recharge resets expiry");
+    assert_eq!(
+        result, fresh_expiry,
+        "Exhausted time plan recharge resets expiry"
+    );
 }
 
 #[test]

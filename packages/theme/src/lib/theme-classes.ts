@@ -4,6 +4,21 @@
  */
 
 export const themeClasses = {
+  // Shared shell / surfaces
+  authShell: 'gz-auth-shell',
+  authCard: 'gz-auth-card',
+  authContent: 'gz-auth-content',
+  authScrim: 'gz-auth-scrim',
+  authFooter: 'gz-auth-footer',
+  glassPanel: 'gz-glass-panel',
+
+  // Shared controls
+  pillButton: 'gz-pill-button',
+  iconButton: 'gz-icon-button',
+  popover: 'gz-popover',
+  audioControl: 'gz-audio-control',
+  profilePill: 'gz-profile-pill',
+
   // Hover effects
   hoverLift: 'hover-lift',
   hoverScale: 'hover-scale',

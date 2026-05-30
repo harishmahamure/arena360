@@ -1,13 +1,18 @@
+import type {
+  PaymentMethodValue,
+  PaymentStatusValue,
+  TransactionTypeValue,
+} from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
-import type { PaymentMethod, PaymentStatus, TransactionResponse, TransactionType } from './list';
+import type { TransactionResponse } from './list';
 
 export interface CreateTransactionPayload {
   playerId: string;
-  transactionType: TransactionType;
+  transactionType: TransactionTypeValue;
   planId?: string;
   amount?: number;
-  paymentMethod: PaymentMethod;
-  paymentStatus?: PaymentStatus;
+  paymentMethod: PaymentMethodValue;
+  paymentStatus?: PaymentStatusValue;
   notes?: string;
   transactionDate?: string;
   cashAmount?: number;

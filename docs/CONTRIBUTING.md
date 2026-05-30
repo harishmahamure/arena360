@@ -45,14 +45,18 @@ Cursor and VS Code share the same config under `.vscode/`:
 
 1. **Extensions** — accept the recommended-extensions prompt on first
    open (Biome, rust-analyzer, CodeLLDB, Even Better TOML, etc.).
-2. **Settings** — copy the shared preset into your local (gitignored)
-   file:
-   ```bash
-   cp .vscode/settings.recommended.json .vscode/settings.json
-   ```
-   The preset wires Biome for TS/JS and `rust-analyzer.linkedProjects`
-   so the backend crate at `apps/backend/Cargo.toml` is discovered from
-   the monorepo root.
+   Disable or uninstall Prettier and ESLint extensions for this repo —
+   the workspace marks them as unwanted and sets `prettier.enable` /
+   `eslint.enable` to false.
+2. **Settings** — open the repo root so committed
+   [`.vscode/settings.json`](../.vscode/settings.json) applies automatically.
+   It wires Biome for TS/JS/JSON/CSS (format on save, Biome import sort,
+   no VS Code built-in `source.organizeImports`) and
+   `rust-analyzer.linkedProjects` for `apps/backend/Cargo.toml`.
+   After pulling settings changes, run **Developer: Reload Window**.
+   If saves still flip-flop, check **User** settings for
+   `source.organizeImports`, Prettier `formatOnSave`, or ESLint
+   `formatOnSave` and turn them off for this workspace.
 3. **Rust tasks** — run **Tasks: Run Task** for `rust: cargo build`,
    `rust: cargo test`, or `rust: cargo clippy` (all run in
    `apps/backend/`).
@@ -119,8 +123,14 @@ changes.
 Run before pushing. CI runs the same commands.
 
 ```bash
-pnpm lint        # biome check across the workspace
+pnpm lint        # biome check across the workspace (read-only; pre-commit uses this)
+pnpm lint:fix    # biome check --write — format, import sort, safe lint fixes (run if the hook fails)
 pnpm format      # biome format --write across the workspace
+```
+
+Do **not** use `biome lint --fix` as a substitute for `pnpm lint:fix`; it does not apply the formatter or organize-imports assist actions.
+
+```bash
 pnpm typecheck   # tsc --noEmit per workspace (via turbo)
 pnpm test        # vitest/jest/cargo across the workspace (via turbo)
 pnpm build       # turbo run build — every workspace

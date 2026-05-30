@@ -1,3 +1,4 @@
+import { ProductCategory, productCategoryOptions } from '@gaming-cafe/contracts';
 import {
   nonNegativeNumberSchema,
   optionalString,
@@ -6,22 +7,10 @@ import {
 } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
-export const ProductCategoryValues = {
-  BEVERAGE: 'beverage',
-  SNACK: 'snack',
-  MEAL: 'meal',
-  OTHER: 'other',
-} as const;
+export const ProductCategoryValues = ProductCategory;
+export type ProductCategoryType = (typeof ProductCategory)[keyof typeof ProductCategory];
 
-export type ProductCategoryType =
-  (typeof ProductCategoryValues)[keyof typeof ProductCategoryValues];
-
-export const productCategoryOptions = [
-  { value: ProductCategoryValues.BEVERAGE, label: 'Beverage' },
-  { value: ProductCategoryValues.SNACK, label: 'Snack' },
-  { value: ProductCategoryValues.MEAL, label: 'Meal' },
-  { value: ProductCategoryValues.OTHER, label: 'Other' },
-];
+export { productCategoryOptions };
 
 export const createProductSchema = yup.object({
   name: stringWithLength('Product name', undefined, 255, true),
@@ -32,7 +21,7 @@ export const createProductSchema = yup.object({
 
   category: yup
     .string()
-    .oneOf(Object.values(ProductCategoryValues), 'Please select a valid category')
+    .oneOf(Object.values(ProductCategory), 'Please select a valid category')
     .required(validationMessages.required('Category')),
 
   sku: yup.string().max(1000, validationMessages.max('SKU', 1000)).optional().nullable(),
@@ -54,7 +43,7 @@ export const createProductDefaultValues: CreateProductFormData = {
   name: '',
   description: '',
   price: 0,
-  category: ProductCategoryValues.OTHER,
+  category: ProductCategory.OTHER,
   sku: '',
   stockQuantity: 0,
   isActive: true,

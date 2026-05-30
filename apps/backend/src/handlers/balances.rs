@@ -35,11 +35,8 @@ pub async fn list_balances(
     State(state): State<Arc<AppState>>,
     Query(filters): Query<BalanceFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<PlayerPlanBalanceResponse>> {
-    let filters = BalanceService::enforce_player_scope(
-        filters,
-        &claims.userId,
-        claims.is_admin_or_staff(),
-    )?;
+    let filters =
+        BalanceService::enforce_player_scope(filters, &claims.userId, claims.is_admin_or_staff())?;
     let result = state.balances.list(filters).await?;
     ok(result)
 }
@@ -174,6 +171,6 @@ pub async fn validate_access(
         claims.is_admin_or_staff(),
         balance.player_id,
     )?;
-    let result = state.balances.validate_access(id, None).await?;
+    let result = state.balances.validate_access(id, None, None).await?;
     ok(result)
 }

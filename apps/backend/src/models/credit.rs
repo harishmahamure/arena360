@@ -171,7 +171,9 @@ mod tests {
             transaction_id: Uuid::new_v4(),
             amount: 30.0,
         }];
-        assert!(validate_settlement_items(&items, "split_payment", Some(10.0), Some(10.0)).is_err());
+        assert!(
+            validate_settlement_items(&items, "split_payment", Some(10.0), Some(10.0)).is_err()
+        );
         assert!(validate_settlement_items(&items, "split_payment", Some(20.0), Some(10.0)).is_ok());
     }
 }

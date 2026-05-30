@@ -4,6 +4,8 @@ pub struct Settings {
     pub database_max_connections: u32,
     pub jwt_secret: String,
     pub jwt_access_expiration: String,
+    pub jwt_player_expiration: String,
+    pub jwt_device_expiration: String,
     pub bcrypt_salt_rounds: u32,
     pub port: u16,
     pub cafe_timezone: String,
@@ -28,6 +30,10 @@ impl Settings {
             jwt_secret,
             jwt_access_expiration: std::env::var("JWT_ACCESS_EXPIRATION")
                 .unwrap_or_else(|_| "15m".to_string()),
+            jwt_player_expiration: std::env::var("JWT_PLAYER_EXPIRATION")
+                .unwrap_or_else(|_| "24h".to_string()),
+            jwt_device_expiration: std::env::var("JWT_DEVICE_EXPIRATION")
+                .unwrap_or_else(|_| "365d".to_string()),
             bcrypt_salt_rounds: std::env::var("BCRYPT_SALT_ROUNDS")
                 .unwrap_or_else(|_| "10".to_string())
                 .parse()

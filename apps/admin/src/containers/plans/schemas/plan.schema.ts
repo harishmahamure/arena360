@@ -1,45 +1,23 @@
+import {
+  DEVICE_SUB_TYPE_VALUES,
+  DEVICE_TYPE_VALUES,
+  PLAN_TYPE_ADMIN_VALUES,
+  PlanType,
+} from '@gaming-cafe/contracts';
 import { optionalString, stringWithLength, validationMessages } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
-export enum DeviceType {
-  PC = 'PC',
-  CONSOLE = 'CONSOLE',
-  PS5 = 'PS5',
-  PS4 = 'PS4',
-}
+export {
+  DeviceSubType,
+  DeviceType,
+  deviceSubTypeOptions,
+  deviceTypeOptions,
+  PlanType,
+  planTypeOptions,
+} from '@gaming-cafe/contracts';
 
-export enum DeviceSubType {
-  HIGH_END_PCS = 'HIGH_END_PCS',
-  MID_RANGE_PCS = 'MID_RANGE_PCS',
-  PREMIUM_TV_CONSOLES = 'PREMIUM_TV_CONSOLES',
-  STANDARD_TV_CONSOLES = 'STANDARD_TV_CONSOLES',
-}
-
-export const deviceTypeOptions = [
-  { value: DeviceType.PC, label: 'PC' },
-  { value: DeviceType.CONSOLE, label: 'Console' },
-  { value: DeviceType.PS5, label: 'PS5' },
-  { value: DeviceType.PS4, label: 'PS4' },
-];
-
-export const deviceSubTypeOptions = [
-  { value: DeviceSubType.HIGH_END_PCS, label: 'High End PCs' },
-  { value: DeviceSubType.MID_RANGE_PCS, label: 'Mid Range PCs' },
-  { value: DeviceSubType.PREMIUM_TV_CONSOLES, label: 'Premium TV Consoles' },
-  { value: DeviceSubType.STANDARD_TV_CONSOLES, label: 'Standard TV Consoles' },
-];
-
-export const PlanTypeValues = {
-  TIME_BASED: 'time_based',
-  WEEKEND_SPECIAL: 'weekend_special',
-} as const;
-
-export type PlanTypeType = (typeof PlanTypeValues)[keyof typeof PlanTypeValues];
-
-export const planTypeOptions = [
-  { value: PlanTypeValues.TIME_BASED, label: 'Time Plan' },
-  { value: PlanTypeValues.WEEKEND_SPECIAL, label: 'Happy Hours' },
-];
+export const PlanTypeValues = PlanType;
+export type PlanTypeType = (typeof PlanType)[keyof typeof PlanType];
 
 export const WEEKDAY_OPTIONS = [
   { value: 'monday', label: 'Monday' },
@@ -78,7 +56,7 @@ export const createPlanSchema = yup.object({
 
   planType: yup
     .string()
-    .oneOf(Object.values(PlanTypeValues), 'Please select a valid plan type')
+    .oneOf([...PLAN_TYPE_ADMIN_VALUES], 'Please select a valid plan type')
     .required(validationMessages.required('Plan Type')),
 
   validityDays: yup
@@ -97,7 +75,7 @@ export const createPlanSchema = yup.object({
     .optional()
     .nullable()
     .when('planType', {
-      is: PlanTypeValues.WEEKEND_SPECIAL,
+      is: PlanType.WEEKEND_SPECIAL,
       then: (schema) => schema.required('Time window start is required for Happy Hours'),
     }),
 
@@ -110,7 +88,7 @@ export const createPlanSchema = yup.object({
     .optional()
     .nullable()
     .when('planType', {
-      is: PlanTypeValues.WEEKEND_SPECIAL,
+      is: PlanType.WEEKEND_SPECIAL,
       then: (schema) => schema.required('Time window end is required for Happy Hours'),
     })
     .test('time-window-order', 'End time must be after start time', function (value) {
@@ -129,27 +107,28 @@ export const createPlanSchema = yup.object({
 
   deviceType: yup
     .string()
-    .oneOf(Object.values(DeviceType), 'Please select a valid device type')
+    .oneOf([...DEVICE_TYPE_VALUES], 'Please select a valid device type')
     .optional()
     .nullable(),
 
   deviceSubType: yup
     .string()
-    .oneOf(Object.values(DeviceSubType), 'Please select a valid device sub type')
+    .oneOf([...DEVICE_SUB_TYPE_VALUES], 'Please select a valid device sub type')
     .optional()
     .nullable(),
 
   allowedDays: yup
     .array()
-    .of(yup.string().oneOf(WEEKDAY_OPTIONS.map((d) => d.value)).required())
+    .of(
+      yup
+        .string()
+        .oneOf(WEEKDAY_OPTIONS.map((d) => d.value))
+        .required(),
+    )
     .optional()
     .nullable(),
 
-  allowedMonths: yup
-    .array()
-    .of(yup.number().min(1).max(12).required())
-    .optional()
-    .nullable(),
+  allowedMonths: yup.array().of(yup.number().min(1).max(12).required()).optional().nullable(),
 });
 
 export type CreatePlanFormData = yup.InferType<typeof createPlanSchema>;
@@ -158,7 +137,7 @@ export const createPlanDefaultValues: CreatePlanFormData = {
   name: '',
   description: '',
   price: 0,
-  planType: PlanTypeValues.TIME_BASED,
+  planType: PlanType.TIME_BASED,
   validityDays: 7,
   timeWindowStart: undefined,
   timeWindowEnd: undefined,

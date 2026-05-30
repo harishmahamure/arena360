@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::models::{parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto};
 use crate::repositories::{PlanCreateValues, PlanRepository};
+use crate::validation::{optional_device_sub_type, optional_device_type};
 
 const VALID_DAYS: &[&str] = &[
     "monday",
@@ -112,7 +113,17 @@ impl PlanService {
 
         Self::validate_allowed_days(dto.allowed_days.as_ref().or(existing.allowed_days.as_ref()))?;
         Self::validate_allowed_months(
-            dto.allowed_months.as_ref().or(existing.allowed_months.as_ref()),
+            dto.allowed_months
+                .as_ref()
+                .or(existing.allowed_months.as_ref()),
+        )?;
+        Self::validate_device_scope(
+            dto.device_type
+                .as_deref()
+                .or(existing.device_type.as_deref()),
+            dto.device_sub_type
+                .as_deref()
+                .or(existing.device_sub_type.as_deref()),
         )?;
 
         let time_window_start = match dto.time_window_start.as_deref() {
@@ -162,7 +173,17 @@ impl PlanService {
 
         Self::validate_allowed_days(dto.allowed_days.as_ref())?;
         Self::validate_allowed_months(dto.allowed_months.as_ref())?;
+        Self::validate_device_scope(dto.device_type.as_deref(), dto.device_sub_type.as_deref())?;
 
+        Ok(())
+    }
+
+    fn validate_device_scope(
+        device_type: Option<&str>,
+        device_sub_type: Option<&str>,
+    ) -> Result<(), AppError> {
+        let _ = optional_device_type(device_type.map(str::to_string))?;
+        let _ = optional_device_sub_type(device_sub_type.map(str::to_string))?;
         Ok(())
     }
 

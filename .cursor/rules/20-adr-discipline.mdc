@@ -20,6 +20,11 @@ Before any architectural change, check the accepted ADRs in `docs/adr/`. If your
 | 0007 | Design tokens shared |
 | 0008 | Runtime contracts package |
 | 0009 | Rust Axum backend replaces NestJS |
+| 0016 | Re-introduce apps/kiosk in monorepo |
+| 0017 | Kiosk player and device JWT authentication |
+| 0018 | Kiosk WebSocket ACL for device tokens |
+| 0019 | Kiosk device launch allow-list (client-side) |
+| 0020 | Kiosk Windows lockdown and process APIs |
 
 ## What counts as an architectural change
 

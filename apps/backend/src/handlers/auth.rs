@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
-    created, ok, ApiResult, AuthResponseDto, LoginDto, OtpPendingResponse, RegisterDto,
-    RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
+    created, ok, ApiResult, AuthResponseDto, LoginDto, OtpPendingResponse, PlayerLoginDto,
+    RegisterDto, RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
 };
 use crate::error::AppError;
-use crate::middleware::AdminOrStaff;
+use crate::middleware::{AdminOrStaff, DeviceUser};
 use crate::models::ClockInDto;
 use crate::openapi::responses::{
     AuthResponseEnvelope, ErrorEnvelope, OtpPendingEnvelope, RegisterResponseEnvelope,
@@ -103,6 +103,48 @@ pub async fn verify_otp(
     Json(dto): Json<VerifyOtpDto>,
 ) -> ApiResult<AuthResponseDto> {
     let result = state.auth.verify_otp(dto).await?;
+    ok(result)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/login/player",
+    request_body = PlayerLoginDto,
+    responses(
+        (status = 200, description = "Authenticated", body = AuthResponseEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden — device not registered, maintenance, or no usable plan (PLAN_EXPIRED, PLAN_EXHAUSTED, PLAN_NOT_ACTIVATED, TIME_WINDOW_VIOLATION, DEVICE_TYPE_NOT_ALLOWED)", body = ErrorEnvelope),
+        (status = 409, description = "Conflict — PLAYER_ALREADY_IN_SESSION", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "auth"
+)]
+pub async fn login_player(
+    State(state): State<Arc<AppState>>,
+    device_user: DeviceUser,
+    Json(dto): Json<PlayerLoginDto>,
+) -> ApiResult<AuthResponseDto> {
+    let device_id = device_user.device_id()?;
+    let device = state.devices.get_by_id(device_id).await?;
+
+    if let Some(fingerprint) = &dto.fingerprint {
+        state
+            .devices
+            .verify_fingerprint_drift(&device, fingerprint)
+            .await?;
+    }
+
+    let result = state
+        .auth
+        .login_player(
+            &device,
+            LoginDto {
+                username: dto.username,
+                password: dto.password,
+            },
+        )
+        .await?;
     ok(result)
 }
 

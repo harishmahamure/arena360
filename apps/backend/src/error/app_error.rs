@@ -30,6 +30,14 @@ pub enum AppError {
 
     #[error("JWT error: {0}")]
     Jwt(#[from] jsonwebtoken::errors::Error),
+
+    /// Kiosk/client-facing error with ErrorCode string in `message` and optional structured details.
+    #[error("{code}")]
+    Api {
+        code: String,
+        status: StatusCode,
+        details: Option<serde_json::Value>,
+    },
 }
 
 #[derive(Serialize)]
@@ -39,9 +47,35 @@ struct ErrorBody {
     message: String,
     error: String,
     timestamp: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<serde_json::Value>,
 }
 
 impl AppError {
+    pub fn unauthorized_code(code: &str) -> Self {
+        Self::Api {
+            code: code.to_string(),
+            status: StatusCode::UNAUTHORIZED,
+            details: None,
+        }
+    }
+
+    pub fn forbidden_code(code: &str) -> Self {
+        Self::Api {
+            code: code.to_string(),
+            status: StatusCode::FORBIDDEN,
+            details: None,
+        }
+    }
+
+    pub fn conflict_code(code: &str, details: Option<serde_json::Value>) -> Self {
+        Self::Api {
+            code: code.to_string(),
+            status: StatusCode::CONFLICT,
+            details,
+        }
+    }
+
     fn status(&self) -> StatusCode {
         match self {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
@@ -51,6 +85,7 @@ impl AppError {
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) | Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Api { status, .. } => *status,
         }
     }
 
@@ -63,6 +98,26 @@ impl AppError {
             Self::Conflict(_) => "Conflict",
             Self::TooManyRequests(_) => "Too Many Requests",
             Self::Internal(_) | Self::Database(_) => "Internal Server Error",
+            Self::Api { status, .. } => match *status {
+                StatusCode::UNAUTHORIZED => "Unauthorized",
+                StatusCode::FORBIDDEN => "Forbidden",
+                StatusCode::CONFLICT => "Conflict",
+                _ => "Error",
+            },
+        }
+    }
+
+    fn message(&self) -> String {
+        match self {
+            Self::Api { code, .. } => code.clone(),
+            _ => self.to_string(),
+        }
+    }
+
+    fn details(&self) -> Option<serde_json::Value> {
+        match self {
+            Self::Api { details, .. } => details.clone(),
+            _ => None,
         }
     }
 }
@@ -72,9 +127,10 @@ impl IntoResponse for AppError {
         let status = self.status();
         let body = ErrorBody {
             status_code: status.as_u16(),
-            message: self.to_string(),
+            message: self.message(),
             error: self.error_label().to_string(),
             timestamp: Utc::now().to_rfc3339(),
+            details: self.details(),
         };
 
         (status, Json(body)).into_response()

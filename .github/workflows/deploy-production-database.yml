@@ -1,0 +1,59 @@
+name: Deploy Database to Production
+
+on:
+  workflow_dispatch:
+
+env:
+  RELEASE_NAME: arena360-postgresql
+  NAMESPACE: default
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.28.0
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.0
+
+      - name: Upsert database secret
+        run: |
+          kubectl create secret generic arena360-postgresql-secrets \
+            --namespace "${{ env.NAMESPACE }}" \
+            --from-literal=password='${{ secrets.POSTGRES_PASSWORD }}' \
+            --from-literal=postgres-password='${{ secrets.POSTGRES_ADMIN_PASSWORD }}' \
+            --from-literal=pgbouncer-users.txt='${{ secrets.PGBOUNCER_USERS }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy PostgreSQL and PgBouncer
+        run: |
+          helm upgrade --install "${{ env.RELEASE_NAME }}" ./infra/helm/postgresql \
+            --values ./infra/helm/postgresql/values-prod.yaml \
+            --namespace "${{ env.NAMESPACE }}" \
+            --create-namespace \
+            --wait \
+            --timeout 10m
+
+      - name: Deployment summary
+        run: |
+          echo "## Database Production Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release: \`${{ env.RELEASE_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- PgBouncer service: \`arena360-postgresql-pgbouncer.default.svc.cluster.local:5432\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

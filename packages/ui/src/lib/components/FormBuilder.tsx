@@ -386,7 +386,9 @@ function FieldRenderer<T extends FieldValues>({
 
             case 'multiselect': {
               const msOptions = (options as FormSelectOption[]) || [];
-              const selectedValues: (string | number)[] = Array.isArray(field.value) ? field.value : [];
+              const selectedValues: (string | number)[] = Array.isArray(field.value)
+                ? field.value
+                : [];
               const selectedObjects = selectedValues
                 .map((v) => msOptions.find((o) => String(o.value) === String(v)))
                 .filter(Boolean) as FormSelectOption[];
@@ -403,7 +405,12 @@ function FieldRenderer<T extends FieldValues>({
                   disabled={isDisabled}
                   renderTags={(tagValue, getTagProps) =>
                     tagValue.map((option, index) => (
-                      <Chip size="small" label={option.label} {...getTagProps({ index })} key={String(option.value)} />
+                      <Chip
+                        size="small"
+                        label={option.label}
+                        {...getTagProps({ index })}
+                        key={String(option.value)}
+                      />
                     ))
                   }
                   renderInput={(params) => (

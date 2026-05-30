@@ -15,6 +15,9 @@ out/
 # Rust / Cargo
 target/
 apps/backend/target/
+apps/kiosk/src-tauri/target/
+apps/kiosk/src-tauri/gen/
+apps/kiosk/dist/
 **/*.rs.bk
 
 # Testing

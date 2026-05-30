@@ -8,6 +8,16 @@ use crate::models::{
     CreateSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse, UsageSessionRow,
 };
 
+#[derive(Debug, Clone)]
+pub struct PlayerOpenSession {
+    pub session_id: Uuid,
+    pub device_id: Uuid,
+    pub device_name: String,
+    pub start_time: DateTime<Utc>,
+    pub balance_id: Uuid,
+    pub remaining_minutes: i32,
+}
+
 pub struct SessionRepository {
     pool: PgPool,
 }
@@ -89,6 +99,75 @@ impl SessionRepository {
             .fetch_all(&self.pool)
             .await?;
         Ok(sessions)
+    }
+
+    pub async fn find_open_session_for_player(
+        &self,
+        player_id: Uuid,
+    ) -> Result<Option<PlayerOpenSession>, AppError> {
+        let row = sqlx::query_as::<_, (Uuid, Uuid, String, DateTime<Utc>, Uuid, i32)>(
+            r#"
+            SELECT s.id, s."deviceId", COALESCE(d.name, 'Unknown'), s."startTime",
+                   s."balanceId", COALESCE(b."remainingMinutes", 0)
+            FROM usage_sessions s
+            INNER JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
+            LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
+            WHERE b."playerId" = $1
+              AND s."endTime" IS NULL
+              AND s."deletedAt" IS NULL
+            ORDER BY s."startTime" DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(player_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(
+            |(session_id, device_id, device_name, start_time, balance_id, remaining_minutes)| {
+                PlayerOpenSession {
+                    session_id,
+                    device_id,
+                    device_name,
+                    start_time,
+                    balance_id,
+                    remaining_minutes,
+                }
+            },
+        ))
+    }
+
+    /// Find or idempotently create the per-venue system kiosk shift (ADR-0017
+    /// D10). The well-known marker is `notes = 'KIOSK_SYSTEM'`. A shift row
+    /// requires a `userId`, so we attribute it to the oldest admin user.
+    /// Returns `None` when no admin user exists yet (session then has no shift).
+    pub async fn find_or_create_system_kiosk_shift(&self) -> Result<Option<Uuid>, AppError> {
+        if let Some((id,)) = sqlx::query_as::<_, (Uuid,)>(
+            r#"SELECT id FROM shifts WHERE notes = 'KIOSK_SYSTEM' AND status = 'active' LIMIT 1"#,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        {
+            return Ok(Some(id));
+        }
+
+        let created = sqlx::query_as::<_, (Uuid,)>(
+            r#"
+            INSERT INTO shifts (id, "userId", "clockIn", notes, status, "createdBy", "updatedBy", "createdAt", "updatedAt")
+            SELECT gen_random_uuid(), u.id, NOW(), 'KIOSK_SYSTEM', 'active', u.id, u.id, NOW(), NOW()
+            FROM (
+                SELECT id FROM users
+                WHERE role = 'admin' AND "deletedAt" IS NULL
+                ORDER BY "createdAt" ASC
+                LIMIT 1
+            ) u
+            RETURNING id
+            "#,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(created.map(|(id,)| id))
     }
 
     pub async fn list(
@@ -276,6 +355,40 @@ impl SessionRepository {
         .bind(duration_minutes)
         .bind(time_credits_consumed)
         .bind(actor_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        session.ok_or_else(|| AppError::NotFound(format!("Active session with ID {id} not found")))
+    }
+
+    pub async fn update_time_credits_consumed(
+        &self,
+        id: Uuid,
+        time_credits_consumed: i32,
+    ) -> Result<UsageSession, AppError> {
+        let session = sqlx::query_as::<_, UsageSession>(
+            r#"
+            UPDATE usage_sessions SET
+                "timeCreditsConsumed" = $2,
+                "updatedAt" = NOW()
+            WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
+            RETURNING id,
+                      "balanceId" as balance_id,
+                      "deviceId" as device_id,
+                      "shiftId" as shift_id,
+                      "startTime" as start_time,
+                      "endTime" as end_time,
+                      "durationMinutes" as duration_minutes,
+                      "timeCreditsConsumed" as time_credits_consumed,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
+                      "createdAt" as created_at,
+                      "updatedAt" as updated_at,
+                      "deletedAt" as deleted_at
+            "#,
+        )
+        .bind(id)
+        .bind(time_credits_consumed)
         .fetch_optional(&self.pool)
         .await?;
 

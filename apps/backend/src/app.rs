@@ -15,8 +15,9 @@ use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
-    PlanService, PlayerPlanService, ProductService, SessionService, ShiftService, StatsService,
-    TransactionService, UnitService, UserService, VendorService,
+    GameService, PlanService, PlayerPlanService, ProductService, SessionService, ShiftService,
+    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
+    VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -39,6 +40,8 @@ pub struct AppState {
     pub cash_deposits: CashDepositService,
     pub transactions: TransactionService,
     pub products: ProductService,
+    pub games: GameService,
+    pub storage: StorageService,
     pub expense_categories: ExpenseCategoryService,
     pub vendors: VendorService,
     pub expenses: ExpenseService,
@@ -47,7 +50,9 @@ pub struct AppState {
     pub events: EventService,
     pub outbox: OutboxService,
     pub rooms: RoomService,
-    pub ws_connections: Arc<tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>>,
+    pub ws_connections: Arc<
+        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
+    >,
 }
 
 pub async fn build_state() -> Arc<AppState> {
@@ -59,12 +64,14 @@ pub async fn build_state() -> Arc<AppState> {
 
     let outbox = OutboxService::new(pool.clone());
     let rooms = RoomService::new(pool.clone());
-    let ws_connections: Arc<tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>> =
-        Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    let ws_connections: Arc<
+        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
+    > = Arc::new(tokio::sync::RwLock::new(Vec::new()));
 
     let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
     let balances = Arc::new(BalanceService::new(pool.clone()));
+    let balances_for_auth = balances.clone();
 
     let credit = Arc::new(CreditService::new(pool.clone()));
 
@@ -73,7 +80,7 @@ pub async fn build_state() -> Arc<AppState> {
     tokio::spawn(dispatcher.run());
 
     Arc::new(AppState {
-        auth: AuthService::new(pool.clone(), settings.clone()),
+        auth: AuthService::new(pool.clone(), settings.clone(), balances_for_auth),
         config: ConfigService::new(pool.clone()),
         users: UserService::new(pool.clone()),
         devices: devices.clone(),
@@ -81,7 +88,13 @@ pub async fn build_state() -> Arc<AppState> {
         player_plans: player_plans.clone(),
         balances: balances.clone(),
         units: UnitService::new(pool.clone()),
-        sessions: SessionService::new(pool.clone(), devices, balances.clone(), events.clone(), outbox.clone()),
+        sessions: SessionService::new(
+            pool.clone(),
+            devices,
+            balances.clone(),
+            events.clone(),
+            outbox.clone(),
+        ),
         shifts: {
             let cash_reg = Arc::new(CashRegisterService::new(pool.clone()));
             let mut s = ShiftService::new(pool.clone());
@@ -99,6 +112,8 @@ pub async fn build_state() -> Arc<AppState> {
         ),
         credit,
         products: ProductService::new(pool.clone()),
+        games: GameService::new(pool.clone()),
+        storage: StorageService::new(StorageConfig::from_env()),
         expense_categories: ExpenseCategoryService::new(pool.clone()),
         vendors: VendorService::new(pool.clone()),
         expenses: ExpenseService::new(
@@ -125,6 +140,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/ready", get(handlers::health::ready_check))
         .route("/auth/login/admin", post(handlers::auth::login_admin))
         .route("/auth/login/staff", post(handlers::auth::login_staff))
+        .route("/auth/login/player", post(handlers::auth::login_player))
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/verify-otp", post(handlers::auth::verify_otp))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))
@@ -160,6 +176,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/devices/{id}/status",
             patch(handlers::devices::update_device_status),
         )
+        .route(
+            "/devices/provision",
+            post(handlers::devices::provision_device),
+        )
         .route("/plans/active", get(handlers::plans::get_active_plans))
         .route(
             "/plans",
@@ -173,8 +193,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/player-plans",
-            get(handlers::balances::list_balances)
-                .post(handlers::balances::purchase_balance),
+            get(handlers::balances::list_balances).post(handlers::balances::purchase_balance),
         )
         .route(
             "/player-plans/best-plan",
@@ -188,10 +207,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/player-plans/{id}/validate",
             post(handlers::balances::validate_access),
         )
-        .route(
-            "/player-plans/{id}",
-            get(handlers::balances::get_balance),
-        )
+        .route("/player-plans/{id}", get(handlers::balances::get_balance))
         .route(
             "/units",
             get(handlers::units::list_units).post(handlers::units::create_unit),
@@ -255,6 +271,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/sessions/{id}", get(handlers::sessions::get_session))
         .route("/sessions/{id}/end", patch(handlers::sessions::end_session))
+        .route("/kiosk/sessions", post(handlers::kiosk::start_session))
+        .route(
+            "/kiosk/sessions/current",
+            get(handlers::kiosk::current_session),
+        )
+        .route(
+            "/kiosk/sessions/{id}/heartbeat",
+            patch(handlers::kiosk::heartbeat_session),
+        )
+        .route(
+            "/kiosk/sessions/{id}/end",
+            patch(handlers::kiosk::end_session),
+        )
         .route(
             "/transactions",
             get(handlers::transactions::list_transactions)
@@ -275,6 +304,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .patch(handlers::products::update_product)
                 .delete(handlers::products::delete_product),
         )
+        .route(
+            "/games",
+            get(handlers::games::list_games).post(handlers::games::create_game),
+        )
+        .route(
+            "/games/{id}",
+            get(handlers::games::get_game)
+                .patch(handlers::games::update_game)
+                .delete(handlers::games::delete_game),
+        )
+        .route("/uploads/presign", post(handlers::uploads::presign_upload))
         .route(
             "/expense-categories",
             get(handlers::expense_categories::list_expense_categories)
@@ -345,7 +385,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/users/{id}/credit-limit",
             patch(handlers::credit::update_credit_limit),
         )
-        .route("/credit/accounts", get(handlers::credit::list_credit_accounts))
+        .route(
+            "/credit/accounts",
+            get(handlers::credit::list_credit_accounts),
+        )
         .route(
             "/credit/players/{id}",
             get(handlers::credit::get_player_credit),
@@ -357,8 +400,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
         .route(
             "/realtime/rooms",
-            get(handlers::realtime_rooms::list_rooms)
-                .post(handlers::realtime_rooms::create_room),
+            get(handlers::realtime_rooms::list_rooms).post(handlers::realtime_rooms::create_room),
         )
         .route(
             "/realtime/rooms/{id}/members",

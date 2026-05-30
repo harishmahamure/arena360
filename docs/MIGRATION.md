@@ -109,7 +109,7 @@ before the moves in Phase 2.
 | `turbo.json` | Pipelines for `build`, `dev` (persistent), `lint`, `format`, `typecheck`, `test`; `outputs` per task | pending |
 | `biome.json` | Re-exports `@gaming-cafe/biome-config`; project-wide includes/excludes | done |
 | `tsconfig.base.json` | Shared TS compiler options consumed via `extends` from per-package tsconfigs | done |
-| `.gitignore` | `node_modules`, `dist`, `.turbo`, `.env*`, `target/`, `coverage/`, `.vscode/`, `.DS_Store`, `apps/kiosk/src-tauri/target/`, `apps/kiosk/src-tauri/gen/`, `apps/admin/dist/`, etc. | pending |
+| `.gitignore` | `node_modules`, `dist`, `.turbo`, `.env*`, `target/`, `coverage/`, `.vscode/`, `.DS_Store`, `apps/kiosk/src-tauri/target/`, `apps/kiosk/src-tauri/gen/`, `apps/admin/dist/`, etc. | verified |
 | `.npmrc` | `strict-peer-dependencies=true`, `auto-install-peers=true`, `engine-strict=true` | pending |
 | `.nvmrc` | `20` (matches backend Dockerfile) | pending |
 | `README.md` | Quickstart, dev loop, links to `docs/*`, deploy targets, support matrix | pending |
@@ -134,7 +134,7 @@ before the moves in Phase 2.
 | `packages/contracts/src/pagination.ts` | `IPaginationParams`, `IPaginationResult<T>`, `SortOrder`, `IQueryOptions` | pending |
 | `packages/contracts/src/roles.ts` | `UserRole` type + `UserStatus` enum | pending |
 | `packages/contracts/README.md` | Package documentation | pending |
-| `apps/kiosk/.npmrc` | `node-linker=hoisted` for Tauri compatibility (per Q4 resolution) | pending |
+| `apps/kiosk/.npmrc` | `node-linker=hoisted` for Tauri compatibility (per Q4 resolution) | verified |
 | `.changeset/config.json` | Default config; `access: "restricted"` (private packages) | pending |
 | `docs/proposals/.gitkeep` | Keep the folder even before any proposal is added | pending |
 

@@ -1,3 +1,4 @@
+import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { formatCurrency } from '@gaming-cafe/utils';
 import {
@@ -25,7 +26,7 @@ import { PaymentStatus } from '../../../services/transactions/list';
 import { updateTransaction } from '../../../services/transactions/update';
 import { formatDisplayDateTime } from '../../../utils/date';
 
-const getStatusColor = (status: PaymentStatus): ChipProps['color'] => {
+const getStatusColor = (status: PaymentStatusValue): ChipProps['color'] => {
   switch (status) {
     case PaymentStatus.COMPLETED:
       return 'success';
@@ -111,7 +112,7 @@ export default function ViewPlanTransactionPage() {
 
     try {
       await updateTransaction(id as string, {
-        paymentStatus: data.paymentStatus as PaymentStatus,
+        paymentStatus: data.paymentStatus as PaymentStatusValue,
         notes: data.notes || undefined,
       });
 
@@ -192,7 +193,7 @@ export default function ViewPlanTransactionPage() {
                       ? paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)
                       : 'N/A'
                   }
-                  color={getStatusColor(paymentStatus as PaymentStatus)}
+                  color={getStatusColor(paymentStatus as PaymentStatusValue)}
                   size="small"
                   sx={{ mt: 0.5 }}
                 />
@@ -289,7 +290,7 @@ export default function ViewPlanTransactionPage() {
               fields={updateStatusFormFields}
               schema={updatePlanTransactionStatusSchema}
               defaultValues={{
-                paymentStatus: paymentStatus as PaymentStatus,
+                paymentStatus: paymentStatus as PaymentStatusValue,
                 notes: '',
               }}
               mode="edit"

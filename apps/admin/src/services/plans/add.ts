@@ -1,11 +1,11 @@
 import { http } from '@gaming-cafe/utils';
-import type { PlanResponse, PlanType } from './list';
+import type { PlanResponse, PlanTypeValue } from './list';
 
 export interface CreatePlanPayload {
   name: string;
   description?: string;
   price: number;
-  planType: PlanType;
+  planType: PlanTypeValue;
   validityDays?: number;
   timeWindowStart?: string;
   timeWindowEnd?: string;

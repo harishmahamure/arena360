@@ -5,12 +5,16 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{
-    CreateLineItemDto, CreateTransactionDto, PurchaseBalanceDto, Transaction,
-    TransactionFilterDto, TransactionWithLineItems, UpdateTransactionDto,
+    CreateLineItemDto, CreateTransactionDto, PurchaseBalanceDto, Transaction, TransactionFilterDto,
+    TransactionWithLineItems, UpdateTransactionDto,
 };
 use crate::realtime::OutboxService;
 use crate::repositories::{TransactionProductRepository, TransactionRepository};
 use crate::services::{BalanceService, CreditService, EventService};
+use crate::validation::{
+    optional_payment_status, require_payment_method, require_payment_status,
+    require_transaction_type,
+};
 
 pub struct TransactionService {
     repo: TransactionRepository,
@@ -221,14 +225,17 @@ impl TransactionService {
                 "payment_method": transaction.payment_method,
                 "transaction_type": transaction.transaction_type,
             });
-            let _ = self.outbox.publish(
-                "admin",
-                "transaction.sale_completed",
-                payload,
-                Some("admin"),
-                None,
-                true,
-            ).await;
+            let _ = self
+                .outbox
+                .publish(
+                    "admin",
+                    "transaction.sale_completed",
+                    payload,
+                    Some("admin"),
+                    None,
+                    true,
+                )
+                .await;
         }
 
         Ok(transaction)
@@ -275,11 +282,12 @@ impl TransactionService {
 
     pub async fn create(
         &self,
-        dto: CreateTransactionDto,
+        mut dto: CreateTransactionDto,
         actor_id: Option<Uuid>,
         actor_role: Option<&str>,
         cash_registers: &crate::services::CashRegisterService,
     ) -> Result<Transaction, AppError> {
+        sanitize_create_transaction(&mut dto)?;
         if dto.transaction_type == "product_purchase" {
             return self
                 .create_product_purchase(dto, actor_id, actor_role, cash_registers)
@@ -337,7 +345,8 @@ impl TransactionService {
             && Self::should_grant_plan_benefit(&dto.payment_method, &payment_status)
         {
             if let Some(plan_id) = dto.plan_id {
-                self.balances
+                let balance = self
+                    .balances
                     .purchase_or_recharge(
                         PurchaseBalanceDto {
                             player_id: dto.player_id,
@@ -347,6 +356,8 @@ impl TransactionService {
                         actor_id,
                     )
                     .await?;
+
+                self.publish_balance_updated(dto.player_id, &balance).await;
             }
         }
 
@@ -363,26 +374,93 @@ impl TransactionService {
                 "payment_method": transaction.payment_method,
                 "transaction_type": transaction.transaction_type,
             });
-            let _ = self.outbox.publish(
-                "admin",
-                "transaction.sale_completed",
-                payload,
-                Some("admin"),
-                None,
-                true,
-            ).await;
+            let _ = self
+                .outbox
+                .publish(
+                    "admin",
+                    "transaction.sale_completed",
+                    payload,
+                    Some("admin"),
+                    None,
+                    true,
+                )
+                .await;
         }
 
         Ok(transaction)
     }
 
+    /// Publish `balance.updated` to the player's device + user channels when a
+    /// recharge affects a player who currently has an open session (ADR-0018,
+    /// D15). Best-effort: failures are logged and never block the transaction.
+    async fn publish_balance_updated(
+        &self,
+        player_id: Uuid,
+        balance: &crate::models::PlayerPlanBalance,
+    ) {
+        let open: Option<(Uuid, Uuid)> = sqlx::query_as(
+            r#"
+            SELECT s.id, s."deviceId"
+            FROM usage_sessions s
+            INNER JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
+            WHERE b."playerId" = $1 AND s."endTime" IS NULL AND s."deletedAt" IS NULL
+            ORDER BY s."startTime" DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(player_id)
+        .fetch_optional(&self.repo.pool)
+        .await
+        .unwrap_or(None);
+
+        let (session_id, device_id) = match open {
+            Some(pair) => pair,
+            None => return,
+        };
+
+        let payload = serde_json::json!({
+            "balanceId": balance.id.to_string(),
+            "remainingMinutes": balance.remaining_minutes,
+            "playerId": player_id.to_string(),
+            "sessionId": session_id.to_string(),
+        });
+
+        let device_channel = format!("device:{device_id}");
+        let user_channel = format!("user:{player_id}");
+        let _ = self
+            .outbox
+            .publish(
+                &device_channel,
+                "balance.updated",
+                payload.clone(),
+                None,
+                None,
+                false,
+            )
+            .await;
+        let _ = self
+            .outbox
+            .publish(
+                &user_channel,
+                "balance.updated",
+                payload,
+                None,
+                Some(player_id),
+                false,
+            )
+            .await;
+    }
+
     pub async fn update(
         &self,
         id: Uuid,
-        dto: UpdateTransactionDto,
+        mut dto: UpdateTransactionDto,
         actor_id: Option<Uuid>,
         cash_registers: &crate::services::CashRegisterService,
     ) -> Result<Transaction, AppError> {
+        if let Some(status) = dto.payment_status.take() {
+            dto.payment_status = Some(require_payment_status(Some(status))?);
+        }
         if dto.payment_status.is_none() && dto.notes.is_none() {
             return Err(AppError::BadRequest(
                 "At least one of paymentStatus or notes must be provided".to_string(),
@@ -420,4 +498,11 @@ impl TransactionService {
 
         Ok(updated)
     }
+}
+
+fn sanitize_create_transaction(dto: &mut CreateTransactionDto) -> Result<(), AppError> {
+    dto.transaction_type = require_transaction_type(Some(dto.transaction_type.clone()))?;
+    dto.payment_method = require_payment_method(Some(dto.payment_method.clone()))?;
+    dto.payment_status = optional_payment_status(dto.payment_status.clone())?;
+    Ok(())
 }

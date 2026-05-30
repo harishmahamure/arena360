@@ -1,3 +1,4 @@
+import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type Column, ListViewPage } from '@gaming-cafe/ui';
 import { formatCurrency, formatTimeAgo } from '@gaming-cafe/utils';
 import { Visibility } from '@mui/icons-material';
@@ -16,7 +17,7 @@ import {
   TransactionType,
 } from '../../../services/transaction/list';
 
-const getStatusColor = (status: PaymentStatus) => {
+const getStatusColor = (status: PaymentStatusValue) => {
   switch (status) {
     case PaymentStatus.COMPLETED:
       return 'success';
@@ -26,8 +27,8 @@ const getStatusColor = (status: PaymentStatus) => {
       return 'error';
     case PaymentStatus.REFUNDED:
       return 'info';
-    case PaymentStatus.CANCELLED:
-      return 'default';
+    case PaymentStatus.CREDIT:
+      return 'secondary';
     default:
       return 'default';
   }
@@ -93,7 +94,7 @@ const columns: Column<Transaction>[] = [
     format: (value) => (
       <Chip
         label={(value as string).charAt(0).toUpperCase() + (value as string).slice(1)}
-        color={getStatusColor(value as PaymentStatus)}
+        color={getStatusColor(value as PaymentStatusValue)}
         size="small"
       />
     ),
@@ -111,7 +112,7 @@ export default function TransactionsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
-  const statusFilter = searchParams.get('status') as PaymentStatus | null;
+  const statusFilter = searchParams.get('status') as PaymentStatusValue | null;
 
   const navigate = useNavigate();
 

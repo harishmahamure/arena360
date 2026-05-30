@@ -1,3 +1,4 @@
+import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
 import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -6,11 +7,11 @@ import { useNavigate } from 'react-router-dom';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
 import {
   type CreatePlanTransactionFormData,
+  createPlanTransactionDefaultValues,
+  createPlanTransactionSchema,
   type PaymentMethodType,
   PaymentMethodValues,
   PaymentStatusValues,
-  createPlanTransactionDefaultValues,
-  createPlanTransactionSchema,
   paymentMethodOptions,
 } from '../../../containers/transactions/schemas/transaction-schema';
 import { getPlayerCredit } from '../../../services/credit';
@@ -167,7 +168,7 @@ export default function AddNewPlanTransactionPage() {
 
       await addTransaction({
         ...payload,
-        paymentStatus: payload.paymentStatus as PaymentStatus,
+        paymentStatus: payload.paymentStatus as PaymentStatusValue,
       });
 
       setSuccess('Transaction created successfully!');

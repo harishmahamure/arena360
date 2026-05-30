@@ -1,11 +1,7 @@
+import { PlayerPlanStatus, type PlayerPlanStatusValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
-export enum PlayerPlanStatus {
-  ACTIVE = 'active',
-  EXPIRED = 'expired',
-  EXHAUSTED = 'exhausted',
-  CANCELLED = 'cancelled',
-}
+export { PlayerPlanStatus };
 
 export interface PlayerPlanResponse {
   id: string;
@@ -50,7 +46,7 @@ export interface GetPlayerPlansResponse {
 export interface GetPlayerPlansFilters {
   playerId?: string;
   kind?: string;
-  status?: PlayerPlanStatus | string;
+  status?: PlayerPlanStatusValue | string;
   deviceType?: string;
   deviceSubType?: string;
   page?: number;
