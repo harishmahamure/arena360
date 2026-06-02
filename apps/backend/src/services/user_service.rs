@@ -186,7 +186,13 @@ impl UserService {
         self.repo.clear_totp(user_id).await
     }
 
-    pub async fn verify_staff_totp(&self, user: &User, code: &str) -> Result<(), AppError> {
+    pub async fn verify_staff_totp(&self, user_id: Uuid, code: &str) -> Result<(), AppError> {
+        let user = self
+            .repo
+            .find_by_id_for_auth(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
         if !user.totp_enabled {
             return Err(AppError::BadRequest(
                 "Staff member does not have TOTP enabled".to_string(),

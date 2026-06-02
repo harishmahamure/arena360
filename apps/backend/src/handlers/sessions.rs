@@ -137,13 +137,30 @@ pub async fn end_session(
     })?;
 
     if claims.is_staff() {
-        let code = dto.staff_totp.as_deref().ok_or_else(|| {
-            crate::error::AppError::BadRequest("Staff TOTP code is required".to_string())
-        })?;
         let staff = state.users.get_by_id(actor_id).await?;
-        state.users.verify_staff_totp(&staff, code).await?;
+        if staff.totp_enabled {
+            let code = dto.staff_totp.as_deref().ok_or_else(|| {
+                crate::error::AppError::BadRequest("Staff TOTP code is required".to_string())
+            })?;
+            state.users.verify_staff_totp(actor_id, code).await?;
+        }
     }
 
+    let pre_end = state.sessions.get_by_id(id).await?;
+    let device_id = pre_end.device_id;
+
     let session = state.sessions.end(id, dto, Some(actor_id)).await?;
+
+    let payload = serde_json::json!({
+        "sessionId": session.id.to_string(),
+        "deviceId": device_id.to_string(),
+        "action": "force_logout",
+    });
+    let device_channel = format!("device:{device_id}");
+    let _ = state
+        .outbox
+        .publish(&device_channel, "session.force_logout", payload, None, None, false)
+        .await;
+
     ok(session)
 }

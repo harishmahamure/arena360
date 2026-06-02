@@ -84,8 +84,6 @@ export function StationControls({ deviceName, online, maintenance }: StationCont
         </button>
       </div>
 
-      <p className="station-controls-hint">Admin setup: Ctrl+Shift+A</p>
-
       {error ? (
         <p className="station-controls-error" role="alert">
           {error}
