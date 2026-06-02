@@ -282,35 +282,23 @@ impl SessionService {
         let balance_id = session
             .balance_id
             .ok_or_else(|| AppError::BadRequest("Session has no linked balance".to_string()))?;
-        let mut balance = self.balances.get_raw(balance_id).await?;
+        let balance = self.balances.get_raw(balance_id).await?;
         if balance.player_id != player_id {
             return Err(AppError::Forbidden(
                 "Session does not belong to this player".to_string(),
             ));
         }
 
+        // Calculate effective remaining minutes without deducting from the
+        // balance. Actual deduction happens only when the session is stopped
+        // via the end API.
         let elapsed_minutes = elapsed_minutes_since(session.start_time);
-        let already_charged = session.time_credits_consumed.unwrap_or(0).max(0);
-        let delta = (elapsed_minutes - already_charged).max(0);
-        let mut updated_session = session;
-
-        if delta > 0 {
-            balance = self
-                .balances
-                .deduct_minutes(balance_id, delta, Some(updated_session.id))
-                .await?;
-            updated_session = self
-                .repo
-                .update_time_credits_consumed(updated_session.id, already_charged + delta)
-                .await?;
-            self.publish_balance_updated(&updated_session, player_id, balance.remaining_minutes)
-                .await;
-        }
+        let effective_remaining = (balance.remaining_minutes - elapsed_minutes).max(0);
 
         Ok(KioskSessionStart {
-            session: updated_session,
+            session,
             balance_id,
-            remaining_minutes: balance.remaining_minutes,
+            remaining_minutes: effective_remaining,
             resumed: true,
         })
     }
@@ -345,27 +333,19 @@ impl SessionService {
             AppError::BadRequest("Session has no linked balance (legacy session)".to_string())
         })?;
 
-        let previous_consumed = session.time_credits_consumed.unwrap_or(0).max(0);
-        let final_consumed = dto.time_credits_consumed.unwrap_or(duration_minutes).max(0);
-        let deduct_delta = (final_consumed - previous_consumed).max(0);
+        let time_used = dto.time_credits_consumed.unwrap_or(duration_minutes).max(0);
 
         let updated = self
             .repo
-            .end(
-                id,
-                end_time,
-                duration_minutes,
-                Some(final_consumed),
-                actor_id,
-            )
+            .end(id, end_time, duration_minutes, Some(time_used), actor_id)
             .await?;
 
         let mut remaining_minutes = 0;
         let mut player_id = None;
-        if deduct_delta > 0 {
+        if time_used > 0 {
             match self
                 .balances
-                .deduct_minutes(balance_id, deduct_delta, Some(updated.id))
+                .deduct_minutes(balance_id, time_used, Some(updated.id))
                 .await
             {
                 Ok(balance) => {
@@ -438,45 +418,4 @@ impl SessionService {
         Ok(updated)
     }
 
-    async fn publish_balance_updated(
-        &self,
-        session: &UsageSession,
-        player_id: Uuid,
-        remaining_minutes: i32,
-    ) {
-        let Some(balance_id) = session.balance_id else {
-            return;
-        };
-        let payload = serde_json::json!({
-            "balanceId": balance_id.to_string(),
-            "remainingMinutes": remaining_minutes,
-            "playerId": player_id.to_string(),
-            "sessionId": session.id.to_string(),
-            "deviceId": session.device_id.to_string(),
-        });
-        let device_channel = format!("device:{}", session.device_id);
-        let user_channel = format!("user:{player_id}");
-        let _ = self
-            .outbox
-            .publish(
-                &device_channel,
-                "balance.updated",
-                payload.clone(),
-                None,
-                None,
-                false,
-            )
-            .await;
-        let _ = self
-            .outbox
-            .publish(
-                &user_channel,
-                "balance.updated",
-                payload,
-                None,
-                Some(player_id),
-                false,
-            )
-            .await;
-    }
 }
