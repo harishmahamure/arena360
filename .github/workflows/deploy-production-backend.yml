@@ -61,11 +61,10 @@ jobs:
           tool: sqlx-cli
 
       - name: Run database migrations
-        run: |
-          echo "Running database migrations from the CI runner... ${{ secrets.MIGRATION_DATABASE_URL }}"
         env:
           DATABASE_URL: "${{ secrets.MIGRATION_DATABASE_URL }}"
         run: |
+          echo "Running database migrations from the CI runner..."
           sqlx migrate run --source apps/backend/migrations
           echo "Database migrations completed"
 
