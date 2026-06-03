@@ -1,3 +1,9 @@
+# Port map (in-cluster; independent of any Postgres on the VPS host :5432):
+#   postgres pod/service     -> postgresql.service.port (5432)
+#   pgbouncer pod              -> pgbouncer.containerPort (6432)
+#   pgbouncer ClusterIP        -> pgbouncer.service.port (6432, targets 6432)
+#   pgbouncer NodePort (prod)  -> externalService.nodePort 30433 -> 6432
+# PgBouncer backend uses postgresql.service.port to reach Postgres (DATABASES_PORT).
 postgresql:
   image:
     repository: postgres
@@ -11,6 +17,7 @@ postgresql:
     postgresPasswordKey: postgres-password
   service:
     type: ClusterIP
+    # Postgres listen + Service port (PgBouncer DATABASES_PORT uses this).
     port: 5432
   persistence:
     enabled: true
@@ -33,10 +40,12 @@ pgbouncer:
     tag: latest
     pullPolicy: IfNotPresent
   replicaCount: 2
+  # PgBouncer listen port inside the pod (PGBOUNCER_LISTEN_PORT).
   containerPort: 6432
   service:
     type: ClusterIP
-    port: 5432
+    # In-cluster clients connect here; must match containerPort, not Postgres 5432.
+    port: 6432
   externalService:
     enabled: false
     type: NodePort

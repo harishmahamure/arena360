@@ -18,6 +18,28 @@ spec:
         {{- include "arena360-postgresql.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: pgbouncer
     spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          env:
+            - name: PGUSER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arena360-postgresql.secretName" . }}
+                  key: {{ .Values.postgresql.auth.passwordKey }}
+            - name: PGDATABASE
+              value: {{ .Values.postgresql.auth.database | quote }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until pg_isready -h {{ include "arena360-postgresql.postgresServiceName" . }} -p {{ .Values.postgresql.service.port }} -U "$PGUSER" -d "$PGDATABASE"; do
+                echo "waiting for postgres at {{ include "arena360-postgresql.postgresServiceName" . }}:{{ .Values.postgresql.service.port }}..."
+                sleep 2
+              done
       containers:
         - name: pgbouncer
           image: "{{ .Values.pgbouncer.image.repository }}:{{ .Values.pgbouncer.image.tag }}"

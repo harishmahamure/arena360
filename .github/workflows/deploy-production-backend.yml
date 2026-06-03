@@ -65,7 +65,6 @@ jobs:
           DATABASE_URL: "${{ secrets.MIGRATION_DATABASE_URL }}"
         run: |
           echo "Running database migrations from the CI runner..."
-          echo "DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}"
           sqlx migrate run --source apps/backend/migrations
           echo "Database migrations completed"
 
