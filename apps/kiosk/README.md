@@ -96,8 +96,44 @@ Set the signing certificate via Tauri's Windows signing env vars in CI
 (`TAURI_SIGNING_*` / `signCommand`) — see the Tauri v2 Windows signing guide. Signing
 is intentionally left unconfigured in-repo so no certificate material is committed.
 
-### Auto-update
+### Auto-update (ADR-0028)
 
-Auto-update is **disabled** (`bundle.createUpdaterArtifacts: false`). To enable it
-later, add the `tauri-plugin-updater` plugin, a signing key pair, and a
-`plugins.updater` block with release endpoints, then flip the flag.
+The kiosk ships with the Tauri update manager (`tauri-plugin-updater` +
+`tauri-plugin-process`). It checks for a newer signed build **only while the
+station is idle** (the `login` phase, no active player session) and, if found,
+downloads, installs, and relaunches.
+
+Updates are produced and published by the **Release Kiosk (Windows)** workflow
+(`.github/workflows/kiosk-release.yml`), triggered manually with a
+`patch`/`minor`/`major` bump. It fans the new version across `tauri.conf.json`,
+`src-tauri/Cargo.toml`, and `package.json` (`scripts/set-version.mjs`), tags
+`kiosk-vX.Y.Z`, builds a signed bundle, and publishes the installer, `.sig`, and
+`latest.json` to a GitHub Release. The deployed kiosks poll
+`https://github.com/<owner>/<repo>/releases/latest/download/latest.json`.
+
+The runtime updater config (public key + endpoint) is **not committed**; the
+release workflow injects it via a `--config` overlay so `kiosk-ci.yml` keeps
+building without keys and no key material lives in the repo. Base
+`tauri.conf.json` keeps `createUpdaterArtifacts: false`.
+
+#### One-time setup before the first release
+
+1. Generate a signing keypair:
+
+   ```bash
+   pnpm --filter @gaming-cafe/kiosk exec tauri signer generate -w kiosk.key
+   ```
+
+2. In **Settings → Secrets and variables → Actions**:
+   - Variable `TAURI_UPDATER_PUBKEY` = the printed **public** key.
+   - Secret `TAURI_SIGNING_PRIVATE_KEY` = contents of `kiosk.key` (private).
+   - Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = the key password (if set).
+3. Keep a sealed backup of the private key **outside CI**. Losing it means
+   shipped kiosks can no longer verify updates and must be re-imaged.
+
+> Note: installs are `perMachine` (NSIS), so applying an update requires
+> elevation (a UAC prompt). Run the kiosk with rights to self-update, or revisit
+> a `perUser` install / elevated update path (ADR-0028 risks).
+
+Authenticode signing of the installer (to avoid SmartScreen) remains optional
+via the `signCommand` hooks above and is independent of the updater key.

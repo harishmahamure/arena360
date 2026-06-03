@@ -11,9 +11,21 @@ use lockdown::{init_locked_on_startup, is_locked};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // Auto-update manager (ADR-0028). Desktop-only; the runtime endpoint/pubkey
+    // are injected at release-build time via a `--config` overlay, so dev and CI
+    // builds simply have no update source and the webview check no-ops.
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if is_locked() {
