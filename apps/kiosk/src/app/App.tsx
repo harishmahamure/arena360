@@ -7,6 +7,7 @@ import { SessionPage } from '../pages/SessionPage';
 import { SetupPage } from '../pages/SetupPage';
 import '@gaming-cafe/theme/tokens.css';
 import './app.css';
+import './arena360.css';
 
 function KioskShell() {
   const { phase } = useKiosk();

@@ -1,0 +1,84 @@
+{
+  "games": [
+    {
+      "id": "valorant",
+      "name": "Valorant",
+      "genre": "Tactical Shooter",
+      "description": "5v5 character-based tactical FPS.",
+      "thumbnailUrl": "/games/images/poster-ember.svg",
+      "logoUrl": "/games/images/logo-arena.svg",
+      "videoUrl": null,
+      "launchRef": "Valorant",
+      "isActive": true,
+      "sortOrder": 1,
+      "category": "game"
+    },
+    {
+      "id": "cs2",
+      "name": "Counter-Strike 2",
+      "genre": "Tactical Shooter",
+      "description": "Competitive 5v5 first-person shooter.",
+      "thumbnailUrl": "/games/images/poster-toxin.svg",
+      "logoUrl": null,
+      "videoUrl": null,
+      "launchRef": "Counter-Strike 2",
+      "isActive": true,
+      "sortOrder": 2,
+      "category": "game"
+    },
+    {
+      "id": "league-of-legends",
+      "name": "League of Legends",
+      "genre": "MOBA",
+      "description": "Team-based strategy battle arena.",
+      "thumbnailUrl": "/games/images/poster-nebula.svg",
+      "logoUrl": null,
+      "videoUrl": null,
+      "launchRef": "League of Legends",
+      "isActive": true,
+      "sortOrder": 3,
+      "category": "game"
+    },
+    {
+      "id": "fortnite",
+      "name": "Fortnite",
+      "genre": "Battle Royale",
+      "description": "Build, fight, and be the last one standing.",
+      "thumbnailUrl": null,
+      "logoUrl": null,
+      "videoUrl": null,
+      "launchRef": "Fortnite",
+      "isActive": true,
+      "sortOrder": 4,
+      "category": "game"
+    },
+    {
+      "id": "steam",
+      "name": "Steam",
+      "description": "Game library and store launcher.",
+      "thumbnailUrl": null,
+      "logoUrl": null,
+      "videoUrl": null,
+      "icon": "apps",
+      "subtitle": "Game Launcher",
+      "launchRef": "Steam",
+      "isActive": true,
+      "sortOrder": 1,
+      "category": "launcher"
+    },
+    {
+      "id": "chrome",
+      "name": "Google Chrome",
+      "description": "Web browser.",
+      "thumbnailUrl": null,
+      "logoUrl": null,
+      "videoUrl": null,
+      "icon": "language",
+      "subtitle": "Web Browser",
+      "launchRef": "Google Chrome",
+      "isActive": true,
+      "sortOrder": 2,
+      "category": "util"
+    }
+  ]
+}

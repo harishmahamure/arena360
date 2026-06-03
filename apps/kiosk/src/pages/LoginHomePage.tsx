@@ -1,10 +1,7 @@
-import { AuthFormField, AuthShell, AuthSubmitButton } from '@gaming-cafe/ui/primitives';
 import { useEffect, useState } from 'react';
-import { BackgroundMedia } from '../components/BackgroundMedia';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
 import { KIOSK_LOGO_URL } from '../lib/config';
-import { fetchActiveGames, type Game, pickBackgroundGame } from '../lib/games';
 import { clearFailures, getLockout, recordFailure } from '../lib/loginLockout';
 
 function formatRetry(retryAt: number): string {
@@ -13,31 +10,18 @@ function formatRetry(retryAt: number): string {
 }
 
 /**
- * Default logged-out home (ggLeap-style): full-screen branded background, center
- * logo, and the player sign-in form. Maintenance/offline states surface here.
- * Setup is reached via Ctrl+Shift+A (handled globally in KioskProvider).
+ * Arena360 cinematic logged-out home: branded gradient background, centered glass
+ * sign-in card, and station controls. All auth logic (lockout, maintenance/offline
+ * gating, player login) is preserved. Setup is reached via Ctrl+Shift+A (handled
+ * globally in KioskProvider).
  */
 export function LoginHomePage() {
   const { playerLogin, error, online, maintenance, deviceName } = useKiosk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lockout, setLockout] = useState(() => getLockout());
-  const [backgroundGame, setBackgroundGame] = useState<Game | undefined>(undefined);
-
-  useEffect(() => {
-    let active = true;
-    fetchActiveGames()
-      .then((games) => {
-        if (active) setBackgroundGame(pickBackgroundGame(games));
-      })
-      .catch(() => {
-        // No catalog yet — degrade to the plain dark surface.
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!lockout.locked) return;
@@ -62,72 +46,106 @@ export function LoginHomePage() {
   }
 
   return (
-    <AuthShell
-      className="login-home"
-      backgroundSlot={<BackgroundMedia game={backgroundGame} showScrim={false} />}
-    >
-      <header className="gz-auth-form-header">
-        {KIOSK_LOGO_URL ? <img className="gz-auth-logo" src={KIOSK_LOGO_URL} alt="" /> : null}
-        <h1 className="gz-auth-heading">Welcome back</h1>
-        <p className="gz-auth-subtitle">Enter your credentials to start your session</p>
-      </header>
+    <div className="a360-login login-home">
+      <div className="a360-radial-overlay" />
 
-      {maintenance ? (
-        <div className="maintenance-banner" role="alert">
-          <p className="error-headline">Station under maintenance</p>
-          <p className="error-detail">Please ask staff for assistance.</p>
-        </div>
-      ) : !online ? (
-        <div className="maintenance-banner" role="alert">
-          <p className="error-headline">Reconnecting…</p>
-          <p className="error-detail">Sign-in is unavailable until the connection returns.</p>
-        </div>
-      ) : null}
+      <main className="a360-login-card">
+        <header className="a360-login-header">
+          {KIOSK_LOGO_URL ? (
+            <img className="a360-login-logo" src={KIOSK_LOGO_URL} alt="" />
+          ) : (
+            <span className="a360-brand">ARENA360</span>
+          )}
+          <h1 className="a360-login-title">Welcome back</h1>
+          <p className="a360-login-subtitle">Enter your credentials to access your terminal</p>
+        </header>
 
-      <form className="gz-auth-form" onSubmit={onSubmit}>
-        <AuthFormField
-          label="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={blocked}
-          autoComplete="off"
-          required
-        />
-        <AuthFormField
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={blocked}
-          required
-        />
-
-        {lockout.locked ? (
-          <div className="gz-auth-error" role="alert">
-            <p className="error-headline">Too many attempts</p>
-            <p className="error-detail">
-              Sign-in is locked. Try again in {formatRetry(lockout.retryAt)} or ask staff for help.
-            </p>
+        {maintenance ? (
+          <div className="maintenance-banner" role="alert">
+            <p className="error-headline">Station under maintenance</p>
+            <p className="error-detail">Please ask staff for assistance.</p>
           </div>
-        ) : error ? (
-          <div className="gz-auth-error" role="alert">
-            {error.split('\n').map((line) => (
-              <p
-                key={line}
-                className={line.startsWith('No usable plan') ? 'error-headline' : 'error-detail'}
-              >
-                {line}
-              </p>
-            ))}
+        ) : !online ? (
+          <div className="maintenance-banner" role="alert">
+            <p className="error-headline">Reconnecting…</p>
+            <p className="error-detail">Sign-in is unavailable until the connection returns.</p>
           </div>
         ) : null}
 
-        <AuthSubmitButton type="submit" busy={busy} disabled={blocked}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </AuthSubmitButton>
-      </form>
+        <form className="a360-form" onSubmit={onSubmit}>
+          <div className="a360-field">
+            <label className="a360-field-label" htmlFor="kiosk-username">
+              Username
+            </label>
+            <div className="a360-input-wrap">
+              <input
+                id="kiosk-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your username"
+                disabled={blocked}
+                autoComplete="off"
+                required
+              />
+            </div>
+          </div>
 
-      <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
-    </AuthShell>
+          <div className="a360-field">
+            <label className="a360-field-label" htmlFor="kiosk-password">
+              Password
+            </label>
+            <div className="a360-input-wrap">
+              <input
+                id="kiosk-password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={blocked}
+                required
+              />
+              <button
+                type="button"
+                className="a360-eye"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((v) => !v)}
+              >
+                <span className="material-symbols-outlined">
+                  {showPassword ? 'visibility_off' : 'visibility'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {lockout.locked ? (
+            <div className="gz-auth-error" role="alert">
+              <p className="error-headline">Too many attempts</p>
+              <p className="error-detail">
+                Sign-in is locked. Try again in {formatRetry(lockout.retryAt)} or ask staff for
+                help.
+              </p>
+            </div>
+          ) : error ? (
+            <div className="gz-auth-error" role="alert">
+              {error.split('\n').map((line) => (
+                <p
+                  key={line}
+                  className={line.startsWith('No usable plan') ? 'error-headline' : 'error-detail'}
+                >
+                  {line}
+                </p>
+              ))}
+            </div>
+          ) : null}
+
+          <button type="submit" className="primary-glow-btn" disabled={blocked || busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+
+        <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
+      </main>
+    </div>
   );
 }

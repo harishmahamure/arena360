@@ -15,11 +15,6 @@ vi.mock('../context/KioskProvider', () => ({
   }),
 }));
 
-vi.mock('../lib/games', () => ({
-  fetchActiveGames: () => Promise.resolve([]),
-  pickBackgroundGame: () => undefined,
-}));
-
 describe('LoginHomePage', () => {
   beforeEach(() => {
     localStorage.clear();

@@ -1,17 +1,26 @@
-import { SettingsGlyph, SpeakerGlyph } from '@gaming-cafe/ui/primitives';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { getSystemVolume, openAudioSettings, setSystemVolume } from '../lib/tauriCommands';
+import { getSystemVolume, openAudioSettings, setSystemVolume } from '../../lib/tauriCommands';
 
 const VOLUME_KEY = 'gaming-cafe.kiosk.volume';
 
-interface KioskTopBarProps {
+export type SessionView = 'home' | 'library' | 'settings';
+
+interface SessionNavProps {
   playerName: string | null;
+  deviceName?: string | null;
   /** Authoritative remaining minutes from the active session, if any. */
   remainingMinutes?: number;
-  deviceName?: string | null;
+  activeView: SessionView;
+  onNavigate: (view: SessionView) => void;
   onEndSession: () => void;
 }
+
+const TABS: { id: SessionView; label: string }[] = [
+  { id: 'home', label: 'Home' },
+  { id: 'library', label: 'Games' },
+  { id: 'settings', label: 'Settings' },
+];
 
 function readVolume(): number {
   try {
@@ -29,26 +38,28 @@ function minutesToSeconds(minutes?: number): number | null {
 }
 
 function formatRemaining(totalSeconds: number | null): string {
-  if (totalSeconds === null) return '--';
+  if (totalSeconds === null) return '--:--';
   const total = Math.max(0, Math.floor(totalSeconds));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  return `${m}m ${s.toString().padStart(2, '0')}s`;
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 /**
- * Player session top bar (ggCircuit-style): a UI volume control (persisted, no
- * system side effect yet) and a profile dropdown showing the remaining time and
- * an End-session action.
+ * Arena360 in-session top navigation: brand, Home/Games/Settings tabs, the
+ * remaining-time pill, a UI volume control and a profile menu with End session.
+ * Volume + countdown logic preserved from the prior KioskTopBar.
  */
-export function KioskTopBar({
+export function SessionNav({
   playerName,
-  remainingMinutes,
   deviceName,
+  remainingMinutes,
+  activeView,
+  onNavigate,
   onEndSession,
-}: KioskTopBarProps) {
+}: SessionNavProps) {
   const [open, setOpen] = useState<'audio' | 'profile' | null>(null);
   const [volume, setVolume] = useState<number>(() => readVolume());
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(() =>
@@ -86,15 +97,11 @@ export function KioskTopBar({
   useEffect(() => {
     if (!hasRemainingTime) return;
     const id = window.setInterval(() => {
-      setRemainingSeconds((current) => {
-        if (current === null) return null;
-        return Math.max(0, current - 1);
-      });
+      setRemainingSeconds((current) => (current === null ? null : Math.max(0, current - 1)));
     }, 1000);
     return () => window.clearInterval(id);
   }, [hasRemainingTime]);
 
-  // Close any open popover on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent) => {
@@ -125,19 +132,41 @@ export function KioskTopBar({
   }
 
   return (
-    <div className="kiosk-topbar" ref={barRef}>
-      <div className="kiosk-topbar-brand">{deviceName ?? 'Game Zone'}</div>
+    <nav className="a360-nav" ref={barRef}>
+      <div className="a360-nav-left">
+        <span className="a360-nav-brand">ARENA360</span>
+        <div className="a360-nav-tabs">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`a360-tab${activeView === tab.id ? ' is-active' : ''}`}
+              aria-current={activeView === tab.id ? 'page' : undefined}
+              onClick={() => onNavigate(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <div className="kiosk-topbar-actions">
+      <div className="a360-nav-right">
+        <div className="a360-time-pill">
+          <span className="material-symbols-outlined is-filled">timer</span>
+          <span>{remainingLabel}</span>
+        </div>
+
         <div className="kiosk-audio">
           <button
             type="button"
-            className={`gz-icon-button kiosk-iconbtn${open === 'audio' ? ' is-active' : ''}`}
+            className={`kiosk-iconbtn${open === 'audio' ? ' is-active' : ''}`}
             aria-label="Volume"
             aria-expanded={open === 'audio'}
             onClick={() => setOpen((p) => (p === 'audio' ? null : 'audio'))}
           >
-            <SpeakerGlyph muted={volume === 0} size={22} />
+            <span className="material-symbols-outlined">
+              {volume === 0 ? 'volume_off' : 'volume_up'}
+            </span>
           </button>
           {open === 'audio' ? (
             <div
@@ -145,7 +174,9 @@ export function KioskTopBar({
               role="dialog"
               aria-label="Volume"
             >
-              <SpeakerGlyph muted={volume === 0} size={22} />
+              <span className="material-symbols-outlined">
+                {volume === 0 ? 'volume_off' : 'volume_up'}
+              </span>
               <input
                 type="range"
                 min={0}
@@ -163,7 +194,7 @@ export function KioskTopBar({
                 title="Sound settings"
                 onClick={() => void openAudioSettings()}
               >
-                <SettingsGlyph size={20} />
+                <span className="material-symbols-outlined">settings</span>
               </button>
             </div>
           ) : null}
@@ -172,12 +203,11 @@ export function KioskTopBar({
         <div className="kiosk-profile">
           <button
             type="button"
-            className="gz-profile-pill kiosk-profile-pill"
+            className="kiosk-profile-pill"
             aria-expanded={open === 'profile'}
             onClick={() => setOpen((p) => (p === 'profile' ? null : 'profile'))}
           >
             <span className="kiosk-profile-name">{playerName ?? 'Player'}</span>
-            <span className="kiosk-profile-time">{remainingLabel}</span>
           </button>
           {open === 'profile' ? (
             <div className="gz-popover kiosk-popover kiosk-profile-menu" role="menu">
@@ -205,6 +235,6 @@ export function KioskTopBar({
           ) : null}
         </div>
       </div>
-    </div>
+    </nav>
   );
 }

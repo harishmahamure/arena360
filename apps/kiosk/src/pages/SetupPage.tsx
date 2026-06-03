@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
+import { GalleryManager } from '../components/GalleryManager';
+import { GameCatalogEditor } from '../components/GameCatalogEditor';
 import { useKiosk } from '../context/KioskProvider';
 
 const SETUP_IDLE_MS = 15 * 60 * 1000;
+
+type SetupTab = 'allow-list' | 'catalog' | 'gallery';
+
+const SETUP_TABS: { id: SetupTab; label: string }[] = [
+  { id: 'allow-list', label: 'Allow-list' },
+  { id: 'catalog', label: 'Games' },
+  { id: 'gallery', label: 'Gallery' },
+];
 
 export function SetupPage() {
   const { requestAdminOtp, adminLogin, exitSetup, factoryReset, error } = useKiosk();
@@ -11,6 +21,7 @@ export function SetupPage() {
   const [otp, setOtp] = useState('');
   const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [tab, setTab] = useState<SetupTab>('allow-list');
   const [busy, setBusy] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -62,8 +73,24 @@ export function SetupPage() {
   if (authenticated) {
     return (
       <section className="panel panel-wide">
-        <h1>Setup — allow-list</h1>
-        <AllowListEditor />
+        <h1>Setup</h1>
+        <div className="setup-tabs" role="tablist">
+          {SETUP_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              className={tab === t.id ? 'is-active' : undefined}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tab === 'allow-list' ? <AllowListEditor /> : null}
+        {tab === 'catalog' ? <GameCatalogEditor /> : null}
+        {tab === 'gallery' ? <GalleryManager /> : null}
         <div className="setup-actions">
           <button type="button" className="secondary" onClick={() => void exitSetup()}>
             Done — re-lock

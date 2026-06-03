@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "id": "poster-ember",
+      "kind": "image",
+      "name": "Ember Poster",
+      "url": "/games/images/poster-ember.svg"
+    },
+    {
+      "id": "poster-nebula",
+      "kind": "image",
+      "name": "Nebula Poster",
+      "url": "/games/images/poster-nebula.svg"
+    },
+    {
+      "id": "poster-toxin",
+      "kind": "image",
+      "name": "Toxin Poster",
+      "url": "/games/images/poster-toxin.svg"
+    },
+    {
+      "id": "logo-arena",
+      "kind": "image",
+      "name": "Arena Logo",
+      "url": "/games/images/logo-arena.svg"
+    }
+  ]
+}

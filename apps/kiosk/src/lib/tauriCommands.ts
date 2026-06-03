@@ -105,6 +105,29 @@ export async function pickExecutable(): Promise<string | null> {
   }
 }
 
+/**
+ * Open the native file picker so an admin can browse for a gallery asset
+ * (image or video). Returns a webview-renderable source via `convertFileSrc`,
+ * or `null` when cancelled / unavailable (e.g. plain browser dev).
+ */
+export async function pickMediaFile(kind: 'image' | 'video'): Promise<string | null> {
+  const filters =
+    kind === 'video'
+      ? [{ name: 'Videos', extensions: ['mp4', 'webm', 'mov', 'm4v', 'ogv'] }]
+      : [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] }];
+  try {
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      title: kind === 'video' ? 'Select a video' : 'Select an image',
+      filters,
+    });
+    return typeof selected === 'string' ? convertFileSrc(selected) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface TrackedProcess {
   pid: number;
   executablePath: string;

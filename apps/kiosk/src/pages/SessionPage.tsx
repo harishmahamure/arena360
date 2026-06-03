@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { KioskTopBar } from '../components/KioskTopBar';
-import { LauncherGrid } from '../components/LauncherGrid';
+import { HomeView } from '../components/session/HomeView';
+import { LibraryView } from '../components/session/LibraryView';
+import { SessionNav, type SessionView } from '../components/session/SessionNav';
+import { SettingsView } from '../components/session/SettingsView';
 import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
 import { useSessionPoller } from '../hooks/useSessionPoller';
@@ -31,6 +33,7 @@ export function SessionPage() {
   } = useKiosk();
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [view, setView] = useState<SessionView>('home');
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [graceLeft, setGraceLeft] = useState(0);
   const [offlineLeft, setOfflineLeft] = useState<number | null>(null);
@@ -46,6 +49,8 @@ export function SessionPage() {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const onError = useCallback((m: string) => pushToast(m, 'warning'), [pushToast]);
 
   // Create (or resume) the session once when arriving without one.
   useEffect(() => {
@@ -146,27 +151,41 @@ export function SessionPage() {
   }
 
   return (
-    <div className="session-shell">
-      <KioskTopBar
+    <div className="a360-session">
+      <SessionNav
         playerName={playerName}
         remainingMinutes={remaining}
         deviceName={deviceName}
+        activeView={view}
+        onNavigate={setView}
         onEndSession={() => setConfirmEnd(true)}
       />
 
-      <section className="panel session panel-wide">
+      <div className="a360-session-body">
         {!online ? (
-          <div className="maintenance-banner" role="alert">
-            <p className="error-headline">Connection lost</p>
-            <p className="error-detail">
-              Reconnecting… your time keeps counting. The station will lock in{' '}
-              {formatGrace(offlineLeft ?? OFFLINE_GRACE_MS)} if the connection doesn't return.
-            </p>
+          <div className="a360-section">
+            <div className="maintenance-banner" role="alert">
+              <p className="error-headline">Connection lost</p>
+              <p className="error-detail">
+                Reconnecting… your time keeps counting. The station will lock in{' '}
+                {formatGrace(offlineLeft ?? OFFLINE_GRACE_MS)} if the connection doesn't return.
+              </p>
+            </div>
           </div>
         ) : null}
 
-        {confirmEnd ? (
-          <div className="confirm-end" role="alertdialog">
+        {view === 'home' ? (
+          <HomeView onError={onError} onNavigate={setView} />
+        ) : view === 'library' ? (
+          <LibraryView onError={onError} />
+        ) : (
+          <SettingsView onError={onError} />
+        )}
+      </div>
+
+      {confirmEnd ? (
+        <div className="a360-modal-scrim">
+          <div className="confirm-end glass-card" role="alertdialog" aria-modal="true">
             <p>End your session now? Unsaved game progress may be lost.</p>
             <div className="confirm-end-actions">
               <button type="button" className="danger" onClick={() => void endSession('voluntary')}>
@@ -177,12 +196,8 @@ export function SessionPage() {
               </button>
             </div>
           </div>
-        ) : null}
-
-        <LauncherGrid onError={(m) => pushToast(m, 'warning')} />
-
-        <p className="meta">Realtime: {wsConnected ? 'connected' : 'reconnecting…'}</p>
-      </section>
+        </div>
+      ) : null}
 
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
     </div>
