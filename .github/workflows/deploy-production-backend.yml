@@ -60,7 +60,7 @@ jobs:
           kubectl create secret generic arena360-backend-secrets \
             --namespace "${{ env.NAMESPACE }}" \
             --from-literal=DATABASE_URL='${{ secrets.DATABASE_URL }}' \
-            --from-literal=MIGRATION_DATABASE_URL='${{ secrets.MIGRATION_DATABASE_URL }}' \
+            --from-literal= ='${{ secrets.MIGRATION_DATABASE_URL }}' \
             --from-literal=JWT_SECRET='${{ secrets.JWT_SECRET }}' \
             --from-literal=ZEPTOMAIL_TOKEN='${{ secrets.ZEPTOMAIL_TOKEN }}' \
             --from-literal=STORAGE_ENDPOINT='${{ secrets.STORAGE_ENDPOINT }}' \
