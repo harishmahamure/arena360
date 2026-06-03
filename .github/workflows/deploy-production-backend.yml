@@ -97,7 +97,7 @@ jobs:
                 restartPolicy: Never
                 containers:
                   - name: migrate
-                    image: rust:1.82-slim
+                    image: rust:1-slim
                     imagePullPolicy: IfNotPresent
                     env:
                       - name: DATABASE_URL
