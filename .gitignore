@@ -92,3 +92,5 @@ docs/adr/.events.jsonl
 bruno/**/environments/Local.bru
 
 /bruno
+
+/stitch_kiosk_home_screen

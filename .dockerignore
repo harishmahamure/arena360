@@ -70,3 +70,5 @@ Thumbs.db
 # Local-only markdown (keep README out of build context)
 **/*.md
 !apps/admin/docker/**
+
+/stitch_kiosk_home_screen

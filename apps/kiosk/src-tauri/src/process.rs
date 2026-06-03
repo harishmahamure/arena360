@@ -6,6 +6,14 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(target_os = "windows")]
+const DETACHED_PROCESS: u32 = 0x0000_0008;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackedProcess {
@@ -54,6 +62,8 @@ fn spawn_process(path: &str, args: Option<&str>) -> Result<u32, String> {
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW);
     if let Some(parent) = Path::new(path).parent() {
         cmd.current_dir(parent);
     }
@@ -72,6 +82,7 @@ fn is_running(pid: u32) -> bool {
         use std::process::Command as StdCommand;
         let output = StdCommand::new("tasklist")
             .args(["/FI", &format!("PID eq {pid}")])
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
         if let Ok(out) = output {
             let text = String::from_utf8_lossy(&out.stdout);
@@ -95,6 +106,7 @@ fn kill_pid(pid: u32) {
     {
         let _ = Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
             .status();
     }
     #[cfg(not(target_os = "windows"))]

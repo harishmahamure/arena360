@@ -77,6 +77,13 @@ pub fn get_lockdown_state() -> Result<String, String> {
     Ok(guard.as_str().to_string())
 }
 
+pub fn is_locked() -> bool {
+    STATE
+        .lock()
+        .map(|g| *g == LockdownState::Locked)
+        .unwrap_or(true)
+}
+
 pub fn init_locked_on_startup(app: &AppHandle) {
     let _txn = TRANSITION.lock().expect("transition lock");
     if let Ok(mut guard) = STATE.lock() {
