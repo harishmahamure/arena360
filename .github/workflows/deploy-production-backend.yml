@@ -11,14 +11,11 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -38,10 +35,14 @@ jobs:
         with:
           context: ./apps/backend
           file: ./apps/backend/Dockerfile
-          platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ env.DOCKER_REPO }}:backend-prod-${{ steps.vars.outputs.short_sha }}
+            ${{ env.DOCKER_REPO }}:backend-prod-latest
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
@@ -124,5 +125,5 @@ jobs:
           echo "## Backend Production Deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Release: \`${{ env.RELEASE_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Image: \`${{ env.DOCKER_REPO }}:backend-prod-${{ steps.vars.outputs.short_sha }}\` (linux/amd64, linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`${{ env.DOCKER_REPO }}:backend-prod-${{ steps.vars.outputs.short_sha }}\` (linux/amd64)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
