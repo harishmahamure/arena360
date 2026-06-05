@@ -1,5 +1,5 @@
-import { tokenCache } from './http';
 import { realtimeUrl } from './config';
+import { tokenCache } from './http';
 
 export interface ServerFrame {
   type: string;

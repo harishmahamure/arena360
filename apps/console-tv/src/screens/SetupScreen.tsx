@@ -14,9 +14,7 @@ import { collectFingerprint, type FingerprintPayload } from '../lib/native/Conso
 
 type Step = 'credentials' | 'otp' | 'device';
 
-const CONSOLE_TYPES = deviceTypeOptions.filter((o) =>
-  ['PS5', 'PS4', 'CONSOLE'].includes(o.value),
-);
+const CONSOLE_TYPES = deviceTypeOptions.filter((o) => ['PS5', 'PS4', 'CONSOLE'].includes(o.value));
 const TV_SUBTYPES = deviceSubTypeOptions.filter((o) =>
   ['PREMIUM_TV_CONSOLES', 'STANDARD_TV_CONSOLES'].includes(o.value),
 );
@@ -90,7 +88,9 @@ export function SetupScreen() {
   return (
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>Set up this console TV</Text>
-      <Text style={styles.subtitle}>Sign in with an administrator account to register this station.</Text>
+      <Text style={styles.subtitle}>
+        Sign in with an administrator account to register this station.
+      </Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {step === 'credentials' && (
@@ -111,7 +111,11 @@ export function SetupScreen() {
             secureTextEntry
           />
           <TouchableOpacity style={styles.button} onPress={onCredentials} disabled={busy}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Continue</Text>}
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Continue</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -127,7 +131,11 @@ export function SetupScreen() {
             maxLength={8}
           />
           <TouchableOpacity style={styles.button} onPress={onOtp} disabled={busy}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify</Text>}
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Verify</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -167,7 +175,11 @@ export function SetupScreen() {
               Device: {fingerprint.manufacturer ?? 'Android'} {fingerprint.model ?? ''}
             </Text>
           ) : null}
-          <TouchableOpacity style={styles.button} onPress={onProvision} disabled={busy || !name.trim()}>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={onProvision}
+            disabled={busy || !name.trim()}
+          >
             {busy ? (
               <ActivityIndicator color="#fff" />
             ) : (

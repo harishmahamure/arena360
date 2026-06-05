@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { useSessionReminders } from '../hooks/useSessionReminders';
 import { ApiError, post, tokenCache } from '../lib/http';
 import { collectFingerprint, setKeepScreenOn } from '../lib/native/ConsoleNative';
 import { ConsoleRealtimeClient } from '../lib/realtime';
@@ -17,7 +18,6 @@ import {
   persistDeviceName,
   persistDeviceToken,
 } from '../lib/storage';
-import { useSessionReminders } from '../hooks/useSessionReminders';
 
 export type AppPhase = 'loading' | 'setup' | 'idle' | 'overlay';
 
@@ -87,8 +87,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
           const sessionId = String(payload.sessionId ?? '');
           const remaining =
             typeof payload.remainingMinutes === 'number' ? payload.remainingMinutes : null;
-          const startTime =
-            typeof payload.startTime === 'string' ? payload.startTime : undefined;
+          const startTime = typeof payload.startTime === 'string' ? payload.startTime : undefined;
           setActiveSession({ id: sessionId, remainingMinutes: remaining, startTime });
           setPhase('overlay');
         }
@@ -102,9 +101,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
           const payload = frame.payload ?? {};
           if (typeof payload.remainingMinutes === 'number') {
             const minutes = payload.remainingMinutes as number;
-            setActiveSession((prev) =>
-              prev ? { ...prev, remainingMinutes: minutes } : prev,
-            );
+            setActiveSession((prev) => (prev ? { ...prev, remainingMinutes: minutes } : prev));
           }
         }
       });

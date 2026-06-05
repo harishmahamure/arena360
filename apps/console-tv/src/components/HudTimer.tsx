@@ -38,9 +38,7 @@ export function HudTimer({ remainingMinutes }: HudTimerProps) {
   return (
     <View style={styles.container} accessibilityLiveRegion="polite">
       <Text style={styles.label}>Time remaining</Text>
-      <Text style={[styles.value, { color: TONE_COLORS[tone] }]}>
-        {formatClock(secondsLeft)}
-      </Text>
+      <Text style={[styles.value, { color: TONE_COLORS[tone] }]}>{formatClock(secondsLeft)}</Text>
     </View>
   );
 }

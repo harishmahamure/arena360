@@ -7,8 +7,7 @@ export function OverlayScreen() {
   const { activeSession } = useConsole();
   if (!activeSession) return null;
 
-  const hasTimer =
-    activeSession.remainingMinutes != null && activeSession.remainingMinutes >= 0;
+  const hasTimer = activeSession.remainingMinutes != null && activeSession.remainingMinutes >= 0;
 
   return (
     <View style={styles.container} pointerEvents="none">
