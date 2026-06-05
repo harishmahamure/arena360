@@ -32,3 +32,7 @@ env:
   CAFE_TZ: Asia/Kolkata
   STORAGE_REGION: us-east-1
   STORAGE_PRESIGN_EXPIRY_SECS: "900"
+
+# Production uses GitHub Actions secrets inlined at deploy time (ADR-0026).
+envFromSecrets: []
+inlineSecretEnv: {}

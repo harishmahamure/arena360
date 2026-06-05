@@ -121,6 +121,10 @@ envFromSecrets:
     key: STORAGE_PUBLIC_URL
     optional: true
 
+# Injected at deploy time via --set-json (ADR-0026). When non-empty, rendered as
+# literal env entries alongside envFromSecrets.
+inlineSecretEnv: {}
+
 configMap:
   enabled: true
 

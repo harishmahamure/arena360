@@ -65,8 +65,12 @@ spec:
             - configMapRef:
                 name: {{ include "arena360-backend.configMapName" . }}
             {{- end }}
-          {{- if .Values.envFromSecrets }}
+          {{- if or .Values.envFromSecrets .Values.inlineSecretEnv }}
           env:
+            {{- range $name, $value := .Values.inlineSecretEnv }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
             {{- range .Values.envFromSecrets }}
             - name: {{ .envName }}
               valueFrom:

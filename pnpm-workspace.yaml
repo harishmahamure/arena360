@@ -1,5 +1,6 @@
 packages:
   - "apps/admin"
   - "apps/kiosk"
+  - "apps/console-tv"
   # apps/backend is Rust-only (Cargo); not a pnpm workspace — use pnpm backend:* from root
   - "packages/*"
