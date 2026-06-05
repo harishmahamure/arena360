@@ -8,6 +8,9 @@ postgresql:
     storageClassName: ""
     size: 50Gi
 
+imagePullSecrets:
+  - name: dockerhub-secret
+
 pgbouncer:
   replicaCount: 2
   externalService:

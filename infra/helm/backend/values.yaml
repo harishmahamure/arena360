@@ -5,7 +5,8 @@ image:
   tag: backend-prod-latest
   pullPolicy: Always
 
-imagePullSecrets: []
+imagePullSecrets:
+  - name: dockerhub-secret
 nameOverride: ""
 fullnameOverride: ""
 

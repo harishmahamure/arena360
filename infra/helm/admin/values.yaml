@@ -7,7 +7,8 @@
 # -- Global settings
 global:
   # -- Image pull secrets for private registries
-  imagePullSecrets: []
+  imagePullSecrets:
+    - name: dockerhub-secret
 
 # -- Number of replicas
 replicaCount: 1

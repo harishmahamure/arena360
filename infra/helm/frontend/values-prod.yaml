@@ -3,6 +3,9 @@ image:
   tag: frontend-prod-latest
   pullPolicy: Always
 
+imagePullSecrets:
+  - name: dockerhub-secret
+
 ingress:
   enabled: true
   className: nginx

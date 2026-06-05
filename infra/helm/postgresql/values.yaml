@@ -83,3 +83,6 @@ fullnameOverride: ""
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+imagePullSecrets:
+  - name: dockerhub-secret
