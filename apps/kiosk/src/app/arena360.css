@@ -536,6 +536,7 @@ body,
 .a360-home .a360-hero-scrim {
   position: fixed;
   inset: 0;
+  pointer-events: none;
 }
 
 .a360-hero-media {
@@ -564,7 +565,6 @@ body,
   position: absolute;
   inset: 0;
   z-index: 1;
-  pointer-events: none;
 }
 
 .a360-hero-scrim--cinematic {
@@ -580,6 +580,7 @@ body,
 .a360-hero-content {
   position: relative;
   z-index: 10;
+  pointer-events: auto;
   flex: 1;
   min-height: 0;
   box-sizing: border-box;

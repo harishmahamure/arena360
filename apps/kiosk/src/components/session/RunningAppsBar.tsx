@@ -25,7 +25,8 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
             <p className="a360-running-apps-title">Running: {label}</p>
             {processes.length === 1 && primary ? (
               <p className="a360-running-apps-sub" title={primary.executablePath}>
-                Alt+Tab here, then close when you are done playing.
+                Press <strong>Ctrl+Shift+H</strong> or Alt+Tab back to Arena360, then close when you
+                are done playing.
               </p>
             ) : (
               <ul className="a360-running-apps-list">

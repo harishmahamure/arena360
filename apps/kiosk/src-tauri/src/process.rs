@@ -243,6 +243,33 @@ fn force_foreground(window: &tauri::WebviewWindow) {
 #[cfg(not(windows))]
 fn force_foreground(_window: &tauri::WebviewWindow) {}
 
+/// Lower the kiosk below launched game windows without hiding or minimizing it.
+#[cfg(windows)]
+fn send_kiosk_behind_games(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    if let Ok(hwnd_raw) = window.hwnd() {
+        unsafe {
+            let hwnd = HWND(hwnd_raw.0 as *mut _);
+            let _ = SetWindowPos(
+                hwnd,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn send_kiosk_behind_games(_window: &tauri::WebviewWindow) {}
+
 fn show_kiosk_foreground(app: &AppHandle) {
     if let Ok(window) = main_window(app) {
         let _ = window.unminimize();
@@ -270,9 +297,10 @@ pub fn focus_kiosk_window(app: &AppHandle) -> Result<(), String> {
 fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
     let window = main_window(app)?;
     window.set_always_on_top(false).map_err(|e| e.to_string())?;
-    // Minimize so Alt+Tab lists the kiosk separately from launched games and
-    // `show_kiosk_foreground` can raise it above TOPMOST game windows.
-    window.minimize().map_err(|e| e.to_string())
+    // Keep the kiosk visible in Alt+Tab but behind the launched game. Do not
+    // minimize — players must be able to switch back to the session homepage.
+    send_kiosk_behind_games(&window);
+    Ok(())
 }
 
 fn restore_kiosk_window(app: &AppHandle) {
@@ -322,6 +350,9 @@ pub fn launch_allowed(
     prepare_kiosk_for_game_mode(&app)?;
     let pid = spawn_process(&executable_path, arguments.as_deref())?;
     let window_handle = fullscreen_process_window(pid);
+    if let Ok(window) = main_window(&app) {
+        send_kiosk_behind_games(&window);
+    }
     TRACKED.lock().map_err(|e| e.to_string())?.push(WatchEntry {
         executable_path,
         pid,

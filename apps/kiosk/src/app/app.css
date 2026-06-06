@@ -49,9 +49,18 @@ body {
   z-index: 9999;
   height: var(--a360-viewport-height, 100vh);
   min-height: var(--a360-viewport-height, 100vh);
+  width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+.lockdown-content > .a360-session,
+.lockdown-content > .login-home {
+  flex: 1;
+  align-self: stretch;
+  width: 100%;
 }
 
 .panel {

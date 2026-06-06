@@ -60,6 +60,14 @@ export function SessionPage() {
     onError,
   });
 
+  // When the player returns from a launched game, land on the session homepage.
+  useEffect(() => {
+    if (!activeSession || processes.length === 0) return;
+    const onFocus = () => setView('home');
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [activeSession, processes.length]);
+
   // Create (or resume) the session once when arriving without one.
   useEffect(() => {
     if (!activeSession && !startedRef.current) {
