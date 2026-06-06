@@ -52,7 +52,7 @@ The media gallery the admin picks logos/videos/thumbnails from:
       "description": "…",          // optional
       "thumbnailUrl": "/games/images/valorant.png", // optional, poster art (null = icon fallback)
       "logoUrl": null,             // optional
-      "videoUrl": "/games/videos/valorant.mp4",     // optional, hover preview
+      "videoUrl": "/games/videos/valorant.webm",    // optional, hero / hover preview
       "icon": "apps",              // optional, Material Symbol for tool tiles
       "subtitle": "Game Launcher", // optional, shown under tool tiles
       "launchRef": "Valorant",     // optional, matches an allow-list entry id or name
@@ -72,3 +72,8 @@ The media gallery the admin picks logos/videos/thumbnails from:
   Leave them `null` to render the built-in icon fallback (no broken images).
 - `launchRef` is matched case-insensitively against an allow-list entry's id, then
   its name; if omitted, the catalog `name` is matched against entry names.
+- Hero / preview videos must use a **browser-safe codec**, not just a familiar
+  container: **H.264 in MP4** or **VP9 in WebM**. AV1 in either `.mp4` or `.webm`
+  downloads successfully but often fails to decode on macOS (WKWebView) and on
+  Windows without the AV1 Video Extension. The app falls back to the login
+  background loop when a featured video cannot play.

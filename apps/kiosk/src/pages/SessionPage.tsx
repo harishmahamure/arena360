@@ -161,7 +161,7 @@ export function SessionPage() {
         onEndSession={() => setConfirmEnd(true)}
       />
 
-      <div className="a360-session-body">
+      <div className={`a360-session-body${view === 'home' ? ' a360-session-body--home' : ''}`}>
         {!online ? (
           <div className="a360-section">
             <div className="maintenance-banner" role="alert">

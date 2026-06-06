@@ -1,5 +1,7 @@
-import { fetchActiveGames } from '../../lib/games';
-import { GameCard } from './GameCard';
+import { useEffect, useMemo, useState } from 'react';
+import { LOGIN_BACKGROUND_VIDEO_URL } from '../../lib/config';
+import { fetchActiveGames, type KioskGame } from '../../lib/games';
+import { HeroGameCarousel } from './HeroGameCarousel';
 import type { SessionView } from './SessionNav';
 import { useCatalog } from './useCatalog';
 import { useLauncher } from './useLauncher';
@@ -10,62 +12,74 @@ interface HomeViewProps {
   onNavigate: (view: SessionView) => void;
 }
 
-/** Arena360 in-session Home: branded hero + Quick Launch from the games catalog. */
+function tryAutoplay(video: HTMLVideoElement) {
+  void Promise.resolve(video.play()).catch(() => {});
+}
+
 export function HomeView({ disabled, onError, onNavigate }: HomeViewProps) {
   const { items: games } = useCatalog(fetchActiveGames);
   const { launchingKey, isLaunchable, launch } = useLauncher(Boolean(disabled), onError);
-  const featured = games[0];
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  useEffect(() => {
+    if (selectedIndex >= games.length) setSelectedIndex(0);
+  }, [games.length, selectedIndex]);
+
+  const featured = games[selectedIndex];
+
+  const canPlay = featured ? isLaunchable(featured) : false;
+  const isLaunching = featured ? launchingKey === featured.id : false;
+  const background = featured?.videoUrl ?? LOGIN_BACKGROUND_VIDEO_URL;
 
   return (
-    <div>
-      <section className="a360-hero a360-hero--branded">
+    <div className="a360-home">
+      <section className="a360-hero a360-hero--cinematic">
+        <div className="a360-hero-media" aria-hidden="true">
+          <video
+            key={background}
+            src={background}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+            poster={featured?.thumbnailUrl ?? undefined}
+            onLoadedData={(e) => tryAutoplay(e.currentTarget)}
+          />
+        </div>
+        <div className="a360-hero-scrim a360-hero-scrim--cinematic" />
+
         <div className="a360-hero-content">
-          <div className="a360-chip-row">
-            <span className="a360-chip a360-chip-primary">This Station</span>
-          </div>
-          <h1 className="a360-hero-title">Ready to play</h1>
-          <p className="a360-hero-desc">Launch the games and tools installed on this PC.</p>
-          <div className="a360-hero-actions">
-            {featured ? (
+          <HeroGameCarousel
+            games={games}
+            selectedIndex={selectedIndex}
+            onSelect={setSelectedIndex}
+            onAllGames={() => onNavigate('library')}
+          />
+
+          <div className="a360-hero-bottom">
+            <h1 className="a360-hero-title">{featured?.name ?? 'Ready to play'}</h1>
+            <div className="a360-hero-actions">
               <button
                 type="button"
                 className="primary-glow-btn a360-btn-lg"
-                disabled={disabled || launchingKey !== null}
-                onClick={() => void launch(featured)}
+                disabled={disabled || !canPlay || isLaunching}
+                onClick={() => featured && void launch(featured)}
               >
                 <span className="material-symbols-outlined is-filled">play_arrow</span>
-                {launchingKey === featured.id ? 'Launching…' : `Play ${featured.name}`}
+                {isLaunching ? 'Launching…' : 'Play now!'}
               </button>
-            ) : null}
-            <button
-              type="button"
-              className="a360-btn-ghost a360-btn-lg"
-              onClick={() => onNavigate('library')}
-            >
-              <span className="material-symbols-outlined">grid_view</span>
-              Browse Library
-            </button>
+              <button
+                type="button"
+                className="a360-btn-ghost a360-btn-lg"
+                onClick={() => onNavigate('library')}
+              >
+                <span className="material-symbols-outlined">grid_view</span>
+                Explore Library
+              </button>
+            </div>
           </div>
         </div>
-      </section>
-
-      <section className="a360-section a360-section--pull">
-        {games.length > 0 ? (
-          <div className="a360-carousel no-scrollbar">
-            {games.map((game) => (
-              <GameCard
-                key={game.id}
-                game={game}
-                launchable={isLaunchable(game)}
-                launching={launchingKey === game.id}
-                disabled={disabled}
-                onLaunch={() => void launch(game)}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="a360-empty">No games installed. Ask staff to set up this station.</p>
-        )}
       </section>
     </div>
   );

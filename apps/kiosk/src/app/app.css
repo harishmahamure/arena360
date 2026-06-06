@@ -26,12 +26,14 @@ body {
 }
 
 .app {
-  min-height: 100vh;
+  height: var(--a360-viewport-height, 100vh);
+  min-height: var(--a360-viewport-height, 100vh);
 }
 
 .lockdown-root {
   position: relative;
-  min-height: 100vh;
+  height: var(--a360-viewport-height, 100vh);
+  min-height: var(--a360-viewport-height, 100vh);
 }
 
 .lockdown-overlay {
@@ -45,7 +47,8 @@ body {
 .lockdown-content {
   position: relative;
   z-index: 9999;
-  min-height: 100vh;
+  height: var(--a360-viewport-height, 100vh);
+  min-height: var(--a360-viewport-height, 100vh);
   display: flex;
   align-items: center;
   justify-content: center;
