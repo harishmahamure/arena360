@@ -16,6 +16,10 @@ on:
   # Actions tab (Run workflow). No Windows machine required.
   workflow_dispatch:
 
+env:
+  VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.arena360.cloud' }}
+  VITE_API_URL_WS: ${{ vars.VITE_API_URL_WS || 'wss://api.arena360.cloud' }}
+
 jobs:
   kiosk-windows:
     name: Build & test kiosk (windows)
@@ -51,14 +55,13 @@ jobs:
       - name: Rust clippy (kiosk)
         run: cargo clippy --all-targets --manifest-path apps/kiosk/src-tauri/Cargo.toml -- -D warnings
 
-      # Inject the kiosk's build-time config. VITE_API_URL is baked into the
-      # web bundle by Vite at build time, so it must be set here (not at
-      # runtime). Configure it as a repo/environment variable in
-      # Settings > Secrets and variables > Actions > Variables.
+      # Inject the kiosk's build-time config. Vite bakes these into the web
+      # bundle at build time (not runtime). Override via Settings > Variables.
       - name: Tauri build (Windows bundle)
-        env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || 'http://192.168.50.218:3001' }}
-        run: 'echo "VITE_API_URL: $VITE_API_URL" && pnpm --filter @gaming-cafe/kiosk tauri:build'
+        run: |
+          echo "VITE_API_URL: $env:VITE_API_URL"
+          echo "VITE_API_URL_WS: $env:VITE_API_URL_WS"
+          pnpm --filter @gaming-cafe/kiosk tauri:build
 
       # Publish the installers so they can be downloaded from the workflow
       # run's "Artifacts" section. The NSIS installer (.exe) is the
