@@ -75,7 +75,6 @@ docker-compose.override.yaml
 
 # Certificates & keys
 *.pem
-*.key
 *.p12
 *.pfx
 

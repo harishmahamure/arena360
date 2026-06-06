@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Gaming Cafe Kiosk",
+  "productName": "Arena360 Station Management",
   "version": "0.1.0",
   "identifier": "com.gamingcafe.kiosk",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Gaming Cafe Kiosk",
+        "title": "Arena360 Station Management Application",
         "width": 1280,
         "height": 720,
         "fullscreen": true,
@@ -32,10 +32,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "publisher": "Gaming Cafe",
+    "publisher": "Arena360",
     "category": "Game",
-    "shortDescription": "Locked-down gaming cafe kiosk client",
-    "longDescription": "Arena360 kiosk client: device registration, player sessions, lockdown and launcher for gaming cafe stations.",
+    "shortDescription": "Locked-down Arena360 Station Management Application",
+    "longDescription": "Arena360 Station Management Application: device registration, player sessions, lockdown and launcher for gaming cafe stations.",
     "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
@@ -51,6 +51,12 @@
       "nsis": {
         "installMode": "perMachine"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
     }
   }
 }

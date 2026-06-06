@@ -15,9 +15,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init());
 
-    // Auto-update manager (ADR-0028). Desktop-only; the runtime endpoint/pubkey
-    // are injected at release-build time via a `--config` overlay, so dev and CI
-    // builds simply have no update source and the webview check no-ops.
+    // Auto-update manager (ADR-0028). Desktop-only; base tauri.conf.json carries an
+    // empty stub so the plugin can initialize in dev/CI. Release builds merge
+    // tauri.updater.conf.json (pubkey + GitHub Releases endpoint).
     #[cfg(desktop)]
     {
         builder = builder

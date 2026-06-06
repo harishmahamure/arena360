@@ -109,7 +109,7 @@ jobs:
         with:
           projectPath: apps/kiosk
           tagName: kiosk-v${{ steps.bump.outputs.version }}
-          releaseName: "Kiosk v${{ steps.bump.outputs.version }}"
+          releaseName: "Arena360 v${{ steps.bump.outputs.version }}"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
@@ -119,7 +119,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "## Kiosk Release"
+            echo "## Arena360 Release"
             echo ""
             echo "- Version: \`${{ steps.bump.outputs.version }}\`"
             echo "- Tag: \`kiosk-v${{ steps.bump.outputs.version }}\`"
