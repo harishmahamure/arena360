@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LOGIN_BACKGROUND_VIDEO_URL } from '../../lib/config';
-import { fetchActiveGames, type KioskGame } from '../../lib/games';
+import { fetchActiveGames } from '../../lib/games';
 import { HeroGameCarousel } from './HeroGameCarousel';
 import type { SessionView } from './SessionNav';
 import { useCatalog } from './useCatalog';
