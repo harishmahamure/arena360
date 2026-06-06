@@ -136,7 +136,7 @@ building without keys and no key material lives in the repo. Base
    ```
 
 2. In **Settings → Secrets and variables → Actions**:
-   - Variable `TAURI_UPDATER_PUBKEY` = the printed **public** key.
+   - Secret `TAURI_UPDATER_PUBKEY` = the printed **public** key.
    - Secret `TAURI_SIGNING_PRIVATE_KEY` = contents of `kiosk.key` (private).
    - Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = the key password (if set).
 3. Keep a sealed backup of the private key **outside CI**. Losing it means

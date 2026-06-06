@@ -86,11 +86,11 @@ jobs:
       - name: Write updater config overlay
         shell: bash
         env:
-          PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
           REPO: ${{ github.repository }}
         run: |
           if [ -z "$PUBKEY" ]; then
-            echo "::error::Missing repository variable TAURI_UPDATER_PUBKEY (the Tauri updater public key). Generate a keypair with 'pnpm --filter @gaming-cafe/kiosk exec tauri signer generate', set the public key as the Actions variable and the private key as TAURI_SIGNING_PRIVATE_KEY."
+            echo "::error::Missing repository secret TAURI_UPDATER_PUBKEY (the Tauri updater public key). Generate a keypair with 'pnpm --filter @gaming-cafe/kiosk exec tauri signer generate', then set TAURI_UPDATER_PUBKEY, TAURI_SIGNING_PRIVATE_KEY, and TAURI_SIGNING_PRIVATE_KEY_PASSWORD as GitHub Actions secrets."
             exit 1
           fi
           cat > apps/kiosk/src-tauri/tauri.updater.conf.json <<EOF
