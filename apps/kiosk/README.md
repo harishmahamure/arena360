@@ -14,7 +14,13 @@ cp apps/kiosk/.env.example apps/kiosk/.env
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `VITE_API_URL` | REST API base URL (WebSocket uses `/realtime` on the same host) | `http://localhost:3000` |
+| `VITE_API_URL_WS` | Legacy WS hint (logged in CI; runtime derives WS from `VITE_API_URL`) | — |
+| `VITE_GALLERY_URL` | CDN-hosted `gallery.json` for Setup media picker | `https://cdn.arena360.cloud/kiosk/gallery.json` |
+| `VITE_LOGIN_BACKGROUND_VIDEO_URL` | Login screen background loop | `https://cdn.arena360.cloud/launch.webm` |
+| `VITE_KIOSK_LOGO_URL` | Venue logo on login / nav | shared theme default |
 | `VITE_OFFLINE_GRACE_MINUTES` | Minutes a session keeps counting locally after the backend is unreachable before the station re-locks | `5` |
+
+CI and release builds (`kiosk-ci.yml`, `kiosk-release.yml`) bake these in at build time. Override per environment via GitHub repository **Settings → Secrets and variables → Actions → Variables** (`VITE_API_URL`, `VITE_GALLERY_URL`, etc.).
 
 ## Dev
 

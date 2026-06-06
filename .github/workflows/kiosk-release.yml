@@ -22,6 +22,10 @@ permissions:
 env:
   VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.arena360.cloud' }}
   VITE_API_URL_WS: ${{ vars.VITE_API_URL_WS || 'wss://api.arena360.cloud' }}
+  VITE_GALLERY_URL: ${{ vars.VITE_GALLERY_URL || 'https://cdn.arena360.cloud/kiosk/gallery.json' }}
+  VITE_LOGIN_BACKGROUND_VIDEO_URL: ${{ vars.VITE_LOGIN_BACKGROUND_VIDEO_URL || 'https://cdn.arena360.cloud/launch.webm' }}
+  VITE_KIOSK_LOGO_URL: ${{ vars.VITE_KIOSK_LOGO_URL || '' }}
+  VITE_OFFLINE_GRACE_MINUTES: ${{ vars.VITE_OFFLINE_GRACE_MINUTES || '5' }}
 
 jobs:
   release:
@@ -125,6 +129,9 @@ jobs:
             echo "- Tag: \`kiosk-v${{ steps.bump.outputs.version }}\`"
             echo "- API URL: \`${{ env.VITE_API_URL }}\`"
             echo "- WebSocket URL: \`${{ env.VITE_API_URL_WS }}\`"
+            echo "- Gallery URL: \`${{ env.VITE_GALLERY_URL }}\`"
+            echo "- Login video URL: \`${{ env.VITE_LOGIN_BACKGROUND_VIDEO_URL }}\`"
+            echo "- Offline grace (minutes): \`${{ env.VITE_OFFLINE_GRACE_MINUTES }}\`"
             echo "- Update endpoint: \`https://github.com/${{ github.repository }}/releases/latest/download/latest.json\`"
             echo "- Commit: \`${{ github.sha }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
