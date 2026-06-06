@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import { fetchGames } from '../../lib/allowList';
 import { LOGIN_BACKGROUND_VIDEO_URL } from '../../lib/config';
-import { fetchActiveGames } from '../../lib/games';
 import { HeroGameCarousel } from './HeroGameCarousel';
 import type { SessionView } from './SessionNav';
-import { useCatalog } from './useCatalog';
+import { useAllowList } from './useAllowList';
 import { useLauncher } from './useLauncher';
 
 interface HomeViewProps {
@@ -17,7 +17,7 @@ function tryAutoplay(video: HTMLVideoElement) {
 }
 
 export function HomeView({ disabled, onError, onNavigate }: HomeViewProps) {
-  const { items: games } = useCatalog(fetchActiveGames);
+  const { items: games } = useAllowList(fetchGames);
   const { launchingKey, isLaunchable, launch } = useLauncher(Boolean(disabled), onError);
   const [selectedIndex, setSelectedIndex] = useState(0);
 

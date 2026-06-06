@@ -1,18 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
-import { GalleryManager } from '../components/GalleryManager';
-import { GameCatalogEditor } from '../components/GameCatalogEditor';
 import { useKiosk } from '../context/KioskProvider';
+import { KIOSK_LOGO_URL } from '../lib/config';
 
 const SETUP_IDLE_MS = 15 * 60 * 1000;
-
-type SetupTab = 'allow-list' | 'catalog' | 'gallery';
-
-const SETUP_TABS: { id: SetupTab; label: string }[] = [
-  { id: 'allow-list', label: 'Allow-list' },
-  { id: 'catalog', label: 'Games' },
-  { id: 'gallery', label: 'Gallery' },
-];
 
 export function SetupPage() {
   const { requestAdminOtp, adminLogin, exitSetup, factoryReset, error } = useKiosk();
@@ -21,11 +12,9 @@ export function SetupPage() {
   const [otp, setOtp] = useState('');
   const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
-  const [tab, setTab] = useState<SetupTab>('allow-list');
   const [busy, setBusy] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Re-lock setup mode after 15 minutes of inactivity (ADR-0020).
   useEffect(() => {
     if (!authenticated) return;
     const reset = () => {
@@ -60,7 +49,6 @@ export function SetupPage() {
     setBusy(true);
     try {
       await adminLogin(username, password, otp, sessionOtpId);
-      // adminLogin relaxes lockdown but stays in setup; reveal the editor.
       setAuthenticated(true);
     } catch {
       // context error
@@ -69,84 +57,98 @@ export function SetupPage() {
     }
   }
 
-  // Setup mode: while authenticated and still on the page, show the allow-list editor.
   if (authenticated) {
     return (
-      <section className="panel panel-wide">
-        <h1>Setup</h1>
-        <div className="setup-tabs" role="tablist">
-          {SETUP_TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              className={tab === t.id ? 'is-active' : undefined}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
+      <div className="setup-shell">
+        <section className="panel panel-setup">
+          <h1>Setup</h1>
+          <p className="hint">
+            Scan and allow software on this station. Media is picked from the central CDN gallery.
+          </p>
+          <AllowListEditor />
+          <div className="setup-actions">
+            <button type="button" className="secondary" onClick={() => void exitSetup()}>
+              Done — re-lock
             </button>
-          ))}
-        </div>
-        {tab === 'allow-list' ? <AllowListEditor /> : null}
-        {tab === 'catalog' ? <GameCatalogEditor /> : null}
-        {tab === 'gallery' ? <GalleryManager /> : null}
-        <div className="setup-actions">
-          <button type="button" className="secondary" onClick={() => void exitSetup()}>
-            Done — re-lock
-          </button>
-          <button type="button" className="link danger" onClick={() => void factoryReset()}>
-            Factory reset
-          </button>
-        </div>
-      </section>
+            <button type="button" className="link danger" onClick={() => void factoryReset()}>
+              Factory reset
+            </button>
+          </div>
+        </section>
+      </div>
     );
   }
 
   return (
-    <section className="panel">
-      <h1>Administrator setup</h1>
-      <p>Admin login only. Lockdown is relaxed while you are here.</p>
-      {!sessionOtpId ? (
-        <form onSubmit={requestOtp}>
-          <label>
-            Admin username
-            <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
-          {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={busy}>
-            Send OTP
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={verifyOtp}>
-          <label>
-            OTP code
-            <input
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              required
-              autoComplete="one-time-code"
-            />
-          </label>
-          {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={busy}>
-            Verify and open setup
-          </button>
-        </form>
-      )}
-      <button type="button" className="secondary" onClick={() => void exitSetup()}>
-        Cancel
-      </button>
-    </section>
+    <div className="setup-login-shell">
+      <section className="setup-login-card">
+        <header className="setup-login-header">
+          {KIOSK_LOGO_URL ? (
+            <img className="a360-login-logo" src={KIOSK_LOGO_URL} alt="" />
+          ) : (
+            <span className="a360-brand">ARENA360</span>
+          )}
+          <h1 className="setup-login-title">Administrator setup</h1>
+          <p className="setup-login-subtitle">
+            Admin login only. Lockdown is relaxed while you are here.
+          </p>
+        </header>
+
+        {!sessionOtpId ? (
+          <form className="setup-login-form" onSubmit={requestOtp}>
+            <label>
+              Admin username
+              <input value={username} onChange={(e) => setUsername(e.target.value)} required />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </label>
+            {error ? <p className="error">{error}</p> : null}
+            <div className="setup-login-actions">
+              <button type="submit" disabled={busy}>
+                {busy ? 'Sending…' : 'Send OTP'}
+              </button>
+              <button type="button" className="secondary" onClick={() => void exitSetup()}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form className="setup-login-form" onSubmit={verifyOtp}>
+            <label>
+              OTP code
+              <input
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                required
+                autoComplete="one-time-code"
+              />
+            </label>
+            {error ? <p className="error">{error}</p> : null}
+            <div className="setup-login-actions">
+              <button type="submit" disabled={busy}>
+                {busy ? 'Verifying…' : 'Verify and open setup'}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setSessionOtpId(null);
+                  setOtp('');
+                }}
+              >
+                Back
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+    </div>
   );
 }

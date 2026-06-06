@@ -1,20 +1,19 @@
+import { GALLERY_FALLBACK_URL, GALLERY_URL } from './config';
+import { readGalleryCacheFs, writeGalleryCacheFs } from './tauriCommands';
+
 /**
- * Media gallery for the games catalog. Admins curate a list of logos, posters
- * and preview videos here, then pick from it when adding/editing a game. Like
- * the catalog and allow-list, it seeds from a shipped file
- * (`public/games/gallery.json`) and persists admin edits to localStorage.
+ * Read-only media gallery sourced from a centrally hosted CDN JSON file.
+ * Kiosks fetch on boot and when the Setup picker opens; results are cached
+ * in app-data for offline use. Bundled `public/games/gallery.json` is the
+ * last-resort fallback.
  */
 
 export type GalleryKind = 'image' | 'video';
 
 export interface GalleryItem {
-  /** Stable id (generated on add). */
   id: string;
-  /** Whether the asset is a still image (logo/poster) or a preview video. */
   kind: GalleryKind;
-  /** Label shown in the picker. */
   name: string;
-  /** Served path (e.g. `/games/images/x.svg`) or a remote URL. */
   url: string;
 }
 
@@ -29,9 +28,6 @@ interface GalleryFile {
   items?: RawItem[];
 }
 
-const STORAGE_KEY = 'gaming-cafe.kiosk.gallery';
-const SEED_URL = '/games/gallery.json';
-
 function toItem(raw: RawItem): GalleryItem | null {
   const url = typeof raw.url === 'string' && raw.url.length > 0 ? raw.url : null;
   if (!url) return null;
@@ -42,65 +38,49 @@ function toItem(raw: RawItem): GalleryItem | null {
   return { id, kind, name, url };
 }
 
-let gallery: GalleryItem[] | null = null;
-
-function readStore(): GalleryItem[] | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw);
-    if (!Array.isArray(value)) return null;
-    return value.map(toItem).filter((i): i is GalleryItem => i !== null);
-  } catch {
-    return null;
-  }
+function parseFile(file: GalleryFile): GalleryItem[] {
+  return (file.items ?? []).map(toItem).filter((i): i is GalleryItem => i !== null);
 }
 
-async function fetchSeed(): Promise<GalleryItem[]> {
+let gallery: GalleryItem[] | null = null;
+
+async function fetchUrl(url: string): Promise<GalleryItem[]> {
   try {
-    const res = await fetch(SEED_URL, { cache: 'no-cache' });
+    const res = await fetch(url, { cache: 'no-cache' });
     if (!res.ok) return [];
-    const file = (await res.json()) as GalleryFile;
-    return (file.items ?? []).map(toItem).filter((i): i is GalleryItem => i !== null);
+    return parseFile((await res.json()) as GalleryFile);
   } catch {
     return [];
   }
 }
 
-function persist(list: GalleryItem[]): GalleryItem[] {
-  gallery = list;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    // localStorage unavailable — non-fatal
+async function loadFromCache(): Promise<GalleryItem[] | null> {
+  const file = await readGalleryCacheFs();
+  if (!file?.items.length) return null;
+  const parsed = parseFile({ items: file.items as RawItem[] });
+  return parsed.length > 0 ? parsed : null;
+}
+
+async function fetchRemote(): Promise<GalleryItem[]> {
+  const remote = await fetchUrl(GALLERY_URL);
+  if (remote.length > 0) {
+    void writeGalleryCacheFs(remote);
+    return remote;
   }
-  return list;
+  const cached = await loadFromCache();
+  if (cached?.length) return cached;
+  return fetchUrl(GALLERY_FALLBACK_URL);
 }
 
-function newId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
-  return `asset_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** Load the gallery once (stored copy if present, otherwise the shipped seed). */
+/** Load gallery (cached in memory until refresh). */
 export async function loadGallery(): Promise<GalleryItem[]> {
   if (gallery) return gallery;
-  const stored = readStore();
-  gallery = stored ?? (await fetchSeed());
+  gallery = await fetchRemote();
   return gallery;
 }
 
-/** Add a gallery item, returning the new full list (ignores blank/duplicate urls). */
-export function addGalleryItem(item: Omit<GalleryItem, 'id'>): GalleryItem[] {
-  const list = gallery ?? readStore() ?? [];
-  const url = item.url.trim();
-  if (!url || list.some((i) => i.url === url)) return persist(list);
-  const name = item.name.trim() || url.split('/').pop() || url;
-  return persist([...list, { ...item, url, name, id: newId() }]);
-}
-
-/** Remove a gallery item by id, returning the new full list. */
-export function removeGalleryItem(id: string): GalleryItem[] {
-  const list = gallery ?? readStore() ?? [];
-  return persist(list.filter((i) => i.id !== id));
+/** Re-fetch from CDN (stale-while-revalidate when picker opens). */
+export async function refreshGallery(): Promise<GalleryItem[]> {
+  gallery = await fetchRemote();
+  return gallery;
 }

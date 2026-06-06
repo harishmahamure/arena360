@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { fetchActiveGames } from '../../lib/games';
+import { fetchGames } from '../../lib/allowList';
 import { GameCard } from './GameCard';
-import { useCatalog } from './useCatalog';
+import { useAllowList } from './useAllowList';
 import { useLauncher } from './useLauncher';
 
 interface LibraryViewProps {
@@ -9,9 +9,9 @@ interface LibraryViewProps {
   onError?: (message: string) => void;
 }
 
-/** Arena360 Game Library: search across the games in the catalog. */
+/** Arena360 Game Library: search across allowed games on this station. */
 export function LibraryView({ disabled, onError }: LibraryViewProps) {
-  const { items: games } = useCatalog(fetchActiveGames);
+  const { items: games } = useAllowList(fetchGames);
   const [query, setQuery] = useState('');
   const { launchingKey, isLaunchable, launch } = useLauncher(Boolean(disabled), onError);
 
@@ -28,7 +28,7 @@ export function LibraryView({ disabled, onError }: LibraryViewProps) {
             Vault <span>/ Library</span>
           </h1>
           <p className="a360-library-sub">
-            Browse the games installed on this station and jump straight into gameplay.
+            Browse the games allowed on this station and jump straight into gameplay.
           </p>
         </div>
         <div className="a360-library-tools">
@@ -37,7 +37,7 @@ export function LibraryView({ disabled, onError }: LibraryViewProps) {
             <input
               type="search"
               value={query}
-              placeholder="Search installed games…"
+              placeholder="Search games…"
               aria-label="Search games"
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -46,19 +46,19 @@ export function LibraryView({ disabled, onError }: LibraryViewProps) {
       </header>
 
       {games.length === 0 ? (
-        <p className="a360-empty">No games installed. Ask staff to set up this station.</p>
+        <p className="a360-empty">No games allowed yet. Ask staff to set up this station.</p>
       ) : visible.length === 0 ? (
         <p className="a360-empty">No games match your search.</p>
       ) : (
         <div className="a360-grid">
-          {visible.map((game) => (
+          {visible.map((entry) => (
             <GameCard
-              key={game.id}
-              game={game}
-              launchable={isLaunchable(game)}
-              launching={launchingKey === game.id}
+              key={entry.id}
+              entry={entry}
+              launchable={isLaunchable(entry)}
+              launching={launchingKey === entry.id}
               disabled={disabled}
-              onLaunch={() => void launch(game)}
+              onLaunch={() => void launch(entry)}
             />
           ))}
         </div>

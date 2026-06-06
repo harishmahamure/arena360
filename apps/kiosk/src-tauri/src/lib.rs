@@ -1,5 +1,6 @@
 mod audio;
 mod cache;
+mod catalog;
 mod fingerprint;
 mod lockdown;
 mod power;
@@ -58,6 +59,8 @@ pub fn run() {
             process::kill_tracked_processes,
             process::clear_tracked_processes,
             cache::cache_asset,
+            catalog::read_gallery_cache,
+            catalog::write_gallery_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

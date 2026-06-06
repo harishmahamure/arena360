@@ -26,6 +26,13 @@ export const KIOSK_LOGO_URL = stringFromEnv('VITE_KIOSK_LOGO_URL') ?? BRAND_LOGO
 export const LOGIN_BACKGROUND_VIDEO_URL =
   stringFromEnv('VITE_LOGIN_BACKGROUND_VIDEO_URL') ?? 'https://cdn.arena360.cloud/launch.webm';
 
+/** Centrally hosted media gallery for Setup picker; updated manually on CDN. */
+export const GALLERY_URL =
+  stringFromEnv('VITE_GALLERY_URL') ?? 'https://cdn.arena360.cloud/kiosk/gallery.json';
+
+/** Bundled fallback when CDN gallery is unreachable (dev / offline). */
+export const GALLERY_FALLBACK_URL = '/games/gallery.json';
+
 function numberFromEnv(key: string, fallback: number): number {
   const raw =
     typeof import.meta !== 'undefined'

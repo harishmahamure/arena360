@@ -23,6 +23,30 @@
       "kind": "image",
       "name": "Arena Logo",
       "url": "/logo_dark.png"
+    },
+    {
+      "id": "valorant-thumb",
+      "kind": "image",
+      "name": "Valorant — Jett poster",
+      "url": "https://cdn.arena360.cloud/VALORANT_phx_jett.webp"
+    },
+    {
+      "id": "valorant-logo",
+      "kind": "image",
+      "name": "Valorant — wall art",
+      "url": "https://cdn.arena360.cloud/ico%20n%20vids/valorent/CINEMAFLIX%20Valorant%20Game%20Poster%20Wall%20Art%20Measures%2024%20x%2036%20inches%20(unframed).jpg"
+    },
+    {
+      "id": "valorant-video",
+      "kind": "video",
+      "name": "Valorant — play loop",
+      "url": "https://cdn.arena360.cloud/valorant-play.mp4"
+    },
+    {
+      "id": "cs2-video",
+      "kind": "video",
+      "name": "Valorant — Duelists cinematic",
+      "url": "https://cdn.arena360.cloud/vidssave.com%20DUELISTS%20__%20Official%20Launch%20Cinematic%20Trailer%20-%20VALORANT%201080p.mp4"
     }
   ]
 }

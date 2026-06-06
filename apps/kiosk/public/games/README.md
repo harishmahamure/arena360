@@ -1,79 +1,62 @@
-# Kiosk games catalog
+# Kiosk media gallery
 
-This folder is the on-device catalog the kiosk renders from. It ships inside the
-app bundle (everything under `public/` is served at the web root), so the webview
-loads it at runtime from `/games/games.json`.
+The kiosk loads a **centrally hosted** media gallery for Setup admins to pick
+logos, posters, and preview videos when configuring allowed software.
 
-> Launching is still gated by the client-side allow-list (ADR-0019). The catalog
-> only decides what is *shown*; a card is launchable only when its `launchRef`
-> resolves to an installed allow-list entry, otherwise it renders a
-> "Not installed" badge.
+> Launching is gated by the client-side allow-list (ADR-0019). Each station's
+> allow-list decides what is shown and what can launch. Optional media URLs on
+> allow-list entries are chosen from this gallery.
 
 ## Layout
 
 ```
 public/games/
-  games.json        # catalog seed (default games/tools)
-  gallery.json      # media gallery seed (logos / videos to pick from)
-  images/           # thumbnails / logos referenced by the gallery + catalog
-  videos/           # hover-preview videos referenced by the gallery + catalog
+  gallery.json      # offline dev fallback (mirrors CDN content)
+  images/           # local assets referenced by bundled gallery fallback
 ```
 
-> Both `games.json` and `gallery.json` are **seeds**. Once an admin edits the
-> catalog or gallery in Setup mode, the live data is persisted to the kiosk's
-> `localStorage` and these files are only used as the first-run defaults.
+## CDN gallery (source of truth)
 
-## `gallery.json` schema
+Hosted at `https://cdn.arena360.cloud/kiosk/gallery.json` by default. Override
+per deployment via `VITE_GALLERY_URL`.
 
-The media gallery the admin picks logos/videos/thumbnails from:
+Kiosks fetch on boot and when the Setup gallery picker opens. Fetches are cached
+to app-data (`gallery_cache.json`) for offline picker use. Update the CDN file
+manually to roll out new assets fleet-wide.
+
+### `gallery.json` schema
 
 ```jsonc
 {
   "items": [
     {
-      "id": "poster-ember",          // required, unique
-      "kind": "image",               // "image" | "video"
-      "name": "Ember Poster",        // required, label shown in the picker
-      "url": "/games/images/poster-ember.svg" // served path or remote URL
+      "id": "valorant-thumb",          // required, unique
+      "kind": "image",                 // "image" | "video"
+      "name": "Valorant poster",       // label in the picker
+      "url": "https://cdn.arena360.cloud/..." // absolute CDN URL
     }
   ]
 }
 ```
 
-## `games.json` schema
+## Allow-list entry media (per station)
 
-```jsonc
-{
-  "games": [
-    {
-      "id": "valorant",            // required, stable unique id
-      "name": "Valorant",          // required, display name
-      "genre": "Tactical Shooter", // optional, shown on the card
-      "description": "…",          // optional
-      "thumbnailUrl": "/games/images/valorant.png", // optional, poster art (null = icon fallback)
-      "logoUrl": null,             // optional
-      "videoUrl": "/games/videos/valorant.webm",    // optional, hero / hover preview
-      "icon": "apps",              // optional, Material Symbol for tool tiles
-      "subtitle": "Game Launcher", // optional, shown under tool tiles
-      "launchRef": "Valorant",     // optional, matches an allow-list entry id or name
-      "isActive": true,            // optional, default true; false hides the entry
-      "sortOrder": 1,              // optional, ascending; default 0
-      "category": "game"           // "game" (Home/Library) | "launcher" | "util" (Settings & Tools)
-    }
-  ]
-}
-```
+When an admin allows software in Setup, they may attach optional media from the
+gallery to that entry (stored in localStorage on the station):
 
-### Notes
+| Field | Purpose |
+|-------|---------|
+| `thumbnailUrl` | Library card / carousel poster |
+| `logoUrl` | Hero overlay logo |
+| `videoUrl` | Home hero background / card hover preview |
+| `genre` | Card genre label (games) |
+| `description` | Tool subtitle fallback |
+| `icon` | Material Symbol for launcher/util tiles |
+| `subtitle` | Settings tool subtitle |
+| `sortOrder` | Display order on Home / Library / Tools |
 
-- `category: "game"` entries appear on **Home** (Quick Launch) and **Library**.
-- `category: "launcher"` / `"util"` entries appear under **Settings & Tools**.
-- Asset URLs are served from this folder, e.g. `images/x.png` → `/games/images/x.png`.
-  Leave them `null` to render the built-in icon fallback (no broken images).
-- `launchRef` is matched case-insensitively against an allow-list entry's id, then
-  its name; if omitted, the catalog `name` is matched against entry names.
-- Hero / preview videos must use a **browser-safe codec**, not just a familiar
-  container: **H.264 in MP4** or **VP9 in WebM**. AV1 in either `.mp4` or `.webm`
-  downloads successfully but often fails to decode on macOS (WKWebView) and on
-  Windows without the AV1 Video Extension. The app falls back to the login
-  background loop when a featured video cannot play.
+### Video codec notes
+
+Hero / preview videos must use **H.264 in MP4** or **VP9 in WebM**. AV1 often
+fails on macOS WKWebView. The app falls back to the login background loop when a
+featured video cannot play.

@@ -10,7 +10,7 @@ import {
   type LaunchEntry,
   loadLaunchEntries,
   removeLaunchEntry,
-  setEntryCategory,
+  updateLaunchEntry,
 } from '../lib/allowList';
 import {
   launchAllowed,
@@ -18,6 +18,7 @@ import {
   type ScanCandidate,
   scanInstalledSoftware,
 } from '../lib/tauriCommands';
+import { GalleryPicker } from './GalleryPicker';
 
 interface ScanProgress {
   scanned: number;
@@ -30,7 +31,8 @@ const CATEGORY_OPTIONS: { value: LaunchCategory; label: string }[] = [
   { value: 'util', label: 'Utility' },
 ];
 
-/** Derive a friendly display name from an executable path's file name. */
+type MediaField = 'logoUrl' | 'thumbnailUrl' | 'videoUrl';
+
 function suggestName(path: string): string {
   const base = path.split(/[\\/]/).pop() ?? path;
   const stem = base.replace(/\.(exe|bat|cmd|com|lnk|app)$/i, '');
@@ -43,6 +45,7 @@ function suggestName(path: string): string {
 
 export function AllowListEditor() {
   const [entries, setEntries] = useState<LaunchEntry[]>(() => loadLaunchEntries());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ScanCandidate[]>([]);
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
@@ -50,6 +53,9 @@ export function AllowListEditor() {
   const [manualPath, setManualPath] = useState('');
   const [manualCategory, setManualCategory] = useState<LaunchCategory>('game');
   const [status, setStatus] = useState<string | null>(null);
+  const [picker, setPicker] = useState<{ field: MediaField } | null>(null);
+
+  const selected = entries.find((e) => e.id === selectedId) ?? null;
 
   useEffect(() => {
     const unlisten = listen<ScanProgress>('scan-progress', (event) => {
@@ -74,22 +80,37 @@ export function AllowListEditor() {
     }
   }, []);
 
+  function syncEntries(next: LaunchEntry[]) {
+    setEntries(next);
+    if (selectedId && !next.some((e) => e.id === selectedId)) setSelectedId(null);
+  }
+
   function addCandidate(c: ScanCandidate) {
-    setEntries(
-      addLaunchEntry({ name: c.name, executablePath: c.executablePath, present: c.present }),
+    const next = addLaunchEntry({
+      name: c.name,
+      executablePath: c.executablePath,
+      present: c.present,
+    });
+    syncEntries(next);
+    const added = next.find(
+      (e) => e.executablePath.toLowerCase() === c.executablePath.toLowerCase(),
     );
+    if (added) setSelectedId(added.id);
   }
 
   function addManual(e: React.FormEvent) {
     e.preventDefault();
     if (!manualName.trim() || !manualPath.trim()) return;
-    setEntries(
-      addLaunchEntry({
-        name: manualName.trim(),
-        executablePath: manualPath.trim(),
-        category: manualCategory,
-      }),
+    const next = addLaunchEntry({
+      name: manualName.trim(),
+      executablePath: manualPath.trim(),
+      category: manualCategory,
+    });
+    syncEntries(next);
+    const added = next.find(
+      (e) => e.executablePath.toLowerCase() === manualPath.trim().toLowerCase(),
     );
+    if (added) setSelectedId(added.id);
     setManualName('');
     setManualPath('');
     setManualCategory('game');
@@ -107,7 +128,12 @@ export function AllowListEditor() {
   }
 
   function remove(id: string) {
-    setEntries(removeLaunchEntry(id));
+    syncEntries(removeLaunchEntry(id));
+  }
+
+  function patchSelected(patch: Partial<LaunchEntry>) {
+    if (!selectedId) return;
+    syncEntries(updateLaunchEntry(selectedId, patch));
   }
 
   async function testLaunch(entry: LaunchEntry) {
@@ -123,43 +149,59 @@ export function AllowListEditor() {
   const alreadyAdded = (path: string) =>
     entries.some((e) => e.executablePath.toLowerCase() === path.toLowerCase());
 
+  const pickerKind = picker?.field === 'videoUrl' ? 'video' : 'image';
+
   return (
-    <div className="allow-list-editor">
-      <div className="allow-list-section">
+    <div className="catalog-editor allow-list-editor">
+      <aside className="catalog-editor-list">
         <div className="allow-list-header">
-          <h2>Launch allow-list ({entries.length})</h2>
+          <h2>Allowed software ({entries.length})</h2>
+          <button type="button" onClick={() => void runScan()} disabled={scanning}>
+            {scanning ? 'Scanning…' : 'Scan'}
+          </button>
         </div>
+
+        {scanning && progress ? <progress value={progress.scanned} max={progress.total} /> : null}
+
         {entries.length === 0 ? (
-          <p className="hint">No applications added yet. Scan or add one below.</p>
+          <p className="hint">Scan installed software or add an executable below.</p>
         ) : (
-          <ul className="allow-list">
+          <ul className="catalog-list">
             {entries.map((entry) => (
-              <li key={entry.id} className={entry.present === false ? 'missing' : undefined}>
-                <IconFallback name={entry.name} size={28} className="allow-list-icon" />
-                <span className="allow-list-name">{entry.name}</span>
-                <span className="allow-list-path">{entry.executablePath}</span>
-                <span className="allow-list-actions">
-                  <select
-                    className="allow-list-category"
-                    value={entryCategory(entry)}
-                    aria-label={`Section for ${entry.name}`}
-                    onChange={(e) =>
-                      setEntries(setEntryCategory(entry.id, e.target.value as LaunchCategory))
-                    }
-                  >
-                    {CATEGORY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => void testLaunch(entry)}
-                  >
-                    Test
-                  </button>
+              <li
+                key={entry.id}
+                className={
+                  [
+                    entry.present === false ? 'is-inactive' : '',
+                    selectedId === entry.id ? 'is-selected' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
+              >
+                <button
+                  type="button"
+                  className="catalog-row"
+                  onClick={() => setSelectedId(entry.id)}
+                >
+                  <span className="catalog-art">
+                    {entry.thumbnailUrl || entry.logoUrl ? (
+                      <img src={entry.thumbnailUrl ?? entry.logoUrl ?? ''} alt="" />
+                    ) : (
+                      <IconFallback name={entry.name} size={24} />
+                    )}
+                  </span>
+                  <span className="catalog-info">
+                    <span className="catalog-name">{entry.name}</span>
+                    <span className="catalog-meta">
+                      <span className="catalog-tag">{entryCategory(entry)}</span>
+                      {entry.present === false ? (
+                        <span className="catalog-warn">Missing</span>
+                      ) : null}
+                    </span>
+                  </span>
+                </button>
+                <span className="catalog-actions">
                   <button type="button" className="danger" onClick={() => remove(entry.id)}>
                     Remove
                   </button>
@@ -168,72 +210,221 @@ export function AllowListEditor() {
             ))}
           </ul>
         )}
-      </div>
 
-      <div className="allow-list-section">
-        <div className="allow-list-header">
-          <h2>Detected software</h2>
-          <button type="button" onClick={() => void runScan()} disabled={scanning}>
-            {scanning ? 'Scanning…' : 'Scan installed software'}
-          </button>
-        </div>
-        {scanning && progress ? <progress value={progress.scanned} max={progress.total} /> : null}
         {candidates.length > 0 ? (
-          <ul className="allow-list">
-            {candidates.map((c) => (
-              <li key={c.executablePath} className={c.present ? undefined : 'missing'}>
-                <IconFallback name={c.name} size={28} className="allow-list-icon" />
-                <span className="allow-list-name">{c.name}</span>
-                <span className="allow-list-path">{c.executablePath}</span>
-                <span className="allow-list-actions">
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={alreadyAdded(c.executablePath)}
-                    onClick={() => addCandidate(c)}
-                  >
-                    {alreadyAdded(c.executablePath) ? 'Added' : 'Add'}
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="allow-list-section">
+            <h3 className="allow-list-subhead">Detected ({candidates.length})</h3>
+            <ul className="allow-list allow-list--compact">
+              {candidates.map((c) => (
+                <li key={c.executablePath} className={c.present ? undefined : 'missing'}>
+                  <IconFallback name={c.name} size={22} className="allow-list-icon" />
+                  <span className="allow-list-name">{c.name}</span>
+                  <span className="allow-list-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={alreadyAdded(c.executablePath)}
+                      onClick={() => addCandidate(c)}
+                    >
+                      {alreadyAdded(c.executablePath) ? 'Added' : 'Add'}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
+
+        <div className="allow-list-section">
+          <h3 className="allow-list-subhead">Add manually</h3>
+          <form onSubmit={addManual} className="allow-list-manual">
+            <input
+              value={manualName}
+              onChange={(e) => setManualName(e.target.value)}
+              placeholder="Display name"
+            />
+            <input
+              value={manualPath}
+              onChange={(e) => setManualPath(e.target.value)}
+              placeholder="C:\\Path\\To\\app.exe"
+            />
+            <select
+              value={manualCategory}
+              aria-label="Section"
+              onChange={(e) => setManualCategory(e.target.value as LaunchCategory)}
+            >
+              {CATEGORY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="secondary" onClick={() => void browse()}>
+              Browse…
+            </button>
+            <button type="submit">Add</button>
+          </form>
+        </div>
+
+        {status ? <p className="meta">{status}</p> : null}
+      </aside>
+
+      <div className="catalog-editor-detail">
+        {selected ? (
+          <div className="catalog-form">
+            <header className="catalog-form-head">
+              <div>
+                <h2>{selected.name}</h2>
+                <p className="hint">
+                  Pick optional media from the CDN gallery for Home and Library.
+                </p>
+              </div>
+              <div className="catalog-form-actions catalog-form-actions--head">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void testLaunch(selected)}
+                >
+                  Test launch
+                </button>
+              </div>
+            </header>
+
+            <div className="catalog-media">
+              <MediaSlot
+                label="Logo"
+                kind="image"
+                url={selected.logoUrl ?? null}
+                onPick={() => setPicker({ field: 'logoUrl' })}
+                onClear={() => patchSelected({ logoUrl: null })}
+              />
+              <MediaSlot
+                label="Thumbnail"
+                kind="image"
+                url={selected.thumbnailUrl ?? null}
+                onPick={() => setPicker({ field: 'thumbnailUrl' })}
+                onClear={() => patchSelected({ thumbnailUrl: null })}
+              />
+              <MediaSlot
+                label="Preview video"
+                kind="video"
+                url={selected.videoUrl ?? null}
+                onPick={() => setPicker({ field: 'videoUrl' })}
+                onClear={() => patchSelected({ videoUrl: null })}
+              />
+            </div>
+
+            <div className="catalog-fields">
+              <label className="catalog-field">
+                Name
+                <input
+                  value={selected.name}
+                  onChange={(e) => patchSelected({ name: e.target.value })}
+                />
+              </label>
+
+              <label className="catalog-field">
+                Executable path
+                <input value={selected.executablePath} readOnly />
+              </label>
+
+              <label className="catalog-field">
+                Section
+                <select
+                  value={entryCategory(selected)}
+                  onChange={(e) => patchSelected({ category: e.target.value as LaunchCategory })}
+                >
+                  {CATEGORY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {entryCategory(selected) === 'game' ? (
+                <label className="catalog-field">
+                  Genre
+                  <input
+                    value={selected.genre ?? ''}
+                    onChange={(e) => patchSelected({ genre: e.target.value || null })}
+                    placeholder="e.g. Tactical Shooter"
+                  />
+                </label>
+              ) : null}
+
+              <label className="catalog-field catalog-field--wide">
+                Description
+                <input
+                  value={selected.description ?? ''}
+                  onChange={(e) => patchSelected({ description: e.target.value || null })}
+                  placeholder="Short blurb"
+                />
+              </label>
+
+              <label className="catalog-field catalog-field--narrow">
+                Sort order
+                <input
+                  type="number"
+                  value={selected.sortOrder ?? 0}
+                  onChange={(e) => patchSelected({ sortOrder: Number(e.target.value) || 0 })}
+                />
+              </label>
+            </div>
+          </div>
+        ) : (
+          <div className="catalog-editor-empty">
+            <span className="material-symbols-outlined" aria-hidden="true">
+              apps
+            </span>
+            <p>Select an allowed app to attach gallery media and edit details.</p>
+          </div>
+        )}
       </div>
 
-      <div className="allow-list-section">
-        <h2>Add an application</h2>
-        <p className="hint">Browse for an executable, or paste its full path.</p>
-        <form onSubmit={addManual} className="allow-list-manual">
-          <input
-            value={manualName}
-            onChange={(e) => setManualName(e.target.value)}
-            placeholder="Display name"
-          />
-          <input
-            value={manualPath}
-            onChange={(e) => setManualPath(e.target.value)}
-            placeholder="C:\\Path\\To\\game.exe"
-          />
-          <select
-            value={manualCategory}
-            aria-label="Section"
-            onChange={(e) => setManualCategory(e.target.value as LaunchCategory)}
-          >
-            {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="secondary" onClick={() => void browse()}>
-            Browse…
-          </button>
-          <button type="submit">Add</button>
-        </form>
-      </div>
+      {picker && selected ? (
+        <GalleryPicker
+          kind={pickerKind}
+          value={selected[picker.field] ?? null}
+          onSelect={(url) => patchSelected({ [picker.field]: url })}
+          onClose={() => setPicker(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
 
-      {status ? <p className="meta">{status}</p> : null}
+interface MediaSlotProps {
+  label: string;
+  kind: 'image' | 'video';
+  url: string | null;
+  onPick: () => void;
+  onClear: () => void;
+}
+
+function MediaSlot({ label, kind, url, onPick, onClear }: MediaSlotProps) {
+  return (
+    <div className="catalog-media-slot">
+      <span className="catalog-media-label">{label}</span>
+      <button type="button" className="catalog-media-preview" onClick={onPick}>
+        {url ? (
+          kind === 'video' ? (
+            <video src={url} muted playsInline preload="metadata" />
+          ) : (
+            <img src={url} alt="" />
+          )
+        ) : (
+          <span className="catalog-media-empty">
+            <span className="material-symbols-outlined">add_photo_alternate</span>
+            Choose from gallery
+          </span>
+        )}
+      </button>
+      {url ? (
+        <button type="button" className="link danger" onClick={onClear}>
+          Clear
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -1,9 +1,7 @@
-import { useEffect, useRef } from 'react';
-import type { KioskGame } from '../../lib/games';
+import type { LaunchEntry } from '../../lib/allowList';
 
 interface GameCardProps {
-  game: KioskGame;
-  /** Whether this game resolves to an installed allow-list entry. */
+  entry: LaunchEntry;
   launchable: boolean;
   launching: boolean;
   disabled?: boolean;
@@ -11,17 +9,12 @@ interface GameCardProps {
 }
 
 /** A 3:4 glass game poster with thumbnail background and autoplay video overlay. */
-export function GameCard({ game, launchable, launching, disabled, onLaunch }: GameCardProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const clickable = launchable && !disabled;
+function tryAutoplay(video: HTMLVideoElement) {
+  void Promise.resolve(video.play()).catch(() => {});
+}
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    void video.play().catch(() => {
-      // Autoplay may be blocked until user interaction; muted + playsInline usually succeeds.
-    });
-  }, [game.videoUrl]);
+export function GameCard({ entry, launchable, launching, disabled, onLaunch }: GameCardProps) {
+  const clickable = launchable && !disabled;
 
   return (
     <button
@@ -29,41 +22,42 @@ export function GameCard({ game, launchable, launching, disabled, onLaunch }: Ga
       className="a360-game-card"
       disabled={!clickable || launching}
       onClick={onLaunch}
-      title={launchable ? game.name : `${game.name} (not installed on this station)`}
+      title={launchable ? entry.name : `${entry.name} (executable missing)`}
     >
-      {game.thumbnailUrl ? (
-        <img className="a360-game-card-thumb" src={game.thumbnailUrl} alt="" />
+      {entry.thumbnailUrl ? (
+        <img className="a360-game-card-thumb" src={entry.thumbnailUrl} alt="" />
       ) : (
         <span className="a360-game-card-empty">
           <span className="material-symbols-outlined">sports_esports</span>
         </span>
       )}
 
-      {game.videoUrl ? (
+      {entry.videoUrl ? (
         <video
-          ref={videoRef}
+          key={entry.videoUrl}
           className="a360-game-card-video"
-          src={game.videoUrl}
+          src={entry.videoUrl}
           autoPlay
           loop
           muted
           playsInline
           preload="auto"
+          onLoadedData={(e) => tryAutoplay(e.currentTarget)}
         />
       ) : null}
 
       <span className="a360-game-card-grad" />
 
       <span className={`a360-game-card-badge ${launchable ? 'is-ready' : 'is-unavailable'}`}>
-        {launchable ? 'Ready' : 'Not installed'}
+        {launchable ? 'Ready' : 'Missing'}
       </span>
 
       <span className="a360-game-card-info">
-        <span className="a360-game-card-name">{game.name}</span>
-        {game.genre ? (
+        <span className="a360-game-card-name">{entry.name}</span>
+        {entry.genre ? (
           <span className="a360-game-card-genre">
             <span className="material-symbols-outlined">bolt</span>
-            {game.genre}
+            {entry.genre}
           </span>
         ) : null}
       </span>

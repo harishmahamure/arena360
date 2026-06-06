@@ -1,6 +1,6 @@
-import { fetchTools } from '../../lib/games';
+import { fetchTools } from '../../lib/allowList';
 import { openAudioSettings } from '../../lib/tauriCommands';
-import { useCatalog } from './useCatalog';
+import { useAllowList } from './useAllowList';
 import { useLauncher } from './useLauncher';
 
 interface SettingsViewProps {
@@ -9,11 +9,11 @@ interface SettingsViewProps {
 }
 
 /**
- * Arena360 Settings & Tools: launch the launcher/utility apps from the catalog
- * (gated by the allow-list, ADR-0019), plus a built-in Sound Settings tile.
+ * Arena360 Settings & Tools: launch allowed launcher/utility apps (ADR-0019),
+ * plus a built-in Sound Settings tile.
  */
 export function SettingsView({ disabled, onError }: SettingsViewProps) {
-  const { items: tools } = useCatalog(fetchTools);
+  const { items: tools } = useAllowList(fetchTools);
   const { launchingKey, isLaunchable, launch } = useLauncher(Boolean(disabled), onError);
 
   return (
@@ -21,7 +21,7 @@ export function SettingsView({ disabled, onError }: SettingsViewProps) {
       <header className="a360-settings-head">
         <h1 className="a360-settings-title">System Settings &amp; Tools</h1>
         <p className="a360-settings-sub">
-          Launch the utility applications installed on this station.
+          Launch the utility applications allowed on this station.
         </p>
       </header>
 
@@ -35,7 +35,7 @@ export function SettingsView({ disabled, onError }: SettingsViewProps) {
                   <span className="material-symbols-outlined">{tool.icon ?? 'build'}</span>
                 </span>
                 <h3 className="a360-tool-name">{tool.name}</h3>
-                <p className="a360-tool-sub">{tool.subtitle ?? 'Utility'}</p>
+                <p className="a360-tool-sub">{tool.subtitle ?? tool.description ?? 'Utility'}</p>
               </div>
               <button
                 type="button"

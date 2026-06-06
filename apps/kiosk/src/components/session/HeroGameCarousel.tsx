@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
-import type { KioskGame } from '../../lib/games';
+import type { LaunchEntry } from '../../lib/allowList';
 
 interface HeroGameCarouselProps {
-  games: KioskGame[];
+  games: LaunchEntry[];
   selectedIndex: number;
   onSelect: (index: number) => void;
   onAllGames: () => void;
