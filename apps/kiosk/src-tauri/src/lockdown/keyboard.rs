@@ -135,7 +135,7 @@ mod win {
 }
 
 #[cfg(target_os = "windows")]
-pub fn set_app_handle(app: AppHandle) {
+pub fn set_app_handle(app: tauri::AppHandle) {
     win::set_app_handle(app);
 }
 
