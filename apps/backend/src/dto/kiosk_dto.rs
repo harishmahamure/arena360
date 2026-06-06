@@ -75,6 +75,9 @@ pub struct KioskSessionResponseDto {
     pub remainingMinutes: f64,
     /// True when an existing open session on this device was resumed (crash recovery).
     pub resumed: bool,
+    /// Set when the session has been closed (auto, voluntary, force, offline_reconcile).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endTime: Option<String>,
 }
 
 #[allow(non_snake_case)]

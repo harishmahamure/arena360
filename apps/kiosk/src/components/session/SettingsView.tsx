@@ -26,8 +26,9 @@ export function SettingsView({ disabled, onError, onLaunched }: SettingsViewProp
       <header className="a360-settings-head">
         <h1 className="a360-settings-title">System Settings &amp; Tools</h1>
         <p className="a360-settings-sub">
-          Launch the utility applications allowed on this station. Alt+Tab back to Arena360 and use{' '}
-          <strong>Close app</strong> in the running-apps bar when you are done.
+          Launch the utility applications allowed on this station. After opening Sound Settings,
+          press <strong>Ctrl+Shift+H</strong> to return to Arena360. Use <strong>Close app</strong>{' '}
+          in the running-apps bar when you are done with other tools.
         </p>
       </header>
 
@@ -68,7 +69,11 @@ export function SettingsView({ disabled, onError, onLaunched }: SettingsViewProp
             type="button"
             className="a360-tool-launch"
             disabled={disabled}
-            onClick={() => void openAudioSettings()}
+            onClick={() =>
+              void openAudioSettings().catch((error) =>
+                onError?.(error instanceof Error ? error.message : 'Could not open sound settings'),
+              )
+            }
           >
             <span>Open</span>
             <span className="material-symbols-outlined">open_in_new</span>

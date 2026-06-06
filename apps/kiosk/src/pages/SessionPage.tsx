@@ -7,6 +7,7 @@ import { SettingsView } from '../components/session/SettingsView';
 import { useTrackedProcesses } from '../components/session/useTrackedProcesses';
 import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
+import { useLocalRemainingMinutes } from '../hooks/useLocalRemainingMinutes';
 import { useSessionPoller } from '../hooks/useSessionPoller';
 import { OFFLINE_GRACE_MS } from '../lib/config';
 import { playRemainingTimeSound } from '../lib/sessionSounds';
@@ -67,14 +68,15 @@ export function SessionPage() {
     }
   }, [activeSession, startSession]);
 
-  const remaining = activeSession?.remainingMinutes;
+  const serverRemaining = activeSession?.remainingMinutes;
+  const localRemaining = useLocalRemainingMinutes(serverRemaining);
   const activeSessionId = activeSession?.id;
   useSessionPoller(
-    remaining,
+    localRemaining ?? serverRemaining,
     syncSession,
     Boolean(activeSession) &&
       forceEndGraceEndsAt === null &&
-      (!wsConnected || (remaining ?? Number.POSITIVE_INFINITY) <= 1),
+      (!wsConnected || (localRemaining ?? serverRemaining ?? Number.POSITIVE_INFINITY) <= 1),
   );
 
   useEffect(() => {
@@ -85,33 +87,37 @@ export function SessionPage() {
     return () => clearInterval(id);
   }, [activeSessionId, forceEndGraceEndsAt, heartbeatSession]);
 
-  // Reminders + recharge toast when the authoritative value changes.
+  // Recharge toast when the server-authoritative value increases (mid-session top-up).
   useEffect(() => {
-    if (typeof remaining !== 'number') return;
+    if (typeof serverRemaining !== 'number') return;
     const prev = prevMinutesRef.current;
-    if (prev !== null && remaining > prev + 0.05) {
+    if (prev !== null && serverRemaining > prev + 0.05) {
       pushToast('Time added — thanks!', 'success');
-      // Re-arm reminders the player has climbed back above.
       for (const t of REMINDER_THRESHOLDS) {
-        if (remaining > t) firedRemindersRef.current.delete(t);
+        if (serverRemaining > t) firedRemindersRef.current.delete(t);
       }
     }
+    prevMinutesRef.current = serverRemaining;
+  }, [serverRemaining, pushToast]);
+
+  // Time-based reminders: driven by the local countdown so sounds fire on schedule.
+  useEffect(() => {
+    if (typeof localRemaining !== 'number') return;
     for (const t of REMINDER_THRESHOLDS) {
-      if (remaining <= t && !firedRemindersRef.current.has(t)) {
+      if (localRemaining <= t && !firedRemindersRef.current.has(t)) {
         firedRemindersRef.current.add(t);
         pushToast(`${t} minute${t === 1 ? '' : 's'} remaining`, t === 1 ? 'warning' : 'info');
-        playRemainingTimeSound(t);
+        if (t !== 1) playRemainingTimeSound(t);
       }
     }
-    prevMinutesRef.current = remaining;
-  }, [remaining, pushToast]);
+  }, [localRemaining, pushToast]);
 
-  // Auto-end when the countdown reaches zero (unless extended in time).
+  // Auto-end when the local countdown reaches zero (unless extended in time).
   useEffect(() => {
-    if (typeof remaining === 'number' && remaining <= 0 && forceEndGraceEndsAt === null) {
+    if (typeof localRemaining === 'number' && localRemaining <= 0 && forceEndGraceEndsAt === null) {
       void endSession('auto');
     }
-  }, [remaining, forceEndGraceEndsAt, endSession]);
+  }, [localRemaining, forceEndGraceEndsAt, endSession]);
 
   // Force-end grace overlay countdown -> cleanup at zero.
   useEffect(() => {
@@ -161,11 +167,12 @@ export function SessionPage() {
     <div className="a360-session">
       <SessionNav
         playerName={playerName}
-        remainingMinutes={remaining}
+        remainingMinutes={localRemaining ?? serverRemaining}
         deviceName={deviceName}
         activeView={view}
         onNavigate={setView}
         onEndSession={() => setConfirmEnd(true)}
+        onError={onError}
       />
 
       <RunningAppsBar processes={processes} closing={closing} onCloseAll={closeAll} />

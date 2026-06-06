@@ -15,6 +15,7 @@ use crate::dto::{
 use crate::error::AppError;
 use crate::models::{Device, User};
 use crate::repositories::{SessionRepository, UserRepository};
+use crate::services::session_service::effective_remaining_minutes;
 use crate::services::totp_util::verify_totp_code;
 use crate::services::{BalanceService, MailService, OtpRateLimiter};
 
@@ -146,11 +147,15 @@ impl AuthService {
                 return Err(BalanceService::validation_to_app_error(validation));
             }
 
+            let balance = self.balances.get_raw(session.balance_id).await?;
             Some(ActiveSessionDto {
                 id: session.session_id.to_string(),
                 startTime: session.start_time,
                 balanceId: session.balance_id.to_string(),
-                remainingMinutes: session.remaining_minutes as f64,
+                remainingMinutes: effective_remaining_minutes(
+                    balance.remaining_minutes,
+                    session.start_time,
+                ) as f64,
             })
         } else {
             self.balances

@@ -1,6 +1,9 @@
+use tauri::AppHandle;
+
 #[cfg(target_os = "windows")]
 mod win {
-    use std::process::Command;
+    use std::ffi::c_void;
+    use tauri::{AppHandle, Manager};
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use windows::Win32::Media::Audio::{
         eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator,
@@ -8,6 +11,9 @@ mod win {
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOW;
+    use windows::core::{w, PCWSTR};
 
     struct ComGuard;
 
@@ -67,12 +73,49 @@ mod win {
         Ok(volume)
     }
 
-    pub fn open_settings() -> Result<(), String> {
-        Command::new("cmd")
-            .args(["/C", "start", "", "ms-settings:sound"])
-            .spawn()
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+    fn shell_execute(file: PCWSTR, params: PCWSTR) -> Result<(), String> {
+        unsafe {
+            let result = ShellExecuteW(
+                None,
+                w!("open"),
+                file,
+                params,
+                None,
+                SW_SHOW,
+            );
+            // Values <= 32 indicate failure (https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew)
+            if result.0 <= 32_usize as *mut c_void {
+                return Err(format!(
+                    "Could not open sound settings (ShellExecute code {})",
+                    result.0 as isize
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Lower the always-on-top kiosk so Windows sound UI is visible, then open it.
+    fn yield_kiosk_to_external_ui(app: &AppHandle) -> Result<(), String> {
+        let window = app
+            .get_webview_window("main")
+            .or_else(|| app.webview_windows().values().next().cloned())
+            .ok_or_else(|| "Main window not found".to_string())?;
+        window
+            .set_always_on_top(false)
+            .map_err(|e| e.to_string())?;
+        window.set_fullscreen(false).map_err(|e| e.to_string())?;
+        window.minimize().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn open_settings(app: &AppHandle) -> Result<(), String> {
+        yield_kiosk_to_external_ui(app)?;
+
+        if shell_execute(w!("ms-settings:sound"), PCWSTR::null()).is_ok() {
+            return Ok(());
+        }
+
+        shell_execute(w!("control"), w!("mmsys.cpl,,2"))
     }
 }
 
@@ -103,14 +146,15 @@ pub fn set_system_volume(volume: u8) -> Result<u8, String> {
 }
 
 #[tauri::command]
-pub fn open_audio_settings() -> Result<(), String> {
+pub fn open_audio_settings(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        win::open_settings()
+        win::open_settings(&app)
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        Ok(())
+        let _ = app;
+        Err("Sound settings are only available on Windows".to_string())
     }
 }

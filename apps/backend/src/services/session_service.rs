@@ -39,6 +39,11 @@ fn elapsed_minutes_between(start_time: DateTime<Utc>, end_time: DateTime<Utc>) -
     (((duration_ms as f64) / (1000.0 * 60.0)).ceil() as i32).max(0)
 }
 
+/// Remaining play time for an open session: balance minutes minus elapsed usage.
+pub fn effective_remaining_minutes(balance_remaining: i32, start_time: DateTime<Utc>) -> i32 {
+    (balance_remaining - elapsed_minutes_since(start_time)).max(0)
+}
+
 impl SessionService {
     pub fn new(
         pool: PgPool,
@@ -189,10 +194,14 @@ impl SessionService {
                 .find_by_id(open.session_id)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
+            let balance = self.balances.get_raw(open.balance_id).await?;
             return Ok(KioskSessionStart {
                 session,
                 balance_id: open.balance_id,
-                remaining_minutes: open.remaining_minutes,
+                remaining_minutes: effective_remaining_minutes(
+                    balance.remaining_minutes,
+                    open.start_time,
+                ),
                 resumed: true,
             });
         }
@@ -246,7 +255,41 @@ impl SessionService {
         &self,
         player_id: Uuid,
     ) -> Result<Option<crate::repositories::session_repo::PlayerOpenSession>, AppError> {
-        self.repo.find_open_session_for_player(player_id).await
+        let Some(mut open) = self.repo.find_open_session_for_player(player_id).await? else {
+            return Ok(None);
+        };
+        let balance = self.balances.get_raw(open.balance_id).await?;
+        open.remaining_minutes = effective_remaining_minutes(
+            balance.remaining_minutes,
+            open.start_time,
+        );
+        if open.remaining_minutes <= 0 {
+            self.auto_end_expired(open.session_id).await?;
+            return Ok(None);
+        }
+        Ok(Some(open))
+    }
+
+    /// Close an expired open session with `reason = auto` and persist `endTime`.
+    async fn auto_end_expired(&self, session_id: Uuid) -> Result<(), AppError> {
+        if let Some(session) = self.repo.find_by_id(session_id).await? {
+            if session.end_time.is_none() {
+                self.end(
+                    session_id,
+                    EndSessionDto {
+                        end_time: Some(Utc::now()),
+                        time_credits_consumed: None,
+                        staff_totp: None,
+                        reason: Some("auto".to_string()),
+                    },
+                    None,
+                )
+                .await?;
+            }
+        }
+        Err(AppError::NotFound(format!(
+            "Session with ID {session_id} has ended"
+        )))
     }
 
     pub async fn heartbeat_for_player(
@@ -261,16 +304,9 @@ impl SessionService {
             })?;
 
         if session.end_time.is_some() {
-            let balance_id = session
-                .balance_id
-                .ok_or_else(|| AppError::BadRequest("Session has no linked balance".to_string()))?;
-            let balance = self.balances.get_raw(balance_id).await?;
-            return Ok(KioskSessionStart {
-                session,
-                balance_id,
-                remaining_minutes: balance.remaining_minutes,
-                resumed: true,
-            });
+            return Err(AppError::NotFound(format!(
+                "Session with ID {session_id} has ended"
+            )));
         }
 
         if session.device_id != device_id {
@@ -294,6 +330,10 @@ impl SessionService {
         // via the end API.
         let elapsed_minutes = elapsed_minutes_since(session.start_time);
         let effective_remaining = (balance.remaining_minutes - elapsed_minutes).max(0);
+
+        if effective_remaining <= 0 {
+            self.auto_end_expired(session_id).await?;
+        }
 
         Ok(KioskSessionStart {
             session,
@@ -378,6 +418,7 @@ impl SessionService {
             "sessionId": updated.id.to_string(),
             "deviceId": session.device_id.to_string(),
             "remainingMinutes": remaining_minutes,
+            "endTime": updated.end_time.map(|t| t.to_rfc3339()),
         });
         if let Some(reason) = &reason {
             payload["reason"] = serde_json::Value::String(reason.clone());
@@ -401,6 +442,7 @@ impl SessionService {
                 "playerId": player_id.to_string(),
                 "reason": reason,
                 "remainingMinutes": remaining_minutes,
+                "endTime": updated.end_time.map(|t| t.to_rfc3339()),
             });
             let _ = self
                 .outbox
@@ -418,4 +460,21 @@ impl SessionService {
         Ok(updated)
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn effective_remaining_subtracts_elapsed_minutes() {
+        let start = Utc::now() - chrono::Duration::minutes(15);
+        assert_eq!(effective_remaining_minutes(60, start), 45);
+    }
+
+    #[test]
+    fn effective_remaining_never_negative() {
+        let start = Utc::now() - chrono::Duration::minutes(30);
+        assert_eq!(effective_remaining_minutes(5, start), 0);
+    }
 }

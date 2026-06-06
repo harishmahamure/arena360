@@ -1,4 +1,4 @@
-import { ApiError } from '@gaming-cafe/utils';
+import { ApiError, isApiError } from '@gaming-cafe/utils';
 import {
   createContext,
   type ReactNode,
@@ -20,6 +20,7 @@ import {
 import { enqueueEndIntent, loadEndIntents, removeEndIntent } from '../lib/offlineQueue';
 import { formatPlayerLoginError } from '../lib/planErrors';
 import { KioskRealtimeClient } from '../lib/realtime';
+import { prepareSessionSounds } from '../lib/sessionSounds';
 import {
   clearAllTokens,
   clearTrackedProcesses,
@@ -177,13 +178,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
             setPlayerName(null);
             void clearPlayerSession();
             setPhase('login');
-          }
-        }
-        if (frame.event_type === 'balance.updated') {
-          const payload = frame.payload as { remainingMinutes?: number } | undefined;
-          if (typeof payload?.remainingMinutes === 'number') {
-            const minutes = payload.remainingMinutes;
-            setActiveSession((prev) => (prev ? { ...prev, remainingMinutes: minutes } : prev));
           }
         }
         if (frame.event_type === 'device.status_changed') {
@@ -439,6 +433,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         if (res.activeSession) {
           setActiveSession(res.activeSession);
         }
+        prepareSessionSounds();
         setPhase('session');
         await setLockdownState('Locked');
         if (deviceId) connectWs(deviceId, res.user.id);
@@ -473,6 +468,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         balanceId: res.balanceId,
         remainingMinutes: res.remainingMinutes,
       });
+      prepareSessionSounds();
       setConflictDevice(null);
       setPhase('session');
       await setLockdownState('Locked');
@@ -585,10 +581,18 @@ export function KioskProvider({ children }: { children: ReactNode }) {
               remainingMinutes: res.remainingMinutes,
             },
       );
-    } catch {
+    } catch (error) {
+      if (isApiError(error) && error.statusCode === 404) {
+        setActiveSession(null);
+        setPlayerName(null);
+        await clearPlayerSession();
+        setPhase('login');
+        if (deviceId) connectWs(deviceId);
+        return;
+      }
       setOnline(false);
     }
-  }, [activeSession?.id]);
+  }, [activeSession?.id, connectWs, deviceId]);
 
   const dismissConflict = useCallback(() => {
     setConflictDevice(null);

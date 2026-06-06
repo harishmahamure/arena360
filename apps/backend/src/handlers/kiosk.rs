@@ -66,6 +66,7 @@ pub async fn start_session(
         startTime: started.session.start_time.to_rfc3339(),
         remainingMinutes: started.remaining_minutes as f64,
         resumed: started.resumed,
+        endTime: None,
     })
 }
 
@@ -95,6 +96,7 @@ pub async fn current_session(
         startTime: s.start_time.to_rfc3339(),
         remainingMinutes: s.remaining_minutes as f64,
         resumed: true,
+        endTime: None,
     }))
 }
 
@@ -133,6 +135,7 @@ pub async fn heartbeat_session(
         startTime: heartbeat.session.start_time.to_rfc3339(),
         remainingMinutes: heartbeat.remaining_minutes as f64,
         resumed: true,
+        endTime: None,
     })
 }
 
@@ -191,6 +194,7 @@ pub async fn end_session(
             startTime: session.start_time.to_rfc3339(),
             remainingMinutes: remaining as f64,
             resumed: false,
+            endTime: session.end_time.map(|t| t.to_rfc3339()),
         });
     }
 
@@ -220,5 +224,6 @@ pub async fn end_session(
         startTime: ended.start_time.to_rfc3339(),
         remainingMinutes: remaining as f64,
         resumed: false,
+        endTime: ended.end_time.map(|t| t.to_rfc3339()),
     })
 }

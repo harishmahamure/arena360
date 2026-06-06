@@ -15,6 +15,7 @@ interface SessionNavProps {
   activeView: SessionView;
   onNavigate: (view: SessionView) => void;
   onEndSession: () => void;
+  onError?: (message: string) => void;
 }
 
 const TABS: { id: SessionView; label: string }[] = [
@@ -60,6 +61,7 @@ export function SessionNav({
   activeView,
   onNavigate,
   onEndSession,
+  onError,
 }: SessionNavProps) {
   const [open, setOpen] = useState<'audio' | 'profile' | null>(null);
   const [volume, setVolume] = useState<number>(() => readVolume());
@@ -132,6 +134,15 @@ export function SessionNav({
     }
   }
 
+  async function handleOpenAudioSettings() {
+    try {
+      await openAudioSettings();
+      setOpen(null);
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : 'Could not open sound settings');
+    }
+  }
+
   return (
     <nav className="a360-nav" ref={barRef}>
       <div className="a360-nav-left">
@@ -197,7 +208,7 @@ export function SessionNav({
                 className="kiosk-audio-settings"
                 aria-label="Open Windows sound settings"
                 title="Sound settings"
-                onClick={() => void openAudioSettings()}
+                onClick={() => void handleOpenAudioSettings()}
               >
                 <span className="material-symbols-outlined">settings</span>
               </button>
