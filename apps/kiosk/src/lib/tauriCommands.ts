@@ -133,6 +133,10 @@ export interface TrackedProcess {
   executablePath: string;
 }
 
+export async function focusKiosk(): Promise<void> {
+  await invoke('focus_kiosk');
+}
+
 export async function launchAllowed(
   executablePath: string,
   allowList: string[],
@@ -155,26 +159,6 @@ export async function killTrackedProcesses(graceSeconds?: number): Promise<{ kil
 
 export async function clearTrackedProcesses(): Promise<void> {
   await invoke('clear_tracked_processes');
-}
-
-/** Read cached CDN gallery from app data (`gallery_cache.json` shape). */
-export async function readGalleryCacheFs(): Promise<{ items: unknown[] } | null> {
-  try {
-    const raw = await invoke<{ items?: unknown[] } | null>('read_gallery_cache');
-    if (!raw || !Array.isArray(raw.items)) return null;
-    return { items: raw.items };
-  } catch {
-    return null;
-  }
-}
-
-/** Persist a CDN gallery fetch to app data for offline picker use. */
-export async function writeGalleryCacheFs(items: unknown[]): Promise<void> {
-  try {
-    await invoke('write_gallery_cache', { items });
-  } catch {
-    // Non-Tauri dev (browser) — no FS cache.
-  }
 }
 
 /**

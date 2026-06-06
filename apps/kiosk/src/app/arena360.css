@@ -327,6 +327,61 @@ body,
   overflow: hidden;
 }
 
+.a360-running-apps {
+  flex-shrink: 0;
+  padding: 0.75rem 1.25rem 0;
+}
+
+.a360-running-apps-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(255, 105, 0, 0.35);
+  background: rgba(255, 105, 0, 0.08);
+}
+
+.a360-running-apps-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.a360-running-apps-icon {
+  color: var(--a360-primary);
+  font-size: 1.5rem;
+  margin-top: 0.1rem;
+}
+
+.a360-running-apps-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.a360-running-apps-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  color: var(--a360-muted);
+}
+
+.a360-running-apps-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: var(--a360-muted);
+}
+
+.a360-running-apps-close {
+  flex-shrink: 0;
+  padding: 0.55rem 1rem;
+  border-radius: var(--a360-radius-sm);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
 .a360-nav {
   position: sticky;
   top: 0;

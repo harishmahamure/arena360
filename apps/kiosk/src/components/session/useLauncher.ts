@@ -10,7 +10,11 @@ interface UseLauncher {
 }
 
 /** Shared launch state for in-session views (ADR-0019). */
-export function useLauncher(disabled: boolean, onError?: (message: string) => void): UseLauncher {
+export function useLauncher(
+  disabled: boolean,
+  onError?: (message: string) => void,
+  onLaunched?: () => void,
+): UseLauncher {
   const entries = useMemo(() => installedEntries(), []);
   const [launchingKey, setLaunchingKey] = useState<string | null>(null);
 
@@ -22,13 +26,14 @@ export function useLauncher(disabled: boolean, onError?: (message: string) => vo
       setLaunchingKey(entry.id);
       try {
         await launchEntry(entry, entries);
+        onLaunched?.();
       } catch (e) {
         onError?.(e instanceof Error ? e.message : `Could not launch ${entry.name}`);
       } finally {
         setLaunchingKey(null);
       }
     },
-    [disabled, entries, onError],
+    [disabled, entries, onError, onLaunched],
   );
 
   return { entries, launchingKey, isLaunchable, launch };

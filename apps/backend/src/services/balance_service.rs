@@ -23,6 +23,11 @@ fn plan_kind_from_plan(plan: &Plan) -> &'static str {
     }
 }
 
+/// Whether an existing balance still has usable time that should stack on recharge.
+fn should_carry_forward_minutes(balance: &PlayerPlanBalance, now: DateTime<Utc>) -> bool {
+    balance.status == balance_status::ACTIVE && balance.expiry_date > now
+}
+
 impl BalanceService {
     pub fn new(pool: PgPool) -> Self {
         Self {
@@ -97,9 +102,18 @@ impl BalanceService {
                     fresh_expiry
                 };
 
+                let carry_forward = should_carry_forward_minutes(&balance, now);
+
                 let updated = self
                     .repo
-                    .recharge(balance.id, plan.time_credits, new_expiry, plan.id, actor_id)
+                    .recharge(
+                        balance.id,
+                        plan.time_credits,
+                        new_expiry,
+                        plan.id,
+                        actor_id,
+                        carry_forward,
+                    )
                     .await?;
 
                 self.ledger
@@ -107,7 +121,11 @@ impl BalanceService {
                         updated.id,
                         dto.player_id,
                         plan.time_credits,
-                        ledger_reason::RECHARGE,
+                        if carry_forward {
+                            ledger_reason::RECHARGE
+                        } else {
+                            ledger_reason::PURCHASE
+                        },
                         dto.transaction_id,
                         None,
                         updated.remaining_minutes,

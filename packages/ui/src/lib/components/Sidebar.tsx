@@ -31,8 +31,8 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 const DRAWER_WIDTH = 280;
 const COLLAPSED_WIDTH = 72;
@@ -103,16 +103,48 @@ export default function Sidebar({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const completePath = `${location.pathname}${
     searchParams.size > 0 ? `?` : ''
   }${searchParams.toString()}`;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
+  useEffect(() => {
+    const parentsToExpand = navItems
+      .filter((item) => {
+        if (!item.children?.length) return false;
+        if (item.path === '/') return location.pathname === '/';
+        return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+      })
+      .map((item) => item.title);
+
+    if (parentsToExpand.length === 0) return;
+
+    setExpandedItems((prev) => {
+      const merged = new Set([...prev, ...parentsToExpand]);
+      if (merged.size === prev.length && parentsToExpand.every((title) => prev.includes(title))) {
+        return prev;
+      }
+      return [...merged];
+    });
+  }, [location.pathname, location.search, navItems]);
+
   const handleExpand = (title: string) => {
     setExpandedItems((prev) =>
       prev.includes(title) ? prev.filter((item) => item !== title) : [...prev, title],
     );
+  };
+
+  const handleParentClick = (item: NavItem) => {
+    setExpandedItems((prev) => (prev.includes(item.title) ? prev : [...prev, item.title]));
+    navigate(item.path);
+    if (isMobile) onClose();
+  };
+
+  const handleNavigate = (path: string) => {
+    navigate(path);
+    if (isMobile) onClose();
   };
 
   const isActive = (path: string) => {
@@ -172,8 +204,9 @@ export default function Sidebar({
             </Typography>
           </Box>
         )}
-        {collapsed && !isMobile && (
-          logo ?? (
+        {collapsed &&
+          !isMobile &&
+          (logo ?? (
             <Box
               sx={{
                 width: 40,
@@ -189,8 +222,7 @@ export default function Sidebar({
             >
               {logoText.charAt(0)}
             </Box>
-          )
-        )}
+          ))}
         {!isMobile && (
           <IconButton
             onClick={onToggleCollapse}
@@ -218,7 +250,7 @@ export default function Sidebar({
                 <>
                   <Tooltip title={collapsed && !isMobile ? item.title : ''} placement="right">
                     <ListItemButton
-                      onClick={() => handleExpand(item.title)}
+                      onClick={() => handleParentClick(item)}
                       sx={{
                         borderRadius: 2,
                         mb: 0.5,
@@ -243,7 +275,22 @@ export default function Sidebar({
                       {(!collapsed || isMobile) && (
                         <>
                           <ListItemText primary={item.title} />
-                          {expandedItems.includes(item.title) ? <ExpandLess /> : <ExpandMore />}
+                          <IconButton
+                            size="small"
+                            aria-label={
+                              expandedItems.includes(item.title)
+                                ? `Collapse ${item.title}`
+                                : `Expand ${item.title}`
+                            }
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              handleExpand(item.title);
+                            }}
+                            sx={{ color: 'inherit' }}
+                          >
+                            {expandedItems.includes(item.title) ? <ExpandLess /> : <ExpandMore />}
+                          </IconButton>
                         </>
                       )}
                     </ListItemButton>
@@ -254,9 +301,7 @@ export default function Sidebar({
                         {item.children.map((child) => (
                           <ListItemButton
                             key={child.path}
-                            component={Link}
-                            to={child.path}
-                            onClick={isMobile ? onClose : undefined}
+                            onClick={() => handleNavigate(child.path)}
                             sx={{
                               pl: 6,
                               py: 1,
@@ -288,9 +333,7 @@ export default function Sidebar({
               ) : (
                 <Tooltip title={collapsed && !isMobile ? item.title : ''} placement="right">
                   <ListItemButton
-                    component={Link}
-                    to={item.path}
-                    onClick={isMobile ? onClose : undefined}
+                    onClick={() => handleNavigate(item.path)}
                     sx={{
                       borderRadius: 2,
                       mb: 0.5,

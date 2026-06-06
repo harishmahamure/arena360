@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { type GalleryItem, type GalleryKind, refreshGallery } from '../lib/gallery';
+import {
+  type GalleryItem,
+  type GalleryKind,
+  galleryMediaUrl,
+  refreshGallery,
+} from '../lib/gallery';
 
 interface GalleryPickerProps {
   kind: GalleryKind;
@@ -12,10 +17,15 @@ interface GalleryPickerProps {
 export function GalleryPicker({ kind, value, onSelect, onClose }: GalleryPickerProps) {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [cacheNonce] = useState(() => Date.now().toString(36));
 
   useEffect(() => {
     void refreshGallery()
       .then(setItems)
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Gallery unavailable');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -32,11 +42,15 @@ export function GalleryPicker({ kind, value, onSelect, onClose }: GalleryPickerP
         </header>
 
         <p className="hint picker-hint">
-          Gallery is managed centrally on CDN. Updates appear here on refresh.
+          Gallery is managed centrally on CDN and requires an internet connection.
         </p>
 
         {loading ? (
           <p className="meta">Loading gallery…</p>
+        ) : error ? (
+          <p className="error" role="alert">
+            {error}
+          </p>
         ) : visible.length === 0 ? (
           <p className="hint">No {kind} assets in the gallery yet.</p>
         ) : (
@@ -65,9 +79,14 @@ export function GalleryPicker({ kind, value, onSelect, onClose }: GalleryPickerP
                 }}
               >
                 {item.kind === 'video' ? (
-                  <video src={item.url} muted playsInline preload="metadata" />
+                  <video
+                    src={galleryMediaUrl(item.url, cacheNonce)}
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
                 ) : (
-                  <img src={item.url} alt="" />
+                  <img src={galleryMediaUrl(item.url, cacheNonce)} alt="" />
                 )}
                 <span className="picker-tile-name">{item.name}</span>
               </button>

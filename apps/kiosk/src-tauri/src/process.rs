@@ -213,24 +213,70 @@ fn main_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
         .ok_or_else(|| "Main window not found".to_string())
 }
 
-fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
-    let window = main_window(app)?;
-    window.show().map_err(|e| e.to_string())?;
-    let _ = window.unminimize();
-    window.set_decorations(false).map_err(|e| e.to_string())?;
-    window.set_fullscreen(true).map_err(|e| e.to_string())?;
-    window.set_always_on_top(false).map_err(|e| e.to_string())
+#[cfg(windows)]
+fn force_foreground(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetForegroundWindow, SetWindowPos, ShowWindow, HWND_TOPMOST, SW_RESTORE, SW_SHOW,
+        SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+    };
+
+    if let Ok(hwnd_raw) = window.hwnd() {
+        unsafe {
+            let hwnd = HWND(hwnd_raw.0 as *mut _);
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            );
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
 }
 
-fn restore_kiosk_window(app: &AppHandle) {
+#[cfg(not(windows))]
+fn force_foreground(_window: &tauri::WebviewWindow) {}
+
+fn show_kiosk_foreground(app: &AppHandle) {
     if let Ok(window) = main_window(app) {
-        let _ = window.show();
         let _ = window.unminimize();
+        let _ = window.show();
         let _ = window.set_decorations(false);
         let _ = window.set_fullscreen(true);
         let _ = window.set_always_on_top(true);
         let _ = window.set_focus();
+        force_foreground(&window);
     }
+}
+
+pub fn has_tracked_processes() -> bool {
+    TRACKED
+        .lock()
+        .map(|tracked| !tracked.is_empty())
+        .unwrap_or(false)
+}
+
+pub fn focus_kiosk_window(app: &AppHandle) -> Result<(), String> {
+    show_kiosk_foreground(app);
+    Ok(())
+}
+
+fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
+    let window = main_window(app)?;
+    window.set_always_on_top(false).map_err(|e| e.to_string())?;
+    // Minimize so Alt+Tab lists the kiosk separately from launched games and
+    // `show_kiosk_foreground` can raise it above TOPMOST game windows.
+    window.minimize().map_err(|e| e.to_string())
+}
+
+fn restore_kiosk_window(app: &AppHandle) {
+    show_kiosk_foreground(app);
 }
 
 fn start_monitor_if_needed(app: AppHandle) {
@@ -256,6 +302,11 @@ fn start_monitor_if_needed(app: AppHandle) {
             break;
         }
     });
+}
+
+#[tauri::command]
+pub fn focus_kiosk(app: AppHandle) -> Result<(), String> {
+    focus_kiosk_window(&app)
 }
 
 #[tauri::command]
@@ -293,7 +344,10 @@ pub fn get_tracked_processes() -> Result<Vec<TrackedProcess>, String> {
 }
 
 #[tauri::command]
-pub fn kill_tracked_processes(grace_seconds: Option<u32>) -> Result<KillResult, String> {
+pub fn kill_tracked_processes(
+    app: AppHandle,
+    grace_seconds: Option<u32>,
+) -> Result<KillResult, String> {
     let grace = grace_seconds.unwrap_or(0);
     if grace > 0 {
         thread::sleep(Duration::from_secs(grace as u64));
@@ -308,6 +362,9 @@ pub fn kill_tracked_processes(grace_seconds: Option<u32>) -> Result<KillResult, 
         kill_pid(*pid);
     }
     TRACKED.lock().map_err(|e| e.to_string())?.clear();
+    if !pids.is_empty() {
+        restore_kiosk_window(&app);
+    }
     Ok(KillResult {
         killed: pids.len() as u32,
     })

@@ -6,22 +6,28 @@ import { useLauncher } from './useLauncher';
 interface SettingsViewProps {
   disabled?: boolean;
   onError?: (message: string) => void;
+  onLaunched?: () => void;
 }
 
 /**
  * Arena360 Settings & Tools: launch allowed launcher/utility apps (ADR-0019),
  * plus a built-in Sound Settings tile.
  */
-export function SettingsView({ disabled, onError }: SettingsViewProps) {
+export function SettingsView({ disabled, onError, onLaunched }: SettingsViewProps) {
   const { items: tools } = useAllowList(fetchTools);
-  const { launchingKey, isLaunchable, launch } = useLauncher(Boolean(disabled), onError);
+  const { launchingKey, isLaunchable, launch } = useLauncher(
+    Boolean(disabled),
+    onError,
+    onLaunched,
+  );
 
   return (
     <section className="a360-section">
       <header className="a360-settings-head">
         <h1 className="a360-settings-title">System Settings &amp; Tools</h1>
         <p className="a360-settings-sub">
-          Launch the utility applications allowed on this station.
+          Launch the utility applications allowed on this station. Alt+Tab back to Arena360 and use{' '}
+          <strong>Close app</strong> in the running-apps bar when you are done.
         </p>
       </header>
 

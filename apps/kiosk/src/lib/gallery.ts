@@ -1,11 +1,8 @@
-import { GALLERY_FALLBACK_URL, GALLERY_URL } from './config';
-import { readGalleryCacheFs, writeGalleryCacheFs } from './tauriCommands';
+import { GALLERY_URL } from './config';
 
 /**
  * Read-only media gallery sourced from a centrally hosted CDN JSON file.
- * Kiosks fetch on boot and when the Setup picker opens; results are cached
- * in app-data for offline use. Bundled `public/games/gallery.json` is the
- * last-resort fallback.
+ * Online only — each fetch goes to the CDN; no app-data cache or bundled fallback.
  */
 
 export type GalleryKind = 'image' | 'video';
@@ -42,45 +39,29 @@ function parseFile(file: GalleryFile): GalleryItem[] {
   return (file.items ?? []).map(toItem).filter((i): i is GalleryItem => i !== null);
 }
 
-let gallery: GalleryItem[] | null = null;
+/** Unique URL so CDN Cache-Control and the webview HTTP cache are never used. */
+function galleryJsonUrl(): string {
+  const url = new URL(GALLERY_URL);
+  url.searchParams.set('_', Date.now().toString(36));
+  return url.href;
+}
 
-async function fetchUrl(url: string): Promise<GalleryItem[]> {
+/** Cache-bust a gallery media URL for picker previews (does not persist). */
+export function galleryMediaUrl(url: string, nonce: string): string {
   try {
-    const res = await fetch(url, { cache: 'no-cache' });
-    if (!res.ok) return [];
-    return parseFile((await res.json()) as GalleryFile);
+    const parsed = new URL(url);
+    parsed.searchParams.set('_', nonce);
+    return parsed.href;
   } catch {
-    return [];
+    return url;
   }
 }
 
-async function loadFromCache(): Promise<GalleryItem[] | null> {
-  const file = await readGalleryCacheFs();
-  if (!file?.items.length) return null;
-  const parsed = parseFile({ items: file.items as RawItem[] });
-  return parsed.length > 0 ? parsed : null;
-}
-
-async function fetchRemote(): Promise<GalleryItem[]> {
-  const remote = await fetchUrl(GALLERY_URL);
-  if (remote.length > 0) {
-    void writeGalleryCacheFs(remote);
-    return remote;
-  }
-  const cached = await loadFromCache();
-  if (cached?.length) return cached;
-  return fetchUrl(GALLERY_FALLBACK_URL);
-}
-
-/** Load gallery (cached in memory until refresh). */
-export async function loadGallery(): Promise<GalleryItem[]> {
-  if (gallery) return gallery;
-  gallery = await fetchRemote();
-  return gallery;
-}
-
-/** Re-fetch from CDN (stale-while-revalidate when picker opens). */
+/** Fetch gallery from CDN (requires network; never cached or saved). */
 export async function refreshGallery(): Promise<GalleryItem[]> {
-  gallery = await fetchRemote();
-  return gallery;
+  const res = await fetch(galleryJsonUrl(), { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`Gallery unavailable (${res.status})`);
+  }
+  return parseFile((await res.json()) as GalleryFile);
 }

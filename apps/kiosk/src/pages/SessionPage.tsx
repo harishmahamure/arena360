@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { HomeView } from '../components/session/HomeView';
 import { LibraryView } from '../components/session/LibraryView';
+import { RunningAppsBar } from '../components/session/RunningAppsBar';
 import { SessionNav, type SessionView } from '../components/session/SessionNav';
 import { SettingsView } from '../components/session/SettingsView';
+import { useTrackedProcesses } from '../components/session/useTrackedProcesses';
 import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
 import { useSessionPoller } from '../hooks/useSessionPoller';
@@ -51,6 +53,11 @@ export function SessionPage() {
   }, []);
 
   const onError = useCallback((m: string) => pushToast(m, 'warning'), [pushToast]);
+
+  const { processes, closing, closeAll, refresh } = useTrackedProcesses({
+    enabled: Boolean(activeSession) && forceEndGraceEndsAt === null,
+    onError,
+  });
 
   // Create (or resume) the session once when arriving without one.
   useEffect(() => {
@@ -161,6 +168,8 @@ export function SessionPage() {
         onEndSession={() => setConfirmEnd(true)}
       />
 
+      <RunningAppsBar processes={processes} closing={closing} onCloseAll={closeAll} />
+
       <div className={`a360-session-body${view === 'home' ? ' a360-session-body--home' : ''}`}>
         {!online ? (
           <div className="a360-section">
@@ -175,11 +184,11 @@ export function SessionPage() {
         ) : null}
 
         {view === 'home' ? (
-          <HomeView onError={onError} onNavigate={setView} />
+          <HomeView onError={onError} onNavigate={setView} onLaunched={refresh} />
         ) : view === 'library' ? (
-          <LibraryView onError={onError} />
+          <LibraryView onError={onError} onLaunched={refresh} />
         ) : (
-          <SettingsView onError={onError} />
+          <SettingsView onError={onError} onLaunched={refresh} />
         )}
       </div>
 

@@ -7,13 +7,18 @@ import { useLauncher } from './useLauncher';
 interface LibraryViewProps {
   disabled?: boolean;
   onError?: (message: string) => void;
+  onLaunched?: () => void;
 }
 
 /** Arena360 Game Library: search across allowed games on this station. */
-export function LibraryView({ disabled, onError }: LibraryViewProps) {
+export function LibraryView({ disabled, onError, onLaunched }: LibraryViewProps) {
   const { items: games } = useAllowList(fetchGames);
   const [query, setQuery] = useState('');
-  const { launchingKey, isLaunchable, launch } = useLauncher(Boolean(disabled), onError);
+  const { launchingKey, isLaunchable, launch } = useLauncher(
+    Boolean(disabled),
+    onError,
+    onLaunched,
+  );
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();

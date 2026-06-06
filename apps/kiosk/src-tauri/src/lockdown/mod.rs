@@ -84,6 +84,10 @@ pub fn is_locked() -> bool {
         .unwrap_or(true)
 }
 
+pub fn register_keyboard_app(app: AppHandle) {
+    keyboard::set_app_handle(app);
+}
+
 pub fn init_locked_on_startup(app: &AppHandle) {
     let _txn = TRANSITION.lock().expect("transition lock");
     if let Ok(mut guard) = STATE.lock() {

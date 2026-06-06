@@ -10,15 +10,20 @@ interface HomeViewProps {
   disabled?: boolean;
   onError?: (message: string) => void;
   onNavigate: (view: SessionView) => void;
+  onLaunched?: () => void;
 }
 
 function tryAutoplay(video: HTMLVideoElement) {
   void Promise.resolve(video.play()).catch(() => {});
 }
 
-export function HomeView({ disabled, onError, onNavigate }: HomeViewProps) {
+export function HomeView({ disabled, onError, onNavigate, onLaunched }: HomeViewProps) {
   const { items: games } = useAllowList(fetchGames);
-  const { launchingKey, isLaunchable, launch } = useLauncher(Boolean(disabled), onError);
+  const { launchingKey, isLaunchable, launch } = useLauncher(
+    Boolean(disabled),
+    onError,
+    onLaunched,
+  );
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {

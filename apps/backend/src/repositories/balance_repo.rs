@@ -202,14 +202,20 @@ impl BalanceRepository {
     pub async fn recharge(
         &self,
         id: Uuid,
-        add_minutes: i32,
+        minutes: i32,
         new_expiry: DateTime<Utc>,
         source_plan_id: Uuid,
         actor_id: Option<Uuid>,
+        accumulate: bool,
     ) -> Result<PlayerPlanBalance, AppError> {
-        let balance = sqlx::query_as::<_, PlayerPlanBalance>(
+        let minutes_sql = if accumulate {
+            r#""remainingMinutes" = "remainingMinutes" + $2"#
+        } else {
+            r#""remainingMinutes" = $2"#
+        };
+        let query = format!(
             r#"UPDATE player_plan_balances SET
-                   "remainingMinutes" = "remainingMinutes" + $2,
+                   {minutes_sql},
                    "expiryDate" = $3,
                    "sourcePlanId" = $4,
                    status = 'active'::balance_status,
@@ -225,10 +231,11 @@ impl BalanceRepository {
                    "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
-                   "deletedAt" as deleted_at"#,
-        )
+                   "deletedAt" as deleted_at"#
+        );
+        let balance = sqlx::query_as::<_, PlayerPlanBalance>(&query)
         .bind(id)
-        .bind(add_minutes)
+        .bind(minutes)
         .bind(new_expiry)
         .bind(source_plan_id)
         .bind(actor_id)

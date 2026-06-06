@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { LockdownOverlay } from '../components/LockdownOverlay';
 import { KioskProvider, useKiosk } from '../context/KioskProvider';
-import { refreshGallery } from '../lib/gallery';
 import { AlreadyInSessionPage } from '../pages/AlreadyInSessionPage';
 import { LoginHomePage } from '../pages/LoginHomePage';
 import { RegistrationPage } from '../pages/RegistrationPage';
@@ -34,10 +33,6 @@ function KioskShell() {
 }
 
 export function App() {
-  useEffect(() => {
-    void refreshGallery();
-  }, []);
-
   return (
     <KioskProvider>
       <main className="app">

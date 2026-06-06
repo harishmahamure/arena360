@@ -4,7 +4,7 @@ import { local } from '@gaming-cafe/utils';
 import Box from '@mui/material/Box';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
 import { useSelector } from '../hooks/store';
@@ -15,6 +15,8 @@ import { filterNavItemsByPermission } from '../utils/filterNavItems';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const outletKey = `${location.pathname}${location.search}`;
 
   const { data, isLoading } = useQuery({
     queryKey: ['sessions'],
@@ -62,6 +64,10 @@ export default function DashboardLayout() {
     }
   }, [navigate]);
 
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname, location.search]);
+
   return (
     <>
       <BaseDashboardLayout
@@ -78,7 +84,7 @@ export default function DashboardLayout() {
         user={{ name: `${firstName} ${lastName}`, email, role }}
         onLogout={isStaff ? () => setHandoverOpen(true) : undefined}
       >
-        <Outlet />
+        <Outlet key={outletKey} />
       </BaseDashboardLayout>
       {isStaff && (
         <ShiftHandoverDialog open={handoverOpen} onClose={() => setHandoverOpen(false)} />

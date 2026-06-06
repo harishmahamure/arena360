@@ -7,22 +7,13 @@ logos, posters, and preview videos when configuring allowed software.
 > allow-list decides what is shown and what can launch. Optional media URLs on
 > allow-list entries are chosen from this gallery.
 
-## Layout
-
-```
-public/games/
-  gallery.json      # offline dev fallback (mirrors CDN content)
-  images/           # local assets referenced by bundled gallery fallback
-```
-
 ## CDN gallery (source of truth)
 
 Hosted at `https://cdn.arena360.cloud/kiosk/gallery.json` by default. Override
 per deployment via `VITE_GALLERY_URL`.
 
-Kiosks fetch on boot and when the Setup gallery picker opens. Fetches are cached
-to app-data (`gallery_cache.json`) for offline picker use. Update the CDN file
-manually to roll out new assets fleet-wide.
+Kiosks fetch from the CDN when the Setup gallery picker opens. An internet
+connection is required; there is no bundled fallback or on-device cache.
 
 ### `gallery.json` schema
 

@@ -398,3 +398,55 @@ fn happy_hours_cancelled_recharge_resets_expiry() {
         "Cancelled happy hours recharge resets expiry"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Tests for purchase_or_recharge minute carry-forward logic
+// ---------------------------------------------------------------------------
+
+fn should_carry_forward_minutes(
+    balance_status_val: &str,
+    balance_expiry: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> bool {
+    balance_status_val == balance_status::ACTIVE && balance_expiry > now
+}
+
+#[test]
+fn expired_balance_does_not_carry_forward_minutes() {
+    let now = Utc::now();
+    assert!(!should_carry_forward_minutes(
+        balance_status::EXPIRED,
+        now - Duration::days(1),
+        now,
+    ));
+}
+
+#[test]
+fn stale_active_balance_past_expiry_does_not_carry_forward() {
+    let now = Utc::now();
+    assert!(!should_carry_forward_minutes(
+        balance_status::ACTIVE,
+        now - Duration::hours(1),
+        now,
+    ));
+}
+
+#[test]
+fn exhausted_balance_does_not_carry_forward_minutes() {
+    let now = Utc::now();
+    assert!(!should_carry_forward_minutes(
+        balance_status::EXHAUSTED,
+        now + Duration::days(3),
+        now,
+    ));
+}
+
+#[test]
+fn active_balance_with_remaining_time_carries_forward() {
+    let now = Utc::now();
+    assert!(should_carry_forward_minutes(
+        balance_status::ACTIVE,
+        now + Duration::days(3),
+        now,
+    ));
+}

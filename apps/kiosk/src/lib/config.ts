@@ -30,9 +30,6 @@ export const LOGIN_BACKGROUND_VIDEO_URL =
 export const GALLERY_URL =
   stringFromEnv('VITE_GALLERY_URL') ?? 'https://cdn.arena360.cloud/kiosk/gallery.json';
 
-/** Bundled fallback when CDN gallery is unreachable (dev / offline). */
-export const GALLERY_FALLBACK_URL = '/games/gallery.json';
-
 function numberFromEnv(key: string, fallback: number): number {
   const raw =
     typeof import.meta !== 'undefined'

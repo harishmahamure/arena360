@@ -4,7 +4,8 @@
 //! both Windows keys and any `Win`+key combo, Alt+Esc, Alt+F4, Alt+Space
 //! (system menu), Ctrl+Esc (Start menu), Ctrl+Shift+Esc (Task Manager), and
 //! the Menu/Apps (context-menu) key. Alt+Tab is intentionally allowed so
-//! players can switch between approved launched apps. **Limitation:**
+//! players can switch between approved launched apps. **Ctrl+Shift+H** raises
+//! the kiosk above launched games without closing them. **Limitation:**
 //! Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user
 //! mode by design — it always reaches the Windows Secure Desktop. Full CAD
 //! suppression requires the `DisableLockWorkstation` /
@@ -17,11 +18,12 @@
 mod win {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::OnceLock;
+    use tauri::AppHandle;
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_LWIN, VK_MENU, VK_RWIN,
-        VK_SPACE,
+        GetAsyncKeyState, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_H, VK_LWIN, VK_MENU, VK_RWIN,
+        VK_SHIFT, VK_SPACE,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
@@ -38,6 +40,11 @@ mod win {
 
     static HOOK: OnceLock<HookHandle> = OnceLock::new();
     static ENABLED: AtomicBool = AtomicBool::new(false);
+    static APP: OnceLock<AppHandle> = OnceLock::new();
+
+    pub fn set_app_handle(app: AppHandle) {
+        let _ = APP.set(app);
+    }
 
     /// `true` if `vk` is currently held down (high bit of the async key state).
     unsafe fn is_down(vk: i32) -> bool {
@@ -73,11 +80,24 @@ mod win {
         false
     }
 
+    /// Ctrl+Shift+H — return to the kiosk shell while launched apps keep running.
+    unsafe fn is_focus_kiosk_combo(vk: u32) -> bool {
+        vk == VK_H.0 as u32
+            && is_down(VK_CONTROL.0 as i32)
+            && is_down(VK_SHIFT.0 as i32)
+    }
+
     unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 && ENABLED.load(Ordering::SeqCst) {
             let is_keydown = wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
             if is_keydown {
                 let kb = *(lparam.0 as *const KBDLLHOOKSTRUCT);
+                if is_focus_kiosk_combo(kb.vkCode) {
+                    if let Some(app) = APP.get() {
+                        let _ = crate::process::focus_kiosk_window(app);
+                    }
+                    return LRESULT(1);
+                }
                 if should_block(kb.vkCode) {
                     return LRESULT(1);
                 }
@@ -113,6 +133,14 @@ mod win {
         }
     }
 }
+
+#[cfg(target_os = "windows")]
+pub fn set_app_handle(app: AppHandle) {
+    win::set_app_handle(app);
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn set_app_handle(_app: tauri::AppHandle) {}
 
 #[cfg(target_os = "windows")]
 pub fn install_hook() {

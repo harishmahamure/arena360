@@ -1,6 +1,5 @@
 mod audio;
 mod cache;
-mod catalog;
 mod fingerprint;
 mod lockdown;
 mod power;
@@ -8,7 +7,8 @@ mod process;
 mod scan;
 mod storage;
 
-use lockdown::{init_locked_on_startup, is_locked};
+use lockdown::{init_locked_on_startup, is_locked, register_keyboard_app};
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,14 +27,20 @@ pub fn run() {
     }
 
     builder
-        .on_window_event(|_window, event| {
+        .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if is_locked() {
                     api.prevent_close();
                 }
             }
+            if let tauri::WindowEvent::Focused(focused) = event {
+                if *focused && process::has_tracked_processes() {
+                    let _ = process::focus_kiosk_window(window.app_handle());
+                }
+            }
         })
         .setup(|app| {
+            register_keyboard_app(app.handle().clone());
             init_locked_on_startup(app.handle());
             Ok(())
         })
@@ -55,12 +61,11 @@ pub fn run() {
             power::restart_station,
             power::shutdown_station,
             process::launch_allowed,
+            process::focus_kiosk,
             process::get_tracked_processes,
             process::kill_tracked_processes,
             process::clear_tracked_processes,
             cache::cache_asset,
-            catalog::read_gallery_cache,
-            catalog::write_gallery_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
