@@ -20,6 +20,7 @@ export interface CreateProductTransactionPayload {
   cashAmount?: number;
   onlineAmount?: number;
   lineItems?: LineItemPayload[];
+  saleLocationId?: string;
 }
 
 export const addTransaction = async (payload: CreateProductTransactionPayload) => {

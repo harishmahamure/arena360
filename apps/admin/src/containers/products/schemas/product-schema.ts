@@ -14,18 +14,29 @@ export { productCategoryOptions };
 
 export const createProductSchema = yup.object({
   name: stringWithLength('Product name', undefined, 255, true),
-
   description: optionalString(),
-
-  price: nonNegativeNumberSchema('Price'),
-
+  price: nonNegativeNumberSchema('Day price'),
+  dayPrice: nonNegativeNumberSchema('Day price').optional(),
+  nightPrice: nonNegativeNumberSchema('Night price'),
+  purchasePricePerBox: yup
+    .number()
+    .min(0, 'Purchase price cannot be negative')
+    .optional()
+    .nullable()
+    .transform((value) => (Number.isNaN(value) ? undefined : value)),
+  unitsPerPurchaseUnit: yup
+    .number()
+    .integer('Must be a whole number')
+    .min(1, 'At least 1 unit per box')
+    .optional()
+    .default(1),
+  unitId: yup.string().uuid().optional().nullable(),
+  purchaseUnitId: yup.string().uuid().optional().nullable(),
   category: yup
     .string()
     .oneOf(Object.values(ProductCategory), 'Please select a valid category')
     .required(validationMessages.required('Category')),
-
   sku: yup.string().max(1000, validationMessages.max('SKU', 1000)).optional().nullable(),
-
   stockQuantity: yup
     .number()
     .integer('Stock quantity must be a whole number')
@@ -33,7 +44,6 @@ export const createProductSchema = yup.object({
     .optional()
     .nullable()
     .transform((value) => (Number.isNaN(value) ? undefined : value)),
-
   isActive: yup.boolean().optional().default(true),
 });
 
@@ -43,6 +53,11 @@ export const createProductDefaultValues: CreateProductFormData = {
   name: '',
   description: '',
   price: 0,
+  nightPrice: 0,
+  purchasePricePerBox: undefined,
+  unitsPerPurchaseUnit: 1,
+  unitId: undefined,
+  purchaseUnitId: undefined,
   category: ProductCategory.OTHER,
   sku: '',
   stockQuantity: 0,

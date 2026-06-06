@@ -23,6 +23,13 @@ import ExpensesPage from './pages/dashboard/expenses/ExpensesPage';
 import GameDetailPage from './pages/dashboard/games/GameDetailPage';
 import GameNewPage from './pages/dashboard/games/GameNewPage';
 import GamesPage from './pages/dashboard/games/GamesPage';
+import InventoryLocationsPage from './pages/dashboard/inventory/InventoryLocationsPage';
+import InventoryTransferNewPage from './pages/dashboard/inventory/InventoryTransferNewPage';
+import InventoryTransfersPage from './pages/dashboard/inventory/InventoryTransfersPage';
+import InventoryWarehousePage from './pages/dashboard/inventory/InventoryWarehousePage';
+import InventoryWasteNewPage from './pages/dashboard/inventory/InventoryWasteNewPage';
+import InventoryWastePage from './pages/dashboard/inventory/InventoryWastePage';
+import InventoryWasteReportPage from './pages/dashboard/inventory/InventoryWasteReportPage';
 import PlanTransactionDetailPage from './pages/dashboard/plan-transactions/PlanTransactionDetailPage';
 import PlanTransactionNewPage from './pages/dashboard/plan-transactions/PlanTransactionNewPage';
 import PlanTransactionsPage from './pages/dashboard/plan-transactions/PlanTransactionsPage';
@@ -143,6 +150,15 @@ function App() {
                   <Route path="/vendors" element={<VendorsPage />} />
                   <Route path="/vendors/new" element={<VendorNewPage />} />
                   <Route path="/vendors/:id" element={<VendorDetailPage />} />
+                  <Route element={<RequirePermission permission={Permission.InventoryRead} />}>
+                    <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
+                    <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
+                    <Route path="/inventory/transfers" element={<InventoryTransfersPage />} />
+                    <Route path="/inventory/transfers/new" element={<InventoryTransferNewPage />} />
+                    <Route path="/inventory/waste" element={<InventoryWastePage />} />
+                    <Route path="/inventory/waste/new" element={<InventoryWasteNewPage />} />
+                    <Route path="/inventory/waste/report" element={<InventoryWasteReportPage />} />
+                  </Route>
                   <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
                     <Route path="/settings" element={<SettingsPage />} />
                   </Route>

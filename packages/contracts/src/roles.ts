@@ -47,6 +47,12 @@ export enum Permission {
   ConfigWrite = 'config:write',
   GamesRead = 'games:read',
   GamesWrite = 'games:write',
+  InventoryRead = 'inventory:read',
+  InventoryManage = 'inventory:manage',
+  InventoryTransferRequest = 'inventory:transfer_request',
+  InventoryTransferFulfill = 'inventory:transfer_fulfill',
+  InventoryWasteRecord = 'inventory:waste_record',
+  InventoryWasteApprove = 'inventory:waste_approve',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -75,6 +81,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.CreditRead,
     Permission.CreditWrite,
     Permission.ExpensesRead,
+    Permission.InventoryRead,
+    Permission.InventoryTransferRequest,
+    Permission.InventoryWasteRecord,
   ],
   player: [
     Permission.GamesRead,

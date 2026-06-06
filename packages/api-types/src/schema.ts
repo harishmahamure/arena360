@@ -612,6 +612,230 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inventory/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_locations"];
+        put?: never;
+        post: operations["create_location"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_location"];
+        trace?: never;
+    };
+    "/inventory/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_receipts"];
+        put?: never;
+        post: operations["create_receipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_stock"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/transfer-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_transfer_requests"];
+        put?: never;
+        post: operations["create_transfer_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/transfer-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_transfer_request"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/transfer-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["approve_transfer_request"];
+        trace?: never;
+    };
+    "/inventory/transfer-requests/{id}/fulfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["fulfill_transfer_request"];
+        trace?: never;
+    };
+    "/inventory/transfer-requests/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["reject_transfer_request"];
+        trace?: never;
+    };
+    "/inventory/waste-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_waste_events"];
+        put?: never;
+        post: operations["create_waste_event"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/waste-events/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_waste_event"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/waste-events/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["approve_waste_event"];
+        trace?: never;
+    };
+    "/inventory/waste-events/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["reject_waste_event"];
+        trace?: never;
+    };
+    "/inventory/waste/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["waste_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/kiosk/sessions": {
         parameters: {
             query?: never;
@@ -670,6 +894,26 @@ export interface paths {
          *     authenticated player.
          */
         patch: operations["kiosk_end_session"];
+        trace?: never;
+    };
+    "/kiosk/sessions/{id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Heartbeat the authenticated player's current kiosk session. This deducts
+         *     newly elapsed usage server-side and returns authoritative remaining time.
+         */
+        patch: operations["heartbeat_session"];
         trace?: never;
     };
     "/plans": {
@@ -1389,6 +1633,9 @@ export interface components {
         ApproveExpenseDto: {
             notes?: string | null;
         };
+        ApproveInventoryActionDto: {
+            notes?: string | null;
+        };
         AssignPlanDto: {
             /** Format: uuid */
             planId: string;
@@ -1787,6 +2034,11 @@ export interface components {
             thumbnailUrl?: string | null;
             videoUrl?: string | null;
         };
+        CreateInventoryLocationDto: {
+            isActive?: boolean | null;
+            kind: string;
+            name: string;
+        };
         CreateLineItemDto: {
             /** Format: uuid */
             productId: string;
@@ -1815,16 +2067,28 @@ export interface components {
         };
         CreateProductDto: {
             category?: string | null;
+            /** Format: double */
+            dayPrice?: number | null;
             description?: string | null;
             isActive?: boolean | null;
             name: string;
             /** Format: double */
+            nightPrice?: number | null;
+            /** Format: double */
             price: number;
             /** Format: double */
             purchasePrice?: number | null;
+            /** Format: double */
+            purchasePricePerBox?: number | null;
+            /** Format: uuid */
+            purchaseUnitId?: string | null;
             sku?: string | null;
             /** Format: int32 */
             stockQuantity?: number | null;
+            /** Format: uuid */
+            unitId?: string | null;
+            /** Format: int32 */
+            unitsPerPurchaseUnit?: number | null;
         };
         CreateRoomDto: {
             description?: string | null;
@@ -1839,6 +2103,47 @@ export interface components {
             shiftId?: string | null;
             /** Format: date-time */
             startTime?: string | null;
+        };
+        CreateStockReceiptDto: {
+            lines: components["schemas"]["CreateStockReceiptLineDto"][];
+            /** Format: uuid */
+            locationId: string;
+            notes?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
+        };
+        CreateStockReceiptLineDto: {
+            /** Format: int32 */
+            boxQuantity: number;
+            /** Format: uuid */
+            productId: string;
+        };
+        CreateStockTransferLineDto: {
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantityPieces: number;
+        };
+        CreateStockTransferRequestDto: {
+            /** Format: uuid */
+            fromLocationId?: string | null;
+            lines: components["schemas"]["CreateStockTransferLineDto"][];
+            /** Format: uuid */
+            toLocationId?: string | null;
+        };
+        CreateStockWasteEventDto: {
+            lines: components["schemas"]["CreateStockWasteLineDto"][];
+            /** Format: uuid */
+            locationId: string;
+            notes?: string | null;
+        };
+        CreateStockWasteLineDto: {
+            note?: string | null;
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantityPieces: number;
+            reasonCode: string;
         };
         CreateTransactionDto: {
             /** Format: double */
@@ -1855,6 +2160,8 @@ export interface components {
             planId?: string | null;
             /** Format: uuid */
             playerId: string;
+            /** Format: uuid */
+            saleLocationId?: string | null;
             /** Format: uuid */
             shiftId?: string | null;
             /** Format: date-time */
@@ -2077,6 +2384,7 @@ export interface components {
              *     `session.ended` realtime event. Persistence is gated on ADR-0021.
              */
             reason?: string | null;
+            staffTotp?: string | null;
             /** Format: int32 */
             timeCreditsConsumed?: number | null;
         };
@@ -2356,9 +2664,61 @@ export interface components {
             /** Format: uuid */
             shiftId: string;
         };
+        InventoryLocation: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            kind: string;
+            name: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+        };
+        InventoryLocationEnvelope: {
+            data: components["schemas"]["InventoryLocation"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        InventoryLocationFilterDto: {
+            isActive?: boolean | null;
+            kind?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+        };
+        InventoryLocationPaginationEnvelope: {
+            data: components["schemas"]["InventoryLocationPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        InventoryLocationPaginationPage: {
+            data: components["schemas"]["InventoryLocation"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
         KioskSessionResponseDto: {
             balanceId: string;
             deviceId: string;
+            /** @description Set when the session has been closed (auto, voluntary, force, offline_reconcile). */
+            endTime?: string | null;
             /** Format: double */
             remainingMinutes: number;
             /** @description True when an existing open session on this device was resumed (crash recovery). */
@@ -2383,6 +2743,48 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        LocationStockFilterDto: {
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+            /** Format: uuid */
+            productId?: string | null;
+        };
+        LocationStockPaginationEnvelope: {
+            data: components["schemas"]["LocationStockPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        LocationStockPaginationPage: {
+            data: components["schemas"]["LocationStockRow"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        LocationStockRow: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            locationId: string;
+            /** Format: uuid */
+            productId: string;
+            productName?: string | null;
+            productSku?: string | null;
+            /** Format: int32 */
+            quantityPieces: number;
+            /** Format: date-time */
+            updatedAt: string;
         };
         LoginDto: {
             password: string;
@@ -2874,6 +3276,8 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             createdBy?: string | null;
+            /** Format: double */
+            dayPrice: number;
             /** Format: date-time */
             deletedAt?: string | null;
             description?: string | null;
@@ -2882,12 +3286,22 @@ export interface components {
             isActive: boolean;
             name: string;
             /** Format: double */
+            nightPrice: number;
+            /** Format: double */
             price: number;
             /** Format: double */
             purchasePrice?: number | null;
+            /** Format: double */
+            purchasePricePerBox?: number | null;
+            /** Format: uuid */
+            purchaseUnitId?: string | null;
             sku?: string | null;
             /** Format: int32 */
             stockQuantity: number;
+            /** Format: uuid */
+            unitId?: string | null;
+            /** Format: int32 */
+            unitsPerPurchaseUnit: number;
             /** Format: date-time */
             updatedAt: string;
             /** Format: uuid */
@@ -2904,8 +3318,11 @@ export interface components {
             category?: string | null;
             /** Format: int32 */
             disabled?: number | null;
+            forSale?: boolean | null;
             /** Format: int64 */
             limit?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
             /** Format: double */
             maxPrice?: number | null;
             /** Format: double */
@@ -2987,6 +3404,12 @@ export interface components {
             rejectionReason: string;
         };
         RejectExpenseDto: {
+            rejectionReason: string;
+        };
+        RejectStockTransferDto: {
+            rejectionReason: string;
+        };
+        RejectStockWasteDto: {
             rejectionReason: string;
         };
         RevenueByPaymentMethodDto: {
@@ -3302,6 +3725,240 @@ export interface components {
             endDate?: string | null;
             startDate?: string | null;
         };
+        StockReceipt: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            locationId: string;
+            notes?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
+        };
+        StockReceiptEnvelope: {
+            data: components["schemas"]["StockReceipt"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockReceiptFilterDto: {
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+        };
+        StockReceiptLine: {
+            /** Format: int32 */
+            boxQuantity: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            piecesAdded: number;
+            /** Format: uuid */
+            productId: string;
+            /** Format: uuid */
+            receiptId: string;
+        };
+        StockReceiptPaginationEnvelope: {
+            data: components["schemas"]["StockReceiptPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockReceiptPaginationPage: {
+            data: components["schemas"]["StockReceipt"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        StockReceiptWithLines: components["schemas"]["StockReceipt"] & {
+            lines: components["schemas"]["StockReceiptLine"][];
+        };
+        StockReceiptWithLinesEnvelope: {
+            data: components["schemas"]["StockReceiptWithLines"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockTransferEnvelope: {
+            data: components["schemas"]["StockTransferRequest"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockTransferFilterDto: {
+            /** Format: uuid */
+            fromLocationId?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            status?: string | null;
+            /** Format: uuid */
+            toLocationId?: string | null;
+        };
+        StockTransferLine: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantityPieces: number;
+            /** Format: uuid */
+            transferRequestId: string;
+        };
+        StockTransferPaginationEnvelope: {
+            data: components["schemas"]["StockTransferPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockTransferPaginationPage: {
+            data: components["schemas"]["StockTransferRequest"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        StockTransferRequest: {
+            /** Format: date-time */
+            approvedAt?: string | null;
+            /** Format: uuid */
+            approvedBy?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            fromLocationId: string;
+            /** Format: date-time */
+            fulfilledAt?: string | null;
+            /** Format: uuid */
+            fulfilledBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            rejectionReason?: string | null;
+            /** Format: uuid */
+            requestedBy?: string | null;
+            status: string;
+            /** Format: uuid */
+            toLocationId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        StockTransferRequestWithLines: components["schemas"]["StockTransferRequest"] & {
+            lines: components["schemas"]["StockTransferLine"][];
+        };
+        StockTransferWithLinesEnvelope: {
+            data: components["schemas"]["StockTransferRequestWithLines"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockWasteEnvelope: {
+            data: components["schemas"]["StockWasteEvent"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockWasteEvent: {
+            /** Format: date-time */
+            approvedAt?: string | null;
+            /** Format: uuid */
+            approvedBy?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            locationId: string;
+            notes?: string | null;
+            rejectionReason?: string | null;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        StockWasteEventWithLines: components["schemas"]["StockWasteEvent"] & {
+            lines: components["schemas"]["StockWasteLine"][];
+        };
+        StockWasteFilterDto: {
+            /** Format: date-time */
+            from?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+            status?: string | null;
+            /** Format: date-time */
+            to?: string | null;
+        };
+        StockWasteLine: {
+            /** Format: uuid */
+            id: string;
+            note?: string | null;
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantityPieces: number;
+            reasonCode: string;
+            /** Format: uuid */
+            wasteEventId: string;
+        };
+        StockWastePaginationEnvelope: {
+            data: components["schemas"]["StockWastePaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockWastePaginationPage: {
+            data: components["schemas"]["StockWasteEvent"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        StockWasteSummaryListEnvelope: {
+            data: components["schemas"]["WasteSummaryRow"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockWasteWithLinesEnvelope: {
+            data: components["schemas"]["StockWasteEventWithLines"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         TopPerformersDto: {
             topPlans: unknown[];
             topPlayers: unknown[];
@@ -3579,6 +4236,11 @@ export interface components {
             thumbnailUrl?: string | null;
             videoUrl?: string | null;
         };
+        UpdateInventoryLocationDto: {
+            isActive?: boolean | null;
+            kind?: string | null;
+            name?: string | null;
+        };
         UpdateOpeningBalanceDto: {
             /** Format: double */
             openingBalance: number;
@@ -3604,16 +4266,28 @@ export interface components {
         };
         UpdateProductDto: {
             category?: string | null;
+            /** Format: double */
+            dayPrice?: number | null;
             description?: string | null;
             isActive?: boolean | null;
             name?: string | null;
             /** Format: double */
+            nightPrice?: number | null;
+            /** Format: double */
             price?: number | null;
             /** Format: double */
             purchasePrice?: number | null;
+            /** Format: double */
+            purchasePricePerBox?: number | null;
+            /** Format: uuid */
+            purchaseUnitId?: string | null;
             sku?: string | null;
             /** Format: int32 */
             stockQuantity?: number | null;
+            /** Format: uuid */
+            unitId?: string | null;
+            /** Format: int32 */
+            unitsPerPurchaseUnit?: number | null;
         };
         UpdateTransactionDto: {
             notes?: string | null;
@@ -3873,6 +4547,27 @@ export interface components {
         };
         VerifyTotpSetupDto: {
             code: string;
+        };
+        WasteSummaryFilterDto: {
+            /** Format: date-time */
+            from?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: date-time */
+            to?: string | null;
+        };
+        WasteSummaryRow: {
+            /** Format: double */
+            estimatedCost: number;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string;
+            /** Format: uuid */
+            productId: string;
+            productName: string;
+            reasonCode: string;
+            /** Format: int64 */
+            totalPieces: number;
         };
     };
     responses: never;
@@ -6873,6 +7568,1006 @@ export interface operations {
             };
         };
     };
+    list_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List inventory locations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLocationPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_location: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInventoryLocationDto"];
+            };
+        };
+        responses: {
+            /** @description Create inventory location */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLocationEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_location: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Location ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInventoryLocationDto"];
+            };
+        };
+        responses: {
+            /** @description Update inventory location */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLocationEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_receipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List stock receipts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockReceiptPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_receipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStockReceiptDto"];
+            };
+        };
+        responses: {
+            /** @description Receive stock */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockReceiptWithLinesEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_stock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List location stock */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationStockPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_transfer_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List transfer requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockTransferPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_transfer_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStockTransferRequestDto"];
+            };
+        };
+        responses: {
+            /** @description Create transfer request */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockTransferWithLinesEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_transfer_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Transfer request ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get transfer request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockTransferWithLinesEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approve_transfer_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Transfer request ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveInventoryActionDto"];
+            };
+        };
+        responses: {
+            /** @description Approve transfer request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockTransferEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    fulfill_transfer_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Transfer request ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveInventoryActionDto"];
+            };
+        };
+        responses: {
+            /** @description Fulfill transfer request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockTransferEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient stock */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reject_transfer_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Transfer request ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectStockTransferDto"];
+            };
+        };
+        responses: {
+            /** @description Reject transfer request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockTransferEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_waste_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List waste events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockWastePaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_waste_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStockWasteEventDto"];
+            };
+        };
+        responses: {
+            /** @description Create waste event */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockWasteWithLinesEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_waste_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Waste event ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get waste event */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockWasteWithLinesEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approve_waste_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Waste event ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveInventoryActionDto"];
+            };
+        };
+        responses: {
+            /** @description Approve waste event */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockWasteEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient stock */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reject_waste_event: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Waste event ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectStockWasteDto"];
+            };
+        };
+        responses: {
+            /** @description Reject waste event */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockWasteEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    waste_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Waste summary report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockWasteSummaryListEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     start_session: {
         parameters: {
             query?: never;
@@ -6984,6 +8679,63 @@ export interface operations {
         };
         responses: {
             /** @description Session ended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden — not the player's session */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    heartbeat_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session heartbeat accepted */
             200: {
                 headers: {
                     [name: string]: unknown;

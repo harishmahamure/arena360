@@ -16,6 +16,12 @@ export interface ProductResponse {
   name: string;
   description: string;
   price: string;
+  dayPrice?: number;
+  nightPrice?: number;
+  purchasePricePerBox?: number | null;
+  unitsPerPurchaseUnit?: number;
+  unitId?: string | null;
+  purchaseUnitId?: string | null;
   category: string;
   sku: null | string;
   stockQuantity: number;
@@ -34,6 +40,8 @@ export interface GetProductsFilters {
   disabled?: 1 | 0;
   minPrice?: number;
   maxPrice?: number;
+  locationId?: string;
+  forSale?: boolean;
   page?: number;
   limit?: number;
   sortBy?: string;

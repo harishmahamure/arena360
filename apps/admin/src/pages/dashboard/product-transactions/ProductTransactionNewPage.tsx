@@ -2,9 +2,11 @@ import {
   Add as AddIcon,
   ShoppingCart as CartIcon,
   Delete as DeleteIcon,
+  Nightlight,
   Payment as PaymentIcon,
   Person as PersonIcon,
   Remove as RemoveIcon,
+  Store as StoreIcon,
 } from '@mui/icons-material';
 import {
   Alert,
@@ -13,6 +15,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   Divider,
   GridLegacy as Grid,
   IconButton,
@@ -32,21 +35,27 @@ import {
   paymentMethodOptions,
 } from '../../../containers/transactions/schemas/transaction-schema';
 import { getPlayerCredit } from '../../../services/credit';
+import { getInventoryLocations, getLocationStock } from '../../../services/inventory';
 import { getPlayers } from '../../../services/players/list';
 import { getProducts } from '../../../services/product/list';
 import { addTransaction } from '../../../services/transaction/add';
 import { PaymentStatus, TransactionType } from '../../../services/transaction/list';
+import { effectiveProductPrice, isNightPricingWindow } from '../../../utils/pricing';
 
 interface Product {
   id: string;
   name: string;
   description: string;
   price: number;
+  dayPrice: number;
+  nightPrice: number;
   stockQuantity: number;
+  unitsPerPurchaseUnit: number;
 }
 
 interface CartItem extends Product {
   quantity: number;
+  effectivePrice: number;
 }
 
 interface Player {
@@ -75,6 +84,36 @@ export default function CreateProductTransactionPage() {
   const [cashAmount, setCashAmount] = useState<string>('');
   const [onlineAmount, setOnlineAmount] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [saleLocationId, setSaleLocationId] = useState<string>('');
+
+  const nightActive = isNightPricingWindow();
+
+  const { data: locationsData } = useQuery({
+    queryKey: ['pos-store-locations'],
+    queryFn: () => getInventoryLocations({ kind: 'store', isActive: true, limit: 20 }),
+  });
+
+  const storeLocations = locationsData?.data ?? [];
+
+  useEffect(() => {
+    if (!saleLocationId && storeLocations.length > 0) {
+      setSaleLocationId(storeLocations[0]?.id ?? '');
+    }
+  }, [storeLocations, saleLocationId]);
+
+  const { data: storeStockData } = useQuery({
+    queryKey: ['pos-store-stock', saleLocationId],
+    queryFn: () => getLocationStock({ locationId: saleLocationId, limit: 500 }),
+    enabled: !!saleLocationId,
+  });
+
+  const stockByProduct = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of storeStockData?.data ?? []) {
+      map.set(row.productId, row.quantityPieces);
+    }
+    return map;
+  }, [storeStockData]);
 
   // Search players
   useEffect(() => {
@@ -124,13 +163,24 @@ export default function CreateProductTransactionPage() {
           name: productInputValue,
         });
         setProductOptions(
-          data.data.map((product) => ({
-            id: product.id,
-            name: product.name,
-            description: product.description,
-            price: parseFloat(product.price),
-            stockQuantity: product.stockQuantity,
-          })),
+          data.data
+            .filter((p) => p.isActive)
+            .map((product) => {
+              const dayPrice = product.dayPrice ?? parseFloat(product.price);
+              const nightPrice = product.nightPrice ?? dayPrice;
+              const effective = effectiveProductPrice(dayPrice, nightPrice);
+              const stock = stockByProduct.get(product.id) ?? product.stockQuantity ?? 0;
+              return {
+                id: product.id,
+                name: product.name,
+                description: product.description,
+                price: effective,
+                dayPrice,
+                nightPrice,
+                stockQuantity: stock,
+                unitsPerPurchaseUnit: product.unitsPerPurchaseUnit ?? 1,
+              };
+            }),
         );
       } catch (_err) {
       } finally {
@@ -140,15 +190,17 @@ export default function CreateProductTransactionPage() {
 
     const timeoutId = setTimeout(searchProducts, 300);
     return () => clearTimeout(timeoutId);
-  }, [productInputValue]);
+  }, [productInputValue, stockByProduct]);
 
   // Cart operations
   const addToCart = (product: Product) => {
+    const effectivePrice = effectiveProductPrice(product.dayPrice, product.nightPrice);
+    const cartProduct = { ...product, price: effectivePrice, effectivePrice };
     const existingItem = cart.find((item) => item.id === product.id);
     if (existingItem) {
       updateQuantity(product.id, existingItem.quantity + 1);
     } else {
-      setCart([...cart, { ...product, quantity: 1 }]);
+      setCart([...cart, { ...cartProduct, quantity: 1 }]);
     }
     setProductInputValue('');
   };
@@ -181,7 +233,7 @@ export default function CreateProductTransactionPage() {
   };
 
   // Calculations
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = cart.reduce((sum, item) => sum + item.effectivePrice * item.quantity, 0);
   const total = subtotal;
 
   const isCredit = paymentMethod === PaymentMethodValues.CREDIT;
@@ -226,11 +278,17 @@ export default function CreateProductTransactionPage() {
       return;
     }
 
+    if (!saleLocationId) {
+      setError('Please select a store location');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const response = await addTransaction({
         playerId: selectedPlayer.id,
+        saleLocationId,
         transactionType: TransactionType.PRODUCT_PURCHASE,
         amount: total,
         paymentStatus:
@@ -254,7 +312,7 @@ export default function CreateProductTransactionPage() {
         lineItems: cart.map((item) => ({
           productId: item.id,
           quantity: item.quantity,
-          unitPrice: item.price,
+          unitPrice: item.effectivePrice,
         })),
       });
 
@@ -299,6 +357,35 @@ export default function CreateProductTransactionPage() {
           {success}
         </Alert>
       )}
+
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <StoreIcon color="action" />
+        <TextField
+          select
+          label="Store"
+          size="small"
+          value={saleLocationId}
+          onChange={(e) => {
+            setSaleLocationId(e.target.value);
+            setCart([]);
+          }}
+          sx={{ minWidth: 220 }}
+        >
+          {storeLocations.map((loc) => (
+            <MenuItem key={loc.id} value={loc.id}>
+              {loc.name}
+            </MenuItem>
+          ))}
+        </TextField>
+        {nightActive && (
+          <Chip
+            icon={<Nightlight />}
+            label="Night price active (11 PM – 8 AM)"
+            color="secondary"
+            size="small"
+          />
+        )}
+      </Box>
 
       <Grid container spacing={3}>
         {/* Left Column - Player & Product Selection */}
@@ -376,14 +463,29 @@ export default function CreateProductTransactionPage() {
                         </Box>
                         <Box sx={{ textAlign: 'right' }}>
                           <Typography variant="body1" fontWeight={600}>
-                            ₹{option.price}
+                            ₹{option.price.toFixed(2)}
+                            {nightActive && option.nightPrice !== option.dayPrice && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="secondary.main"
+                                sx={{ ml: 0.5 }}
+                              >
+                                night
+                              </Typography>
+                            )}
                           </Typography>
                           <Typography
                             variant="caption"
                             color={option.stockQuantity > 0 ? 'success.main' : 'error.main'}
                           >
-                            {option.stockQuantity} in stock
+                            {option.stockQuantity} pcs in store
                           </Typography>
+                          {option.unitsPerPurchaseUnit > 1 && (
+                            <Typography variant="caption" display="block" color="text.secondary">
+                              1 box = {option.unitsPerPurchaseUnit} pcs
+                            </Typography>
+                          )}
                         </Box>
                       </Box>
                     </Box>
@@ -453,7 +555,7 @@ export default function CreateProductTransactionPage() {
                             {item.name}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            ₹{item.price} each
+                            ₹{item.effectivePrice.toFixed(2)} each
                           </Typography>
                         </Box>
                         <IconButton
@@ -498,7 +600,7 @@ export default function CreateProductTransactionPage() {
                           </IconButton>
                         </Box>
                         <Typography variant="body1" fontWeight={600}>
-                          ₹{(item.price * item.quantity).toFixed(2)}
+                          ₹{(item.effectivePrice * item.quantity).toFixed(2)}
                         </Typography>
                       </Box>
                     </Box>

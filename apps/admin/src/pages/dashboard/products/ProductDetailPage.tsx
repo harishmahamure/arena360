@@ -11,7 +11,7 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getProductById } from '../../../services/product/getById';
 import type { ProductCategory } from '../../../services/product/list';
 import { updateProduct } from '../../../services/product/update';
-import { productFormFields } from './ProductNewPage';
+import { productFormFieldsHook } from './ProductNewPage';
 
 export default function EditProductPage() {
   const navigate = useNavigate();
@@ -21,37 +21,24 @@ export default function EditProductPage() {
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const productFormFields = productFormFieldsHook();
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', id],
     queryFn: () => getProductById(id as string),
     enabled: !!id,
-    staleTime: 1000 * 30, // 30 seconds
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-    refetchOnReconnect: true,
-    refetchInterval: 1000 * 30,
-    refetchIntervalInBackground: true,
   });
 
   const handleSubmit = async (data: CreateProductFormData) => {
     setIsSubmitting(true);
     setError(undefined);
     setSuccess(undefined);
-    if (!data.name || !data.price || !data.category) {
-      setError('All fields are required');
-      setIsSubmitting(false);
-      return;
-    }
     try {
       await updateProduct(id as string, {
-        name: data.name,
-        description: data.description,
+        ...data,
         price: data.price,
-        category: data.category,
-        sku: data.sku,
-        stockQuantity: data.stockQuantity,
-        isActive: data.isActive,
+        dayPrice: data.price,
+        nightPrice: data.nightPrice ?? data.price,
       });
       setSuccess('Product updated successfully!');
       navigate('/products');
@@ -62,10 +49,6 @@ export default function EditProductPage() {
     }
   };
 
-  const handleCancel = () => {
-    navigate('/products');
-  };
-
   if (isLoading) {
     return (
       <Paper elevation={0} sx={{ p: 4 }}>
@@ -74,19 +57,16 @@ export default function EditProductPage() {
     );
   }
 
+  const dayPrice = product?.dayPrice ?? (product?.price ? parseFloat(product.price) : 0);
+
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 4,
-      }}
-    >
+    <Paper elevation={0} sx={{ p: 4 }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" fontWeight={600} gutterBottom>
-          Update Product{' '}
+          Update Product
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {product?.name} to update the product details.
+          {product?.name}
         </Typography>
       </Box>
 
@@ -96,7 +76,12 @@ export default function EditProductPage() {
         defaultValues={{
           category: product?.category as unknown as ProductCategory,
           name: product?.name,
-          price: product?.price ? parseFloat(product?.price) : 0,
+          price: dayPrice,
+          nightPrice: product?.nightPrice ?? dayPrice,
+          purchasePricePerBox: product?.purchasePricePerBox ?? undefined,
+          unitsPerPurchaseUnit: product?.unitsPerPurchaseUnit ?? 1,
+          unitId: product?.unitId ?? undefined,
+          purchaseUnitId: product?.purchaseUnitId ?? undefined,
           sku: product?.sku,
           description: product?.description,
           stockQuantity: product?.stockQuantity,
@@ -104,7 +89,7 @@ export default function EditProductPage() {
         }}
         mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
-        onCancel={handleCancel}
+        onCancel={() => navigate('/products')}
         loading={isSubmitting}
         error={error}
         success={success}

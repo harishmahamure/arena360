@@ -9,8 +9,8 @@ use crate::models::{
     TransactionWithLineItems, UpdateTransactionDto,
 };
 use crate::realtime::OutboxService;
-use crate::repositories::{TransactionProductRepository, TransactionRepository};
-use crate::services::{BalanceService, CreditService, EventService};
+use crate::repositories::{InventoryRepository, TransactionProductRepository, TransactionRepository};
+use crate::services::{BalanceService, CreditService, EventService, InventoryService};
 use crate::validation::{
     optional_payment_status, require_payment_method, require_payment_status,
     require_transaction_type,
@@ -19,10 +19,12 @@ use crate::validation::{
 pub struct TransactionService {
     repo: TransactionRepository,
     line_item_repo: TransactionProductRepository,
+    inventory_repo: InventoryRepository,
     balances: Arc<BalanceService>,
     credit: Arc<CreditService>,
     events: EventService,
     outbox: OutboxService,
+    cafe_timezone: String,
 }
 
 impl TransactionService {
@@ -32,14 +34,17 @@ impl TransactionService {
         credit: Arc<CreditService>,
         events: EventService,
         outbox: OutboxService,
+        cafe_timezone: String,
     ) -> Self {
         Self {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
+            inventory_repo: InventoryRepository::new(pool.clone()),
             repo: TransactionRepository::new(pool),
             balances,
             credit,
             events,
             outbox,
+            cafe_timezone,
         }
     }
 
@@ -140,9 +145,44 @@ impl TransactionService {
             ));
         }
 
-        let mut db_tx = self.repo.pool.begin().await?;
+        let sale_location_id = match dto.sale_location_id {
+            Some(id) => id,
+            None => self
+                .inventory_repo
+                .get_config_location_id("pos.default_sale_location_id")
+                .await?
+                .ok_or_else(|| {
+                    AppError::BadRequest(
+                        "saleLocationId is required for product_purchase transactions".to_string(),
+                    )
+                })?,
+        };
 
-        let resolved_items = Self::resolve_and_validate_stock(&mut db_tx, line_items).await?;
+        let location = self
+            .inventory_repo
+            .find_location_by_id(sale_location_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::BadRequest(format!("Sale location {sale_location_id} not found"))
+            })?;
+
+        if location.kind != "store" {
+            return Err(AppError::BadRequest(
+                "saleLocationId must reference a store location".to_string(),
+            ));
+        }
+
+        let mut db_tx = self.repo.pool.begin().await?;
+        let now = dto.transaction_date.unwrap_or_else(Utc::now);
+
+        let resolved_items = Self::resolve_and_validate_stock(
+            &mut db_tx,
+            line_items,
+            sale_location_id,
+            &self.cafe_timezone,
+            now,
+        )
+        .await?;
 
         let server_total: f64 = resolved_items
             .iter()
@@ -192,21 +232,15 @@ impl TransactionService {
         .await?;
 
         for (product_id, qty, _) in &resolved_items {
-            let rows = sqlx::query(
-                r#"UPDATE products SET "stockQuantity" = "stockQuantity" - $1, "updatedAt" = NOW()
-                   WHERE id = $2 AND "stockQuantity" >= $1 AND "deletedAt" IS NULL
-                   RETURNING id"#,
+            InventoryRepository::deduct_sale_stock_in_tx(
+                &mut db_tx,
+                sale_location_id,
+                *product_id,
+                *qty,
+                transaction.id,
+                actor_id,
             )
-            .bind(*qty)
-            .bind(*product_id)
-            .fetch_optional(&mut *db_tx)
             .await?;
-
-            if rows.is_none() {
-                return Err(AppError::Conflict(format!(
-                    "Insufficient stock for product {product_id}"
-                )));
-            }
         }
 
         db_tx.commit().await?;
@@ -244,6 +278,9 @@ impl TransactionService {
     async fn resolve_and_validate_stock(
         db_tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         line_items: &[CreateLineItemDto],
+        sale_location_id: Uuid,
+        cafe_timezone: &str,
+        now: chrono::DateTime<Utc>,
     ) -> Result<Vec<(Uuid, i32, f64)>, AppError> {
         let mut resolved = Vec::with_capacity(line_items.len());
         for item in line_items {
@@ -253,17 +290,24 @@ impl TransactionService {
                     item.product_id
                 )));
             }
-            let row: Option<(i32, f64)> = sqlx::query_as(
-                r#"SELECT "stockQuantity", price::float8
-                   FROM products
-                   WHERE id = $1 AND "deletedAt" IS NULL
-                   FOR UPDATE"#,
+            let row: Option<(i32, f64, f64)> = sqlx::query_as(
+                r#"
+                SELECT COALESCE(ls."quantityPieces", 0),
+                       p."dayPrice"::float8,
+                       p."nightPrice"::float8
+                FROM products p
+                LEFT JOIN location_stock ls
+                  ON ls."productId" = p.id AND ls."locationId" = $2
+                WHERE p.id = $1 AND p."deletedAt" IS NULL
+                FOR UPDATE OF p
+                "#,
             )
             .bind(item.product_id)
+            .bind(sale_location_id)
             .fetch_optional(&mut **db_tx)
             .await?;
 
-            let (stock, db_price) = row.ok_or_else(|| {
+            let (stock, day_price, night_price) = row.ok_or_else(|| {
                 AppError::NotFound(format!("Product {} not found", item.product_id))
             })?;
 
@@ -274,7 +318,12 @@ impl TransactionService {
                 )));
             }
 
-            let unit_price = item.unit_price.unwrap_or(db_price);
+            let unit_price = InventoryService::effective_product_price(
+                day_price,
+                night_price,
+                now,
+                cafe_timezone,
+            );
             resolved.push((item.product_id, item.quantity, unit_price));
         }
         Ok(resolved)

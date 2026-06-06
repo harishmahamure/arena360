@@ -94,6 +94,7 @@ pub struct CreateTransactionDto {
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
     pub line_items: Option<Vec<super::transaction_product::CreateLineItemDto>>,
+    pub sale_location_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

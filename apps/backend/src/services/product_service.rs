@@ -42,6 +42,28 @@ impl ProductService {
             ));
         }
 
+        if let Some(day_price) = dto.day_price {
+            if day_price < 0.0 {
+                return Err(AppError::BadRequest(
+                    "dayPrice must be greater than or equal to 0".to_string(),
+                ));
+            }
+        }
+        if let Some(night_price) = dto.night_price {
+            if night_price < 0.0 {
+                return Err(AppError::BadRequest(
+                    "nightPrice must be greater than or equal to 0".to_string(),
+                ));
+            }
+        }
+        if let Some(units) = dto.units_per_purchase_unit {
+            if units <= 0 {
+                return Err(AppError::BadRequest(
+                    "unitsPerPurchaseUnit must be positive".to_string(),
+                ));
+            }
+        }
+
         if let Some(sku) = &dto.sku {
             if self.repo.sku_exists(sku, None).await? {
                 return Err(AppError::Conflict(format!(
@@ -80,6 +102,27 @@ impl ProductService {
             if price < 0.0 {
                 return Err(AppError::BadRequest(
                     "Price must be greater than or equal to 0".to_string(),
+                ));
+            }
+        }
+        if let Some(day_price) = dto.day_price {
+            if day_price < 0.0 {
+                return Err(AppError::BadRequest(
+                    "dayPrice must be greater than or equal to 0".to_string(),
+                ));
+            }
+        }
+        if let Some(night_price) = dto.night_price {
+            if night_price < 0.0 {
+                return Err(AppError::BadRequest(
+                    "nightPrice must be greater than or equal to 0".to_string(),
+                ));
+            }
+        }
+        if let Some(units) = dto.units_per_purchase_unit {
+            if units <= 0 {
+                return Err(AppError::BadRequest(
+                    "unitsPerPurchaseUnit must be positive".to_string(),
                 ));
             }
         }

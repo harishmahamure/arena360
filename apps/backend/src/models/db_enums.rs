@@ -52,6 +52,13 @@ pub const TRANSACTION_TYPES: &[&str] = &["plan_purchase", "product_purchase"];
 pub const PAYMENT_METHODS: &[&str] = &["cash", "online", "split_payment", "credit"];
 pub const PAYMENT_STATUSES: &[&str] = &["pending", "completed", "failed", "refunded", "credit"];
 
+pub const INVENTORY_LOCATION_KINDS: &[&str] = &["warehouse", "store"];
+pub const STOCK_TRANSFER_STATUSES: &[&str] =
+    &["pending", "approved", "rejected", "fulfilled"];
+pub const STOCK_WASTE_STATUSES: &[&str] = &["pending", "approved", "rejected"];
+pub const STOCK_WASTE_REASONS: &[&str] =
+    &["expired", "damaged", "spoilage", "sample", "other"];
+
 pub fn normalize_uppercase_enum(value: &str, allowed: &[&str]) -> Option<String> {
     let upper = value.trim().to_uppercase();
     if allowed.iter().any(|label| *label == upper) {
@@ -118,4 +125,20 @@ pub fn normalize_payment_method(value: &str) -> Option<String> {
 
 pub fn normalize_payment_status(value: &str) -> Option<String> {
     normalize_exact_enum(value, PAYMENT_STATUSES)
+}
+
+pub fn normalize_inventory_location_kind(value: &str) -> Option<String> {
+    normalize_exact_enum(value, INVENTORY_LOCATION_KINDS)
+}
+
+pub fn normalize_stock_transfer_status(value: &str) -> Option<String> {
+    normalize_exact_enum(value, STOCK_TRANSFER_STATUSES)
+}
+
+pub fn normalize_stock_waste_status(value: &str) -> Option<String> {
+    normalize_exact_enum(value, STOCK_WASTE_STATUSES)
+}
+
+pub fn normalize_stock_waste_reason(value: &str) -> Option<String> {
+    normalize_exact_enum(value, STOCK_WASTE_REASONS)
 }

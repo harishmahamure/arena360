@@ -14,10 +14,10 @@ use crate::openapi::ApiDoc;
 use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
-    CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
-    GameService, PlanService, PlayerPlanService, ProductService, SessionService, ShiftService,
-    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
-    VendorService,
+    CreditService, DeviceService, EventService,     ExpenseCategoryService, ExpenseService,
+    GameService, InventoryService, PlanService, PlayerPlanService, ProductService, SessionService,
+    ShiftService, StatsService, StorageConfig, StorageService, TransactionService, UnitService,
+    UserService, VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -45,6 +45,7 @@ pub struct AppState {
     pub expense_categories: ExpenseCategoryService,
     pub vendors: VendorService,
     pub expenses: ExpenseService,
+    pub inventory: InventoryService,
     pub stats: StatsService,
     pub credit: Arc<CreditService>,
     pub events: EventService,
@@ -109,6 +110,7 @@ pub async fn build_state() -> Arc<AppState> {
             credit.clone(),
             events.clone(),
             outbox.clone(),
+            settings.cafe_timezone.clone(),
         ),
         credit,
         products: ProductService::new(pool.clone()),
@@ -120,6 +122,11 @@ pub async fn build_state() -> Arc<AppState> {
             pool.clone(),
             CashRegisterService::new(pool.clone()),
             ShiftService::new(pool.clone()),
+            outbox.clone(),
+        ),
+        inventory: InventoryService::new(
+            pool.clone(),
+            settings.cafe_timezone.clone(),
             outbox.clone(),
         ),
         stats: StatsService::new(pool.clone()),
@@ -380,6 +387,61 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/expenses/{id}/reject",
             patch(handlers::expenses::reject_expense),
+        )
+        .route(
+            "/inventory/locations",
+            get(handlers::inventory::list_locations).post(handlers::inventory::create_location),
+        )
+        .route(
+            "/inventory/locations/{id}",
+            patch(handlers::inventory::update_location),
+        )
+        .route("/inventory/stock", get(handlers::inventory::list_stock))
+        .route(
+            "/inventory/receipts",
+            get(handlers::inventory::list_receipts).post(handlers::inventory::create_receipt),
+        )
+        .route(
+            "/inventory/transfer-requests",
+            get(handlers::inventory::list_transfer_requests)
+                .post(handlers::inventory::create_transfer_request),
+        )
+        .route(
+            "/inventory/transfer-requests/{id}",
+            get(handlers::inventory::get_transfer_request),
+        )
+        .route(
+            "/inventory/transfer-requests/{id}/approve",
+            patch(handlers::inventory::approve_transfer_request),
+        )
+        .route(
+            "/inventory/transfer-requests/{id}/reject",
+            patch(handlers::inventory::reject_transfer_request),
+        )
+        .route(
+            "/inventory/transfer-requests/{id}/fulfill",
+            patch(handlers::inventory::fulfill_transfer_request),
+        )
+        .route(
+            "/inventory/waste-events",
+            get(handlers::inventory::list_waste_events)
+                .post(handlers::inventory::create_waste_event),
+        )
+        .route(
+            "/inventory/waste-events/{id}",
+            get(handlers::inventory::get_waste_event),
+        )
+        .route(
+            "/inventory/waste-events/{id}/approve",
+            patch(handlers::inventory::approve_waste_event),
+        )
+        .route(
+            "/inventory/waste-events/{id}/reject",
+            patch(handlers::inventory::reject_waste_event),
+        )
+        .route(
+            "/inventory/waste/summary",
+            get(handlers::inventory::waste_summary),
         )
         .route(
             "/users/{id}/credit-limit",

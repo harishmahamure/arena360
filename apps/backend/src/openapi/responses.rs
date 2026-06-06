@@ -215,3 +215,43 @@ pagination_envelope!(
     CreditPlayerPaginationPage,
     crate::models::CreditPlayerRow
 );
+
+use crate::models::{
+    InventoryLocation, LocationStockRow, StockReceipt, StockReceiptWithLines,
+    StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent,
+    StockWasteEventWithLines, WasteSummaryRow,
+};
+
+success_envelope!(InventoryLocationEnvelope, InventoryLocation);
+pagination_envelope!(
+    InventoryLocationPaginationEnvelope,
+    InventoryLocationPaginationPage,
+    InventoryLocation
+);
+pagination_envelope!(
+    LocationStockPaginationEnvelope,
+    LocationStockPaginationPage,
+    LocationStockRow
+);
+success_envelope!(StockReceiptEnvelope, StockReceipt);
+success_envelope!(StockReceiptWithLinesEnvelope, StockReceiptWithLines);
+pagination_envelope!(
+    StockReceiptPaginationEnvelope,
+    StockReceiptPaginationPage,
+    StockReceipt
+);
+success_envelope!(StockTransferEnvelope, StockTransferRequest);
+success_envelope!(StockTransferWithLinesEnvelope, StockTransferRequestWithLines);
+pagination_envelope!(
+    StockTransferPaginationEnvelope,
+    StockTransferPaginationPage,
+    StockTransferRequest
+);
+success_envelope!(StockWasteEnvelope, StockWasteEvent);
+success_envelope!(StockWasteWithLinesEnvelope, StockWasteEventWithLines);
+pagination_envelope!(
+    StockWastePaginationEnvelope,
+    StockWastePaginationPage,
+    StockWasteEvent
+);
+success_envelope!(StockWasteSummaryListEnvelope, Vec<WasteSummaryRow>);

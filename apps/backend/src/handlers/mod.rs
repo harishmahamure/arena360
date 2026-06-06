@@ -9,6 +9,7 @@ pub mod expense_categories;
 pub mod expenses;
 pub mod games;
 pub mod health;
+pub mod inventory;
 pub mod kiosk;
 pub mod plans;
 pub mod player_plans;

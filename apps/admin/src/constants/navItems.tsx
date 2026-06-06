@@ -5,6 +5,7 @@ import {
   Dashboard,
   Devices,
   Inventory,
+  Inventory2,
   MoneyOff,
   People,
   PlayCircle,
@@ -82,8 +83,40 @@ export const adminNavItems: AdminNavItem[] = [
         path: '/products/new',
         requiredPermission: Permission.ProductsWrite,
       },
+      {
+        title: 'Units',
+        path: '/units',
+        requiredPermission: Permission.UnitsRead,
+      },
       { title: 'Expiring Soon', path: '/products?stockExpiringSoon=true' },
       { title: 'Inactive Products', path: '/products?deleted=true' },
+    ],
+  },
+  {
+    title: 'Inventory',
+    path: '/inventory/locations',
+    icon: <Inventory2 />,
+    requiredPermission: Permission.InventoryRead,
+    children: [
+      {
+        title: 'Locations',
+        path: '/inventory/locations',
+        requiredPermission: Permission.InventoryManage,
+      },
+      { title: 'Warehouse stock', path: '/inventory/warehouse' },
+      { title: 'Transfer requests', path: '/inventory/transfers' },
+      {
+        title: 'New transfer request',
+        path: '/inventory/transfers/new',
+        requiredPermission: Permission.InventoryTransferRequest,
+      },
+      {
+        title: 'Record waste',
+        path: '/inventory/waste/new',
+        requiredPermission: Permission.InventoryWasteRecord,
+      },
+      { title: 'Waste approvals', path: '/inventory/waste' },
+      { title: 'Waste report', path: '/inventory/waste/report' },
     ],
   },
   {
