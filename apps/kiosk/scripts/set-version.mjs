@@ -43,6 +43,12 @@ function nextVersion(current, arg) {
   }
 }
 
+function writeNormalized(path, content) {
+  // GitHub Actions runs on windows-latest; checkout may leave CRLF while Biome
+  // (lineEnding: lf) rejects them on the pre-commit hook.
+  writeFileSync(path, content.replace(/\r\n/g, '\n'), 'utf8');
+}
+
 function writeJsonVersion(path, version) {
   const src = readFileSync(path, 'utf8');
   // Replace only the top-level "version" field so Biome formatting is preserved
@@ -51,7 +57,7 @@ function writeJsonVersion(path, version) {
   if (next === src) {
     throw new Error(`No top-level "version" field replaced in ${path}`);
   }
-  writeFileSync(path, next);
+  writeNormalized(path, next);
 }
 
 function writeCargoVersion(path, version) {
@@ -62,7 +68,7 @@ function writeCargoVersion(path, version) {
   if (next === src) {
     throw new Error(`No [package] version line replaced in ${path}`);
   }
-  writeFileSync(path, next);
+  writeNormalized(path, next);
 }
 
 const bumpArg = process.argv[2];
