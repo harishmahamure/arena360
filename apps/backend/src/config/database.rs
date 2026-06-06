@@ -5,6 +5,9 @@ use tracing::info;
 use super::Settings;
 
 pub async fn create_pool(settings: &Settings) -> PgPool {
+        println!("Connecting to {} with {}", settings.database_url, settings.database_max_connections);
+
+
     let pool = PgPoolOptions::new()
         .max_connections(settings.database_max_connections)
         .connect(&settings.database_url)
