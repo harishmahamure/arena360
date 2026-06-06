@@ -5,10 +5,9 @@
       "name": "Valorant",
       "genre": "Tactical Shooter",
       "description": "5v5 character-based tactical FPS.",
-      "thumbnailUrl": "/games/images/poster-ember.svg",
-      "logoUrl": "/games/images/logo-arena.svg",
-      "videoUrl": null,
-      "launchRef": "Valorant",
+      "thumbnailUrl": "https://cdn.arena360.cloud/ico%20n%20vids/valorent/CINEMAFLIX%20Valorant%20Game%20Poster%20Wall%20Art%20Measures%2024%20x%2036%20inches%20(unframed).jpg",
+      "logoUrl": "https://cdn.arena360.cloud/ico%20n%20vids/valorent/CINEMAFLIX%20Valorant%20Game%20Poster%20Wall%20Art%20Measures%2024%20x%2036%20inches%20(unframed).jpg",
+      "videoUrl": "https://cdn.arena360.cloud/ico%20n%20vids/valorent/VALO%20CINEMATICS%5D.mp4",
       "isActive": true,
       "sortOrder": 1,
       "category": "game"

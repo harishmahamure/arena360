@@ -17,8 +17,12 @@ function stringFromEnv(key: string): string | null {
   return raw?.trim() ? raw.trim() : null;
 }
 
-/** Optional center brand logo for the login home (configured per venue). */
-export const KIOSK_LOGO_URL = stringFromEnv('VITE_KIOSK_LOGO_URL');
+/** Brand logo on the login home; override per venue via `VITE_KIOSK_LOGO_URL`. */
+export const KIOSK_LOGO_URL = stringFromEnv('VITE_KIOSK_LOGO_URL') ?? '/logo.png';
+
+/** Cinematic background loop on the login home; override per venue via env. */
+export const LOGIN_BACKGROUND_VIDEO_URL =
+  stringFromEnv('VITE_LOGIN_BACKGROUND_VIDEO_URL') ?? 'https://cdn.arena360.cloud/launch.webm';
 
 function numberFromEnv(key: string, fallback: number): number {
   const raw =
