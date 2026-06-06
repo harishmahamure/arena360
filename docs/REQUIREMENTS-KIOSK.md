@@ -274,6 +274,19 @@ Legacy platform IDs (`US-KIOSK-*`, `US-SESSION-*`, `US-AUTH-003`) map to these e
 | US-KAUDIO-001 | As a player, I want in-session volume control (system mixer via approved API) without leaving the kiosk shell. | Must | — |
 | US-KAUDIO-002 | As a player, I want to launch allow-listed audio software (e.g. G Hub, Windows sound settings) from a Utilities section. | Should | — |
 
+### 4.10 Windows station deployment — `US-KDEPLOY-*`
+
+| ID | Story | Priority | Maps from |
+|----|-------|----------|-----------|
+| US-KDEPLOY-001 | As an operator, I want a documented procedure to create a dedicated Windows kiosk account with auto-logon, so stations boot straight into the player shell without manual login. | Should | §6.6 |
+| US-KDEPLOY-002 | As an operator, I want the kiosk app to launch automatically when the kiosk user logs on, so reboots and power cycles restore the attract screen without staff intervention. | Should | §6.6 |
+| US-KDEPLOY-003 | As the venue, I want the kiosk app to relaunch within 10 seconds if it crashes or is killed, so the station does not sit on an empty desktop during operating hours. | Should | — |
+| US-KDEPLOY-004 | As an operator in setup mode, I want intentional exit to desktop to pause auto-relaunch for a configurable period, so maintenance is not fought by a watchdog. | Should | US-KLOCK-005 |
+| US-KDEPLOY-005 | As IT, I want an OS hardening checklist (Assigned Access, GPO, Task Manager policy), so shell escape is minimized beyond in-app lockdown. | Should | US-KLOCK-001 |
+
+Implementation tracked in [PLANNER-KIOSK.md](PLANNER-KIOSK.md) phase **K10** and
+[KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md).
+
 ### 4.9 Offline & resilience — `US-KOFFLINE-*`
 
 | ID | Story | Priority | Maps from |
@@ -535,7 +548,8 @@ Legacy platform IDs (`US-KIOSK-*`, `US-SESSION-*`, `US-AUTH-003`) map to these e
 
 - Release artifact: Windows installer (MSI or NSIS per implementation ADR) ≤ 25 MB target per ADR-0002 guidance.
 - WebView2 runtime check on install (Windows 10).
-- Auto-start on boot optional (Should) via operator policy.
+- Auto-start on boot and crash relaunch (Should) — `US-KDEPLOY-*`; operator policy today,
+  installer automation in K10 ([KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md)).
 
 ---
 

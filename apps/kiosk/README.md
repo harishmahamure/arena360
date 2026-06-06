@@ -94,6 +94,11 @@ For a hardened station, also apply at the OS level:
 - Assigned Access / kiosk account, or group policy `DisableLockWorkstation` and
   `DisableTaskMgr`.
 - Auto-login of the kiosk account and the app set to launch on logon.
+- A watchdog or scheduled task to relaunch the app if it is killed (not yet in the
+  installer — see roadmap).
+
+**Full roadmap:** [docs/KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)
+(Assigned Access, shell replacement, boot auto-start, auto-restart on close, fleet rollout).
 
 ### Code signing (release)
 

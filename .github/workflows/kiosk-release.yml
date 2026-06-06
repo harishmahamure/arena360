@@ -72,7 +72,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore(kiosk): release v${VERSION}"
+          git add apps/kiosk/package.json apps/kiosk/src-tauri/tauri.conf.json apps/kiosk/src-tauri/Cargo.toml
+          git commit -m "chore(kiosk): release v${VERSION}"
           git tag "kiosk-v${VERSION}"
           git push origin HEAD --follow-tags
 

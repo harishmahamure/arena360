@@ -8,7 +8,7 @@
 > `TASKS.md` conventions from `.cursor/rules/05-project-planning.mdc`,
 > extended with explicit ADR + `US-K*` cross-references.
 >
-> Last updated: 2026-05-30 (K1–K9 implementation pass).
+> Last updated: 2026-06-06 (K10 Windows deployment roadmap added).
 
 ## Quick links
 
@@ -19,6 +19,7 @@
 - Consolidation planner: [PLANNER.md](PLANNER.md)
 - ADRs: [adr/](adr/)
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Windows station deployment: [KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md)
 
 ## Status legend
 
@@ -45,8 +46,9 @@
 | K7 | Admin SPA (registration codes, force-end, fingerprint) | K1 | 3 admin tasks | `done` |
 | K8 | Tests + CI (Vitest, cargo test, e2e smoke, Windows runner) | K1–K7 | 5 test/CI tasks | `done` (cargo+vitest green; e2e/CI need infra) |
 | K9 | Windows installer, WebView2 bootstrap, optional auto-update | K8 | 3 packaging tasks | `done` (installer builds on Windows CI) |
+| K10 | Windows station shell — boot auto-start, watchdog relaunch, fleet scripts | K9 | 4 deployment tasks | `pending` (guide done; code not started) |
 
-**Critical path:** K0 → K1 + K2 (parallel) → K3 → K4 + K5 (parallel) → K6 → K8 → K9. K7 can run in parallel with K3–K5 once K1 is `verified`.
+**Critical path:** K0 → K1 + K2 (parallel) → K3 → K4 + K5 (parallel) → K6 → K8 → K9 → K10. K7 can run in parallel with K3–K5 once K1 is `verified`. K10 is operator-facing and can ship incrementally after K9.
 
 ---
 
@@ -1572,6 +1574,119 @@
 
 - [ ] README covers Win10 requirement.
 - [ ] First-run detects missing runtime with clear message.
+
+**Evidence**:
+
+- _none yet_
+
+---
+
+### `kiosk-deploy-guide` — Windows station deployment operator guide
+
+- **Phase**: K10
+- **Status**: `done` (KIOSK-WINDOWS-DEPLOYMENT.md: Assigned Access, shell replacement, Run key, manual watchdog, risks)
+- **Owner**: TBD
+- **ADR refs**: `adr/0020`, `adr/0028`
+- **User-story refs**: US-KDEPLOY-001, US-KDEPLOY-005
+- **Migration rows**: (none — docs)
+- **Plan / NFR refs**: REQUIREMENTS-KIOSK.md §4.10, §6.6
+
+**Description** — Document how cafes configure Windows for kiosk shell: dedicated account,
+auto-logon, Assigned Access vs shell replacement vs Run key, GPO hardening, and manual
+watchdog until installer automation ships.
+
+**Acceptance criteria** (checklist):
+
+- [x] Single doc covers boot launch + auto-restart strategies.
+- [x] Linked from PLANNER and kiosk README.
+- [x] K10 task breakdown with priorities.
+
+**Evidence**:
+
+- `docs/KIOSK-WINDOWS-DEPLOYMENT.md`
+
+---
+
+### `kiosk-startup-task` — Installer option: launch kiosk at logon
+
+- **Phase**: K10
+- **Status**: `pending`
+- **Owner**: TBD
+- **ADR refs**: `adr/0028`
+- **User-story refs**: US-KDEPLOY-002
+- **Migration rows**: (none — installer)
+- **Plan / NFR refs**: REQUIREMENTS-KIOSK.md §6.6
+
+**Description** — NSIS installer checkbox (default on): register `HKLM\...\Run` or per-user
+Scheduled Task “At log on” for `Arena360 Kiosk.exe`. Uninstall removes registration.
+
+**Implementation notes** —
+- `tauri.conf.json` NSIS hooks or custom `installer-hooks.nsh`.
+- Idempotent: upgrade reinstall does not duplicate entries.
+
+**Acceptance criteria** (checklist):
+
+- [ ] Fresh install on Win10 VM auto-launches kiosk after reboot/logon.
+- [ ] Uninstall removes startup entry.
+- [ ] Documented in KIOSK-WINDOWS-DEPLOYMENT.md § Layer 3.
+
+**Evidence**:
+
+- _none yet_
+
+---
+
+### `kiosk-watchdog` — Sidecar process: relaunch kiosk if exited
+
+- **Phase**: K10
+- **Status**: `pending`
+- **Owner**: TBD
+- **ADR refs**: `adr/0020`
+- **User-story refs**: US-KDEPLOY-003, US-KDEPLOY-004
+- **Migration rows**: (none — new binary)
+- **Plan / NFR refs**: KIOSK-WINDOWS-DEPLOYMENT.md § Layer 2
+
+**Description** — Small watchdog binary + Scheduled Task at logon. Polls main process every
+2 s; relaunch if missing unless `%ProgramData%\Arena360\watchdog.pause` exists (TTL).
+Single-instance mutex shared with kiosk. Optional IPC from `SetupRelaxed` to set pause.
+
+**Implementation notes** —
+- `apps/kiosk/src-tauri/watchdog/` or sibling crate; ship in same NSIS bundle.
+- Exit code `--maintenance` or pause file from setup “exit to desktop”.
+- Do not relaunch during `tauri-plugin-process` update handoff (mutex transfer).
+
+**Acceptance criteria** (checklist):
+
+- [ ] Kill main process → relaunch within 10 s on clean VM.
+- [ ] Pause file → no relaunch for configured TTL.
+- [ ] No duplicate kiosk windows at boot.
+- [ ] cargo tests for pause-file parsing.
+
+**Evidence**:
+
+- _none yet_
+
+---
+
+### `kiosk-installer-fleet` — Silent install + configure-station.ps1
+
+- **Phase**: K10
+- **Status**: `pending`
+- **Owner**: TBD
+- **ADR refs**: `adr/0028`
+- **User-story refs**: US-KDEPLOY-001, US-KDEPLOY-002
+- **Migration rows**: (none — scripts)
+- **Plan / NFR refs**: KIOSK-WINDOWS-DEPLOYMENT.md § Layer 3
+
+**Description** — `apps/kiosk/scripts/windows/configure-station.ps1` with parameters:
+`-ShellMode AssignedAccess|ReplaceShell|RunKey`, `-KioskUser`, optional auto-logon
+prompt. NSIS silent `/S` documented for SCCM/Intune.
+
+**Acceptance criteria** (checklist):
+
+- [ ] Script idempotent on re-run.
+- [ ] README + deployment doc show Intune/SCCM example command line.
+- [ ] No secrets committed (auto-logon password entered at deploy time).
 
 **Evidence**:
 
