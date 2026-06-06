@@ -1,4 +1,5 @@
 import { createHttpClient, type HttpClient } from '@gaming-cafe/utils';
+import { handleAuthExpired } from './authSession';
 import { API_BASE_URL } from './config';
 import { clearPlayerToken, getTokens, setDeviceToken, setPlayerToken } from './tauriCommands';
 
@@ -14,9 +15,8 @@ export function getHttpClient(): HttpClient {
       },
       getDeviceToken: () => tokenCache.player ?? undefined,
       deviceTokenHeader: 'X-Player-Token',
-      onUnauthorized: () => {
-        void clearPlayerToken();
-        tokenCache.player = undefined;
+      onUnauthorized: (context) => {
+        void handleAuthExpired(context);
       },
     });
   }

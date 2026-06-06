@@ -1,4 +1,4 @@
-import { darkTheme } from '@gaming-cafe/theme';
+import { BRAND_LOGO_URL, darkTheme } from '@gaming-cafe/theme';
 import { AuthLayout as BaseAuthLayout } from '@gaming-cafe/ui';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
@@ -13,7 +13,9 @@ export default function AuthLayout() {
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <BaseAuthLayout>
+      <BaseAuthLayout
+        brandSlot={<img className="gz-auth-logo" src={BRAND_LOGO_URL} alt="Arena360" />}
+      >
         <Outlet />
       </BaseAuthLayout>
     </ThemeProvider>

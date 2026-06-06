@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
-import { KIOSK_LOGO_URL } from '../lib/config';
+import { KIOSK_LOGO_URL, LOGIN_BACKGROUND_VIDEO_URL } from '../lib/config';
 import { clearFailures, getLockout, recordFailure } from '../lib/loginLockout';
+import { cachedAssetSrc } from '../lib/tauriCommands';
 
 function formatRetry(retryAt: number): string {
   const mins = Math.max(1, Math.ceil((retryAt - Date.now()) / 60000));
@@ -10,10 +11,10 @@ function formatRetry(retryAt: number): string {
 }
 
 /**
- * Arena360 cinematic logged-out home: branded gradient background, centered glass
- * sign-in card, and station controls. All auth logic (lockout, maintenance/offline
- * gating, player login) is preserved. Setup is reached via Ctrl+Shift+A (handled
- * globally in KioskProvider).
+ * Arena360 cinematic logged-out home: looped background video with radial scrim,
+ * centered glass sign-in card, and station controls. All auth logic (lockout,
+ * maintenance/offline gating, player login) is preserved. Setup is reached via
+ * Ctrl+Shift+A (handled globally in KioskProvider).
  */
 export function LoginHomePage() {
   const { playerLogin, error, online, maintenance, deviceName } = useKiosk();
@@ -22,6 +23,7 @@ export function LoginHomePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lockout, setLockout] = useState(() => getLockout());
+  const [videoSrc, setVideoSrc] = useState(LOGIN_BACKGROUND_VIDEO_URL);
 
   useEffect(() => {
     if (!lockout.locked) return;
@@ -29,7 +31,23 @@ export function LoginHomePage() {
     return () => clearInterval(id);
   }, [lockout.locked]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void cachedAssetSrc(LOGIN_BACKGROUND_VIDEO_URL).then((src) => {
+      if (!cancelled) setVideoSrc(src);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const blocked = maintenance || !online || lockout.locked;
+
+  function tryAutoplay(video: HTMLVideoElement) {
+    void Promise.resolve(video.play()).catch(() => {
+      // Autoplay may be blocked until user interaction; muted + playsInline usually succeeds.
+    });
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,6 +65,19 @@ export function LoginHomePage() {
 
   return (
     <div className="a360-login login-home">
+      {videoSrc ? (
+        <div className="a360-login-media" aria-hidden="true">
+          <video
+            src={videoSrc}
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+            onLoadedData={(e) => tryAutoplay(e.currentTarget)}
+          />
+        </div>
+      ) : null}
       <div className="a360-radial-overlay" />
 
       <main className="a360-login-card">

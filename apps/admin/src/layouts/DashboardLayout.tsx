@@ -1,5 +1,7 @@
+import { BRAND_LOGO_URL } from '@gaming-cafe/theme';
 import { DashboardLayout as BaseDashboardLayout } from '@gaming-cafe/ui';
 import { local } from '@gaming-cafe/utils';
+import Box from '@mui/material/Box';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
@@ -64,6 +66,15 @@ export default function DashboardLayout() {
     <>
       <BaseDashboardLayout
         navItems={filteredNavItems}
+        logo={
+          <Box
+            component="img"
+            src={BRAND_LOGO_URL}
+            alt="Arena360"
+            sx={{ height: 40, width: 'auto', display: 'block' }}
+          />
+        }
+        logoText="Arena360"
         user={{ name: `${firstName} ${lastName}`, email, role }}
         onLogout={isStaff ? () => setHandoverOpen(true) : undefined}
       >

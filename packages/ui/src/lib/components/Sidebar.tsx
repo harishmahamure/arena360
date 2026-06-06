@@ -96,6 +96,7 @@ export default function Sidebar({
   collapsed,
   onToggleCollapse,
   navItems = defaultNavItems,
+  logo,
   logoText = 'Admin',
   user = { name: 'John Doe', role: 'Administrator' },
 }: SidebarProps) {
@@ -149,6 +150,30 @@ export default function Sidebar({
       >
         {(!collapsed || isMobile) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {logo ?? (
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 2,
+                  background: 'linear-gradient(135deg, #FF6900 0%, #CC5400 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '1.25rem',
+                }}
+              >
+                {logoText.charAt(0)}
+              </Box>
+            )}
+            <Typography variant="h6" fontWeight={700}>
+              {logoText}
+            </Typography>
+          </Box>
+        )}
+        {collapsed && !isMobile && (
+          logo ?? (
             <Box
               sx={{
                 width: 40,
@@ -164,27 +189,7 @@ export default function Sidebar({
             >
               {logoText.charAt(0)}
             </Box>
-            <Typography variant="h6" fontWeight={700}>
-              {logoText}
-            </Typography>
-          </Box>
-        )}
-        {collapsed && !isMobile && (
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #FF6900 0%, #CC5400 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '1.25rem',
-            }}
-          >
-            {logoText.charAt(0)}
-          </Box>
+          )
         )}
         {!isMobile && (
           <IconButton

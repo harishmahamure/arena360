@@ -12,6 +12,7 @@ const COLLAPSED_WIDTH = 72;
 export interface DashboardLayoutProps {
   children: React.ReactNode;
   navItems?: NavItem[];
+  logo?: React.ReactNode;
   logoText?: string;
   onLogout?: () => void;
   user?: {
@@ -25,6 +26,7 @@ export interface DashboardLayoutProps {
 export default function DashboardLayout({
   children,
   navItems,
+  logo,
   logoText,
   onLogout,
   user,
@@ -60,6 +62,7 @@ export default function DashboardLayout({
         collapsed={collapsed}
         onToggleCollapse={handleCollapse}
         navItems={navItems}
+        logo={logo}
         logoText={logoText}
         user={user ? { name: user.name, role: user.role, avatar: user.avatar } : undefined}
       />

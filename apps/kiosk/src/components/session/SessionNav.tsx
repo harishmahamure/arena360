@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { KIOSK_LOGO_URL } from '../../lib/config';
 import { getSystemVolume, openAudioSettings, setSystemVolume } from '../../lib/tauriCommands';
 
 const VOLUME_KEY = 'gaming-cafe.kiosk.volume';
@@ -134,7 +135,11 @@ export function SessionNav({
   return (
     <nav className="a360-nav" ref={barRef}>
       <div className="a360-nav-left">
-        <span className="a360-nav-brand">ARENA360</span>
+        {KIOSK_LOGO_URL ? (
+          <img className="a360-nav-logo" src={KIOSK_LOGO_URL} alt="Arena360" />
+        ) : (
+          <span className="a360-nav-brand">ARENA360</span>
+        )}
         <div className="a360-nav-tabs">
           {TABS.map((tab) => (
             <button

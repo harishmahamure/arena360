@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { registerAuthSessionHandlers } from '../lib/authSession';
 import {
   clearPlayerSession,
   getHttpClient,
@@ -202,6 +203,58 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     },
     [realtimeRef],
   );
+
+  const handlePlayerAuthExpired = useCallback(async () => {
+    try {
+      await killTrackedProcesses();
+      await clearTrackedProcesses();
+    } catch {
+      // Process cleanup is best-effort off-Windows / when nothing tracked.
+    }
+    await clearPlayerSession();
+    setPlayerName(null);
+    setActiveSession(null);
+    setConflictDevice(null);
+    setForceEndGraceEndsAt(null);
+    setPhase('login');
+    setError('Your session expired. Please sign in again.');
+    if (deviceId) connectWs(deviceId);
+  }, [connectWs, deviceId]);
+
+  const handleDeviceAuthExpired = useCallback(async () => {
+    try {
+      await killTrackedProcesses();
+      await clearTrackedProcesses();
+    } catch {
+      // Process cleanup is best-effort off-Windows / when nothing tracked.
+    }
+    await clearAllTokens();
+    tokenCache.device = undefined;
+    tokenCache.player = undefined;
+    realtimeRef.current.disconnect();
+    setAdminToken(null);
+    setDeviceId(null);
+    setDeviceName(null);
+    storeDeviceName(null);
+    setPlayerName(null);
+    setActiveSession(null);
+    setConflictDevice(null);
+    setForceEndGraceEndsAt(null);
+    setPhase('register');
+    setError('This station needs to be re-registered.');
+    await setLockdownState('Locked');
+  }, [realtimeRef]);
+
+  useEffect(() => {
+    registerAuthSessionHandlers({
+      getRuntime: () => ({
+        phase,
+        hasPlayerToken: Boolean(tokenCache.player),
+      }),
+      onPlayerLogout: handlePlayerAuthExpired,
+      onFullReset: handleDeviceAuthExpired,
+    });
+  }, [handleDeviceAuthExpired, handlePlayerAuthExpired, phase]);
 
   const refresh = useCallback(async () => {
     setError(null);

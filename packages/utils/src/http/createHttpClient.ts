@@ -99,7 +99,15 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
       }
 
       if (error.response?.status === 401) {
-        onUnauthorized?.();
+        const body = error.response?.data;
+        const message =
+          body && typeof body === 'object' && 'message' in body
+            ? String((body as { message: unknown }).message)
+            : undefined;
+        onUnauthorized?.({
+          url: error.config?.url,
+          message,
+        });
       }
 
       return Promise.reject(mapAxiosError(error));

@@ -19,7 +19,7 @@ export interface CreateHttpClientOptions {
   getAuthToken?: () => string | null | undefined;
   getDeviceToken?: () => string | null | undefined;
   deviceTokenHeader?: string;
-  onUnauthorized?: () => void;
+  onUnauthorized?: (context: { url?: string; message?: string }) => void;
   timeout?: number;
   headers?: Record<string, string>;
 }

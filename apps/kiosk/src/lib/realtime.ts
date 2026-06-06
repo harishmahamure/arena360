@@ -25,6 +25,7 @@ export class KioskRealtimeClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private disposed = false;
+  private intentionalClose = false;
 
   connect(): void {
     // Re-arm: a prior disconnect() sets `disposed` to suppress auto-reconnect,
@@ -37,6 +38,8 @@ export class KioskRealtimeClient {
     const token = tokenCache.device;
     if (!token) return;
 
+    const openedThisAttempt = { value: false };
+
     try {
       this.ws = new WebSocket(realtimeUrl(), ['bearer', token]);
     } catch {
@@ -45,6 +48,7 @@ export class KioskRealtimeClient {
     }
 
     this.ws.onopen = () => {
+      openedThisAttempt.value = true;
       this.reconnectAttempts = 0;
       if (this.subscriptions.size > 0) {
         this.send({ type: 'Subscribe', channels: [...this.subscriptions] });
@@ -79,6 +83,10 @@ export class KioskRealtimeClient {
 
     this.ws.onclose = () => {
       this.ws = null;
+      if (this.intentionalClose) {
+        this.intentionalClose = false;
+        return;
+      }
       if (!this.disposed) this.scheduleReconnect();
     };
 
@@ -118,9 +126,16 @@ export class KioskRealtimeClient {
 
   disconnect(): void {
     this.disposed = true;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.ws?.close();
-    this.ws = null;
+    this.reconnectAttempts = 0;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.intentionalClose = true;
+      this.ws.close();
+      this.ws = null;
+    }
   }
 
   get connected(): boolean {

@@ -139,8 +139,8 @@ body {
 
 /* ---- Login home ---- */
 .a360-login {
-  position: relative;
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -197,6 +197,8 @@ body {
   width: auto;
   height: 72px;
   margin: 0 auto 0.25rem;
+  background: transparent;
+  object-fit: contain;
 }
 
 .a360-login-title {
@@ -341,6 +343,13 @@ body {
   font-size: 1.4rem;
   letter-spacing: -0.02em;
   color: var(--a360-primary);
+}
+
+.a360-nav-logo {
+  height: 36px;
+  width: auto;
+  display: block;
+  background: transparent;
 }
 
 .a360-nav-tabs {
@@ -655,6 +664,7 @@ body {
 .a360-game-card-thumb {
   position: absolute;
   inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -668,15 +678,12 @@ body {
 .a360-game-card-video {
   position: absolute;
   inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.5s ease;
-}
-
-.a360-game-card:hover .a360-game-card-video {
   opacity: 1;
+  pointer-events: none;
 }
 
 .a360-game-card-empty {
@@ -697,11 +704,14 @@ body {
 .a360-game-card-grad {
   position: absolute;
   inset: 0;
+  z-index: 2;
   background: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.2) 35%, transparent 70%);
+  pointer-events: none;
 }
 
 .a360-game-card-badge {
   position: absolute;
+  z-index: 3;
   top: 0.75rem;
   right: 0.75rem;
   padding: 0.25rem 0.6rem;
@@ -727,6 +737,7 @@ body {
 
 .a360-game-card-info {
   position: absolute;
+  z-index: 3;
   inset: auto 0 0 0;
   padding: 1rem;
   display: flex;

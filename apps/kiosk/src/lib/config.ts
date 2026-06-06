@@ -1,3 +1,5 @@
+import { BRAND_LOGO_URL } from '@gaming-cafe/theme';
+
 const DEFAULT_API_URL = 'http://localhost:3000';
 
 function apiUrlFromEnv(): string {
@@ -17,10 +19,10 @@ function stringFromEnv(key: string): string | null {
   return raw?.trim() ? raw.trim() : null;
 }
 
-/** Brand logo on the login home; override per venue via `VITE_KIOSK_LOGO_URL`. */
-export const KIOSK_LOGO_URL = stringFromEnv('VITE_KIOSK_LOGO_URL') ?? '/logo.png';
+/** Transparent brand logo; override per venue via `VITE_KIOSK_LOGO_URL`. */
+export const KIOSK_LOGO_URL = stringFromEnv('VITE_KIOSK_LOGO_URL') ?? BRAND_LOGO_URL;
 
-/** Cinematic background loop on the login home; override per venue via env. */
+/** Cinematic background loop on the login home; override per venue via `VITE_LOGIN_BACKGROUND_VIDEO_URL`. */
 export const LOGIN_BACKGROUND_VIDEO_URL =
   stringFromEnv('VITE_LOGIN_BACKGROUND_VIDEO_URL') ?? 'https://cdn.arena360.cloud/launch.webm';
 

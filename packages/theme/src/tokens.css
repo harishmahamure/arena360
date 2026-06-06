@@ -147,6 +147,7 @@
   max-width: 220px;
   max-height: 88px;
   object-fit: contain;
+  background: transparent;
   filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.35));
 }
 
