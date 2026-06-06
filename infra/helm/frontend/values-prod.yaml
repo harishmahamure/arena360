@@ -11,13 +11,12 @@ ingress:
   className: nginx
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
     - host: staff.arena360.cloud
       paths:
-        - path: /(/|$)(.*)
-          pathType: ImplementationSpecific
+        - path: /
+          pathType: Prefix
   tls:
     - secretName: arena360-frontend-new-prod-tls
       hosts:

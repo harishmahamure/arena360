@@ -30,12 +30,11 @@ ingress:
   className: nginx
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
   hosts:
-    - host: admin.arena360.cloud
+    - host: staff.arena360.cloud
       paths:
-        - path: /v2(/|$)(.*)
-          pathType: ImplementationSpecific
+        - path: /
+          pathType: Prefix
   tls: []
 
 resources:

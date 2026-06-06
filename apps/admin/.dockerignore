@@ -1,4 +1,4 @@
-# Admin builds use the repo root as context. Prefer the root .dockerignore:
+# Staff panel builds use the repo root as context. Prefer the root .dockerignore:
 #   docker build -f apps/admin/Dockerfile .
 #
 # This file applies only when the build context is apps/admin/.

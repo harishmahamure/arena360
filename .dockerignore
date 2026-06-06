@@ -15,7 +15,7 @@ out/
 .turbo/
 *.tsbuildinfo
 
-# Rust backend (not needed for admin image)
+# Rust backend (not needed for staff frontend image)
 apps/backend/
 target/
 
@@ -24,7 +24,7 @@ target/
 .gitignore
 .gitattributes
 
-# CI / docs / infra (not copied by admin Dockerfile)
+# CI / docs / infra (not copied by staff frontend Dockerfile)
 .github/
 docs/
 infra/

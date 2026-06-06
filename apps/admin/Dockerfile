@@ -1,4 +1,4 @@
-# Admin Panel — pnpm monorepo multi-stage build
+# Arena360 staff panel — pnpm monorepo multi-stage build
 FROM node:20-alpine AS builder
 
 WORKDIR /app
