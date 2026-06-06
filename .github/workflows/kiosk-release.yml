@@ -115,11 +115,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/kiosk
+          # apps/kiosk has tauri:build, not tauri — without this the action falls back to npm run tauri.
+          tauriScript: pnpm exec tauri
           tagName: kiosk-v${{ steps.bump.outputs.version }}
           releaseName: "Arena360 v${{ steps.bump.outputs.version }}"
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
           args: --config src-tauri/tauri.updater.conf.json
 
       - name: Release summary
