@@ -11,7 +11,6 @@
   "workspaces": [
     "apps/admin",
     "apps/kiosk",
-    "apps/console-tv",
     "packages/*"
   ],
   "scripts": {
@@ -39,9 +38,7 @@
     "backend:clippy": "cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml -- -D warnings",
     "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml",
     "kiosk:dev": "pnpm --filter @gaming-cafe/kiosk tauri:dev",
-    "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build",
-    "console-tv:start": "pnpm --filter @gaming-cafe/console-tv start",
-    "console-tv:android": "pnpm --filter @gaming-cafe/console-tv android"
+    "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
