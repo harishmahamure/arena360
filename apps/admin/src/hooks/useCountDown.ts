@@ -81,8 +81,9 @@ export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
         for (const threshold of THRESHOLDS_MIN) {
           if (localRemaining <= threshold && !notifications[threshold]) {
             triggerNotification(
-              `${config.sessionDetails?.playerName} has ${threshold} minute${threshold === 1 ? '' : 's'} remaining, device: ${config.sessionDetails?.deviceName}. Please ask player to resume session.`,
+              `${config.sessionDetails?.playerName} has ${threshold} minute${threshold === 1 ? '' : 's'} remaining on ${config.sessionDetails?.deviceName}. Tap to view session.`,
               `${config.id}-${threshold}min`,
+              config.id,
             );
             notifications[threshold] = true;
           }

@@ -1,7 +1,19 @@
 import type { UserRole } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
 import { Block, CheckCircle, Delete, Edit } from '@mui/icons-material';
-import { Avatar, Box, Chip, debounce, Pagination, Typography } from '@mui/material';
+import {
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  debounce,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Pagination,
+  Typography,
+} from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -10,6 +22,7 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlayer } from '../../../services/players/delete';
 import { getPlayers, type PlayerResponse } from '../../../services/players/list';
 import { updatePlayer } from '../../../services/players/update';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
 
 const getRoleColor = (role: UserRole) => {
@@ -52,6 +65,11 @@ const getInitials = (firstName?: string, lastName?: string, username?: string) =
 export default function PlayersPage() {
   const [inputValue, setInputValue] = useState<string>('');
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const [confirmTarget, setConfirmTarget] = useState<{
+    id: string;
+    username: string;
+    action: 'deactivate' | 'delete';
+  } | null>(null);
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
   const roleFilter = searchParams.get('role') as UserRole | null;
@@ -138,6 +156,7 @@ export default function PlayersPage() {
       label: 'Role',
       minWidth: 100,
       align: 'center',
+      hideOnMobile: true,
       format: (value) => (
         <Chip
           label={(value as string).charAt(0).toUpperCase() + (value as string).slice(1)}
@@ -164,6 +183,7 @@ export default function PlayersPage() {
       id: 'createdAt',
       label: 'Joined',
       minWidth: 120,
+      hideOnMobile: true,
       format: (value) => formatDisplayDate(value as string),
     },
   ];
@@ -209,13 +229,23 @@ export default function PlayersPage() {
     {
       icon: <Block color="warning" />,
       label: 'Deactivate',
-      onClick: (row) => handleToggleActive(row.id, row.isActive),
+      onClick: (row) =>
+        setConfirmTarget({
+          id: row.id,
+          username: row.username,
+          action: 'deactivate',
+        }),
       show: (row) => row.isActive,
     },
     {
       icon: <Delete color="error" />,
       label: 'Deactivate Player',
-      onClick: (row) => handleDeactivatePlayer(row.id),
+      onClick: (row) =>
+        setConfirmTarget({
+          id: row.id,
+          username: row.username,
+          action: 'delete',
+        }),
     },
   ];
 
@@ -242,10 +272,46 @@ export default function PlayersPage() {
           hidePrevButton={page === 1}
           hideNextButton={page === data?.totalPages}
           onChange={(_event, value) =>
-            navigate(value === 1 ? `/players` : `/players?page=${value}`)
+            navigate(
+              buildListUrl('/players', value, {
+                role: roleFilter ?? undefined,
+                active: activeFilter ?? undefined,
+              }),
+            )
           }
         />
       </Box>
+
+      <Dialog open={confirmTarget !== null} onClose={() => setConfirmTarget(null)}>
+        <DialogTitle>
+          {confirmTarget?.action === 'delete' ? 'Deactivate player?' : 'Deactivate account?'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {confirmTarget?.action === 'delete'
+              ? `This will deactivate @${confirmTarget.username}. They will no longer be able to sign in or start sessions.`
+              : `Deactivate @${confirmTarget?.username}? They will not be able to sign in until reactivated.`}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmTarget(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={async () => {
+              if (!confirmTarget) return;
+              if (confirmTarget.action === 'delete') {
+                await handleDeactivatePlayer(confirmTarget.id);
+              } else {
+                await handleToggleActive(confirmTarget.id, true);
+              }
+              setConfirmTarget(null);
+            }}
+          >
+            Deactivate
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

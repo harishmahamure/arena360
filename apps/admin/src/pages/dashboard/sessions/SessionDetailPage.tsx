@@ -20,7 +20,9 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageHeader } from '../../../components/PageHeader';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
+import { StaffTotpDialog } from '../../../components/StaffTotpDialog';
 import {
   type EndSessionFormData,
   endSessionSchema,
@@ -48,6 +50,12 @@ export default function ViewSessionPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmForce, setConfirmForce] = useState(false);
   const [isForcing, setIsForcing] = useState(false);
+  const [totpDialog, setTotpDialog] = useState<{
+    open: boolean;
+    mode: 'end' | 'force';
+    loading: boolean;
+  }>({ open: false, mode: 'end', loading: false });
+  const [pendingEndData, setPendingEndData] = useState<EndSessionFormData | null>(null);
   const currentUserRole = useSelector((state) => state.auth.role);
 
   const {
@@ -144,46 +152,31 @@ export default function ViewSessionPage() {
     },
   ];
 
-  const handleEndSession = async (data: EndSessionFormData) => {
+  const submitEndSession = async (data: EndSessionFormData, staffTotp?: string) => {
     setIsSubmitting(true);
     setError(undefined);
     setSuccess(undefined);
-
     try {
-      const staffTotp =
-        currentUserRole === 'staff'
-          ? window.prompt('Enter your staff TOTP code to end this session')?.trim()
-          : undefined;
-      if (currentUserRole === 'staff' && !staffTotp) return;
       await endSession(id as string, {
         endTime: data.endTime || undefined,
         staffTotp,
       });
-
       setSuccess('Session ended successfully!');
-
       await refetch();
-
-      setTimeout(() => {
-        navigate('/sessions');
-      }, 1500);
+      setTimeout(() => navigate('/sessions'), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to end session');
+      throw err;
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleForceEnd = async () => {
+  const submitForceEnd = async (staffTotp?: string) => {
     setIsForcing(true);
     setError(undefined);
     setSuccess(undefined);
     try {
-      const staffTotp =
-        currentUserRole === 'staff'
-          ? window.prompt('Enter your staff TOTP code to force-end this session')?.trim()
-          : undefined;
-      if (currentUserRole === 'staff' && !staffTotp) return;
       await forceEndSession(id as string, staffTotp);
       setConfirmForce(false);
       setSuccess('Session force-ended. The kiosk has been notified.');
@@ -191,8 +184,42 @@ export default function ViewSessionPage() {
       setTimeout(() => navigate('/sessions'), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to force-end session');
+      throw err;
     } finally {
       setIsForcing(false);
+    }
+  };
+
+  const handleEndSession = async (data: EndSessionFormData) => {
+    if (currentUserRole === 'staff') {
+      setPendingEndData(data);
+      setTotpDialog({ open: true, mode: 'end', loading: false });
+      return;
+    }
+    await submitEndSession(data);
+  };
+
+  const handleForceEndConfirm = () => {
+    setConfirmForce(false);
+    if (currentUserRole === 'staff') {
+      setTotpDialog({ open: true, mode: 'force', loading: false });
+      return;
+    }
+    void submitForceEnd();
+  };
+
+  const handleTotpConfirm = async (staffTotp: string) => {
+    setTotpDialog((prev) => ({ ...prev, loading: true }));
+    try {
+      if (totpDialog.mode === 'force') {
+        await submitForceEnd(staffTotp);
+      } else if (pendingEndData) {
+        await submitEndSession(pendingEndData, staffTotp);
+      }
+      setTotpDialog({ open: false, mode: 'end', loading: false });
+      setPendingEndData(null);
+    } catch {
+      setTotpDialog((prev) => ({ ...prev, loading: false }));
     }
   };
 
@@ -211,26 +238,22 @@ export default function ViewSessionPage() {
   return (
     <Box sx={{ px: 4, py: 2 }}>
       <Paper elevation={0} sx={{ p: 4 }}>
-        <Box
-          sx={{
-            mb: 4,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <Box>
-            <Typography variant="h4" fontWeight={600} gutterBottom>
-              Session Details
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              View session information and manage session status
-            </Typography>
-          </Box>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <PageHeader
+            title="Session details"
+            description="View session information and manage session status"
+            backTo="/sessions"
+            backLabel="Back to sessions"
+            breadcrumbs={[
+              { label: 'Sessions', to: '/sessions' },
+              { label: 'Session details' },
+            ]}
+          />
           <Chip
             label={isActive ? 'Active' : 'Completed'}
             color={isActive ? 'success' : 'default'}
             size="medium"
+            sx={{ mt: 1 }}
           />
         </Box>
 
@@ -509,11 +532,24 @@ export default function ViewSessionPage() {
           <Button onClick={() => setConfirmForce(false)} disabled={isForcing}>
             Cancel
           </Button>
-          <Button color="error" variant="contained" onClick={handleForceEnd} disabled={isForcing}>
+          <Button color="error" variant="contained" onClick={handleForceEndConfirm} disabled={isForcing}>
             {isForcing ? 'Ending…' : 'Force-end'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <StaffTotpDialog
+        open={totpDialog.open}
+        title={totpDialog.mode === 'force' ? 'Force-end session' : 'End session'}
+        description="Enter your authenticator code to confirm."
+        confirmLabel={totpDialog.mode === 'force' ? 'Force-end' : 'End session'}
+        loading={totpDialog.loading || isSubmitting || isForcing}
+        onClose={() => {
+          setTotpDialog({ open: false, mode: 'end', loading: false });
+          setPendingEndData(null);
+        }}
+        onConfirm={handleTotpConfirm}
+      />
     </Box>
   );
 }

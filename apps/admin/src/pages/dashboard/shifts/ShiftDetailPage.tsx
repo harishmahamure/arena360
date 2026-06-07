@@ -1,5 +1,6 @@
+import { FormSkeleton } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
-import { ArrowBack, Block } from '@mui/icons-material';
+import { Block } from '@mui/icons-material';
 import {
   Alert,
   Box,
@@ -19,6 +20,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageHeader } from '../../../components/PageHeader';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { getPlayerById } from '../../../services/players/getById';
 import { forceCloseShift, getShift } from '../../../services/shifts';
@@ -86,17 +88,17 @@ export default function ShiftDetailPage() {
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography>Loading shift…</Typography>
+      <Box sx={{ px: 4, py: 3 }}>
+        <FormSkeleton />
       </Box>
     );
   }
 
   if (fetchError || !shift) {
     return (
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ px: 4, py: 3 }}>
         <Alert severity="error">Shift not found</Alert>
-        <Button startIcon={<ArrowBack />} onClick={() => navigate('/shifts')} sx={{ mt: 2 }}>
+        <Button onClick={() => navigate('/shifts')} sx={{ mt: 2 }}>
           Back to shifts
         </Button>
       </Box>
@@ -110,16 +112,13 @@ export default function ShiftDetailPage() {
 
   return (
     <Box sx={{ px: 4, py: 3, maxWidth: 800 }}>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/shifts')} sx={{ mb: 2 }}>
-        Back to shifts
-      </Button>
-
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Typography variant="h4" fontWeight={600}>
-          Shift Details
-        </Typography>
-        <Chip label={status.label} color={status.color} size="small" />
-      </Box>
+      <PageHeader
+        title="Shift details"
+        backTo="/shifts"
+        backLabel="Back to shifts"
+        breadcrumbs={[{ label: 'Shifts', to: '/shifts' }, { label: 'Shift details' }]}
+      />
+      <Chip label={status.label} color={status.color} size="small" sx={{ mb: 3 }} />
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(undefined)}>

@@ -1,5 +1,6 @@
 import { Permission } from '@gaming-cafe/contracts';
 import {
+  AccountBalanceWallet,
   CardMembership,
   CreditCard,
   Dashboard,
@@ -55,14 +56,14 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
-    title: 'Plan Assignments',
+    title: 'Plan sales',
     path: '/plan-transactions',
     icon: <Receipt />,
     requiredPermission: Permission.PlayerPlansRead,
     children: [
       { title: 'All Transactions', path: '/plan-transactions' },
       {
-        title: 'New Transaction',
+        title: 'Buy plan',
         path: '/plan-transactions/new',
         requiredPermission: Permission.PlayerPlansWrite,
       },
@@ -134,7 +135,7 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
-    title: 'Sell Items',
+    title: 'POS sales',
     path: '/product-transactions',
     icon: <Sell />,
     requiredPermission: Permission.TransactionsRead,
@@ -209,7 +210,7 @@ export const adminNavItems: AdminNavItem[] = [
   {
     title: 'Cash Deposits',
     path: '/cash-deposits',
-    icon: <PointOfSale />,
+    icon: <AccountBalanceWallet />,
     requiredPermission: Permission.CashDepositsRead,
     children: [
       { title: 'All Deposits', path: '/cash-deposits' },
@@ -218,7 +219,7 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
-    title: 'Credit (Tab)',
+    title: 'Running tab',
     path: '/credit',
     icon: <CreditCard />,
     requiredPermission: Permission.CreditRead,

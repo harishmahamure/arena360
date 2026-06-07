@@ -142,6 +142,7 @@ export default function ExpensesPage() {
         inputValue=""
         handleSearch={() => {}}
         handleClearSearch={() => {}}
+        showSearch={false}
         onAddClick={can(Permission.ExpensesWrite) ? () => navigate('/expenses/new') : undefined}
         addButtonLabel="Add Expense"
       />

@@ -4,7 +4,6 @@ import {
   AttachMoney,
   Devices,
   MonetizationOn,
-  MoreVert,
   People,
   ShoppingCart,
   SportsEsports,
@@ -22,7 +21,6 @@ import {
   CircularProgress,
   Divider,
   GridLegacy as Grid,
-  IconButton,
   LinearProgress,
   Typography,
 } from '@mui/material';
@@ -382,14 +380,7 @@ export default function AdminDashboardView() {
 
       {/* Device Utilization */}
       <Card>
-        <CardHeader
-          title="Device Utilization"
-          action={
-            <IconButton size="small">
-              <MoreVert />
-            </IconButton>
-          }
-        />
+        <CardHeader title="Device Utilization" />
         <Divider />
         <CardContent>
           {dashboardStats?.devices.deviceUtilization.slice(0, 10).map((device) => (

@@ -1,17 +1,19 @@
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
 import { formatTimeAgo } from '@gaming-cafe/utils';
 import { Pause, Timer, Visibility } from '@mui/icons-material';
-import { Box, Chip, debounce, Pagination, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { Box, Chip, Pagination, Stack, Typography } from '@mui/material';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
+import { StaffTotpDialog } from '../../../components/StaffTotpDialog';
 import { useSelector } from '../../../hooks/store';
 import { useEnrichedSessions } from '../../../hooks/useEnrichedSessions';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getSessions, type SessionResponse } from '../../../services/sessions/list';
 import { endSession } from '../../../services/sessions/update';
+import { buildListUrl } from '../../../utils/buildListUrl';
 
 const getStatusColor = (isActive: boolean) => {
   return isActive ? 'success' : 'default';
@@ -24,19 +26,18 @@ const formatDuration = (minutes?: number) => {
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 };
 
+type SessionFilter = 'all' | 'active' | 'completed';
+
 const CountTimeComponent = memo(({ startedAt }: { startedAt: string }) => {
   const [timeElapsed, setTimeElapsed] = useState(0);
   const startTimeRef = useRef(new Date(startedAt).getTime());
 
   useEffect(() => {
     startTimeRef.current = new Date(startedAt).getTime();
-
     setTimeElapsed(Date.now() - startTimeRef.current);
-
     const interval = setInterval(() => {
       setTimeElapsed(Date.now() - startTimeRef.current);
     }, 1000);
-
     return () => clearInterval(interval);
   }, [startedAt]);
 
@@ -55,33 +56,34 @@ const CountTimeComponent = memo(({ startedAt }: { startedAt: string }) => {
 });
 
 export default function SessionsPage() {
-  const [inputValue, setInputValue] = useState<string>('');
-  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
-  const activeFilter = searchParams.get('active') || undefined;
-
-  const showActiveSessions = activeFilter === 'true';
+  const activeParam = searchParams.get('active');
+  const sessionFilter: SessionFilter =
+    activeParam === 'true' ? 'active' : activeParam === 'false' ? 'completed' : 'all';
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['sessions', debouncedSearch, page, activeFilter],
+    queryKey: ['sessions', page, activeParam],
     queryFn: () =>
       getSessions({
-        page: page,
-        isActive: showActiveSessions ? 1 : 0,
+        page,
+        ...(activeParam === 'true' ? { isActive: 1 } : {}),
+        ...(activeParam === 'false' ? { isActive: 0 } : {}),
       }),
-    refetchInterval: showActiveSessions ? 30_000 : false,
+    refetchInterval: activeParam === 'true' ? 30_000 : false,
   });
 
   const enrichedSessions = useEnrichedSessions(data?.data);
   const currentUserRole = useSelector((state) => state.auth.role);
   const { can } = usePermissions();
-
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const debouncedSetSearch = useRef(
-    debounce((query: string) => setDebouncedSearch(query), 500),
-  ).current;
+  const [totpDialog, setTotpDialog] = useState<{
+    open: boolean;
+    sessionId: string;
+    loading: boolean;
+  }>({ open: false, sessionId: '', loading: false });
 
   const handleStartNewSession = useCallback(() => {
     navigate('/sessions/new');
@@ -94,39 +96,54 @@ export default function SessionsPage() {
     [navigate],
   );
 
-  const handleEndSession = useCallback(
-    async (id: string) => {
+  const requestEndSession = useCallback((id: string) => {
+    if (currentUserRole === 'staff') {
+      setTotpDialog({ open: true, sessionId: id, loading: false });
+      return;
+    }
+    void (async () => {
       try {
-        const staffTotp =
-          currentUserRole === 'staff'
-            ? window.prompt('Enter your staff TOTP code to end this session')?.trim()
-            : undefined;
-        if (currentUserRole === 'staff' && !staffTotp) return;
-        await endSession(id, { staffTotp, reason: 'force' });
+        await endSession(id, { reason: 'force' });
         toast.success('Session ended successfully');
-        // Refetch the data
-        refetch();
-      } catch (_error) {
+        void refetch();
+        void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      } catch {
         toast.error('Failed to end session');
       }
+    })();
+  }, [currentUserRole, refetch, queryClient]);
+
+  const handleTotpConfirm = async (staffTotp: string) => {
+    setTotpDialog((prev) => ({ ...prev, loading: true }));
+    try {
+      await endSession(totpDialog.sessionId, { staffTotp, reason: 'force' });
+      toast.success('Session ended successfully');
+      setTotpDialog({ open: false, sessionId: '', loading: false });
+      void refetch();
+      void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    } catch {
+      toast.error('Failed to end session');
+      setTotpDialog((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleBuyMoreTime = useCallback(
+    (row: SessionResponse) => {
+      const playerId = row.balance?.playerId;
+      if (playerId) {
+        navigate(`/plan-transactions/new?playerId=${playerId}`);
+      } else {
+        navigate('/plan-transactions/new');
+      }
     },
-    [currentUserRole, refetch],
+    [navigate],
   );
 
-  const handleSearch = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const query = event.target.value;
-      setInputValue(query);
-      debouncedSetSearch(query);
-    },
-    [debouncedSetSearch],
-  );
-
-  const handleClearSearch = useCallback(() => {
-    setInputValue('');
-    setDebouncedSearch('');
-    debouncedSetSearch.clear();
-  }, [debouncedSetSearch]);
+  const setSessionFilter = (filter: SessionFilter) => {
+    const active =
+      filter === 'active' ? 'true' : filter === 'completed' ? 'false' : undefined;
+    navigate(buildListUrl('/sessions', 1, { active }));
+  };
 
   const columns: Column<SessionResponse>[] = useMemo(
     () => [
@@ -152,9 +169,10 @@ export default function SessionsPage() {
         id: 'id',
         label: 'Started',
         minWidth: 120,
+        hideOnMobile: true,
         format: (value) => {
           const id = value as SessionResponse['id'];
-          const session = enrichedSessions.find((session) => session.id === id);
+          const session = enrichedSessions.find((s) => s.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
           if (endTime) {
@@ -165,24 +183,18 @@ export default function SessionsPage() {
       },
       {
         id: 'id',
-        label: 'Ending/Ended',
+        label: 'Time left',
         minWidth: 100,
         format: (value) => {
           const id = value as SessionResponse['id'];
-          const session = enrichedSessions.find((session) => session.id === id);
+          const session = enrichedSessions.find((s) => s.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
           if (!session?.balance || !startTime) {
-            if (endTime) {
-              return formatTimeAgo(endTime);
-            }
+            if (endTime) return formatTimeAgo(endTime);
             return 'N/A';
           }
-
-          if (endTime) {
-            return formatTimeAgo(endTime || 'N/A');
-          }
-
+          if (endTime) return formatTimeAgo(endTime);
           return (
             <SessionRemainingClock
               remainingMinutes={session.balance.remainingMinutes}
@@ -196,6 +208,7 @@ export default function SessionsPage() {
         label: 'Duration',
         minWidth: 100,
         align: 'right',
+        hideOnMobile: true,
         format: (value) => formatDuration(value as number),
       },
       {
@@ -215,16 +228,12 @@ export default function SessionsPage() {
     [enrichedSessions],
   );
 
-  const handleIncreaseSessionTime = useCallback(() => {
-    navigate('/plans/new');
-  }, [navigate]);
-
   const actions: Action<SessionResponse>[] = [
     {
       icon: <Pause color="error" />,
       label: 'End Session',
-      onClick: (row) => handleEndSession(row.id),
-      show: (row) => !row.endTime, // Only show for active sessions
+      onClick: (row) => requestEndSession(row.id),
+      show: (row) => !row.endTime,
     },
     {
       icon: <Visibility color="info" />,
@@ -233,24 +242,44 @@ export default function SessionsPage() {
     },
     {
       icon: <Timer color="primary" />,
-      label: 'Increase Session Time Session',
-      onClick: handleIncreaseSessionTime,
-      show: (row) => !row.endTime, // Only show for active sessions
+      label: 'Buy more time',
+      onClick: (row) => handleBuyMoreTime(row),
+      show: (row) => !row.endTime,
     },
+  ];
+
+  const filterChips: { key: SessionFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'active', label: 'Active' },
+    { key: 'completed', label: 'Completed' },
   ];
 
   return (
     <Box sx={{ px: 4, py: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        {filterChips.map((chip) => (
+          <Chip
+            key={chip.key}
+            label={chip.label}
+            variant={sessionFilter === chip.key ? 'filled' : 'outlined'}
+            color={sessionFilter === chip.key ? 'primary' : 'default'}
+            onClick={() => setSessionFilter(chip.key)}
+            clickable
+          />
+        ))}
+      </Stack>
+
       <ListViewPage<SessionResponse>
-        title="Usage Sessions"
-        description="Manage player gaming sessions and usage tracking here."
+        title="Sessions"
+        description="Manage player gaming sessions and usage tracking."
         data={enrichedSessions}
         columns={columns}
         actions={actions}
         isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
+        inputValue=""
+        handleSearch={() => {}}
+        handleClearSearch={() => {}}
+        showSearch={false}
         onAddClick={can(Permission.SessionsWrite) ? handleStartNewSession : undefined}
         addButtonLabel="Start New Session"
       />
@@ -262,10 +291,24 @@ export default function SessionsPage() {
           hidePrevButton={page === 1}
           hideNextButton={page === data?.totalPages}
           onChange={(_event, value) =>
-            navigate(value === 1 ? `/sessions` : `/sessions?page=${value}`)
+            navigate(
+              buildListUrl('/sessions', value, {
+                active: activeParam ?? undefined,
+              }),
+            )
           }
         />
       </Box>
+
+      <StaffTotpDialog
+        open={totpDialog.open}
+        title="End session"
+        description="Enter your authenticator code to end this session."
+        confirmLabel="End session"
+        loading={totpDialog.loading}
+        onClose={() => setTotpDialog({ open: false, sessionId: '', loading: false })}
+        onConfirm={handleTotpConfirm}
+      />
     </Box>
   );
 }

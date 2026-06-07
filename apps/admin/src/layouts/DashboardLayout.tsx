@@ -1,9 +1,10 @@
+import { Permission } from '@gaming-cafe/contracts';
 import { BRAND_LOGO_URL } from '@gaming-cafe/theme';
 import { DashboardLayout as BaseDashboardLayout } from '@gaming-cafe/ui';
-import { local } from '@gaming-cafe/utils';
+import { local, toastUtils } from '@gaming-cafe/utils';
 import Box from '@mui/material/Box';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
@@ -12,6 +13,7 @@ import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDo
 import { useEnrichedSessions } from '../hooks/useEnrichedSessions';
 import { usePermissions } from '../hooks/usePermissions';
 import { getSessions } from '../services/sessions/list';
+import { getActiveShift } from '../services/shifts';
 import { filterNavItemsByPermission } from '../utils/filterNavItems';
 
 export default function DashboardLayout() {
@@ -27,6 +29,12 @@ export default function DashboardLayout() {
         isActive: 1,
       }),
     refetchInterval: 30_000,
+  });
+
+  const { data: activeShift } = useQuery({
+    queryKey: ['activeShift'],
+    queryFn: getActiveShift,
+    retry: false,
   });
 
   const enrichedSessions = useEnrichedSessions(data?.data);
@@ -50,7 +58,7 @@ export default function DashboardLayout() {
   useMultipleCountdowns(countDownData);
 
   const { email, firstName, lastName, role } = useSelector((state) => state.auth);
-  const { can, isStaff } = usePermissions();
+  const { can, isStaff, isAdmin } = usePermissions();
   const [handoverOpen, setHandoverOpen] = useState(false);
 
   const filteredNavItems = useMemo(() => filterNavItemsByPermission(adminNavItems, can), [can]);
@@ -82,6 +90,28 @@ export default function DashboardLayout() {
     }
   };
 
+  const requireShiftForQuickAction = useCallback(
+    (path: string) => {
+      if (!activeShift) {
+        toastUtils.warning('Start a shift from the dashboard before using this action.');
+        navigate('/');
+        return;
+      }
+      navigate(path);
+    },
+    [activeShift, navigate],
+  );
+
+  const appBarQuickActions = useMemo(
+    () => ({
+      showPos: can(Permission.TransactionsWrite),
+      showPlan: can(Permission.PlayerPlansWrite),
+      onPosClick: () => requireShiftForQuickAction('/product-transactions/new'),
+      onPlanClick: () => requireShiftForQuickAction('/plan-transactions/new'),
+    }),
+    [can, requireShiftForQuickAction],
+  );
+
   return (
     <>
       <BaseDashboardLayout
@@ -97,6 +127,8 @@ export default function DashboardLayout() {
         logoText="Arena360"
         user={{ name: `${firstName} ${lastName}`, email, role }}
         onLogout={handleLogout}
+        appBarQuickActions={appBarQuickActions}
+        settingsPath={isAdmin && can(Permission.ConfigRead) ? '/settings' : undefined}
       >
         <Outlet key={outletKey} />
       </BaseDashboardLayout>

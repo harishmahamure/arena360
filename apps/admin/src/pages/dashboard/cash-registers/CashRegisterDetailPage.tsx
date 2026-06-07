@@ -1,6 +1,6 @@
-import { type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Column, FormSkeleton, ListViewPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
-import { ArrowBack, CheckCircleOutline, Edit } from '@mui/icons-material';
+import { CheckCircleOutline, Edit } from '@mui/icons-material';
 import {
   Alert,
   Box,
@@ -19,6 +19,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageHeader } from '../../../components/PageHeader';
 import { usePermissions } from '../../../hooks/usePermissions';
 import {
   type CashRegisterEntry,
@@ -131,21 +132,17 @@ export default function CashRegisterDetailPage() {
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography>Loading cash register…</Typography>
+      <Box sx={{ px: 4, py: 3 }}>
+        <FormSkeleton />
       </Box>
     );
   }
 
   if (error || !register) {
     return (
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ px: 4, py: 3 }}>
         <Alert severity="error">Cash register not found</Alert>
-        <Button
-          startIcon={<ArrowBack />}
-          onClick={() => navigate('/cash-registers')}
-          sx={{ mt: 2 }}
-        >
+        <Button onClick={() => navigate('/cash-registers')} sx={{ mt: 2 }}>
           Back to cash registers
         </Button>
       </Box>
@@ -159,19 +156,17 @@ export default function CashRegisterDetailPage() {
 
   return (
     <Box sx={{ px: 4, py: 3 }}>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/cash-registers')} sx={{ mb: 2 }}>
-        Back to cash registers
-      </Button>
-
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <Typography variant="h4" fontWeight={600}>
-          Cash Register
-        </Typography>
-        <Chip label={status.label} color={status.color} size="small" />
-        <Typography variant="body2" color="text.secondary">
-          Opened {formatDisplayDateTime(register.createdAt)}
-        </Typography>
-      </Box>
+      <PageHeader
+        title="Cash register"
+        description={`Opened ${formatDisplayDateTime(register.createdAt)}`}
+        backTo="/cash-registers"
+        backLabel="Back to cash registers"
+        breadcrumbs={[
+          { label: 'Cash registers', to: '/cash-registers' },
+          { label: 'Register details' },
+        ]}
+      />
+      <Chip label={status.label} color={status.color} size="small" sx={{ mb: 3 }} />
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
@@ -258,6 +253,7 @@ export default function CashRegisterDetailPage() {
         inputValue=""
         handleSearch={() => {}}
         handleClearSearch={() => {}}
+        showSearch={false}
       />
 
       <Dialog open={reconcileOpen} onClose={() => setReconcileOpen(false)} fullWidth maxWidth="sm">

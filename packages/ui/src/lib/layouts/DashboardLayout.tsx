@@ -3,7 +3,7 @@
 import { Box, useTheme } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import AppBar from '../components/AppBar';
+import AppBar, { type AppBarQuickActions } from '../components/AppBar';
 import Sidebar, { type NavItem } from '../components/Sidebar';
 
 const DRAWER_WIDTH = 280;
@@ -15,6 +15,8 @@ export interface DashboardLayoutProps {
   logo?: React.ReactNode;
   logoText?: string;
   onLogout?: () => void;
+  appBarQuickActions?: AppBarQuickActions;
+  settingsPath?: string;
   user?: {
     name: string;
     email: string;
@@ -29,6 +31,8 @@ export default function DashboardLayout({
   logo,
   logoText,
   onLogout,
+  appBarQuickActions,
+  settingsPath,
   user,
 }: DashboardLayoutProps) {
   const theme = useTheme();
@@ -65,6 +69,7 @@ export default function DashboardLayout({
         logo={logo}
         logoText={logoText}
         user={user ? { name: user.name, role: user.role, avatar: user.avatar } : undefined}
+        onLogout={onLogout}
       />
 
       {/* AppBar */}
@@ -72,6 +77,8 @@ export default function DashboardLayout({
         onMenuClick={handleDrawerToggle}
         sidebarCollapsed={collapsed}
         onLogout={onLogout}
+        quickActions={appBarQuickActions}
+        settingsPath={settingsPath}
         user={user ? { name: user.name, email: user.email, avatar: user.avatar } : undefined}
       />
 

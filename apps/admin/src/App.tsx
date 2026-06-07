@@ -3,13 +3,14 @@ import { Providers } from '@gaming-cafe/providers';
 import { local } from '@gaming-cafe/utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useReducer } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import RequirePermission from './components/RequirePermission';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import { RealtimeProvider } from './lib/realtime';
 import LoginPage from './pages/auth/LoginPage';
+import NotFoundPage from './pages/NotFoundPage';
 import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
 import CashRegisterDetailPage from './pages/dashboard/cash-registers/CashRegisterDetailPage';
 import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
@@ -194,8 +195,8 @@ function App() {
                   <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
                     <Route path="/settings" element={<SettingsPage />} />
                   </Route>
+                  <Route path="*" element={<NotFoundPage />} />
                 </Route>
-                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </RealtimeProvider>
           </QueryClientProvider>

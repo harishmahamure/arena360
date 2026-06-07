@@ -1,10 +1,12 @@
 import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Alert, Box, Paper, Typography } from '@mui/material';
+import { Alert, Paper } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
+import { PageHeader } from '../../../components/PageHeader';
 import {
   type CreatePlanTransactionFormData,
   createPlanTransactionDefaultValues,
@@ -17,6 +19,7 @@ import {
 import { getPlayerCredit } from '../../../services/credit';
 import { getPlanById } from '../../../services/plans/getById';
 import { getPlans } from '../../../services/plans/list';
+import { getPlayerById } from '../../../services/players/getById';
 import { getPlayers } from '../../../services/players/list';
 import { addTransaction } from '../../../services/transactions/add';
 import { PaymentStatus, TransactionType } from '../../../services/transactions/list';
@@ -100,12 +103,21 @@ const formFields: FieldConfig<CreatePlanTransactionFormData>[] = [
 
 export default function AddNewPlanTransactionPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preselectedPlayerId = searchParams.get('playerId') ?? undefined;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
-  const [formValues, setFormValues] = useState<Partial<CreatePlanTransactionFormData>>(
-    createPlanTransactionDefaultValues,
-  );
+  const [formValues, setFormValues] = useState<Partial<CreatePlanTransactionFormData>>({
+    ...createPlanTransactionDefaultValues,
+    ...(preselectedPlayerId ? { playerId: preselectedPlayerId } : {}),
+  });
+
+  const { data: preselectedPlayer } = useQuery({
+    queryKey: ['player', preselectedPlayerId],
+    queryFn: () => getPlayerById(preselectedPlayerId as string),
+    enabled: !!preselectedPlayerId,
+  });
 
   const { data: selectedPlan } = useQuery({
     queryKey: ['plan', formValues.planId],
@@ -188,57 +200,71 @@ export default function AddNewPlanTransactionPage() {
     navigate('/plan-transactions');
   };
 
+  const defaultValues = useMemo(
+    () => ({
+      ...createPlanTransactionDefaultValues,
+      ...(preselectedPlayerId ? { playerId: preselectedPlayerId } : {}),
+    }),
+    [preselectedPlayerId],
+  );
+
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 4,
-      }}
-    >
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          New Plan Transaction
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Assign a plan to a player and create a transaction record
-        </Typography>
-      </Box>
+    <ActiveShiftGuard>
+      <Paper
+        elevation={0}
+        sx={{
+          p: 4,
+        }}
+      >
+        <PageHeader
+          title="Buy plan"
+          description="Assign a plan to a player and record the sale"
+          backTo="/plan-transactions"
+          backLabel="Back to plan sales"
+          breadcrumbs={[{ label: 'Plan sales', to: '/plan-transactions' }, { label: 'Buy plan' }]}
+        />
+        {preselectedPlayer && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Buying plan for <strong>{preselectedPlayer.username}</strong>
+          </Alert>
+        )}
 
-      <CreditEligibilityAlert
-        playerId={formValues.playerId}
-        paymentMethod={formValues.paymentMethod}
-        purchaseAmount={Number(purchaseAmount)}
-      />
+        <CreditEligibilityAlert
+          playerId={formValues.playerId}
+          paymentMethod={formValues.paymentMethod}
+          purchaseAmount={Number(purchaseAmount)}
+        />
 
-      {selectedPlan?.dynamicDeductionEnabled && selectedPlan.deductionProfile ? (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          {selectedPlan.timeCredits ?? 0} wallet min — burns faster{' '}
-          {selectedPlan.deductionProfile.peakWindowStart}–
-          {selectedPlan.deductionProfile.peakWindowEnd}, slower{' '}
-          {selectedPlan.deductionProfile.lowWindowStart}–
-          {selectedPlan.deductionProfile.lowWindowEnd}
-        </Alert>
-      ) : null}
+        {selectedPlan?.dynamicDeductionEnabled && selectedPlan.deductionProfile ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {selectedPlan.timeCredits ?? 0} wallet min — burns faster{' '}
+            {selectedPlan.deductionProfile.peakWindowStart}–
+            {selectedPlan.deductionProfile.peakWindowEnd}, slower{' '}
+            {selectedPlan.deductionProfile.lowWindowStart}–
+            {selectedPlan.deductionProfile.lowWindowEnd}
+          </Alert>
+        ) : null}
 
-      <FormBuilder<CreatePlanTransactionFormData>
-        fields={formFields}
-        schema={createPlanTransactionSchema}
-        defaultValues={createPlanTransactionDefaultValues}
-        onChange={(values) => setFormValues(values)}
-        mode="add"
-        onSubmit={handleSubmit}
-        onCancel={handleCancel}
-        loading={loading}
-        error={error}
-        success={success}
-        showCancel
-        showReset
-        submitLabel="Create Transaction"
-        cancelLabel="Cancel"
-        resetLabel="Reset Form"
-        buttonAlign="right"
-        spacing={3}
-      />
-    </Paper>
+        <FormBuilder<CreatePlanTransactionFormData>
+          fields={formFields}
+          schema={createPlanTransactionSchema}
+          defaultValues={defaultValues}
+          onChange={(values) => setFormValues(values)}
+          mode="add"
+          onSubmit={handleSubmit}
+          onCancel={handleCancel}
+          loading={loading}
+          error={error}
+          success={success}
+          showCancel
+          showReset
+          submitLabel="Create Transaction"
+          cancelLabel="Cancel"
+          resetLabel="Reset Form"
+          buttonAlign="right"
+          spacing={3}
+        />
+      </Paper>
+    </ActiveShiftGuard>
   );
 }

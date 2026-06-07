@@ -2,10 +2,11 @@ import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type Column, ListViewPage } from '@gaming-cafe/ui';
 import { formatCurrency, formatTimeAgo } from '@gaming-cafe/utils';
 import { Visibility } from '@mui/icons-material';
-import { Box, Chip, debounce, Pagination, Typography } from '@mui/material';
+import { Box, Chip, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -52,6 +53,7 @@ const columns: Column<Transaction>[] = [
     id: 'id',
     label: 'Transaction ID',
     minWidth: 120,
+    hideOnMobile: true,
     format: (value) => (
       <Typography
         variant="body2"
@@ -84,6 +86,7 @@ const columns: Column<Transaction>[] = [
     id: 'paymentMethod',
     label: 'Payment',
     minWidth: 100,
+    hideOnMobile: true,
     format: (value) => getPaymentMethodLabel(value as PaymentMethodType),
   },
   {
@@ -103,29 +106,24 @@ const columns: Column<Transaction>[] = [
     id: 'transactionDate',
     label: 'Date',
     minWidth: 120,
+    hideOnMobile: true,
     format: (value) => formatTimeAgo(value as string),
   },
 ];
 
 export default function TransactionsPage() {
-  const [inputValue, setInputValue] = useState<string>('');
-  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
   const statusFilter = searchParams.get('status') as PaymentStatusValue | null;
 
   const navigate = useNavigate();
 
-  const debouncedSetSearch = useRef(
-    debounce((query: string) => setDebouncedSearch(query), 500),
-  ).current;
-
   const handleAddNewTransaction = useCallback(() => {
     navigate('/product-transactions/new');
   }, [navigate]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['product-transactions', debouncedSearch, page, statusFilter],
+    queryKey: ['product-transactions', page, statusFilter],
     queryFn: () =>
       getTransactions({
         page: page,
@@ -136,32 +134,18 @@ export default function TransactionsPage() {
       }),
   });
 
-  const handleSearch = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const query = event.target.value;
-      setInputValue(query);
-      debouncedSetSearch(query);
-    },
-    [debouncedSetSearch],
-  );
-
-  const handleClearSearch = useCallback(() => {
-    setInputValue('');
-    setDebouncedSearch('');
-    debouncedSetSearch.clear();
-  }, [debouncedSetSearch]);
-
   return (
     <Box sx={{ px: 4, py: 2 }}>
       <ListViewPage<Transaction>
-        title="Transactions"
-        description="Manage product purchase transactions here."
+        title="POS sales"
+        description="Product purchases and snack sales at the counter."
         data={data?.data || []}
         columns={columns}
         isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
+        inputValue=""
+        handleSearch={() => {}}
+        handleClearSearch={() => {}}
+        showSearch={false}
         onAddClick={handleAddNewTransaction}
         actions={[
           {
@@ -170,7 +154,7 @@ export default function TransactionsPage() {
             onClick: (row) => navigate(`/product-transactions/${row.id}`),
           },
         ]}
-        addButtonLabel="Add Transaction"
+        addButtonLabel="Sell items"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
         <Pagination
@@ -180,7 +164,11 @@ export default function TransactionsPage() {
           hidePrevButton={page === 1}
           hideNextButton={page === data?.totalPages}
           onChange={(_event, value) =>
-            navigate(value === 1 ? `/transactions` : `/transactions?page=${value}`)
+            navigate(
+              buildListUrl('/product-transactions', value, {
+                status: statusFilter ?? undefined,
+              }),
+            )
           }
         />
       </Box>

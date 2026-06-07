@@ -17,6 +17,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../hooks/store';
@@ -38,6 +39,7 @@ function sumDenominations(denominations: Record<string, number>) {
 export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDialogProps) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [expectedClosing, setExpectedClosing] = useState(0);
@@ -183,8 +185,11 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
 
         toastUtils.success('Shift handover completed');
         handleClose();
+        void queryClient.invalidateQueries({ queryKey: ['activeShift'] });
+        void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
+        void queryClient.invalidateQueries({ queryKey: ['shifts'] });
+        void queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
         navigate('/');
-        window.location.reload();
       }
     } catch (error: unknown) {
       const message =

@@ -88,6 +88,7 @@ export interface SidebarProps {
     role: string;
     avatar?: string;
   };
+  onLogout?: () => void;
 }
 
 export default function Sidebar({
@@ -99,6 +100,7 @@ export default function Sidebar({
   logo,
   logoText = 'Admin',
   user = { name: 'John Doe', role: 'Administrator' },
+  onLogout,
 }: SidebarProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -410,7 +412,12 @@ export default function Sidebar({
                 {user.role}
               </Typography>
             </Box>
-            <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+            <IconButton
+              size="small"
+              sx={{ color: 'rgba(255,255,255,0.6)' }}
+              onClick={onLogout}
+              aria-label="Log out"
+            >
               <Logout fontSize="small" />
             </IconButton>
           </Box>

@@ -200,6 +200,7 @@ export default function CashRegistersPage() {
         inputValue=""
         handleSearch={() => {}}
         handleClearSearch={() => {}}
+        showSearch={false}
         actions={[
           {
             label: 'View',

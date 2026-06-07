@@ -110,15 +110,12 @@ class ErrorBoundary extends Component<Props, State> {
               </Box>
 
               <Typography variant="h4" component="h1" gutterBottom color="error">
-                {this.state.errorInfo?.componentStack}
+                Something went wrong
               </Typography>
 
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                {this.state.error?.message || 'Unknown error'}
-              </Typography>
-
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                We're sorry for the inconvenience. An unexpected error has occurred.
+                We are sorry for the inconvenience. An unexpected error has occurred. Try
+                refreshing the page or contact support if the problem persists.
               </Typography>
 
               <Alert severity="error" sx={{ mb: 3, textAlign: 'left' }}>

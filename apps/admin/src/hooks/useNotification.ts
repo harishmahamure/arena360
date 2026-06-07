@@ -83,7 +83,7 @@ export const useNotification = () => {
   }, []);
 
   const triggerNotification = useCallback(
-    (message: string, tag: string) => {
+    (message: string, tag: string, sessionId?: string) => {
       playNotificationSound();
 
       toast.warning(message, {
@@ -98,7 +98,13 @@ export const useNotification = () => {
           fontWeight: 'bold',
           textAlign: 'center',
           boxShadow: '0 0 10px 0 rgba(0, 0, 0, 0.5)',
+          cursor: sessionId ? 'pointer' : 'default',
         },
+        onClick: sessionId
+          ? () => {
+              window.location.assign(`/sessions/${sessionId}`);
+            }
+          : undefined,
       });
 
       // Check if Notification API is supported

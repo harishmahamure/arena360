@@ -2,19 +2,20 @@ import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
 import { capitalize, formatCurrency, formatTimeAgo } from '@gaming-cafe/utils';
 import { Visibility } from '@mui/icons-material';
-import { Box, Chip, debounce, Pagination, Typography } from '@mui/material';
+import { Box, Chip, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { useEnrichedTransactions } from '../../../hooks/useEnrichedTransactions';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
-import type { PaymentMethod } from '../../../services/transaction/list';
 import {
   getTransactions,
   PaymentStatus,
+  type PaymentMethod,
   type TransactionResponse,
   TransactionType,
-} from '../../../services/transaction/list';
+} from '../../../services/transactions/list';
 
 const getStatusColor = (status: PaymentStatusValue) => {
   switch (status) {
@@ -47,6 +48,7 @@ const columns: Column<TransactionResponse>[] = [
     id: 'id',
     label: 'Transaction ID',
     minWidth: 120,
+    hideOnMobile: true,
     format: (value) => (
       <Typography
         variant="body2"
@@ -78,11 +80,12 @@ const columns: Column<TransactionResponse>[] = [
     },
   },
   {
-    id: 'plan',
+    id: 'planId',
     label: 'Plan Type',
     minWidth: 120,
-    format: (value) => {
-      const plan = value as TransactionResponse['plan'];
+    hideOnMobile: true,
+    format: (_value, row) => {
+      const plan = row?.plan;
       return plan?.planType ? formatPlanType(plan.planType) : 'N/A';
     },
   },
@@ -97,6 +100,7 @@ const columns: Column<TransactionResponse>[] = [
     id: 'paymentMethod',
     label: 'Payment',
     minWidth: 100,
+    hideOnMobile: true,
     format: (value) => getPaymentMethodLabel(value as PaymentMethod),
   },
   {
@@ -116,22 +120,17 @@ const columns: Column<TransactionResponse>[] = [
     id: 'transactionDate',
     label: 'Date',
     minWidth: 120,
+    hideOnMobile: true,
     format: (value) => formatTimeAgo(value as string),
   },
 ];
 
 export default function PlanTransactionsPage() {
-  const [inputValue, setInputValue] = useState<string>('');
-  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
   const statusFilter = searchParams.get('status') as PaymentStatusValue | null;
 
   const navigate = useNavigate();
-
-  const debouncedSetSearch = useRef(
-    debounce((query: string) => setDebouncedSearch(query), 500),
-  ).current;
 
   const handleAddNewTransaction = useCallback(() => {
     navigate('/plan-transactions/new');
@@ -145,7 +144,7 @@ export default function PlanTransactionsPage() {
   );
 
   const { data, isLoading } = useQuery({
-    queryKey: ['plan-transactions', debouncedSearch, page, statusFilter],
+    queryKey: ['plan-transactions', page, statusFilter],
     queryFn: () =>
       getTransactions({
         page: page,
@@ -156,21 +155,6 @@ export default function PlanTransactionsPage() {
 
   const enrichedTransactions = useEnrichedTransactions(data?.data);
   const { can } = usePermissions();
-
-  const handleSearch = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const query = event.target.value;
-      setInputValue(query);
-      debouncedSetSearch(query);
-    },
-    [debouncedSetSearch],
-  );
-
-  const handleClearSearch = useCallback(() => {
-    setInputValue('');
-    setDebouncedSearch('');
-    debouncedSetSearch.clear();
-  }, [debouncedSetSearch]);
 
   const actions: Action<TransactionResponse>[] = [
     {
@@ -183,17 +167,18 @@ export default function PlanTransactionsPage() {
   return (
     <Box sx={{ px: 4, py: 2 }}>
       <ListViewPage<TransactionResponse>
-        title="Plan Transactions"
-        description="Manage plan purchase transactions and assignments here."
+        title="Plan sales"
+        description="Plan purchases and assignments for players."
         data={enrichedTransactions}
         columns={columns}
         actions={actions}
         isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
+        inputValue=""
+        handleSearch={() => {}}
+        handleClearSearch={() => {}}
+        showSearch={false}
         onAddClick={can(Permission.PlayerPlansWrite) ? handleAddNewTransaction : undefined}
-        addButtonLabel="New Transaction"
+        addButtonLabel="Buy plan"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
         <Pagination
@@ -203,7 +188,11 @@ export default function PlanTransactionsPage() {
           hidePrevButton={page === 1}
           hideNextButton={page === data?.totalPages}
           onChange={(_event, value) =>
-            navigate(value === 1 ? `/plan-transactions` : `/plan-transactions?page=${value}`)
+            navigate(
+              buildListUrl('/plan-transactions', value, {
+                status: statusFilter ?? undefined,
+              }),
+            )
           }
         />
       </Box>

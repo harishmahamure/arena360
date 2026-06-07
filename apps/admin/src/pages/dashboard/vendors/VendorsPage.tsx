@@ -105,6 +105,7 @@ export default function VendorsPage() {
         inputValue=""
         handleSearch={() => {}}
         handleClearSearch={() => {}}
+        showSearch={false}
         onAddClick={can(Permission.VendorsWrite) ? () => navigate('/vendors/new') : undefined}
         addButtonLabel="Add Vendor"
       />

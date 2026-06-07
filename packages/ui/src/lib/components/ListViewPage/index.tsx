@@ -17,6 +17,7 @@ export interface ListViewPageProps<T extends { id: string | number }> {
   handleClearSearch: () => void;
   onAddClick?: () => void;
   addButtonLabel?: string;
+  showSearch?: boolean;
 }
 
 export function ListViewPage<T extends { id: string | number }>({
@@ -31,6 +32,7 @@ export function ListViewPage<T extends { id: string | number }>({
   handleClearSearch,
   onAddClick,
   addButtonLabel = 'Add Item',
+  showSearch = true,
 }: ListViewPageProps<T>) {
   return (
     <>
@@ -49,30 +51,34 @@ export function ListViewPage<T extends { id: string | number }>({
           marginBottom: '16px',
         }}
       >
-        <Box sx={{ width: '100%', maxWidth: 300 }}>
-          <TextField
-            label="Search"
-            variant="outlined"
-            size="small"
-            fullWidth
-            value={inputValue}
-            onChange={handleSearch}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search color="action" fontSize="small" />
-                </InputAdornment>
-              ),
-              endAdornment: inputValue && (
-                <InputAdornment position="end">
-                  <IconButton size="small" onClick={handleClearSearch} edge="end">
-                    <Clear fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        </Box>
+        {showSearch ? (
+          <Box sx={{ width: '100%', maxWidth: 300 }}>
+            <TextField
+              label="Search"
+              variant="outlined"
+              size="small"
+              fullWidth
+              value={inputValue}
+              onChange={handleSearch}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search color="action" fontSize="small" />
+                  </InputAdornment>
+                ),
+                endAdornment: inputValue && (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={handleClearSearch} edge="end">
+                      <Clear fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+        ) : (
+          <Box />
+        )}
         {onAddClick && (
           <Button variant="contained" color="primary" onClick={onAddClick}>
             <Add />

@@ -5,7 +5,9 @@ import {
   Login,
   Logout,
   People,
+  PlayCircle,
   PointOfSale,
+  Receipt,
   ShoppingCart,
 } from '@mui/icons-material';
 import {
@@ -17,13 +19,22 @@ import {
   CircularProgress,
   Divider,
   GridLegacy as Grid,
+  Stack,
   Typography,
 } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { useStaffDashboardStats } from '../../hooks/useStaffDashboardStats';
 import { clockIn } from '../../services/shifts';
 import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
+
+const quickActions = [
+  { label: 'Start session', path: '/sessions/new', icon: PlayCircle, variant: 'contained' as const },
+  { label: 'Sell items', path: '/product-transactions/new', icon: PointOfSale, variant: 'outlined' as const },
+  { label: 'Buy plan', path: '/plan-transactions/new', icon: Receipt, variant: 'outlined' as const },
+  { label: 'Active sessions', path: '/sessions?active=true', icon: AccessTime, variant: 'outlined' as const },
+];
 
 export default function StaffDashboardView() {
   const queryClient = useQueryClient();
@@ -113,7 +124,6 @@ export default function StaffDashboardView() {
 
   return (
     <Box sx={{ py: { xs: 3, md: 4 }, px: { xs: 2, sm: 3, md: 4 } }}>
-      {/* Shift Header Bar */}
       <Card
         variant="outlined"
         sx={{
@@ -141,7 +151,7 @@ export default function StaffDashboardView() {
             )}
             <Box>
               <Typography variant="subtitle1" fontWeight={600}>
-                {stats.shift ? 'Shift Active' : 'No Active Shift'}
+                {stats.shift ? 'Shift active' : 'No active shift'}
               </Typography>
               {stats.shift && (
                 <Typography variant="body2" color="text.secondary">
@@ -163,30 +173,49 @@ export default function StaffDashboardView() {
         </CardContent>
       </Card>
 
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          justifyContent: 'space-between',
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          gap: 2,
-          mb: 4,
-        }}
-      >
-        <Box>
-          <Typography variant="h3" fontWeight={700} gutterBottom>
-            Staff Dashboard
+      {stats.shift && (
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Quick actions
           </Typography>
-          <Typography variant="body1" color="text.secondary">
-            {stats.shift ? 'Showing collections for your current shift' : stats.period.label}
-          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Button
+                  key={action.path}
+                  component={RouterLink}
+                  to={action.path}
+                  variant={action.variant}
+                  startIcon={<Icon />}
+                >
+                  {action.label}
+                </Button>
+              );
+            })}
+          </Stack>
         </Box>
+      )}
+
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h3" fontWeight={700} gutterBottom>
+          Staff dashboard
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          {stats.shift
+            ? 'Showing collections for your current shift'
+            : 'Start a shift to track collections and use counter actions'}
+        </Typography>
       </Box>
 
-      {/* Collection Summary */}
       <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-        Shift Collection Summary
+        {stats.shift ? 'Shift collection summary' : 'Collections'}
       </Typography>
+      {!stats.shift && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Start a shift to track collections for this period.
+        </Alert>
+      )}
       <Divider sx={{ mb: 3 }} />
 
       <Grid container spacing={3}>

@@ -3,7 +3,6 @@ import {
   LightMode,
   Logout,
   Menu as MenuIcon,
-  Person,
   PointOfSale,
   Receipt,
   Search,
@@ -29,12 +28,23 @@ import {
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+export interface AppBarQuickActions {
+  showPos?: boolean;
+  showPlan?: boolean;
+  onPosClick?: () => void;
+  onPlanClick?: () => void;
+}
+
 export interface AppBarProps {
   onMenuClick: () => void;
   sidebarCollapsed: boolean;
   drawerWidth?: number;
   collapsedWidth?: number;
   onLogout?: () => void;
+  showGlobalSearch?: boolean;
+  showThemeToggle?: boolean;
+  quickActions?: AppBarQuickActions;
+  settingsPath?: string;
   user?: {
     name: string;
     email: string;
@@ -51,6 +61,10 @@ export default function AppBar({
   drawerWidth = DRAWER_WIDTH,
   collapsedWidth = COLLAPSED_WIDTH,
   onLogout,
+  showGlobalSearch = false,
+  showThemeToggle = false,
+  quickActions,
+  settingsPath,
   user = { name: 'John Doe', email: 'john.doe@example.com' },
 }: AppBarProps) {
   const navigate = useNavigate();
@@ -119,47 +133,50 @@ export default function AppBar({
             </IconButton>
           )}
 
-          {/* Search */}
-          <TextField
-            placeholder="Search..."
-            size="small"
-            sx={{
-              width: { xs: 150, sm: 250, md: 350 },
-              '& .MuiOutlinedInput-root': {
-                bgcolor: 'background.default',
-              },
-            }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search sx={{ color: 'text.secondary', fontSize: 20 }} />
-                </InputAdornment>
-              ),
-            }}
-          />
+          {showGlobalSearch && (
+            <TextField
+              placeholder="Search..."
+              size="small"
+              sx={{
+                width: { xs: 150, sm: 250, md: 350 },
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'background.default',
+                },
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search sx={{ color: 'text.secondary', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
         </Box>
 
         {/* Right Section */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {/* Theme Toggle */}
-          <IconButton sx={{ display: { xs: 'none', sm: 'flex' } }}>
-            <LightMode sx={{ color: 'text.secondary' }} />
-          </IconButton>
-
-          <Tooltip title="POS — sell items">
-            <IconButton aria-label="Open POS" onClick={() => navigate('/product-transactions/new')}>
-              <PointOfSale sx={{ color: 'text.secondary' }} />
+          {showThemeToggle && (
+            <IconButton sx={{ display: { xs: 'none', sm: 'flex' } }}>
+              <LightMode sx={{ color: 'text.secondary' }} />
             </IconButton>
-          </Tooltip>
+          )}
 
-          <Tooltip title="Plan purchase">
-            <IconButton
-              aria-label="New plan purchase"
-              onClick={() => navigate('/plan-transactions/new')}
-            >
-              <Receipt sx={{ color: 'text.secondary' }} />
-            </IconButton>
-          </Tooltip>
+          {quickActions?.showPos && (
+            <Tooltip title="POS — sell items">
+              <IconButton aria-label="Open POS" onClick={quickActions.onPosClick}>
+                <PointOfSale sx={{ color: 'text.secondary' }} />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {quickActions?.showPlan && (
+            <Tooltip title="Buy plan">
+              <IconButton aria-label="Buy plan" onClick={quickActions.onPlanClick}>
+                <Receipt sx={{ color: 'text.secondary' }} />
+              </IconButton>
+            </Tooltip>
+          )}
 
           {/* Profile */}
           <IconButton onClick={handleProfileMenu} sx={{ p: 0, ml: 1 }}>
@@ -197,18 +214,14 @@ export default function AppBar({
             </Typography>
           </Box>
           <Divider />
-          <MenuItem>
-            <ListItemIcon>
-              <Person fontSize="small" />
-            </ListItemIcon>
-            Profile
-          </MenuItem>
-          <MenuItem>
-            <ListItemIcon>
-              <Settings fontSize="small" />
-            </ListItemIcon>
-            Settings
-          </MenuItem>
+          {settingsPath && (
+            <MenuItem onClick={() => navigate(settingsPath)}>
+              <ListItemIcon>
+                <Settings fontSize="small" />
+              </ListItemIcon>
+              Settings
+            </MenuItem>
+          )}
           <Divider />
           <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
             <ListItemIcon>
