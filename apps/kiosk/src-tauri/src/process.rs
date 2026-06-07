@@ -232,13 +232,23 @@ pub fn set_last_allowed_hwnd(hwnd: isize) {
 pub fn last_allowed_foreground_hwnd(app: &AppHandle) -> Option<isize> {
     if let Ok(guard) = LAST_ALLOWED_HWND.lock() {
         if let Some(hwnd) = *guard {
-            return Some(hwnd);
+            #[cfg(windows)]
+            {
+                use windows::Win32::Foundation::HWND;
+                use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+
+                let hwnd = HWND(hwnd as *mut _);
+                if unsafe { IsWindow(hwnd).as_bool() } {
+                    return Some(hwnd.0 as isize);
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                return Some(hwnd);
+            }
         }
     }
-    if let Some(tracked) = tracked_game_hwnd() {
-        return Some(tracked);
-    }
-    kiosk_hwnd(app)
+    tracked_game_hwnd().or_else(|| kiosk_hwnd(app))
 }
 
 fn tracked_game_hwnd() -> Option<isize> {
@@ -297,33 +307,141 @@ fn kill_process_trees(entries: &[WatchEntry]) {
 }
 
 #[cfg(target_os = "windows")]
-fn fullscreen_process_window(pid: u32) -> Option<isize> {
+fn window_area(hwnd: windows::Win32::Foundation::HWND) -> i32 {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+
+    let mut rect = RECT::default();
+    unsafe {
+        if !GetWindowRect(hwnd, &mut rect).as_bool() {
+            return 0;
+        }
+    }
+    (rect.right - rect.left).saturating_mul(rect.bottom - rect.top)
+}
+
+#[cfg(target_os = "windows")]
+fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-    use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
-    };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
-        SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, HWND_TOP,
-        SWP_FRAMECHANGED, SWP_SHOWWINDOW, SW_MAXIMIZE, SW_RESTORE, WS_CAPTION, WS_MAXIMIZEBOX,
-        WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
     };
 
+    if pids.is_empty() {
+        return None;
+    }
+
+    let pid_set: HashSet<u32> = pids.iter().copied().collect();
+
     struct Search {
-        pid: u32,
-        hwnd: HWND,
+        pid_set: HashSet<u32>,
+        best_hwnd: HWND,
+        best_area: i32,
     }
 
     unsafe extern "system" fn enum_windows(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let search = &mut *(lparam.0 as *mut Search);
         let mut window_pid = 0u32;
         GetWindowThreadProcessId(hwnd, Some(&mut window_pid));
-        if window_pid == search.pid && IsWindowVisible(hwnd).as_bool() {
-            search.hwnd = hwnd;
-            return BOOL(0);
+        if !search.pid_set.contains(&window_pid) || !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        let area = window_area(hwnd);
+        if area > search.best_area {
+            search.best_area = area;
+            search.best_hwnd = hwnd;
         }
         BOOL(1)
     }
+
+    let mut search = Search {
+        pid_set,
+        best_hwnd: HWND(std::ptr::null_mut()),
+        best_area: 0,
+    };
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_windows),
+            LPARAM(&mut search as *mut Search as isize),
+        );
+    }
+    if search.best_hwnd.0.is_null() {
+        None
+    } else {
+        Some(search.best_hwnd.0 as isize)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn refresh_entry_window_handle(entry: &mut WatchEntry) {
+    let mut pids: Vec<u32> = entry.descendant_pids.clone();
+    pids.push(entry.root_pid);
+    pids.sort_unstable();
+    pids.dedup();
+    // Prefer descendant game windows over the launcher root when both are visible.
+    pids.reverse();
+    if let Some(hwnd) = best_visible_hwnd_for_pids(&pids) {
+        entry.window_handle = Some(hwnd);
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn refresh_tracked_state() {
+    let Ok(mut tracked) = TRACKED.lock() else {
+        return;
+    };
+    let mut system = System::new();
+    refresh_system_processes(&mut system);
+    for entry in tracked.iter_mut() {
+        refresh_watch_entry(entry, &system);
+        refresh_entry_window_handle(entry);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn refresh_tracked_state() {}
+
+#[cfg(target_os = "windows")]
+pub fn bring_hwnd_to_foreground(hwnd: isize) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AttachThreadInput, BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId,
+        SetForegroundWindow, ShowWindow, SW_RESTORE,
+    };
+
+    unsafe {
+        let hwnd = HWND(hwnd as *mut _);
+        if hwnd.0.is_null() {
+            return;
+        }
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+        let fg = GetForegroundWindow();
+        let fg_thread = GetWindowThreadProcessId(fg, None);
+        let target_thread = GetWindowThreadProcessId(hwnd, None);
+        let attached = fg_thread != target_thread
+            && AttachThreadInput(fg_thread, target_thread, true).as_bool();
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+        if attached {
+            let _ = AttachThreadInput(fg_thread, target_thread, false);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn bring_hwnd_to_foreground(_hwnd: isize) {}
+
+#[cfg(target_os = "windows")]
+fn fullscreen_process_window(pid: u32) -> Option<isize> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, HWND_NOTOPMOST,
+        SWP_FRAMECHANGED, SWP_SHOWWINDOW, SW_MAXIMIZE, SW_RESTORE, WS_CAPTION, WS_MAXIMIZEBOX,
+        WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
+    };
 
     unsafe fn make_borderless_fullscreen(hwnd: HWND) {
         let _ = ShowWindow(hwnd, SW_RESTORE);
@@ -354,7 +472,7 @@ fn fullscreen_process_window(pid: u32) -> Option<isize> {
         // Normal Z band — never TOPMOST so Alt+Tab respects user selection.
         let _ = SetWindowPos(
             hwnd,
-            HWND_TOP,
+            HWND_NOTOPMOST,
             rect.left,
             rect.top,
             rect.right - rect.left,
@@ -364,21 +482,12 @@ fn fullscreen_process_window(pid: u32) -> Option<isize> {
     }
 
     for _ in 0..24 {
-        let mut search = Search {
-            pid,
-            hwnd: HWND(std::ptr::null_mut()),
-        };
-        unsafe {
-            let _ = EnumWindows(
-                Some(enum_windows),
-                LPARAM(&mut search as *mut Search as isize),
-            );
-            if !search.hwnd.0.is_null() {
-                make_borderless_fullscreen(search.hwnd);
-                let _ = SetForegroundWindow(search.hwnd);
-                set_last_allowed_hwnd(search.hwnd.0 as isize);
-                return Some(search.hwnd.0 as isize);
-            }
+        if let Some(hwnd) = best_visible_hwnd_for_pids(&[pid]) {
+            let hwnd = HWND(hwnd as *mut _);
+            make_borderless_fullscreen(hwnd);
+            bring_hwnd_to_foreground(hwnd.0 as isize);
+            set_last_allowed_hwnd(hwnd.0 as isize);
+            return Some(hwnd.0 as isize);
         }
         thread::sleep(Duration::from_millis(250));
     }
@@ -393,18 +502,16 @@ fn fullscreen_process_window(_pid: u32) -> Option<isize> {
 #[cfg(windows)]
 fn set_foreground_window(window: &tauri::WebviewWindow) {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_RESTORE, SW_SHOW};
 
     if let Ok(hwnd_raw) = window.hwnd() {
         unsafe {
             let hwnd = HWND(hwnd_raw.0 as *mut _);
             let _ = ShowWindow(hwnd, SW_SHOW);
             let _ = ShowWindow(hwnd, SW_RESTORE);
-            let _ = SetForegroundWindow(hwnd);
-            set_last_allowed_hwnd(hwnd_raw.0 as isize);
         }
+        bring_hwnd_to_foreground(hwnd_raw.0 as isize);
+        set_last_allowed_hwnd(hwnd_raw.0 as isize);
     }
 }
 
@@ -599,6 +706,7 @@ fn start_monitor_if_needed(app: AppHandle) {
                 refresh_system_processes(&mut system);
                 for entry in tracked.iter_mut() {
                     refresh_watch_entry(entry, &system);
+                    refresh_entry_window_handle(entry);
                 }
                 tracked.retain(|entry| entry_has_live_process(entry, &system));
             }

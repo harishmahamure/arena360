@@ -127,6 +127,9 @@ mod win {
 
             if is_keyup && kb.vkCode == VK_MENU.0 as u32 {
                 crate::lockdown::shell::hide_shell_chrome();
+                if let Some(app) = APP.get() {
+                    crate::lockdown::foreground::capture_allowed_foreground(app);
+                }
             }
 
             if is_keydown {

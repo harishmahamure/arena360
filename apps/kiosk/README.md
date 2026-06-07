@@ -87,7 +87,7 @@ bootstrapper is embedded and run during install (small download at install time)
 
 ### Lockdown / kiosk OS configuration
 
-App-level lockdown blocks Alt+Tab, the Windows keys, Alt+F4 and Ctrl+Shift+Esc.
+App-level lockdown blocks the Windows keys, Alt+F4 and Ctrl+Shift+Esc. Alt+Tab uses native Windows switching.
 Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user mode.
 For a hardened station, also apply at the OS level:
 

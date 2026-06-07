@@ -31,7 +31,7 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
               <p className="a360-running-apps-sub" title={primary.executablePath}>
                 {launcherLoginHint ?? (
                   <>
-                    Use <strong>Alt+Tab</strong> to switch between games and Arena360 only. Press{' '}
+                    Use <strong>Alt+Tab</strong> to switch windows like normal. Press{' '}
                     <strong>Ctrl+Shift+H</strong> to return to Arena360, then close when you are
                     done playing.
                   </>
@@ -40,7 +40,7 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
             ) : (
               <>
                 <p className="a360-running-apps-sub">
-                  Use <strong>Alt+Tab</strong> to switch between games and Arena360 only. Press{' '}
+                  Use <strong>Alt+Tab</strong> to switch windows like normal. Press{' '}
                   <strong>Ctrl+Shift+H</strong> to return to Arena360.
                 </p>
                 <ul className="a360-running-apps-list">
