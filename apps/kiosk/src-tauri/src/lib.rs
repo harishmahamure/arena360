@@ -7,8 +7,8 @@ mod process;
 mod scan;
 mod storage;
 
-use lockdown::{init_locked_on_startup, is_locked, register_keyboard_app};
-use tauri::Manager;
+use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
+use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,9 +34,13 @@ pub fn run() {
                 }
             }
             if let tauri::WindowEvent::Focused(focused) = event {
-                if *focused && process::has_tracked_processes() {
-                    let _ = process::focus_kiosk_window(window.app_handle());
+                if *focused {
+                    process::on_kiosk_focused(window.app_handle());
+                    lockdown::set_audio_ui_yield(false);
                 }
+            }
+            if let tauri::WindowEvent::Resized(..) = event {
+                process::recover_minimized_kiosk(window.app_handle());
             }
         })
         .setup(|app| {
@@ -67,6 +71,11 @@ pub fn run() {
             process::clear_tracked_processes,
             cache::cache_asset,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let RunEvent::Exit = event {
+                on_app_exit();
+            }
+        });
 }

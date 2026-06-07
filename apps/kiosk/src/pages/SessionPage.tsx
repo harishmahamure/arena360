@@ -38,6 +38,7 @@ export function SessionPage() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [view, setView] = useState<SessionView>('home');
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [graceLeft, setGraceLeft] = useState(0);
   const [offlineLeft, setOfflineLeft] = useState<number | null>(null);
   const offlineSinceRef = useRef<number | null>(null);
@@ -54,6 +55,17 @@ export function SessionPage() {
   }, []);
 
   const onError = useCallback((m: string) => pushToast(m, 'warning'), [pushToast]);
+
+  const handleRefreshTime = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await syncSession();
+    } catch {
+      pushToast('Could not refresh remaining time', 'warning');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [pushToast, syncSession]);
 
   const { processes, closing, closeAll, refresh } = useTrackedProcesses({
     enabled: Boolean(activeSession) && forceEndGraceEndsAt === null,
@@ -82,9 +94,8 @@ export function SessionPage() {
   useSessionPoller(
     localRemaining ?? serverRemaining,
     syncSession,
-    Boolean(activeSession) &&
-      forceEndGraceEndsAt === null &&
-      (!wsConnected || (localRemaining ?? serverRemaining ?? Number.POSITIVE_INFINITY) <= 1),
+    Boolean(activeSession) && forceEndGraceEndsAt === null,
+    wsConnected ? 60_000 : undefined,
   );
 
   useEffect(() => {
@@ -180,6 +191,8 @@ export function SessionPage() {
         activeView={view}
         onNavigate={setView}
         onEndSession={() => setConfirmEnd(true)}
+        onRefreshTime={handleRefreshTime}
+        refreshing={refreshing}
         onError={onError}
       />
 

@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import { registerAuthSessionHandlers } from '../lib/authSession';
+import { applyBalanceUpdated } from '../lib/balanceUpdated';
 import {
   clearPlayerSession,
   getHttpClient,
@@ -189,6 +190,12 @@ export function KioskProvider({ children }: { children: ReactNode }) {
               setPhase((prev) => (prev === 'login' ? 'login' : prev));
             }
           }
+        }
+        if (frame.event_type === 'balance.updated') {
+          setActiveSession((prev) => {
+            const updated = applyBalanceUpdated(prev, frame.payload);
+            return updated ?? prev;
+          });
         }
       });
       rt.connect();

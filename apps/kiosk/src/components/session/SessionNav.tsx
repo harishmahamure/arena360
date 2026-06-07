@@ -15,6 +15,8 @@ interface SessionNavProps {
   activeView: SessionView;
   onNavigate: (view: SessionView) => void;
   onEndSession: () => void;
+  onRefreshTime?: () => Promise<void>;
+  refreshing?: boolean;
   onError?: (message: string) => void;
 }
 
@@ -61,6 +63,8 @@ export function SessionNav({
   activeView,
   onNavigate,
   onEndSession,
+  onRefreshTime,
+  refreshing = false,
   onError,
 }: SessionNavProps) {
   const [open, setOpen] = useState<'audio' | 'profile' | null>(null);
@@ -167,9 +171,24 @@ export function SessionNav({
       </div>
 
       <div className="a360-nav-right">
-        <div className="a360-time-pill">
-          <span className="material-symbols-outlined is-filled">timer</span>
-          <span>{remainingLabel}</span>
+        <div className="a360-time-group">
+          <div className="a360-time-pill">
+            <span className="material-symbols-outlined is-filled">timer</span>
+            <span>{remainingLabel}</span>
+          </div>
+          {onRefreshTime ? (
+            <button
+              type="button"
+              className="kiosk-iconbtn a360-time-refresh"
+              aria-label="Refresh remaining time"
+              disabled={refreshing}
+              onClick={() => void onRefreshTime()}
+            >
+              <span className={`material-symbols-outlined${refreshing ? ' is-spinning' : ''}`}>
+                refresh
+              </span>
+            </button>
+          ) : null}
         </div>
 
         <div className="kiosk-audio">

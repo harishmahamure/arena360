@@ -18,16 +18,18 @@
 mod win {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::OnceLock;
+    use std::thread;
+    use std::time::{Duration, Instant};
     use tauri::AppHandle;
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_H, VK_LWIN, VK_MENU, VK_RWIN,
-        VK_SHIFT, VK_SPACE,
+        VK_SHIFT, VK_SPACE, VK_TAB,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
     /// Newtype so the hook handle can live in a `static OnceLock`. `HHOOK`
@@ -40,7 +42,11 @@ mod win {
 
     static HOOK: OnceLock<HookHandle> = OnceLock::new();
     static ENABLED: AtomicBool = AtomicBool::new(false);
+    static ALT_REHIDE_RUNNING: AtomicBool = AtomicBool::new(false);
     static APP: OnceLock<AppHandle> = OnceLock::new();
+
+    const ALT_REHIDE_INTERVAL_MS: u64 = 75;
+    const ALT_REHIDE_MAX_MS: u64 = 3000;
 
     pub fn set_app_handle(app: AppHandle) {
         let _ = APP.set(app);
@@ -87,11 +93,43 @@ mod win {
             && is_down(VK_SHIFT.0 as i32)
     }
 
+    /// Alt+Tab is allowed through, but Explorer often flashes the taskbar when the switcher opens.
+    unsafe fn is_alt_tab(vk: u32) -> bool {
+        vk == VK_TAB.0 as u32 && is_down(VK_MENU.0 as i32)
+    }
+
+    /// Re-hide the taskbar while Alt is held — Explorer re-shows it when the switcher opens.
+    fn start_alt_rehide_burst() {
+        if ALT_REHIDE_RUNNING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        thread::spawn(|| {
+            let deadline = Instant::now() + Duration::from_millis(ALT_REHIDE_MAX_MS);
+            loop {
+                crate::lockdown::shell::hide_shell_chrome();
+                let alt_held = unsafe { is_down(VK_MENU.0 as i32) };
+                if !alt_held || Instant::now() >= deadline {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(ALT_REHIDE_INTERVAL_MS));
+            }
+            crate::lockdown::shell::hide_shell_chrome();
+            ALT_REHIDE_RUNNING.store(false, Ordering::SeqCst);
+        });
+    }
+
     unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 && ENABLED.load(Ordering::SeqCst) {
-            let is_keydown = wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
+            let kb = *(lparam.0 as *const KBDLLHOOKSTRUCT);
+            let is_keydown =
+                wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
+            let is_keyup = wparam.0 == WM_KEYUP as usize || wparam.0 == WM_SYSKEYUP as usize;
+
+            if is_keyup && kb.vkCode == VK_MENU.0 as u32 {
+                crate::lockdown::shell::hide_shell_chrome();
+            }
+
             if is_keydown {
-                let kb = *(lparam.0 as *const KBDLLHOOKSTRUCT);
                 if is_focus_kiosk_combo(kb.vkCode) {
                     if let Some(app) = APP.get() {
                         let _ = crate::process::focus_kiosk_window(app);
@@ -100,6 +138,10 @@ mod win {
                 }
                 if should_block(kb.vkCode) {
                     return LRESULT(1);
+                }
+                if is_alt_tab(kb.vkCode) {
+                    crate::lockdown::shell::hide_shell_chrome();
+                    start_alt_rehide_burst();
                 }
             }
         }

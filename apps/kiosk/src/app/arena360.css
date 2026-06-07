@@ -4,6 +4,7 @@
  * stitch_kiosk_home_screen/arena360_kiosk/DESIGN.md: deep-navy glassmorphism
  * with a vivid orange (#ff6900) call-to-action accent and Hanken Grotesk type.
  */
+/** biome-ignore-all lint/style/noDescendingSpecificity: <explanation> */
 
 :root {
   --a360-viewport-height: 100vh;
@@ -449,6 +450,22 @@ body,
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.a360-time-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.a360-time-refresh .material-symbols-outlined.is-spinning {
+  animation: a360-spin 0.8s linear infinite;
+}
+
+@keyframes a360-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .a360-time-pill {

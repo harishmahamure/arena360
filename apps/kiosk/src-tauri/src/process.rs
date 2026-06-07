@@ -25,11 +25,12 @@ pub struct TrackedProcess {
 struct WatchEntry {
     executable_path: String,
     pid: u32,
-    _window_handle: Option<isize>,
+    window_handle: Option<isize>,
 }
 
 static TRACKED: Mutex<Vec<WatchEntry>> = Mutex::new(Vec::new());
 static MONITOR_RUNNING: Mutex<bool> = Mutex::new(false);
+static LAST_ALLOWED_HWND: Mutex<Option<isize>> = Mutex::new(None);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,6 +116,74 @@ fn kill_pid(pid: u32) {
     }
 }
 
+pub fn main_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+    app.get_webview_window("main")
+        .or_else(|| app.webview_windows().values().next().cloned())
+        .ok_or_else(|| "Main window not found".to_string())
+}
+
+pub fn kiosk_hwnd(app: &AppHandle) -> Option<isize> {
+    #[cfg(windows)]
+    {
+        main_window(app)
+            .ok()
+            .and_then(|w| w.hwnd().ok())
+            .map(|h| h.0 as isize)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn is_kiosk_hwnd(app: &AppHandle, hwnd: isize) -> bool {
+    kiosk_hwnd(app) == Some(hwnd)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn is_kiosk_hwnd(_app: &AppHandle, _hwnd: isize) -> bool {
+    false
+}
+
+pub fn set_last_allowed_hwnd(hwnd: isize) {
+    if let Ok(mut guard) = LAST_ALLOWED_HWND.lock() {
+        *guard = Some(hwnd);
+    }
+}
+
+pub fn last_allowed_foreground_hwnd(app: &AppHandle) -> Option<isize> {
+    if let Ok(guard) = LAST_ALLOWED_HWND.lock() {
+        if let Some(hwnd) = *guard {
+            return Some(hwnd);
+        }
+    }
+    if let Some(tracked) = tracked_game_hwnd() {
+        return Some(tracked);
+    }
+    kiosk_hwnd(app)
+}
+
+fn tracked_game_hwnd() -> Option<isize> {
+    TRACKED
+        .lock()
+        .ok()
+        .and_then(|tracked| {
+            tracked
+                .iter()
+                .rev()
+                .find_map(|entry| entry.window_handle)
+        })
+}
+
+pub fn is_pid_tracked(pid: u32) -> bool {
+    TRACKED
+        .lock()
+        .map(|tracked| tracked.iter().any(|e| e.pid == pid))
+        .unwrap_or(false)
+}
+
 #[cfg(target_os = "windows")]
 fn fullscreen_process_window(pid: u32) -> Option<isize> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
@@ -123,7 +192,7 @@ fn fullscreen_process_window(pid: u32) -> Option<isize> {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindowVisible,
-        SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, HWND_TOPMOST,
+        SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, HWND_TOP,
         SWP_FRAMECHANGED, SWP_SHOWWINDOW, SW_MAXIMIZE, SW_RESTORE, WS_CAPTION, WS_MAXIMIZEBOX,
         WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
     };
@@ -170,9 +239,10 @@ fn fullscreen_process_window(pid: u32) -> Option<isize> {
         let _ = SetWindowLongPtrW(hwnd, GWL_STYLE, borderless as isize);
 
         let rect = monitor_info.rcMonitor;
+        // Normal Z band — never TOPMOST so Alt+Tab respects user selection.
         let _ = SetWindowPos(
             hwnd,
-            HWND_TOPMOST,
+            HWND_TOP,
             rect.left,
             rect.top,
             rect.right - rect.left,
@@ -194,6 +264,7 @@ fn fullscreen_process_window(pid: u32) -> Option<isize> {
             if !search.hwnd.0.is_null() {
                 make_borderless_fullscreen(search.hwnd);
                 let _ = SetForegroundWindow(search.hwnd);
+                set_last_allowed_hwnd(search.hwnd.0 as isize);
                 return Some(search.hwnd.0 as isize);
             }
         }
@@ -207,14 +278,26 @@ fn fullscreen_process_window(_pid: u32) -> Option<isize> {
     None
 }
 
-fn main_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
-    app.get_webview_window("main")
-        .or_else(|| app.webview_windows().values().next().cloned())
-        .ok_or_else(|| "Main window not found".to_string())
+#[cfg(windows)]
+fn set_foreground_window(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
+    };
+
+    if let Ok(hwnd_raw) = window.hwnd() {
+        unsafe {
+            let hwnd = HWND(hwnd_raw.0 as *mut _);
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = SetForegroundWindow(hwnd);
+            set_last_allowed_hwnd(hwnd_raw.0 as isize);
+        }
+    }
 }
 
 #[cfg(windows)]
-fn force_foreground(window: &tauri::WebviewWindow) {
+fn force_foreground_topmost(window: &tauri::WebviewWindow) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         SetForegroundWindow, SetWindowPos, ShowWindow, HWND_TOPMOST, SW_RESTORE, SW_SHOW,
@@ -236,41 +319,43 @@ fn force_foreground(window: &tauri::WebviewWindow) {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
             );
             let _ = SetForegroundWindow(hwnd);
+            set_last_allowed_hwnd(hwnd_raw.0 as isize);
         }
     }
 }
-
-#[cfg(not(windows))]
-fn force_foreground(_window: &tauri::WebviewWindow) {}
 
 /// Lower the kiosk below launched game windows without hiding or minimizing it.
-#[cfg(windows)]
-fn send_kiosk_behind_games(window: &tauri::WebviewWindow) {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    };
+pub fn send_kiosk_behind_games(window: &tauri::WebviewWindow) {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
 
-    if let Ok(hwnd_raw) = window.hwnd() {
-        unsafe {
-            let hwnd = HWND(hwnd_raw.0 as *mut _);
-            let _ = SetWindowPos(
-                hwnd,
-                HWND_NOTOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-            );
+        if let Ok(hwnd_raw) = window.hwnd() {
+            unsafe {
+                let hwnd = HWND(hwnd_raw.0 as *mut _);
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND_NOTOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
         }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window;
     }
 }
 
-#[cfg(not(windows))]
-fn send_kiosk_behind_games(_window: &tauri::WebviewWindow) {}
-
-fn show_kiosk_foreground(app: &AppHandle) {
+/// Fullscreen topmost shell — idle/login or after all games closed.
+pub fn apply_kiosk_shell_lockdown(app: &AppHandle) {
     if let Ok(window) = main_window(app) {
         let _ = window.unminimize();
         let _ = window.show();
@@ -278,7 +363,50 @@ fn show_kiosk_foreground(app: &AppHandle) {
         let _ = window.set_fullscreen(true);
         let _ = window.set_always_on_top(true);
         let _ = window.set_focus();
-        force_foreground(&window);
+        #[cfg(windows)]
+        force_foreground_topmost(&window);
+        #[cfg(not(windows))]
+        let _ = &window;
+        if let Some(hwnd) = kiosk_hwnd(app) {
+            set_last_allowed_hwnd(hwnd);
+        }
+    }
+}
+
+/// User chose kiosk while games are tracked — foreground without TOPMOST.
+pub fn apply_kiosk_session_foreground(app: &AppHandle) {
+    if let Ok(window) = main_window(app) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_decorations(false);
+        let _ = window.set_always_on_top(false);
+        let _ = window.set_fullscreen(true);
+        let _ = window.set_focus();
+        #[cfg(windows)]
+        set_foreground_window(&window);
+        if let Some(hwnd) = kiosk_hwnd(app) {
+            set_last_allowed_hwnd(hwnd);
+        }
+    }
+}
+
+/// After game launch — kiosk stays in Alt+Tab set but behind the game.
+pub fn apply_kiosk_game_mode_background(app: &AppHandle) {
+    if let Ok(window) = main_window(app) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_decorations(false);
+        let _ = window.set_always_on_top(false);
+        let _ = window.set_fullscreen(true);
+        send_kiosk_behind_games(&window);
+    }
+}
+
+fn show_kiosk_foreground(app: &AppHandle) {
+    if has_tracked_processes() {
+        apply_kiosk_session_foreground(app);
+    } else {
+        apply_kiosk_shell_lockdown(app);
     }
 }
 
@@ -294,17 +422,51 @@ pub fn focus_kiosk_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
+/// Re-apply the correct window profile when the kiosk regains focus (e.g. after sound settings).
+pub fn on_kiosk_focused(app: &AppHandle) {
+    if has_tracked_processes() {
+        apply_kiosk_session_foreground(app);
+    } else if crate::lockdown::is_locked() {
+        apply_kiosk_shell_lockdown(app);
+    }
+    if crate::lockdown::is_locked() {
+        crate::lockdown::shell::hide_shell_chrome();
+    }
+}
+
+/// Lower kiosk for external UI (sound settings) without minimizing.
+pub fn yield_kiosk_for_external_ui(app: &AppHandle) -> Result<(), String> {
     let window = main_window(app)?;
-    window.set_always_on_top(false).map_err(|e| e.to_string())?;
-    // Keep the kiosk visible in Alt+Tab but behind the launched game. Do not
-    // minimize — players must be able to switch back to the session homepage.
+    window
+        .set_always_on_top(false)
+        .map_err(|e| e.to_string())?;
+    window.set_fullscreen(false).map_err(|e| e.to_string())?;
     send_kiosk_behind_games(&window);
     Ok(())
 }
 
+fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
+    apply_kiosk_game_mode_background(app);
+    Ok(())
+}
+
 fn restore_kiosk_window(app: &AppHandle) {
-    show_kiosk_foreground(app);
+    apply_kiosk_shell_lockdown(app);
+}
+
+pub fn recover_minimized_kiosk(app: &AppHandle) {
+    if !crate::lockdown::is_locked() {
+        return;
+    }
+    if let Ok(window) = main_window(app) {
+        if window.is_minimized().unwrap_or(false) {
+            if has_tracked_processes() {
+                apply_kiosk_session_foreground(app);
+            } else {
+                apply_kiosk_shell_lockdown(app);
+            }
+        }
+    }
 }
 
 fn start_monitor_if_needed(app: AppHandle) {
@@ -350,13 +512,11 @@ pub fn launch_allowed(
     prepare_kiosk_for_game_mode(&app)?;
     let pid = spawn_process(&executable_path, arguments.as_deref())?;
     let window_handle = fullscreen_process_window(pid);
-    if let Ok(window) = main_window(&app) {
-        send_kiosk_behind_games(&window);
-    }
+    apply_kiosk_game_mode_background(&app);
     TRACKED.lock().map_err(|e| e.to_string())?.push(WatchEntry {
         executable_path,
         pid,
-        _window_handle: window_handle,
+        window_handle,
     });
     start_monitor_if_needed(app);
     Ok(LaunchResult { pid })
@@ -409,7 +569,7 @@ pub fn clear_tracked_processes() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_allowed, normalize_path};
+    use super::{has_tracked_processes, is_allowed, normalize_path};
 
     #[test]
     fn normalize_lowercases_and_unifies_separators() {
@@ -431,5 +591,15 @@ mod tests {
     fn allow_list_rejects_unlisted_executable() {
         let allow = vec!["C:\\Games\\steam.exe".to_string()];
         assert!(!is_allowed("C:\\Windows\\System32\\cmd.exe", &allow));
+    }
+
+    #[test]
+    fn has_tracked_processes_false_when_empty() {
+        let _ = clear_tracked_for_test();
+        assert!(!has_tracked_processes());
+    }
+
+    fn clear_tracked_for_test() {
+        let _ = super::clear_tracked_processes();
     }
 }

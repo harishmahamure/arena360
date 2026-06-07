@@ -1,4 +1,8 @@
+mod foreground;
 mod keyboard;
+pub mod shell;
+
+pub use foreground::set_audio_ui_yield;
 
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
@@ -22,7 +26,6 @@ static STATE: Mutex<LockdownState> = Mutex::new(LockdownState::Locked);
 /// Serializes whole transitions (state write + window mode + hook toggle) so
 /// concurrent `set_lockdown_state` calls cannot interleave window operations.
 static TRANSITION: Mutex<()> = Mutex::new(());
-
 fn parse_state(raw: &str) -> Result<LockdownState, String> {
     match raw {
         "Locked" => Ok(LockdownState::Locked),
@@ -39,13 +42,23 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
 
     match state {
         LockdownState::Locked => {
-            window.set_fullscreen(true).map_err(|e| e.to_string())?;
-            window.set_always_on_top(true).map_err(|e| e.to_string())?;
-            window.set_decorations(false).map_err(|e| e.to_string())?;
+            window.set_minimizable(false).map_err(|e| e.to_string())?;
+            window.set_maximizable(false).map_err(|e| e.to_string())?;
+            if crate::process::has_tracked_processes() {
+                crate::process::apply_kiosk_game_mode_background(app);
+            } else {
+                crate::process::apply_kiosk_shell_lockdown(app);
+            }
+            shell::hide_shell_chrome();
             keyboard::install_hook();
+            foreground::start_foreground_guard(app.clone());
         }
         LockdownState::SetupRelaxed => {
+            foreground::stop_foreground_guard();
             keyboard::remove_hook();
+            shell::restore_shell_chrome();
+            window.set_minimizable(true).map_err(|e| e.to_string())?;
+            window.set_maximizable(true).map_err(|e| e.to_string())?;
             window.set_always_on_top(false).map_err(|e| e.to_string())?;
             window.set_fullscreen(false).map_err(|e| e.to_string())?;
             window.set_decorations(true).map_err(|e| e.to_string())?;
@@ -58,15 +71,12 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
 #[tauri::command]
 pub fn set_lockdown_state(app: AppHandle, state: String) -> Result<(), String> {
     let state = parse_state(&state)?;
-    // Hold the transition lock for the whole operation so concurrent callers
-    // serialize rather than interleaving window/hook changes.
     let _txn = TRANSITION.lock().map_err(|e| e.to_string())?;
     {
         let mut guard = STATE.lock().map_err(|e| e.to_string())?;
         *guard = state;
     }
     apply_window_mode(&app, state)?;
-    // Notify the webview so React can reconcile UI with the native state.
     let _ = app.emit("lockdown-changed", state.as_str());
     Ok(())
 }
@@ -95,6 +105,11 @@ pub fn init_locked_on_startup(app: &AppHandle) {
     }
     let _ = apply_window_mode(app, LockdownState::Locked);
     let _ = app.emit("lockdown-changed", LockdownState::Locked.as_str());
+}
+
+pub fn on_app_exit() {
+    foreground::stop_foreground_guard();
+    shell::restore_shell_chrome();
 }
 
 #[cfg(test)]

@@ -25,17 +25,24 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
             <p className="a360-running-apps-title">Running: {label}</p>
             {processes.length === 1 && primary ? (
               <p className="a360-running-apps-sub" title={primary.executablePath}>
-                Press <strong>Ctrl+Shift+H</strong> or Alt+Tab back to Arena360, then close when you
-                are done playing.
+                Use <strong>Alt+Tab</strong> to switch between games and Arena360 only. Press{' '}
+                <strong>Ctrl+Shift+H</strong> to return to Arena360, then close when you are done
+                playing.
               </p>
             ) : (
-              <ul className="a360-running-apps-list">
-                {processes.map((process) => (
-                  <li key={process.pid} title={process.executablePath}>
-                    {process.displayName}
-                  </li>
-                ))}
-              </ul>
+              <>
+                <p className="a360-running-apps-sub">
+                  Use <strong>Alt+Tab</strong> to switch between games and Arena360 only. Press{' '}
+                  <strong>Ctrl+Shift+H</strong> to return to Arena360.
+                </p>
+                <ul className="a360-running-apps-list">
+                  {processes.map((process) => (
+                    <li key={process.pid} title={process.executablePath}>
+                      {process.displayName}
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         </div>

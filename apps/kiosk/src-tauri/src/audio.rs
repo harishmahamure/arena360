@@ -94,22 +94,9 @@ mod win {
         Ok(())
     }
 
-    /// Lower the always-on-top kiosk so Windows sound UI is visible, then open it.
-    fn yield_kiosk_to_external_ui(app: &AppHandle) -> Result<(), String> {
-        let window = app
-            .get_webview_window("main")
-            .or_else(|| app.webview_windows().values().next().cloned())
-            .ok_or_else(|| "Main window not found".to_string())?;
-        window
-            .set_always_on_top(false)
-            .map_err(|e| e.to_string())?;
-        window.set_fullscreen(false).map_err(|e| e.to_string())?;
-        window.minimize().map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
     pub fn open_settings(app: &AppHandle) -> Result<(), String> {
-        yield_kiosk_to_external_ui(app)?;
+        crate::lockdown::set_audio_ui_yield(true);
+        crate::process::yield_kiosk_for_external_ui(app)?;
 
         if shell_execute(w!("ms-settings:sound"), PCWSTR::null()).is_ok() {
             return Ok(());

@@ -9,6 +9,7 @@ export function useSessionPoller(
   remainingMinutes: number | undefined,
   sync: () => Promise<void>,
   active: boolean,
+  intervalOverrideMs?: number,
 ): void {
   const syncRef = useRef(sync);
   syncRef.current = sync;
@@ -17,10 +18,10 @@ export function useSessionPoller(
 
   useEffect(() => {
     if (!active) return;
-    const intervalMs = finalBurst ? 5000 : 15000;
+    const intervalMs = intervalOverrideMs ?? (finalBurst ? 5000 : 15000);
     const id = setInterval(() => {
       void syncRef.current();
     }, intervalMs);
     return () => clearInterval(id);
-  }, [active, finalBurst]);
+  }, [active, finalBurst, intervalOverrideMs]);
 }
