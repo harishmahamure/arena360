@@ -20,7 +20,7 @@ use crate::launch_profile::{
     resolve_launch_profile, scan_profile_stats, steam_app_id_from_manifest, ScanProfileCandidate,
 };
 #[cfg(target_os = "windows")]
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub type ScanLaunchVia = LaunchVia;
 

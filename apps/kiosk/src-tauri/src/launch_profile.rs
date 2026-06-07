@@ -650,7 +650,9 @@ fn load_ea_indexes(ea_helper: Option<&str>) -> HashMap<String, IndexedProfile> {
         let Some(offer_id) = offer_id else {
             continue;
         };
-        let install_dir = ea_install_dir_from_metadata(&game_dir)?;
+        let Some(install_dir) = ea_install_dir_from_metadata(&game_dir) else {
+            continue;
+        };
         let Some(exe) = find_primary_exe(&install_dir) else {
             continue;
         };
