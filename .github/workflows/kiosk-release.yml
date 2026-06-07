@@ -3,6 +3,9 @@ name: Release Kiosk (Windows)
 # Manual release (ADR-0028): bump the kiosk version, build a signed Windows
 # installer with Tauri updater artifacts, and publish them + latest.json to a
 # GitHub Release that the deployed kiosks' update manager polls.
+#
+# Version files are committed only after a successful build so failed releases
+# never leave bump/revert noise on master.
 on:
   workflow_dispatch:
     inputs:
@@ -65,20 +68,6 @@ jobs:
         shell: bash
         run: node apps/kiosk/scripts/set-version.mjs "${{ inputs.bump }}" >> "$GITHUB_OUTPUT"
 
-      - name: Commit and tag release
-        shell: bash
-        env:
-          VERSION: ${{ steps.bump.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/kiosk/package.json apps/kiosk/src-tauri/tauri.conf.json apps/kiosk/src-tauri/Cargo.toml
-          # Machine-generated version bump on windows-latest; skip pre-commit (Biome)
-          # — only the version field changes and checkout may introduce CRLF.
-          git commit --no-verify -m "chore(kiosk): release v${VERSION}"
-          git tag "kiosk-v${VERSION}"
-          git push origin HEAD --follow-tags
-
       # ADR-0028: inject the updater runtime config (public key + GitHub Releases
       # endpoint) and enable updater artifacts only for release builds. Kept out
       # of the committed tauri.conf.json so kiosk-ci.yml builds without keys and
@@ -108,6 +97,7 @@ jobs:
           EOF
 
       - name: Build and publish release
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,6 +115,22 @@ jobs:
           updaterJsonPreferNsis: true
           args: --config src-tauri/tauri.updater.conf.json
 
+      - name: Commit version bump and align tag
+        shell: bash
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/kiosk/package.json apps/kiosk/src-tauri/tauri.conf.json apps/kiosk/src-tauri/Cargo.toml
+          # Machine-generated version bump on windows-latest; skip pre-commit (Biome)
+          # — only the version field changes and checkout may introduce CRLF.
+          git commit --no-verify -m "chore(kiosk): release v${VERSION}"
+          git push origin HEAD
+          # tauri-action tagged the pre-bump checkout SHA; move the tag to this commit.
+          git tag -f "kiosk-v${VERSION}"
+          git push -f origin "kiosk-v${VERSION}"
+
       - name: Release summary
         shell: bash
         run: |
@@ -139,5 +145,5 @@ jobs:
             echo "- Login video URL: \`${{ env.VITE_LOGIN_BACKGROUND_VIDEO_URL }}\`"
             echo "- Offline grace (minutes): \`${{ env.VITE_OFFLINE_GRACE_MINUTES }}\`"
             echo "- Update endpoint: \`https://github.com/${{ github.repository }}/releases/latest/download/latest.json\`"
-            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Release: \`${{ steps.tauri.outputs.releaseHtmlUrl }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
