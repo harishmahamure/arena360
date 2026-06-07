@@ -2,11 +2,11 @@ import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { Build, CheckCircle, Error as ErrorIcon, Schedule } from '@mui/icons-material';
 import { Box, Chip, Paper, Typography } from '@mui/material';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { KioskFingerprintCard } from '../../../components/KioskFingerprintCard';
-import { KioskRegistrationCard } from '../../../components/KioskRegistrationCard';
+import { KioskProvisioningCard } from '../../../components/KioskProvisioningCard';
 import {
   type CreateDeviceFormData,
   createDeviceSchema,
@@ -137,7 +137,6 @@ const getStatusLabel = (status: DeviceStatusValue) => {
 export default function EditDevicePage() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const queryClient = useQueryClient();
   const { can } = usePermissions();
   const canWrite = can(Permission.DevicesWrite);
   const [error, setError] = useState<string | undefined>();
@@ -235,15 +234,9 @@ export default function EditDevicePage() {
       </Box>
 
       {deviceData && (
-        <KioskRegistrationCard
-          deviceId={deviceData.id}
+        <KioskProvisioningCard
+          deviceName={deviceData.name}
           registrationStatus={deviceData.registrationStatus}
-          registrationCode={deviceData.registrationCode}
-          expiresAt={deviceData.registrationCodeExpiresAt}
-          canWrite={canWrite}
-          onCodeUpdated={() => {
-            void queryClient.invalidateQueries({ queryKey: ['device', id] });
-          }}
         />
       )}
 

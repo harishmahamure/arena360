@@ -1,6 +1,7 @@
 import { toastUtils } from '@gaming-cafe/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
+import { useSelector } from '../../hooks/store';
 import { RealtimeClient, type ServerFrame } from './client';
 
 interface RealtimeContextValue {
@@ -22,6 +23,7 @@ function getWsUrl(): string {
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const { id: userId, role } = useSelector((state) => state.auth);
   const clientRef = useRef<RealtimeClient | null>(null);
 
   const contextValue = useMemo<RealtimeContextValue>(() => {
@@ -36,18 +38,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     client.connect();
 
-    const userStr = localStorage.getItem('user');
-    const user = userStr ? JSON.parse(userStr) : null;
-    const roles: string[] = user?.role ? [user.role] : [];
-
     const channels: string[] = ['public'];
-    if (roles.includes('admin')) {
+    if (role === 'admin') {
       channels.push('admin', 'staff');
-    } else if (roles.includes('staff')) {
+    } else if (role === 'staff') {
       channels.push('staff');
     }
-    if (user?.id) {
-      channels.push(`user:${user.id}`);
+    if (userId) {
+      channels.push(`user:${userId}`);
     }
 
     client.subscribe(channels);
@@ -95,7 +93,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       unsubDevice();
       client.disconnect();
     };
-  }, [queryClient]);
+  }, [queryClient, userId, role]);
 
   return <RealtimeContext value={contextValue}>{children}</RealtimeContext>;
 }

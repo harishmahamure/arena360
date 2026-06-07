@@ -104,3 +104,5 @@ export const getExpectedClosing = async () =>
   http.get<{ registerId?: string | null; expectedClosing: number; openingBalance: number }>(
     '/cash-registers/active/expected-closing',
   );
+
+export const forceCloseShift = async (id: string) => http.patch<Shift>(`/shifts/${id}/force-close`);

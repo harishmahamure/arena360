@@ -9,6 +9,7 @@ import { toast } from 'react-toastify';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import { useSelector } from '../../../hooks/store';
 import { useEnrichedSessions } from '../../../hooks/useEnrichedSessions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getSessions, type SessionResponse } from '../../../services/sessions/list';
 import { endSession } from '../../../services/sessions/update';
 
@@ -74,6 +75,7 @@ export default function SessionsPage() {
 
   const enrichedSessions = useEnrichedSessions(data?.data);
   const currentUserRole = useSelector((state) => state.auth.role);
+  const { can } = usePermissions();
 
   const navigate = useNavigate();
 
@@ -249,7 +251,7 @@ export default function SessionsPage() {
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleStartNewSession}
+        onAddClick={can(Permission.SessionsWrite) ? handleStartNewSession : undefined}
         addButtonLabel="Start New Session"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

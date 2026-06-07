@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
-import { useSelector } from '../hooks/store';
+import { useDispatch, useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
 import { useEnrichedSessions } from '../hooks/useEnrichedSessions';
 import { usePermissions } from '../hooks/usePermissions';
@@ -16,6 +16,7 @@ import { filterNavItemsByPermission } from '../utils/filterNavItems';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const location = useLocation();
   const outletKey = `${location.pathname}${location.search}`;
 
@@ -67,6 +68,20 @@ export default function DashboardLayout() {
     }
   }, [outletKey]);
 
+  const handleAdminLogout = () => {
+    local.remove('accessToken');
+    dispatch({ type: 'Reset' });
+    navigate('/login');
+  };
+
+  const handleLogout = () => {
+    if (isStaff) {
+      setHandoverOpen(true);
+    } else {
+      handleAdminLogout();
+    }
+  };
+
   return (
     <>
       <BaseDashboardLayout
@@ -81,7 +96,7 @@ export default function DashboardLayout() {
         }
         logoText="Arena360"
         user={{ name: `${firstName} ${lastName}`, email, role }}
-        onLogout={isStaff ? () => setHandoverOpen(true) : undefined}
+        onLogout={handleLogout}
       >
         <Outlet key={outletKey} />
       </BaseDashboardLayout>

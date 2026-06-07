@@ -28,6 +28,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
 import {
   type PaymentMethodType,
@@ -336,390 +337,397 @@ export default function CreateProductTransactionPage() {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          Point of Sale - Product Transaction
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Select a player, add products to cart, and complete the transaction
-        </Typography>
-      </Box>
+    <ActiveShiftGuard>
+      <Box sx={{ p: 3 }}>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h4" fontWeight={600} gutterBottom>
+            Point of Sale - Product Transaction
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Select a player, add products to cart, and complete the transaction
+          </Typography>
+        </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(undefined)}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          {success}
-        </Alert>
-      )}
-
-      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <StoreIcon color="action" />
-        <TextField
-          select
-          label="Store"
-          size="small"
-          value={saleLocationId}
-          onChange={(e) => {
-            setSaleLocationId(e.target.value);
-            setCart([]);
-          }}
-          sx={{ minWidth: 220 }}
-        >
-          {storeLocations.map((loc) => (
-            <MenuItem key={loc.id} value={loc.id}>
-              {loc.name}
-            </MenuItem>
-          ))}
-        </TextField>
-        {nightActive && (
-          <Chip
-            icon={<Nightlight />}
-            label="Night price active (11 PM – 8 AM)"
-            color="secondary"
-            size="small"
-          />
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(undefined)}>
+            {error}
+          </Alert>
         )}
-      </Box>
 
-      <Grid container spacing={3}>
-        {/* Left Column - Player & Product Selection */}
-        <Grid item xs={12} md={7}>
-          {/* Player Selection */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6" fontWeight={600}>
-                  Select Player
-                </Typography>
-              </Box>
-              <Autocomplete
-                options={playerOptions}
-                getOptionLabel={(option) => option.username}
-                value={selectedPlayer}
-                onChange={(_, newValue) => setSelectedPlayer(newValue)}
-                inputValue={playerInputValue}
-                onInputChange={(_, newValue) => setPlayerInputValue(newValue)}
-                loading={playerLoading}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Search player by username..." fullWidth />
-                )}
-                renderOption={(props, option) => (
-                  <li {...props} key={option.id}>
-                    <Box>
-                      <Typography variant="body1">{option.username}</Typography>
-                    </Box>
-                  </li>
-                )}
-              />
-            </CardContent>
-          </Card>
+        {success && (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            {success}
+          </Alert>
+        )}
 
-          {/* Product Search */}
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <CartIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6" fontWeight={600}>
-                  Add Products
-                </Typography>
-              </Box>
-              <Autocomplete
-                options={productOptions}
-                getOptionLabel={(option) => `${option.name} - ₹${option.price}`}
-                inputValue={productInputValue}
-                onInputChange={(_, newValue) => setProductInputValue(newValue)}
-                loading={productLoading}
-                onChange={(_, newValue) => {
-                  if (newValue) addToCart(newValue);
-                }}
-                value={null}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Search products to add..." fullWidth />
-                )}
-                renderOption={(props, option) => (
-                  <li {...props} key={option.id}>
-                    <Box sx={{ width: '100%' }}>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Box>
-                          <Typography variant="body1" fontWeight={500}>
-                            {option.name}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {option.description}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="body1" fontWeight={600}>
-                            ₹{option.price.toFixed(2)}
-                            {nightActive && option.nightPrice !== option.dayPrice && (
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                color="secondary.main"
-                                sx={{ ml: 0.5 }}
-                              >
-                                night
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <StoreIcon color="action" />
+          <TextField
+            select
+            label="Store"
+            size="small"
+            value={saleLocationId}
+            onChange={(e) => {
+              setSaleLocationId(e.target.value);
+              setCart([]);
+            }}
+            sx={{ minWidth: 220 }}
+          >
+            {storeLocations.map((loc) => (
+              <MenuItem key={loc.id} value={loc.id}>
+                {loc.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          {nightActive && (
+            <Chip
+              icon={<Nightlight />}
+              label="Night price active (11 PM – 8 AM)"
+              color="secondary"
+              size="small"
+            />
+          )}
+        </Box>
+
+        <Grid container spacing={3}>
+          {/* Left Column - Player & Product Selection */}
+          <Grid item xs={12} md={7}>
+            {/* Player Selection */}
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <PersonIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Typography variant="h6" fontWeight={600}>
+                    Select Player
+                  </Typography>
+                </Box>
+                <Autocomplete
+                  options={playerOptions}
+                  getOptionLabel={(option) => option.username}
+                  value={selectedPlayer}
+                  onChange={(_, newValue) => setSelectedPlayer(newValue)}
+                  inputValue={playerInputValue}
+                  onInputChange={(_, newValue) => setPlayerInputValue(newValue)}
+                  loading={playerLoading}
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Search player by username..." fullWidth />
+                  )}
+                  renderOption={(props, option) => (
+                    <li {...props} key={option.id}>
+                      <Box>
+                        <Typography variant="body1">{option.username}</Typography>
+                      </Box>
+                    </li>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Product Search */}
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <CartIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Typography variant="h6" fontWeight={600}>
+                    Add Products
+                  </Typography>
+                </Box>
+                <Autocomplete
+                  options={productOptions}
+                  getOptionLabel={(option) => `${option.name} - ₹${option.price}`}
+                  inputValue={productInputValue}
+                  onInputChange={(_, newValue) => setProductInputValue(newValue)}
+                  loading={productLoading}
+                  onChange={(_, newValue) => {
+                    if (newValue) addToCart(newValue);
+                  }}
+                  value={null}
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Search products to add..." fullWidth />
+                  )}
+                  renderOption={(props, option) => (
+                    <li {...props} key={option.id}>
+                      <Box sx={{ width: '100%' }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="body1" fontWeight={500}>
+                              {option.name}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {option.description}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: 'right' }}>
+                            <Typography variant="body1" fontWeight={600}>
+                              ₹{option.price.toFixed(2)}
+                              {nightActive && option.nightPrice !== option.dayPrice && (
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  color="secondary.main"
+                                  sx={{ ml: 0.5 }}
+                                >
+                                  night
+                                </Typography>
+                              )}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color={option.stockQuantity > 0 ? 'success.main' : 'error.main'}
+                            >
+                              {option.stockQuantity} pcs in store
+                            </Typography>
+                            {option.unitsPerPurchaseUnit > 1 && (
+                              <Typography variant="caption" display="block" color="text.secondary">
+                                1 box = {option.unitsPerPurchaseUnit} pcs
                               </Typography>
                             )}
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            color={option.stockQuantity > 0 ? 'success.main' : 'error.main'}
-                          >
-                            {option.stockQuantity} pcs in store
-                          </Typography>
-                          {option.unitsPerPurchaseUnit > 1 && (
-                            <Typography variant="caption" display="block" color="text.secondary">
-                              1 box = {option.unitsPerPurchaseUnit} pcs
-                            </Typography>
-                          )}
+                          </Box>
                         </Box>
                       </Box>
-                    </Box>
-                  </li>
-                )}
-              />
-            </CardContent>
-          </Card>
-        </Grid>
+                    </li>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          </Grid>
 
-        {/* Right Column - Cart & Payment */}
-        <Grid item xs={12} md={5}>
-          {/* Cart */}
-          <Card sx={{ mb: 3 }}>
-            <CardContent>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  mb: 2,
-                }}
-              >
-                <Typography variant="h6" fontWeight={600}>
-                  Cart ({cart.length} items)
-                </Typography>
-                {cart.length > 0 && (
-                  <Button size="small" color="error" onClick={clearCart} startIcon={<DeleteIcon />}>
-                    Clear
-                  </Button>
-                )}
-              </Box>
-
-              {cart.length === 0 ? (
+          {/* Right Column - Cart & Payment */}
+          <Grid item xs={12} md={5}>
+            {/* Cart */}
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
                 <Box
                   sx={{
-                    textAlign: 'center',
-                    py: 4,
-                    color: 'text.secondary',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 2,
                   }}
                 >
-                  <CartIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
-                  <Typography variant="body2">Cart is empty</Typography>
-                </Box>
-              ) : (
-                <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
-                  {cart.map((item) => (
-                    <Box
-                      key={item.id}
-                      sx={{
-                        mb: 2,
-                        pb: 2,
-                        borderBottom: '1px solid',
-                        borderColor: 'divider',
-                        '&:last-child': { border: 'none' },
-                      }}
+                  <Typography variant="h6" fontWeight={600}>
+                    Cart ({cart.length} items)
+                  </Typography>
+                  {cart.length > 0 && (
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={clearCart}
+                      startIcon={<DeleteIcon />}
                     >
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          mb: 1,
-                        }}
-                      >
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="body2" fontWeight={500}>
-                            {item.name}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            ₹{item.effectivePrice.toFixed(2)} each
-                          </Typography>
-                        </Box>
-                        <IconButton
-                          size="small"
-                          onClick={() => removeFromCart(item.id)}
-                          color="error"
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <IconButton
-                            size="small"
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          >
-                            <RemoveIcon fontSize="small" />
-                          </IconButton>
-                          <TextField
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value, 10) || 0;
-                              updateQuantity(item.id, val);
-                            }}
-                            type="number"
-                            sx={{ width: 60, mx: 1 }}
-                            size="small"
-                            inputProps={{ min: 1, max: item.stockQuantity }}
-                          />
-                          <IconButton
-                            size="small"
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            disabled={item.quantity >= item.stockQuantity}
-                          >
-                            <AddIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-                        <Typography variant="body1" fontWeight={600}>
-                          ₹{(item.effectivePrice * item.quantity).toFixed(2)}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))}
+                      Clear
+                    </Button>
+                  )}
                 </Box>
-              )}
 
-              <Divider sx={{ my: 2 }} />
+                {cart.length === 0 ? (
+                  <Box
+                    sx={{
+                      textAlign: 'center',
+                      py: 4,
+                      color: 'text.secondary',
+                    }}
+                  >
+                    <CartIcon sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
+                    <Typography variant="body2">Cart is empty</Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+                    {cart.map((item) => (
+                      <Box
+                        key={item.id}
+                        sx={{
+                          mb: 2,
+                          pb: 2,
+                          borderBottom: '1px solid',
+                          borderColor: 'divider',
+                          '&:last-child': { border: 'none' },
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            mb: 1,
+                          }}
+                        >
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body2" fontWeight={500}>
+                              {item.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ₹{item.effectivePrice.toFixed(2)} each
+                            </Typography>
+                          </Box>
+                          <IconButton
+                            size="small"
+                            onClick={() => removeFromCart(item.id)}
+                            color="error"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <IconButton
+                              size="small"
+                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            >
+                              <RemoveIcon fontSize="small" />
+                            </IconButton>
+                            <TextField
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10) || 0;
+                                updateQuantity(item.id, val);
+                              }}
+                              type="number"
+                              sx={{ width: 60, mx: 1 }}
+                              size="small"
+                              inputProps={{ min: 1, max: item.stockQuantity }}
+                            />
+                            <IconButton
+                              size="small"
+                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                              disabled={item.quantity >= item.stockQuantity}
+                            >
+                              <AddIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                          <Typography variant="body1" fontWeight={600}>
+                            ₹{(item.effectivePrice * item.quantity).toFixed(2)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
 
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  mb: 1,
-                }}
-              >
-                <Typography variant="h6">Total</Typography>
-                <Typography variant="h6" fontWeight={700}>
-                  ₹{total.toFixed(2)}
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
+                <Divider sx={{ my: 2 }} />
 
-          {/* Payment Details */}
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <PaymentIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6" fontWeight={600}>
-                  Payment Details
-                </Typography>
-              </Box>
-
-              <TextField
-                select
-                label="Payment Method"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                fullWidth
-                sx={{ mb: 2 }}
-              >
-                {paymentMethodOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-
-              <CreditEligibilityAlert
-                playerId={selectedPlayer?.id}
-                paymentMethod={paymentMethod}
-                purchaseAmount={total}
-              />
-
-              {paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (
-                <Grid container spacing={2} sx={{ mb: 2 }}>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Cash Amount"
-                      type="number"
-                      value={cashAmount}
-                      onChange={(e) => setCashAmount(e.target.value)}
-                      fullWidth
-                      InputProps={{
-                        startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      label="Online Amount"
-                      type="number"
-                      value={onlineAmount}
-                      onChange={(e) => setOnlineAmount(e.target.value)}
-                      fullWidth
-                      InputProps={{
-                        startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                      }}
-                    />
-                  </Grid>
-                </Grid>
-              )}
-
-              <TextField
-                label="Notes (Optional)"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                fullWidth
-                multiline
-                rows={2}
-                placeholder="Add any notes about this transaction..."
-                sx={{ mb: 3 }}
-              />
-
-              <Stack spacing={2}>
-                <Button
-                  variant="contained"
-                  size="large"
-                  fullWidth
-                  onClick={handleSubmit}
-                  disabled={loading || !selectedPlayer || cart.length === 0 || creditBlocked}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    mb: 1,
+                  }}
                 >
-                  {loading ? 'Processing...' : 'Complete Transaction'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="large"
+                  <Typography variant="h6">Total</Typography>
+                  <Typography variant="h6" fontWeight={700}>
+                    ₹{total.toFixed(2)}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+
+            {/* Payment Details */}
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <PaymentIcon sx={{ mr: 1, color: 'primary.main' }} />
+                  <Typography variant="h6" fontWeight={600}>
+                    Payment Details
+                  </Typography>
+                </Box>
+
+                <TextField
+                  select
+                  label="Payment Method"
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
                   fullWidth
-                  onClick={handleCancel}
-                  disabled={loading}
+                  sx={{ mb: 2 }}
                 >
-                  Cancel
-                </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  {paymentMethodOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+
+                <CreditEligibilityAlert
+                  playerId={selectedPlayer?.id}
+                  paymentMethod={paymentMethod}
+                  purchaseAmount={total}
+                />
+
+                {paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={6}>
+                      <TextField
+                        label="Cash Amount"
+                        type="number"
+                        value={cashAmount}
+                        onChange={(e) => setCashAmount(e.target.value)}
+                        fullWidth
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        label="Online Amount"
+                        type="number"
+                        value={onlineAmount}
+                        onChange={(e) => setOnlineAmount(e.target.value)}
+                        fullWidth
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                )}
+
+                <TextField
+                  label="Notes (Optional)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  fullWidth
+                  multiline
+                  rows={2}
+                  placeholder="Add any notes about this transaction..."
+                  sx={{ mb: 3 }}
+                />
+
+                <Stack spacing={2}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    onClick={handleSubmit}
+                    disabled={loading || !selectedPlayer || cart.length === 0 || creditBlocked}
+                  >
+                    {loading ? 'Processing...' : 'Complete Transaction'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    fullWidth
+                    onClick={handleCancel}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-      </Grid>
-    </Box>
+      </Box>
+    </ActiveShiftGuard>
   );
 }

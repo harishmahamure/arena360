@@ -1,6 +1,5 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import {
   Box,
   Button,
@@ -8,12 +7,14 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  List,
+  ListItem,
+  ListItemText,
   Paper,
   Typography,
 } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import {
   type CreateDeviceFormData,
   createDeviceDefaultValues,
@@ -89,6 +90,12 @@ export const deviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
   },
 ];
 
+const NEXT_STEPS = [
+  'Go to the kiosk PC and open the Arena360 kiosk app.',
+  'Sign in with your admin credentials and OTP on the device.',
+  'Name the station to match this device record — provisioning completes automatically.',
+];
+
 export default function AddNewDevicePage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -126,16 +133,6 @@ export default function AddNewDevicePage() {
 
   const handleCancel = () => {
     navigate('/devices');
-  };
-
-  const handleCopyCode = async () => {
-    if (!createdDevice?.registrationCode) return;
-    try {
-      await navigator.clipboard.writeText(createdDevice.registrationCode);
-      toast.success('Registration code copied');
-    } catch {
-      toast.error('Failed to copy code');
-    }
   };
 
   const handleDialogClose = () => {
@@ -177,48 +174,22 @@ export default function AddNewDevicePage() {
       />
 
       <Dialog open={createdDevice !== null} onClose={handleDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Device created — kiosk registration code</DialogTitle>
+        <DialogTitle>Device created — provision on kiosk</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Enter this code on the kiosk at <strong>{createdDevice?.name}</strong>. It expires in 24
-            hours.
+            <strong>{createdDevice?.name}</strong> was added. Complete provisioning on the kiosk PC:
           </Typography>
-          {createdDevice?.registrationCode ? (
-            <Box
-              sx={{
-                p: 2,
-                bgcolor: 'action.hover',
-                borderRadius: 1,
-                textAlign: 'center',
-              }}
-            >
-              <Typography
-                variant="h4"
-                component="p"
-                sx={{ fontFamily: 'monospace', letterSpacing: 4, fontWeight: 700 }}
-              >
-                {createdDevice.registrationCode}
-              </Typography>
-              {createdDevice.registrationCodeExpiresAt && (
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                  Expires {new Date(createdDevice.registrationCodeExpiresAt).toLocaleString()}
-                </Typography>
-              )}
-            </Box>
-          ) : (
-            <Typography variant="body2" color="warning.main">
-              No code was returned. Open the device detail page to generate one.
-            </Typography>
-          )}
+          <List dense>
+            {NEXT_STEPS.map((step) => (
+              <ListItem key={step} disableGutters sx={{ py: 0.25 }}>
+                <ListItemText primary={step} primaryTypographyProps={{ variant: 'body2' }} />
+              </ListItem>
+            ))}
+          </List>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          {createdDevice?.registrationCode && (
-            <Button startIcon={<ContentCopyIcon />} onClick={() => void handleCopyCode()}>
-              Copy code
-            </Button>
-          )}
           <Button variant="contained" onClick={handleDialogClose}>
-            Done
+            View device
           </Button>
         </DialogActions>
       </Dialog>

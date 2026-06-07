@@ -1,3 +1,4 @@
+import { toastUtils } from '@gaming-cafe/utils';
 import {
   AccessTime,
   Devices,
@@ -10,6 +11,7 @@ import {
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   CircularProgress,
@@ -17,12 +19,31 @@ import {
   GridLegacy as Grid,
   Typography,
 } from '@mui/material';
-import { useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { useStaffDashboardStats } from '../../hooks/useStaffDashboardStats';
+import { clockIn } from '../../services/shifts';
 import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
 
 export default function StaffDashboardView() {
+  const queryClient = useQueryClient();
+  const [startingShift, setStartingShift] = useState(false);
   const { data: stats, isLoading, error } = useStaffDashboardStats();
+
+  const handleStartShift = async () => {
+    setStartingShift(true);
+    try {
+      await clockIn();
+      toastUtils.success('Shift started');
+      void queryClient.invalidateQueries({ queryKey: ['activeShift'] });
+      void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
+      void queryClient.invalidateQueries({ queryKey: ['shifts'] });
+    } catch (err: unknown) {
+      toastUtils.error(err instanceof Error ? err.message : 'Failed to start shift');
+    } finally {
+      setStartingShift(false);
+    }
+  };
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -130,6 +151,15 @@ export default function StaffDashboardView() {
               )}
             </Box>
           </Box>
+          {!stats.shift && (
+            <Button
+              variant="contained"
+              onClick={() => void handleStartShift()}
+              disabled={startingShift}
+            >
+              {startingShift ? 'Starting…' : 'Start shift'}
+            </Button>
+          )}
         </CardContent>
       </Card>
 

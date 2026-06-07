@@ -5,6 +5,7 @@ import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import {
   type StartSessionFormData,
   startSessionDefaultValues,
@@ -150,35 +151,37 @@ export default function NewSessionPage() {
   };
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <Paper elevation={0} sx={{ p: 4 }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" fontWeight={600} gutterBottom>
-            Start New Session
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Start a new gaming session for a player
-          </Typography>
-        </Box>
+    <ActiveShiftGuard>
+      <Box sx={{ px: 4, py: 2 }}>
+        <Paper elevation={0} sx={{ p: 4 }}>
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h4" fontWeight={600} gutterBottom>
+              Start New Session
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Start a new gaming session for a player
+            </Typography>
+          </Box>
 
-        <FormBuilder<StartSessionFormData>
-          fields={fields}
-          schema={startSessionSchema}
-          defaultValues={startSessionDefaultValues}
-          mode="add"
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-          loading={isSubmitting}
-          error={error}
-          success={success}
-          showCancel
-          submitLabel="Start Session"
-          cancelLabel="Cancel"
-          buttonAlign="right"
-          spacing={3}
-          onSearchComplete={onPlayerSearchComplete}
-        />
-      </Paper>
-    </Box>
+          <FormBuilder<StartSessionFormData>
+            fields={fields}
+            schema={startSessionSchema}
+            defaultValues={startSessionDefaultValues}
+            mode="add"
+            onSubmit={handleSubmit}
+            onCancel={handleCancel}
+            loading={isSubmitting}
+            error={error}
+            success={success}
+            showCancel
+            submitLabel="Start Session"
+            cancelLabel="Cancel"
+            buttonAlign="right"
+            spacing={3}
+            onSearchComplete={onPlayerSearchComplete}
+          />
+        </Paper>
+      </Box>
+    </ActiveShiftGuard>
   );
 }

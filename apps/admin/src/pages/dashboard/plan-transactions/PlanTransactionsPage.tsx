@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEnrichedTransactions } from '../../../hooks/useEnrichedTransactions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import type { PaymentMethod } from '../../../services/transaction/list';
 import {
   getTransactions,
@@ -154,6 +155,7 @@ export default function PlanTransactionsPage() {
   });
 
   const enrichedTransactions = useEnrichedTransactions(data?.data);
+  const { can } = usePermissions();
 
   const handleSearch = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -190,7 +192,7 @@ export default function PlanTransactionsPage() {
         inputValue={inputValue}
         handleSearch={handleSearch}
         handleClearSearch={handleClearSearch}
-        onAddClick={handleAddNewTransaction}
+        onAddClick={can(Permission.PlayerPlansWrite) ? handleAddNewTransaction : undefined}
         addButtonLabel="New Transaction"
       />
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

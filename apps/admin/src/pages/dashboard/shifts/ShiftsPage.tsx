@@ -1,9 +1,24 @@
 import { type Column, ListViewPage } from '@gaming-cafe/ui';
-import { Visibility } from '@mui/icons-material';
-import { Alert, Box, Chip, Pagination } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { toastUtils } from '@gaming-cafe/utils';
+import { Block, Visibility } from '@mui/icons-material';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Pagination,
+} from '@mui/material';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getShifts, type Shift } from '../../../services/shifts';
+import { usePermissions } from '../../../hooks/usePermissions';
+import { useStaffNameMap } from '../../../hooks/useStaffNameMap';
+import { forceCloseShift, getShifts, type Shift } from '../../../services/shifts';
 import { formatDisplayDateTime } from '../../../utils/date';
 
 const statusConfig: Record<string, { label: string; color: 'success' | 'default' | 'warning' }> = {
@@ -14,20 +29,41 @@ const statusConfig: Record<string, { label: string; color: 'success' | 'default'
 
 export default function ShiftsPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { isAdmin } = usePermissions();
+  const { resolveName } = useStaffNameMap();
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
+
+  const [forceTarget, setForceTarget] = useState<Shift | null>(null);
+  const [forcing, setForcing] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['shifts', page],
     queryFn: () => getShifts({ page, sortBy: 'clockIn', sortOrder: 'DESC' }),
   });
 
+  const handleForceClose = async () => {
+    if (!forceTarget) return;
+    setForcing(true);
+    try {
+      await forceCloseShift(forceTarget.id);
+      toastUtils.success('Shift force-closed');
+      setForceTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ['shifts'] });
+    } catch (err: unknown) {
+      toastUtils.error(err instanceof Error ? err.message : 'Failed to force-close shift');
+    } finally {
+      setForcing(false);
+    }
+  };
+
   const columns: Column<Shift>[] = [
     {
       id: 'userId',
       label: 'Staff',
       minWidth: 150,
-      format: (value) => `${(value as string).slice(0, 8)}...`,
+      format: (value) => resolveName(value as string),
     },
     {
       id: 'clockIn',
@@ -76,6 +112,17 @@ export default function ShiftsPage() {
             icon: <Visibility fontSize="small" />,
             onClick: (row) => navigate(`/shifts/${row.id}`),
           },
+          ...(isAdmin
+            ? [
+                {
+                  label: 'Force close',
+                  icon: <Block fontSize="small" />,
+                  color: 'warning' as const,
+                  show: (row: Shift) => row.status === 'active',
+                  onClick: (row: Shift) => setForceTarget(row),
+                },
+              ]
+            : []),
         ]}
         isLoading={isLoading}
         inputValue=""
@@ -91,6 +138,29 @@ export default function ShiftsPage() {
           />
         </Box>
       )}
+
+      <Dialog open={forceTarget !== null} onClose={() => setForceTarget(null)}>
+        <DialogTitle>Force close shift?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Force-close the active shift for {forceTarget ? resolveName(forceTarget.userId) : ''}?
+            The staff member must start a new shift before operating the till or sessions.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setForceTarget(null)} disabled={forcing}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => void handleForceClose()}
+            color="warning"
+            variant="contained"
+            disabled={forcing}
+          >
+            Force close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
