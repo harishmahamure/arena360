@@ -5,10 +5,21 @@
  * media URLs are picked from the centrally hosted CDN gallery.
  */
 
+import type { ScanCandidate } from './tauriCommands';
+
 const STORAGE_KEY = 'gaming-cafe.kiosk.launch_entries';
+
+/** Scan sources auto-imported on merge (ADR-0019 merge-new-only). */
+export const TRUSTED_SCAN_SOURCES = ['known', 'steam', 'manifest'] as const;
 
 /** Player-home section an entry is grouped under. */
 export type LaunchCategory = 'game' | 'launcher' | 'util';
+
+/** Launch through a platform launcher (Riot Client, Steam, etc.). */
+export interface LaunchVia {
+  executablePath: string;
+  arguments: string;
+}
 
 export interface LaunchEntry {
   /** Stable id (generated on add). */
@@ -17,8 +28,10 @@ export interface LaunchEntry {
   name: string;
   /** Absolute executable path passed to `launch_allowed`. */
   executablePath: string;
-  /** Optional launch arguments. */
+  /** Optional launch arguments (direct launch only). */
   arguments?: string;
+  /** When set, launch goes through the launcher executable + args. */
+  launchVia?: LaunchVia;
   /** Whether the executable was present at last scan (UI hint only). */
   present?: boolean;
   /** Player-home section. Missing is treated as `game` for back-compat. */
@@ -167,7 +180,153 @@ export function entryCategory(entry: LaunchEntry): LaunchCategory {
 
 /** Paths passed to `launch_allowed` as the allow-list snapshot. */
 export function allowListPaths(entries: LaunchEntry[] = loadLaunchEntries()): string[] {
-  return entries.map((e) => e.executablePath);
+  const paths = new Set<string>();
+  for (const entry of entries) {
+    paths.add(entry.executablePath);
+    if (entry.launchVia?.executablePath) {
+      paths.add(entry.launchVia.executablePath);
+    }
+  }
+  return [...paths];
+}
+
+export interface ResolvedLaunch {
+  executablePath: string;
+  arguments?: string;
+  /** Display / presence path from the allow-list entry. */
+  entryPath: string;
+}
+
+/** Resolve direct vs launcher-mediated launch for an entry. */
+export function resolveLaunch(entry: LaunchEntry): ResolvedLaunch {
+  if (entry.launchVia) {
+    return {
+      executablePath: entry.launchVia.executablePath,
+      arguments: entry.launchVia.arguments,
+      entryPath: entry.executablePath,
+    };
+  }
+  return {
+    executablePath: entry.executablePath,
+    arguments: entry.arguments,
+    entryPath: entry.executablePath,
+  };
+}
+
+function executableBaseName(path: string): string {
+  return (
+    path
+      .split(/[/\\]/)
+      .pop()
+      ?.replace(/\.exe$/i, '') ?? 'Launcher'
+  );
+}
+
+/** Human label for a launcher executable path (e.g. "Riot Client"). */
+export function launcherDisplayName(executablePath: string): string {
+  const base = executableBaseName(executablePath);
+  if (/riotclient/i.test(base)) return 'Riot Client';
+  if (/steam/i.test(base)) return 'Steam';
+  if (/epic/i.test(base)) return 'Epic Games';
+  return base.replace(/[_-]+/g, ' ');
+}
+
+/** Human label for a launcher-mediated entry (e.g. "Riot Client"). */
+export function launchViaLabel(entry: LaunchEntry): string | null {
+  if (!entry.launchVia) return null;
+  return launcherDisplayName(entry.launchVia.executablePath);
+}
+
+function pathsEqual(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+function findByPath(entries: LaunchEntry[], path: string): LaunchEntry | undefined {
+  return entries.find((e) => pathsEqual(e.executablePath, path));
+}
+
+/** Map a scan candidate to a new allow-list entry (no id). */
+export function candidateToEntry(candidate: ScanCandidate): Omit<LaunchEntry, 'id'> {
+  return {
+    name: candidate.name,
+    executablePath: candidate.executablePath,
+    present: candidate.present,
+    category: categorizeByName(candidate.name),
+    launchVia: candidate.launchVia
+      ? {
+          executablePath: candidate.launchVia.executablePath,
+          arguments: candidate.launchVia.arguments,
+        }
+      : undefined,
+  };
+}
+
+export interface MergeScanResult {
+  entries: LaunchEntry[];
+  added: number;
+  updated: number;
+  launchersAdded: number;
+}
+
+/** True when scan results from this source are auto-imported after scan. */
+export function isTrustedScanSource(source: string): boolean {
+  return (TRUSTED_SCAN_SOURCES as readonly string[]).includes(source);
+}
+
+/**
+ * Merge trusted, present scan candidates into the allow-list (ADR-0019 merge-new-only).
+ * Auto-adds launcher executables required by profiled games.
+ */
+export function mergeScanCandidates(
+  candidates: ScanCandidate[],
+  options?: { sources?: readonly string[] },
+): MergeScanResult {
+  const sources = new Set(options?.sources ?? TRUSTED_SCAN_SOURCES);
+  let entries = loadLaunchEntries();
+  let added = 0;
+  let updated = 0;
+  let launchersAdded = 0;
+
+  const trusted = candidates.filter((c) => c.present && sources.has(c.source));
+
+  for (const candidate of trusted) {
+    const existing = findByPath(entries, candidate.executablePath);
+    if (!existing) {
+      const draft = candidateToEntry(candidate);
+      entries.push({
+        ...draft,
+        category: draft.category ?? categorizeByName(draft.name),
+        id: newId(),
+      });
+      added += 1;
+    } else {
+      const patch: Partial<LaunchEntry> = {};
+      if (existing.present !== true) patch.present = true;
+      if (candidate.launchVia && !existing.launchVia) patch.launchVia = candidate.launchVia;
+      if (Object.keys(patch).length > 0) {
+        entries = entries.map((e) => (e.id === existing.id ? { ...e, ...patch, id: e.id } : e));
+        updated += 1;
+      }
+    }
+
+    if (candidate.launchVia) {
+      const launcherPath = candidate.launchVia.executablePath;
+      if (!findByPath(entries, launcherPath)) {
+        entries.push({
+          id: newId(),
+          name: launcherDisplayName(launcherPath),
+          executablePath: launcherPath,
+          present: true,
+          category: 'launcher',
+        });
+        added += 1;
+        launchersAdded += 1;
+      }
+    }
+  }
+
+  saveLaunchEntries(entries);
+  return { entries, added, updated, launchersAdded };
 }
 
 /** Game entries for Home / Library, sorted by sortOrder then name. */

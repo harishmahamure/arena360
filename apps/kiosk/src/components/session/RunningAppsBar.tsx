@@ -13,6 +13,10 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
   const primary = processes[0];
   const label =
     processes.length === 1 && primary ? primary.displayName : `${processes.length} apps running`;
+  const launcherLoginHint =
+    processes.length === 1 && primary?.awaitingLauncherLogin
+      ? `Sign in to your account in the launcher window for ${primary.displayName}, then Alt+Tab to the game when it starts.`
+      : null;
 
   return (
     <section className="a360-running-apps" aria-label="Running applications">
@@ -25,9 +29,13 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
             <p className="a360-running-apps-title">Running: {label}</p>
             {processes.length === 1 && primary ? (
               <p className="a360-running-apps-sub" title={primary.executablePath}>
-                Use <strong>Alt+Tab</strong> to switch between games and Arena360 only. Press{' '}
-                <strong>Ctrl+Shift+H</strong> to return to Arena360, then close when you are done
-                playing.
+                {launcherLoginHint ?? (
+                  <>
+                    Use <strong>Alt+Tab</strong> to switch between games and Arena360 only. Press{' '}
+                    <strong>Ctrl+Shift+H</strong> to return to Arena360, then close when you are
+                    done playing.
+                  </>
+                )}
               </p>
             ) : (
               <>

@@ -12,6 +12,8 @@ export interface TrackedApp {
   pid: number;
   executablePath: string;
   displayName: string;
+  /** True when the tracked root is a platform launcher awaiting player sign-in. */
+  awaitingLauncherLogin: boolean;
 }
 
 const POLL_MS = 2000;
@@ -22,10 +24,24 @@ function normalizePath(path: string): string {
 
 function displayNameForPath(path: string, entries: LaunchEntry[]): string {
   const norm = normalizePath(path);
+  const viaMatch = entries.find(
+    (entry) => entry.launchVia && norm.endsWith(normalizePath(entry.launchVia.executablePath)),
+  );
+  if (viaMatch) return viaMatch.name;
   const match = entries.find((entry) => norm.endsWith(normalizePath(entry.executablePath)));
   if (match) return match.name;
   const base = path.split(/[/\\]/).pop() ?? path;
   return base.replace(/\.exe$/i, '');
+}
+
+function isLauncherTrackedPath(path: string): boolean {
+  const base = (path.split(/[/\\]/).pop() ?? '').toLowerCase();
+  return (
+    base === 'riotclientservices.exe' ||
+    base === 'steam.exe' ||
+    base === 'epicgameslauncher.exe' ||
+    base === 'battle.net launcher.exe'
+  );
 }
 
 function toTrackedApps(processes: TrackedProcess[], entries: LaunchEntry[]): TrackedApp[] {
@@ -33,6 +49,7 @@ function toTrackedApps(processes: TrackedProcess[], entries: LaunchEntry[]): Tra
     pid: process.pid,
     executablePath: process.executablePath,
     displayName: displayNameForPath(process.executablePath, entries),
+    awaitingLauncherLogin: isLauncherTrackedPath(process.executablePath),
   }));
 }
 

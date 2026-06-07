@@ -1,10 +1,14 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
+
+#[cfg(windows)]
+use sysinfo::{Pid, ProcessesToUpdate, System};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -24,7 +28,8 @@ pub struct TrackedProcess {
 #[derive(Debug, Clone)]
 struct WatchEntry {
     executable_path: String,
-    pid: u32,
+    root_pid: u32,
+    descendant_pids: Vec<u32>,
     window_handle: Option<isize>,
 }
 
@@ -100,6 +105,77 @@ fn is_running(pid: u32) -> bool {
             .map(|s| s.success())
             .unwrap_or(false)
     }
+}
+
+/// Collect root PID and all descendant PIDs (US-KPROC-001).
+#[cfg(windows)]
+fn process_tree_pids(root: u32, system: &System) -> Vec<u32> {
+    let mut tree = vec![root];
+    let mut seen = HashSet::from([root]);
+    let mut queue = vec![root];
+    while let Some(parent) = queue.pop() {
+        for (pid, process) in system.processes() {
+            if process.parent().map(|p| p.as_u32()) != Some(parent) {
+                continue;
+            }
+            let child = pid.as_u32();
+            if seen.insert(child) {
+                tree.push(child);
+                queue.push(child);
+            }
+        }
+    }
+    tree
+}
+
+#[cfg(not(windows))]
+fn process_tree_pids(root: u32) -> Vec<u32> {
+    vec![root]
+}
+
+#[cfg(windows)]
+fn refresh_system_processes(system: &mut System) {
+    system.refresh_processes(ProcessesToUpdate::All, true);
+}
+
+#[cfg(windows)]
+fn entry_has_live_process(entry: &WatchEntry, system: &System) -> bool {
+    let live = |pid: u32| system.process(Pid::from_u32(pid)).is_some();
+    live(entry.root_pid) || entry.descendant_pids.iter().copied().any(live)
+}
+
+#[cfg(windows)]
+fn refresh_watch_entry(entry: &mut WatchEntry, system: &System) {
+    entry.descendant_pids = process_tree_pids(entry.root_pid, system)
+        .into_iter()
+        .filter(|pid| *pid != entry.root_pid)
+        .collect();
+}
+
+#[cfg(not(windows))]
+fn entry_has_live_process(entry: &WatchEntry) -> bool {
+    is_running(entry.root_pid)
+}
+
+fn executable_basename(path: &str) -> String {
+    path.replace('\\', "/")
+        .rsplit('/')
+        .next()
+        .unwrap_or("")
+        .to_lowercase()
+}
+
+fn is_launcher_executable(path: &str) -> bool {
+    let name = executable_basename(path);
+    matches!(
+        name.as_str(),
+        "riotclientservices.exe"
+            | "steam.exe"
+            | "epicgameslauncher.exe"
+            | "battle.net launcher.exe"
+            | "ubisoftconnect.exe"
+            | "ealauncher.exe"
+    )
 }
 
 fn kill_pid(pid: u32) {
@@ -180,8 +256,44 @@ fn tracked_game_hwnd() -> Option<isize> {
 pub fn is_pid_tracked(pid: u32) -> bool {
     TRACKED
         .lock()
-        .map(|tracked| tracked.iter().any(|e| e.pid == pid))
+        .map(|tracked| {
+            tracked.iter().any(|e| {
+                e.root_pid == pid || e.descendant_pids.iter().any(|&p| p == pid)
+            })
+        })
         .unwrap_or(false)
+}
+
+fn all_tree_pids(entries: &[WatchEntry]) -> Vec<u32> {
+    let mut pids = Vec::new();
+    let mut seen = HashSet::new();
+    for entry in entries {
+        for pid in std::iter::once(entry.root_pid).chain(entry.descendant_pids.iter().copied()) {
+            if seen.insert(pid) {
+                pids.push(pid);
+            }
+        }
+    }
+    pids
+}
+
+#[cfg(windows)]
+fn kill_process_trees(entries: &[WatchEntry]) {
+    let mut system = System::new();
+    refresh_system_processes(&mut system);
+    for entry in entries {
+        let tree = process_tree_pids(entry.root_pid, &system);
+        for pid in tree.iter().rev() {
+            kill_pid(*pid);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn kill_process_trees(entries: &[WatchEntry]) {
+    for entry in entries {
+        kill_pid(entry.root_pid);
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -478,10 +590,22 @@ fn start_monitor_if_needed(app: AppHandle) {
     drop(running);
 
     thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(2));
+        thread::sleep(Duration::from_secs(1));
         let is_empty = {
             let mut tracked = TRACKED.lock().expect("tracked lock");
-            tracked.retain(|entry| is_running(entry.pid));
+            #[cfg(windows)]
+            {
+                let mut system = System::new();
+                refresh_system_processes(&mut system);
+                for entry in tracked.iter_mut() {
+                    refresh_watch_entry(entry, &system);
+                }
+                tracked.retain(|entry| entry_has_live_process(entry, &system));
+            }
+            #[cfg(not(windows))]
+            {
+                tracked.retain(|entry| entry_has_live_process(entry));
+            }
             tracked.is_empty()
         };
         if is_empty {
@@ -511,11 +635,16 @@ pub fn launch_allowed(
     }
     prepare_kiosk_for_game_mode(&app)?;
     let pid = spawn_process(&executable_path, arguments.as_deref())?;
-    let window_handle = fullscreen_process_window(pid);
+    let window_handle = if is_launcher_executable(&executable_path) {
+        None
+    } else {
+        fullscreen_process_window(pid)
+    };
     apply_kiosk_game_mode_background(&app);
     TRACKED.lock().map_err(|e| e.to_string())?.push(WatchEntry {
         executable_path,
-        pid,
+        root_pid: pid,
+        descendant_pids: Vec::new(),
         window_handle,
     });
     start_monitor_if_needed(app);
@@ -528,7 +657,7 @@ pub fn get_tracked_processes() -> Result<Vec<TrackedProcess>, String> {
     Ok(tracked
         .iter()
         .map(|e| TrackedProcess {
-            pid: e.pid,
+            pid: e.root_pid,
             executable_path: e.executable_path.clone(),
         })
         .collect())
@@ -543,22 +672,17 @@ pub fn kill_tracked_processes(
     if grace > 0 {
         thread::sleep(Duration::from_secs(grace as u64));
     }
-    let pids: Vec<u32> = TRACKED
+    let entries: Vec<WatchEntry> = TRACKED
         .lock()
         .map_err(|e| e.to_string())?
-        .iter()
-        .map(|e| e.pid)
-        .collect();
-    for pid in &pids {
-        kill_pid(*pid);
-    }
+        .clone();
+    let killed = all_tree_pids(&entries).len() as u32;
+    kill_process_trees(&entries);
     TRACKED.lock().map_err(|e| e.to_string())?.clear();
-    if !pids.is_empty() {
+    if killed > 0 {
         restore_kiosk_window(&app);
     }
-    Ok(KillResult {
-        killed: pids.len() as u32,
-    })
+    Ok(KillResult { killed })
 }
 
 #[tauri::command]
@@ -569,7 +693,10 @@ pub fn clear_tracked_processes() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{has_tracked_processes, is_allowed, normalize_path};
+    use super::{
+        all_tree_pids, has_tracked_processes, is_allowed, is_launcher_executable, normalize_path,
+        WatchEntry,
+    };
 
     #[test]
     fn normalize_lowercases_and_unifies_separators() {
@@ -597,6 +724,42 @@ mod tests {
     fn has_tracked_processes_false_when_empty() {
         let _ = clear_tracked_for_test();
         assert!(!has_tracked_processes());
+    }
+
+    #[test]
+    fn is_launcher_executable_detects_steam_and_riot() {
+        assert!(is_launcher_executable(
+            "C:\\Program Files (x86)\\Steam\\steam.exe"
+        ));
+        assert!(is_launcher_executable(
+            "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
+        ));
+        assert!(!is_launcher_executable(
+            "C:\\Riot Games\\VALORANT\\live\\VALORANT.exe"
+        ));
+    }
+
+    #[test]
+    fn all_tree_pids_dedupes_roots_and_descendants() {
+        let entries = vec![
+            WatchEntry {
+                executable_path: "a.exe".to_string(),
+                root_pid: 100,
+                descendant_pids: vec![101, 102],
+                window_handle: None,
+            },
+            WatchEntry {
+                executable_path: "b.exe".to_string(),
+                root_pid: 200,
+                descendant_pids: vec![201],
+                window_handle: None,
+            },
+        ];
+        let pids = all_tree_pids(&entries);
+        assert_eq!(pids.len(), 5);
+        assert!(pids.contains(&100));
+        assert!(pids.contains(&102));
+        assert!(pids.contains(&201));
     }
 
     fn clear_tracked_for_test() {

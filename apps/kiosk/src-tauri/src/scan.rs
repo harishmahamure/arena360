@@ -17,11 +17,20 @@ use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScanLaunchVia {
+    pub executable_path: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanCandidate {
     pub name: String,
     pub executable_path: String,
     pub source: String,
     pub present: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launch_via: Option<ScanLaunchVia>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -224,6 +233,18 @@ fn scan_windows(app: &AppHandle) -> Result<Vec<ScanCandidate>, String> {
     }
     progress.finish();
 
+    let steam_exe = KNOWN_APPS
+        .iter()
+        .filter(|a| a.name == "Steam")
+        .find_map(known_app_path);
+    let riot_exe = KNOWN_APPS
+        .iter()
+        .filter(|a| a.name == "Riot Client")
+        .find_map(known_app_path);
+    for candidate in &mut out {
+        enrich_with_launch_profile(candidate, steam_exe.as_deref(), riot_exe.as_deref());
+    }
+
     Ok(out)
 }
 
@@ -279,6 +300,36 @@ fn candidate(
         executable_path: executable_path.into(),
         source: source.to_string(),
         present,
+        launch_via: None,
+    }
+}
+
+/// Attach launcher-mediated launch metadata for known platform-dependent games.
+#[cfg(target_os = "windows")]
+fn enrich_with_launch_profile(
+    candidate: &mut ScanCandidate,
+    steam_exe: Option<&str>,
+    riot_exe: Option<&str>,
+) {
+    let path = normalize_path(&candidate.executable_path);
+    if path.ends_with("/valorant/live/valorant.exe") {
+        if let Some(riot) = riot_exe {
+            candidate.name = "Valorant".to_string();
+            candidate.launch_via = Some(ScanLaunchVia {
+                executable_path: riot.to_string(),
+                arguments: "--launch-product=valorant --launch-patchline=live".to_string(),
+            });
+        }
+        return;
+    }
+    if path.contains("/counter-strike") && path.ends_with("/cs2.exe") {
+        if let Some(steam) = steam_exe {
+            candidate.name = "Counter-Strike 2".to_string();
+            candidate.launch_via = Some(ScanLaunchVia {
+                executable_path: steam.to_string(),
+                arguments: "-applaunch 730".to_string(),
+            });
+        }
     }
 }
 
@@ -759,6 +810,7 @@ fn scan_registry() -> Vec<ScanCandidate> {
                 executable_path: exe.to_string(),
                 source: "registry".to_string(),
                 present: std::path::Path::new(exe).exists(),
+                launch_via: None,
             });
         }
     }
@@ -773,18 +825,21 @@ fn dev_fixture() -> Vec<ScanCandidate> {
             executable_path: "/Applications/Steam.app".to_string(),
             source: "known".to_string(),
             present: true,
+            launch_via: None,
         },
         ScanCandidate {
             name: "Google Chrome (dev)".to_string(),
             executable_path: "/Applications/Google Chrome.app".to_string(),
             source: "known".to_string(),
             present: true,
+            launch_via: None,
         },
         ScanCandidate {
             name: "Epic Games (dev)".to_string(),
             executable_path: "/Applications/Epic Games Launcher.app".to_string(),
             source: "registry".to_string(),
             present: false,
+            launch_via: None,
         },
     ]
 }

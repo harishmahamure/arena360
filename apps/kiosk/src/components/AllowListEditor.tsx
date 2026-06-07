@@ -1,15 +1,21 @@
 import { IconFallback } from '@gaming-cafe/ui/primitives';
 import { listen } from '@tauri-apps/api/event';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   addLaunchEntry,
   allowListPaths,
+  candidateToEntry,
   categorizeByName,
   entryCategory,
+  isTrustedScanSource,
   type LaunchCategory,
   type LaunchEntry,
+  type LaunchVia,
+  launchViaLabel,
   loadLaunchEntries,
+  mergeScanCandidates,
   removeLaunchEntry,
+  resolveLaunch,
   updateLaunchEntry,
 } from '../lib/allowList';
 import {
@@ -73,6 +79,16 @@ export function AllowListEditor() {
     try {
       const found = await scanInstalledSoftware();
       setCandidates(found);
+      const { added, updated, launchersAdded } = mergeScanCandidates(found);
+      setEntries(loadLaunchEntries());
+      const parts: string[] = [];
+      if (added > 0) parts.push(`Auto-imported ${added} apps (${launchersAdded} launchers)`);
+      if (updated > 0) parts.push(`${updated} updated`);
+      if (parts.length > 0) {
+        setStatus(parts.join('. '));
+      } else if (found.some((c) => c.present && isTrustedScanSource(c.source))) {
+        setStatus('Allow-list is up to date.');
+      }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : 'Scan failed');
     } finally {
@@ -80,17 +96,20 @@ export function AllowListEditor() {
     }
   }, []);
 
+  const initialScanDone = useRef(false);
+  useEffect(() => {
+    if (initialScanDone.current || entries.length > 0) return;
+    initialScanDone.current = true;
+    void runScan();
+  }, [entries.length, runScan]);
+
   function syncEntries(next: LaunchEntry[]) {
     setEntries(next);
     if (selectedId && !next.some((e) => e.id === selectedId)) setSelectedId(null);
   }
 
   function addCandidate(c: ScanCandidate) {
-    const next = addLaunchEntry({
-      name: c.name,
-      executablePath: c.executablePath,
-      present: c.present,
-    });
+    const next = addLaunchEntry(candidateToEntry(c));
     syncEntries(next);
     const added = next.find(
       (e) => e.executablePath.toLowerCase() === c.executablePath.toLowerCase(),
@@ -139,7 +158,12 @@ export function AllowListEditor() {
   async function testLaunch(entry: LaunchEntry) {
     setStatus(null);
     try {
-      const result = await launchAllowed(entry.executablePath, allowListPaths(entries));
+      const resolved = resolveLaunch(entry);
+      const result = await launchAllowed(
+        resolved.executablePath,
+        allowListPaths(entries),
+        resolved.arguments,
+      );
       setStatus(`Launched ${entry.name} (pid ${result.pid})`);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : `Could not launch ${entry.name}`);
@@ -148,6 +172,8 @@ export function AllowListEditor() {
 
   const alreadyAdded = (path: string) =>
     entries.some((e) => e.executablePath.toLowerCase() === path.toLowerCase());
+
+  const manualCandidates = candidates.filter((c) => !isTrustedScanSource(c.source));
 
   const pickerKind = picker?.field === 'videoUrl' ? 'video' : 'image';
 
@@ -195,6 +221,9 @@ export function AllowListEditor() {
                     <span className="catalog-name">{entry.name}</span>
                     <span className="catalog-meta">
                       <span className="catalog-tag">{entryCategory(entry)}</span>
+                      {entry.launchVia ? (
+                        <span className="catalog-tag">via {launchViaLabel(entry)}</span>
+                      ) : null}
                       {entry.present === false ? (
                         <span className="catalog-warn">Missing</span>
                       ) : null}
@@ -211,14 +240,19 @@ export function AllowListEditor() {
           </ul>
         )}
 
-        {candidates.length > 0 ? (
+        {manualCandidates.length > 0 ? (
           <div className="allow-list-section">
-            <h3 className="allow-list-subhead">Detected ({candidates.length})</h3>
+            <h3 className="allow-list-subhead">Manual import ({manualCandidates.length})</h3>
             <ul className="allow-list allow-list--compact">
-              {candidates.map((c) => (
+              {manualCandidates.map((c) => (
                 <li key={c.executablePath} className={c.present ? undefined : 'missing'}>
                   <IconFallback name={c.name} size={22} className="allow-list-icon" />
-                  <span className="allow-list-name">{c.name}</span>
+                  <span className="allow-list-name">
+                    {c.name}
+                    {c.launchVia ? (
+                      <span className="allow-list-category"> via launcher</span>
+                    ) : null}
+                  </span>
                   <span className="allow-list-actions">
                     <button
                       type="button"
@@ -324,9 +358,25 @@ export function AllowListEditor() {
               </label>
 
               <label className="catalog-field">
-                Executable path
+                {selected.launchVia ? 'Game executable (presence)' : 'Executable path'}
                 <input value={selected.executablePath} readOnly />
               </label>
+
+              {selected.launchVia ? (
+                <LaunchViaFields
+                  launchVia={selected.launchVia}
+                  onChange={(launchVia) => patchSelected({ launchVia })}
+                />
+              ) : (
+                <label className="catalog-field catalog-field--wide">
+                  Launch arguments
+                  <input
+                    value={selected.arguments ?? ''}
+                    onChange={(e) => patchSelected({ arguments: e.target.value || undefined })}
+                    placeholder="Optional command-line arguments"
+                  />
+                </label>
+              )}
 
               <label className="catalog-field">
                 Section
@@ -400,6 +450,33 @@ interface MediaSlotProps {
   url: string | null;
   onPick: () => void;
   onClear: () => void;
+}
+
+interface LaunchViaFieldsProps {
+  launchVia: LaunchVia;
+  onChange: (launchVia: LaunchVia) => void;
+}
+
+function LaunchViaFields({ launchVia, onChange }: LaunchViaFieldsProps) {
+  return (
+    <>
+      <label className="catalog-field catalog-field--wide">
+        Launcher executable
+        <input
+          value={launchVia.executablePath}
+          onChange={(e) => onChange({ ...launchVia, executablePath: e.target.value })}
+        />
+      </label>
+      <label className="catalog-field catalog-field--wide">
+        Launcher arguments
+        <input
+          value={launchVia.arguments}
+          onChange={(e) => onChange({ ...launchVia, arguments: e.target.value })}
+          placeholder="e.g. --launch-product=valorant --launch-patchline=live"
+        />
+      </label>
+    </>
+  );
 }
 
 function MediaSlot({ label, kind, url, onPick, onClear }: MediaSlotProps) {

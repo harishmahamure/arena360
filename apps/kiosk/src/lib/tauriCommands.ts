@@ -72,11 +72,17 @@ export async function shutdownStation(): Promise<void> {
   await invoke('shutdown_station');
 }
 
+export interface ScanLaunchVia {
+  executablePath: string;
+  arguments: string;
+}
+
 export interface ScanCandidate {
   name: string;
   executablePath: string;
   source: string;
   present: boolean;
+  launchVia?: ScanLaunchVia;
 }
 
 export async function scanInstalledSoftware(): Promise<ScanCandidate[]> {
