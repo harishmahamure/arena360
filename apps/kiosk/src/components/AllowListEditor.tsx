@@ -3,12 +3,12 @@ import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   addLaunchEntry,
-  allowListPaths,
   candidateToEntry,
   categorizeByName,
   entryCategory,
   formatLaunchArguments,
   isTrustedScanSource,
+  normalizeLaunchArguments,
   type LaunchCategory,
   type LaunchEntry,
   type LaunchVia,
@@ -16,7 +16,6 @@ import {
   loadLaunchEntries,
   mergeScanCandidates,
   removeLaunchEntry,
-  resolveLaunch,
   tokenizeArguments,
   updateLaunchEntry,
 } from '../lib/allowList';
@@ -25,12 +24,7 @@ import {
   loadGameBoostSettings,
   syncGameBoostToNative,
 } from '../lib/gameBoost';
-import {
-  launchAllowed,
-  pickExecutable,
-  type ScanCandidate,
-  scanInstalledSoftware,
-} from '../lib/tauriCommands';
+import { pickExecutable, type ScanCandidate, scanInstalledSoftware } from '../lib/tauriCommands';
 import { GalleryPicker } from './GalleryPicker';
 
 interface ScanProgress {
@@ -79,11 +73,24 @@ export function AllowListEditor() {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<ScanProgress>('scan-progress', (event) => {
+    const unlistenProgress = listen<ScanProgress>('scan-progress', (event) => {
       setProgress(event.payload);
     });
+    const unlistenStats = listen<{ resolved: number; unresolved: number }>(
+      'scan-profile-stats',
+      (event) => {
+        const { resolved, unresolved } = event.payload;
+        if (resolved > 0 || unresolved > 0) {
+          setStatus((prev) => {
+            const profileNote = `Launcher profiles: ${resolved} resolved, ${unresolved} unresolved`;
+            return prev ? `${prev}. ${profileNote}` : profileNote;
+          });
+        }
+      },
+    );
     return () => {
-      void unlisten.then((fn) => fn());
+      void unlistenProgress.then((fn) => fn());
+      void unlistenStats.then((fn) => fn());
     };
   }, []);
 
@@ -173,16 +180,21 @@ export function AllowListEditor() {
   async function testLaunch(entry: LaunchEntry) {
     setStatus(null);
     try {
-      const resolved = resolveLaunch(entry);
-      const result = await launchAllowed(
-        resolved.executablePath,
-        allowListPaths(entries),
-        resolved.arguments,
-      );
-      setStatus(`Launched ${entry.name} (pid ${result.pid})`);
+      const { launchEntry } = await import('../lib/launch');
+      await launchEntry(entry, entries);
+      setStatus(`Launched ${entry.name}`);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : `Could not launch ${entry.name}`);
     }
+  }
+
+  async function browseLauncherExe() {
+    const path = await pickExecutable();
+    if (!path || !selected?.launchVia) return;
+    patchSelected({
+      launchVia: { ...selected.launchVia, executablePath: path },
+      launchViaAuto: false,
+    });
   }
 
   const alreadyAdded = (path: string) =>
@@ -364,6 +376,12 @@ export function AllowListEditor() {
                 <button
                   type="button"
                   className="secondary"
+                  disabled={
+                    selected.launchVia
+                      ? !selected.launchVia.executablePath.trim() ||
+                        !(normalizeLaunchArguments(selected.launchVia.arguments)?.length ?? 0)
+                      : false
+                  }
                   onClick={() => void testLaunch(selected)}
                 >
                   Test launch
@@ -422,9 +440,10 @@ export function AllowListEditor() {
                             arguments: '',
                           },
                           arguments: undefined,
+                          launchViaAuto: false,
                         });
                       } else {
-                        patchSelected({ launchVia: undefined });
+                        patchSelected({ launchVia: undefined, launchViaAuto: false });
                       }
                     }}
                   />
@@ -435,7 +454,10 @@ export function AllowListEditor() {
               {selected.launchVia ? (
                 <LaunchViaFields
                   launchVia={selected.launchVia}
-                  onChange={(launchVia) => patchSelected({ launchVia, arguments: undefined })}
+                  onBrowseLauncher={() => void browseLauncherExe()}
+                  onChange={(launchVia) =>
+                    patchSelected({ launchVia, arguments: undefined, launchViaAuto: false })
+                  }
                 />
               ) : (
                 <label className="catalog-field catalog-field--wide">
@@ -531,11 +553,13 @@ interface MediaSlotProps {
 
 interface LaunchViaFieldsProps {
   launchVia: LaunchVia;
+  onBrowseLauncher: () => void;
   onChange: (launchVia: LaunchVia) => void;
 }
 
-function LaunchViaFields({ launchVia, onChange }: LaunchViaFieldsProps) {
+function LaunchViaFields({ launchVia, onChange, onBrowseLauncher }: LaunchViaFieldsProps) {
   const argsText = formatLaunchArguments(launchVia.arguments);
+  const launcherReady = launchVia.executablePath.trim().length > 0;
   return (
     <>
       <label className="catalog-field catalog-field--wide">
@@ -545,6 +569,12 @@ function LaunchViaFields({ launchVia, onChange }: LaunchViaFieldsProps) {
           onChange={(e) => onChange({ ...launchVia, executablePath: e.target.value })}
           placeholder="C:\\Path\\To\\steam.exe"
         />
+        <button type="button" className="secondary" onClick={onBrowseLauncher}>
+          Browse…
+        </button>
+        {!launcherReady ? (
+          <span className="hint">Select the platform launcher executable.</span>
+        ) : null}
       </label>
       <label className="catalog-field catalog-field--wide">
         Launcher arguments

@@ -16,7 +16,9 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 #[cfg(target_os = "windows")]
-use crate::launch_profile::{resolve_launch_profile, steam_app_id_from_manifest};
+use crate::launch_profile::{
+    resolve_launch_profile, scan_profile_stats, steam_app_id_from_manifest, ScanProfileCandidate,
+};
 #[cfg(target_os = "windows")]
 use std::path::Path;
 
@@ -31,6 +33,9 @@ pub struct ScanCandidate {
     pub present: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launch_via: Option<ScanLaunchVia>,
+    /// `true` = scan attached a profile; `false` = trusted source but no profile found.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launch_profile_from_scan: Option<bool>,
     #[serde(skip)]
     pub steam_app_id: Option<String>,
 }
@@ -245,7 +250,19 @@ fn scan_windows(app: &AppHandle) -> Result<Vec<ScanCandidate>, String> {
             candidate.steam_app_id.as_deref(),
             &launch_ctx,
         );
+        candidate.launch_profile_from_scan = Some(candidate.launch_via.is_some());
     }
+
+    let stats = scan_profile_stats(
+        &out
+            .iter()
+            .map(|c| ScanProfileCandidate {
+                trusted: should_attach_launch_profile(&c.source),
+                launch_via: c.launch_via.clone(),
+            })
+            .collect::<Vec<_>>(),
+    );
+    let _ = app.emit("scan-profile-stats", stats);
 
     Ok(out)
 }
@@ -303,6 +320,7 @@ fn candidate(
         source: source.to_string(),
         present,
         launch_via: None,
+        launch_profile_from_scan: None,
         steam_app_id: None,
     }
 }
@@ -359,7 +377,9 @@ fn resolve_battlenet_exe() -> Option<String> {
 #[cfg(target_os = "windows")]
 fn resolve_ea_helper_path() -> Option<String> {
     for var in ["ProgramFiles", "ProgramFiles(x86)"] {
-        let base = std::env::var(var).ok()?;
+        let Ok(base) = std::env::var(var) else {
+            continue;
+        };
         let helper = format!(
             "{base}\\Electronic Arts\\EA Desktop\\EA Desktop\\EALaunchHelper.exe"
         );
@@ -376,11 +396,34 @@ fn normalize_path(path: &str) -> String {
 }
 
 #[cfg(target_os = "windows")]
+fn source_priority(source: &str) -> u8 {
+    match source {
+        "steam" => 3,
+        "known" => 2,
+        "manifest" => 1,
+        _ => 0,
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn push_unique(out: &mut Vec<ScanCandidate>, item: ScanCandidate) {
     let path = normalize_path(&item.executable_path);
-    if out.iter().any(|c| {
-        normalize_path(&c.executable_path) == path || c.name.eq_ignore_ascii_case(&item.name)
-    }) {
+    if let Some(idx) = out
+        .iter()
+        .position(|c| normalize_path(&c.executable_path) == path)
+    {
+        if source_priority(&item.source) > source_priority(&out[idx].source) {
+            out[idx] = item;
+        }
+        return;
+    }
+    if let Some(idx) = out
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case(&item.name))
+    {
+        if source_priority(&item.source) > source_priority(&out[idx].source) {
+            out[idx] = item;
+        }
         return;
     }
     out.push(item);
@@ -850,6 +893,7 @@ fn scan_registry() -> Vec<ScanCandidate> {
                 source: "registry".to_string(),
                 present: std::path::Path::new(exe).exists(),
                 launch_via: None,
+                launch_profile_from_scan: None,
                 steam_app_id: None,
             });
         }
@@ -866,6 +910,7 @@ fn dev_fixture() -> Vec<ScanCandidate> {
             source: "known".to_string(),
             present: true,
             launch_via: None,
+            launch_profile_from_scan: None,
             steam_app_id: None,
         },
         ScanCandidate {
@@ -874,6 +919,7 @@ fn dev_fixture() -> Vec<ScanCandidate> {
             source: "known".to_string(),
             present: true,
             launch_via: None,
+            launch_profile_from_scan: None,
             steam_app_id: None,
         },
         ScanCandidate {
@@ -882,6 +928,7 @@ fn dev_fixture() -> Vec<ScanCandidate> {
             source: "registry".to_string(),
             present: false,
             launch_via: None,
+            launch_profile_from_scan: None,
             steam_app_id: None,
         },
     ]

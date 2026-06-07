@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   allowListPaths,
   type LaunchEntry,
+  launcherDisplayName,
   launchViaLabel,
   normalizeLaunchArguments,
   resolveLaunch,
   tokenizeArguments,
 } from './allowList';
+import { launchEntry } from './launch';
 
 const valorantEntry: LaunchEntry = {
   id: '1',
@@ -92,5 +94,33 @@ describe('launchViaLabel', () => {
         },
       }),
     ).toBe('Steam');
+  });
+});
+
+describe('launcherDisplayName', () => {
+  it('labels major platform launchers', () => {
+    expect(launcherDisplayName('C:\\Program Files (x86)\\Battle.net\\Battle.net.exe')).toBe(
+      'Battle.net',
+    );
+    expect(
+      launcherDisplayName(
+        'C:\\Program Files\\Electronic Arts\\EA Desktop\\EA Desktop\\EALaunchHelper.exe',
+      ),
+    ).toBe('EA App');
+    expect(launcherDisplayName('C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe')).toBe(
+      'GOG Galaxy',
+    );
+  });
+});
+
+describe('launchEntry validation', () => {
+  it('rejects empty launcher path', async () => {
+    const entry: LaunchEntry = {
+      id: '1',
+      name: 'Test',
+      executablePath: 'C:\\Games\\game.exe',
+      launchVia: { executablePath: '  ', arguments: ['-applaunch', '1'] },
+    };
+    await expect(launchEntry(entry, [entry])).rejects.toThrow(/Launcher path is required/);
   });
 });

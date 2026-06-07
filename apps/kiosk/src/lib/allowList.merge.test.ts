@@ -16,6 +16,7 @@ const valorantCandidate: ScanCandidate = {
     executablePath: riotLauncher,
     arguments: ['--launch-product=valorant', '--launch-patchline=live'],
   },
+  launchProfileFromScan: true,
 };
 
 const registryNoise: ScanCandidate = {
@@ -127,6 +128,7 @@ describe('mergeScanCandidates', () => {
         executablePath: steamLauncher,
         arguments: ['-applaunch', '730'],
       },
+      launchProfileFromScan: true,
     };
 
     const result = mergeScanCandidates([steamCandidate]);
@@ -136,6 +138,39 @@ describe('mergeScanCandidates', () => {
       executablePath: steamLauncher,
       arguments: ['-applaunch', '730'],
     });
+    expect(loadLaunchEntries().find((e) => e.id === 'steam-direct')?.launchViaAuto).toBe(true);
+  });
+
+  it('clears auto launchVia when trusted scan reports unresolved profile', () => {
+    saveLaunchEntries([
+      {
+        id: 'ow',
+        name: 'Overwatch',
+        executablePath: 'C:\\Program Files (x86)\\Overwatch\\Overwatch Launcher.exe',
+        category: 'game',
+        present: true,
+        launchVia: {
+          executablePath: 'C:\\Program Files (x86)\\Battle.net\\Battle.net.exe',
+          arguments: ['--exec=launch Pro'],
+        },
+        launchViaAuto: true,
+      },
+    ]);
+
+    const unresolved: ScanCandidate = {
+      name: 'Overwatch',
+      executablePath: 'C:\\Program Files (x86)\\Overwatch\\Overwatch Launcher.exe',
+      source: 'manifest',
+      present: true,
+      launchProfileFromScan: false,
+    };
+
+    const result = mergeScanCandidates([unresolved]);
+
+    expect(result.updated).toBe(1);
+    const entry = loadLaunchEntries().find((e) => e.id === 'ow');
+    expect(entry?.launchVia).toBeUndefined();
+    expect(entry?.launchViaAuto).toBe(false);
   });
 
   it('overwrites operator-edited launchVia when trusted scan provides a profile', () => {

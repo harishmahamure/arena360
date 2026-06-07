@@ -77,12 +77,19 @@ export interface ScanLaunchVia {
   arguments: string | string[];
 }
 
+export interface ScanProfileStats {
+  resolved: number;
+  unresolved: number;
+}
+
 export interface ScanCandidate {
   name: string;
   executablePath: string;
   source: string;
   present: boolean;
   launchVia?: ScanLaunchVia;
+  /** true = scan attached profile; false = trusted source but unresolved */
+  launchProfileFromScan?: boolean;
 }
 
 export async function scanInstalledSoftware(): Promise<ScanCandidate[]> {

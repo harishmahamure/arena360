@@ -68,6 +68,8 @@ export interface LaunchEntry {
   arguments?: string;
   /** When set, launch goes through the launcher executable + args. */
   launchVia?: LaunchVia;
+  /** True when launchVia was last set by scan merge (cleared on re-scan if unresolved). */
+  launchViaAuto?: boolean;
   /** Whether the executable was present at last scan (UI hint only). */
   present?: boolean;
   /** Player-home section. Missing is treated as `game` for back-compat. */
@@ -261,9 +263,17 @@ function executableBaseName(path: string): string {
 /** Human label for a launcher executable path (e.g. "Riot Client"). */
 export function launcherDisplayName(executablePath: string): string {
   const base = executableBaseName(executablePath);
+  const norm = executablePath.replace(/\\/g, '/').toLowerCase();
   if (/riotclient/i.test(base)) return 'Riot Client';
   if (/steam/i.test(base)) return 'Steam';
   if (/epic/i.test(base)) return 'Epic Games';
+  if (/battle\.net/i.test(base) || norm.includes('/battle.net/')) return 'Battle.net';
+  if (/ubisoftconnect/i.test(base)) return 'Ubisoft Connect';
+  if (/ealaunchhelper/i.test(base) || /ealauncher/i.test(base)) return 'EA App';
+  if (/galaxyclient/i.test(base)) return 'GOG Galaxy';
+  if (/launcher/i.test(base) && norm.includes('/rockstar games/launcher/')) {
+    return 'Rockstar Games';
+  }
   return base.replace(/[_-]+/g, ' ');
 }
 
@@ -294,6 +304,7 @@ export function candidateToEntry(candidate: ScanCandidate): Omit<LaunchEntry, 'i
           arguments: candidate.launchVia.arguments,
         }
       : undefined,
+    launchViaAuto: candidate.launchProfileFromScan === true,
   };
 }
 
@@ -333,12 +344,16 @@ export function mergeScanCandidates(
         ...draft,
         category: draft.category ?? categorizeByName(draft.name),
         id: newId(),
+        launchViaAuto: candidate.launchProfileFromScan === true,
       });
       added += 1;
     } else {
       const patch: Partial<LaunchEntry> = {};
       if (existing.present !== true) patch.present = true;
-      if (candidate.launchVia) {
+      if (candidate.launchProfileFromScan === false && existing.launchViaAuto) {
+        patch.launchVia = undefined;
+        patch.launchViaAuto = false;
+      } else if (candidate.launchVia) {
         const nextVia = {
           executablePath: candidate.launchVia.executablePath,
           arguments: candidate.launchVia.arguments,
@@ -351,6 +366,7 @@ export function mergeScanCandidates(
             JSON.stringify(normalizeLaunchArguments(nextVia.arguments));
         if (viaChanged) {
           patch.launchVia = nextVia;
+          patch.launchViaAuto = true;
         }
       }
       if (Object.keys(patch).length > 0) {

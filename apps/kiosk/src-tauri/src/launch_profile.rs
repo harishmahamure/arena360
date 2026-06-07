@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +27,21 @@ impl LaunchVia {
     pub fn single_arg(executable_path: impl Into<String>, arg: impl Into<String>) -> Self {
         Self::new(executable_path, vec![arg.into()])
     }
+}
+
+/// Stats emitted after scan for operator debug (trusted games only).
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProfileStats {
+    pub resolved: u32,
+    pub unresolved: u32,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedProfile {
+    profile: LaunchVia,
+    /// Normalized install root used for prefix matching.
+    install_root: Option<String>,
 }
 
 fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -63,9 +78,8 @@ pub fn tokenize_arguments(input: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
-    let mut chars = input.chars().peekable();
 
-    while let Some(ch) = chars.next() {
+    for ch in input.chars() {
         match ch {
             '"' => in_quotes = !in_quotes,
             ' ' | '\t' if !in_quotes => {
@@ -87,10 +101,36 @@ pub fn normalize_path(path: &str) -> String {
     path.replace('\\', "/").to_lowercase()
 }
 
-fn path_matches(normalized_exe: &str, normalized_target: &str) -> bool {
-    normalized_exe == normalized_target
-        || normalized_exe.ends_with(normalized_target)
-        || normalized_target.ends_with(normalized_exe)
+fn steam_applaunch_args(app_id: &str) -> Vec<String> {
+    vec!["-applaunch".to_string(), app_id.to_string()]
+}
+
+fn path_matches_exe(normalized_exe: &str, indexed: &IndexedProfile) -> bool {
+    let Some(root) = &indexed.install_root else {
+        return false;
+    };
+    if normalized_exe == root {
+        return true;
+    }
+    let prefix = format!("{root}/");
+    normalized_exe.starts_with(&prefix)
+}
+
+fn insert_index(
+    map: &mut HashMap<String, IndexedProfile>,
+    exe: &Path,
+    install_root: Option<&Path>,
+    profile: LaunchVia,
+) {
+    let key = normalize_path(&exe.to_string_lossy());
+    let root = install_root.map(|p| normalize_path(&p.to_string_lossy()));
+    map.insert(
+        key,
+        IndexedProfile {
+            profile,
+            install_root: root,
+        },
+    );
 }
 
 #[derive(Debug, Clone, Default)]
@@ -106,19 +146,19 @@ pub struct LauncherPaths {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct PlatformIndexes {
-    pub epic_by_exe: HashMap<String, LaunchVia>,
-    pub battlenet_by_exe: HashMap<String, LaunchVia>,
-    pub ea_by_exe: HashMap<String, LaunchVia>,
-    pub ubisoft_by_exe: HashMap<String, LaunchVia>,
-    pub gog_by_exe: HashMap<String, LaunchVia>,
-    pub rockstar_by_exe: HashMap<String, LaunchVia>,
+struct PlatformIndexes {
+    epic_by_exe: HashMap<String, IndexedProfile>,
+    battlenet_by_exe: HashMap<String, IndexedProfile>,
+    ea_by_exe: HashMap<String, IndexedProfile>,
+    ubisoft_by_exe: HashMap<String, IndexedProfile>,
+    gog_by_exe: HashMap<String, IndexedProfile>,
+    rockstar_by_exe: HashMap<String, IndexedProfile>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LaunchContext {
     pub launchers: LauncherPaths,
-    pub indexes: PlatformIndexes,
+    indexes: PlatformIndexes,
 }
 
 impl LaunchContext {
@@ -153,7 +193,7 @@ pub fn resolve_launch_profile(
         if let Some(steam) = &ctx.launchers.steam {
             return Some(LaunchVia::new(
                 steam.clone(),
-                vec![format!("-applaunch {app_id}")],
+                steam_applaunch_args(app_id),
             ));
         }
     }
@@ -180,16 +220,24 @@ pub fn resolve_launch_profile(
     resolve_riot_profile(&norm, &ctx.launchers.riot)
 }
 
-fn lookup_by_exe(map: &HashMap<String, LaunchVia>, norm: &str) -> Option<LaunchVia> {
-    if let Some(v) = map.get(norm) {
-        return Some(v.clone());
+fn lookup_by_exe(map: &HashMap<String, IndexedProfile>, norm: &str) -> Option<LaunchVia> {
+    if let Some(indexed) = map.get(norm) {
+        return Some(indexed.profile.clone());
     }
-    for (key, profile) in map {
-        if path_matches(norm, key) {
-            return Some(profile.clone());
+    for indexed in map.values() {
+        if path_matches_exe(norm, indexed) {
+            return Some(indexed.profile.clone());
         }
     }
     None
+}
+
+#[cfg(target_os = "windows")]
+fn program_files_roots() -> Vec<PathBuf> {
+    ["ProgramFiles(x86)", "ProgramFiles"]
+        .iter()
+        .filter_map(|var| std::env::var(var).ok().map(PathBuf::from))
+        .collect()
 }
 
 #[cfg(target_os = "windows")]
@@ -198,6 +246,50 @@ fn fixed_drive_roots() -> Vec<PathBuf> {
         .map(|letter| PathBuf::from(format!("{letter}:\\")))
         .filter(|path| path.exists())
         .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn battlenet_launch_args(code: &str) -> Vec<String> {
+    vec![format!("--exec=launch {code}")]
+}
+
+#[cfg(target_os = "windows")]
+fn battlenet_product_code(folder: &str) -> Option<&'static str> {
+    let lower = folder.to_lowercase();
+    if lower == "overwatch" || lower.contains("overwatch") {
+        return Some("Pro");
+    }
+    if lower.contains("diablo iv") {
+        return Some("D4");
+    }
+    if lower.contains("diablo iii") || lower == "diablo iii" {
+        return Some("D3");
+    }
+    if lower.contains("diablo ii") {
+        return Some("OSI");
+    }
+    if lower.contains("starcraft ii") {
+        return Some("S2");
+    }
+    if lower.contains("world of warcraft") {
+        return Some("WoW");
+    }
+    if lower.contains("hearthstone") {
+        return Some("WTCG");
+    }
+    if lower.contains("heroes of the storm") {
+        return Some("Hero");
+    }
+    if lower.contains("modern warfare") || lower.contains("call of duty modern warfare") {
+        return Some("ODIN");
+    }
+    if lower.contains("black ops cold war") {
+        return Some("ZEUS");
+    }
+    if lower.contains("warcraft iii") {
+        return Some("W3");
+    }
+    None
 }
 
 #[cfg(target_os = "windows")]
@@ -266,30 +358,93 @@ pub fn load_platform_indexes(launchers: &LauncherPaths) -> PlatformIndexes {
 }
 
 #[cfg(target_os = "windows")]
-fn load_epic_indexes(epic_exe: Option<&str>) -> HashMap<String, LaunchVia> {
+fn epic_launch_uri(app_name: &str) -> String {
+    format!("com.epicgames.launcher://apps/{app_name}?action=launch&silent=true")
+}
+
+#[cfg(target_os = "windows")]
+fn epic_app_name_from_item(value: &serde_json::Value) -> Option<String> {
+    if let Some(name) = value.get("AppName").and_then(|v| v.as_str()) {
+        if name.contains(':') || name.len() > 20 {
+            return Some(name.to_string());
+        }
+    }
+    let ns = value.get("CatalogNamespace").and_then(|v| v.as_str())?;
+    let item = value.get("CatalogItemId").and_then(|v| v.as_str())?;
+    let app = value
+        .get("AppName")
+        .and_then(|v| v.as_str())
+        .unwrap_or(item);
+    Some(format!("{ns}:{item}:{app}"))
+}
+
+#[cfg(target_os = "windows")]
+fn load_epic_indexes(epic_exe: Option<&str>) -> HashMap<String, IndexedProfile> {
     use std::fs;
 
     let Some(epic_exe) = epic_exe else {
         return HashMap::new();
     };
 
-    let dat_paths = [
-        PathBuf::from(std::env::var("ProgramData").unwrap_or_default())
-            .join("Epic")
-            .join("UnrealEngineLauncher")
-            .join("LauncherInstalled.dat"),
-        PathBuf::from(std::env::var("ProgramData").unwrap_or_default())
-            .join("Epic")
-            .join("EpicGamesLauncher")
-            .join("Data")
-            .join("Manifests"),
-    ];
-
     let mut out = HashMap::new();
+    let program_data = std::env::var("ProgramData").unwrap_or_default();
 
-    let dat = &dat_paths[0];
+    let manifests_dir = PathBuf::from(&program_data)
+        .join("Epic")
+        .join("EpicGamesLauncher")
+        .join("Data")
+        .join("Manifests");
+    if manifests_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&manifests_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext != "item" {
+                    continue;
+                }
+                let Ok(text) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+                    continue;
+                };
+                let Some(install_location) = value.get("InstallLocation").and_then(|v| v.as_str())
+                else {
+                    continue;
+                };
+                let Some(app_name) = epic_app_name_from_item(&value) else {
+                    continue;
+                };
+                let install_root = PathBuf::from(install_location);
+                let launch_exe = value
+                    .get("LaunchExecutable")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let game_exe = if launch_exe.is_empty() {
+                    find_primary_exe(&install_root)
+                } else {
+                    let candidate = install_root.join(launch_exe.replace('/', "\\"));
+                    if candidate.exists() {
+                        Some(candidate)
+                    } else {
+                        find_primary_exe(&install_root)
+                    }
+                };
+                let Some(game_exe) = game_exe else {
+                    continue;
+                };
+                let profile = LaunchVia::single_arg(epic_exe, epic_launch_uri(&app_name));
+                insert_index(&mut out, &game_exe, Some(&install_root), profile);
+            }
+        }
+    }
+
+    let dat = PathBuf::from(&program_data)
+        .join("Epic")
+        .join("UnrealEngineLauncher")
+        .join("LauncherInstalled.dat");
     if dat.exists() {
-        if let Ok(text) = fs::read_to_string(dat) {
+        if let Ok(text) = fs::read_to_string(&dat) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                 let entries = value
                     .get("InstallationList")
@@ -308,11 +463,11 @@ fn load_epic_indexes(epic_exe: Option<&str>) -> HashMap<String, LaunchVia> {
                     let Some(app_name) = app_name else {
                         continue;
                     };
+                    let install_root = PathBuf::from(install_location);
                     let launch_exe = entry
                         .get("LaunchExecutable")
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
-                    let install_root = PathBuf::from(install_location);
                     let game_exe = if launch_exe.is_empty() {
                         find_primary_exe(&install_root)
                     } else {
@@ -326,11 +481,12 @@ fn load_epic_indexes(epic_exe: Option<&str>) -> HashMap<String, LaunchVia> {
                     let Some(game_exe) = game_exe else {
                         continue;
                     };
-                    let uri = format!(
-                        "com.epicgames.launcher://apps/{app_name}?action=launch&silent=true"
-                    );
-                    let profile = LaunchVia::single_arg(epic_exe, uri);
-                    out.insert(normalize_path(&game_exe.to_string_lossy()), profile);
+                    let norm = normalize_path(&game_exe.to_string_lossy());
+                    if out.contains_key(&norm) {
+                        continue;
+                    }
+                    let profile = LaunchVia::single_arg(epic_exe, epic_launch_uri(app_name));
+                    insert_index(&mut out, &game_exe, Some(&install_root), profile);
                 }
             }
         }
@@ -340,7 +496,7 @@ fn load_epic_indexes(epic_exe: Option<&str>) -> HashMap<String, LaunchVia> {
 }
 
 #[cfg(target_os = "windows")]
-fn load_battlenet_indexes(battlenet_exe: Option<&str>) -> HashMap<String, LaunchVia> {
+fn load_battlenet_indexes(battlenet_exe: Option<&str>) -> HashMap<String, IndexedProfile> {
     use std::fs;
 
     let Some(battlenet_exe) = battlenet_exe else {
@@ -348,78 +504,62 @@ fn load_battlenet_indexes(battlenet_exe: Option<&str>) -> HashMap<String, Launch
     };
 
     let mut out = HashMap::new();
-    let product_roots = [
-        (
-            "Diablo III",
-            vec!["D3", "Diablo III.exe", "Diablo III64.exe"],
-            "D3",
-        ),
-        ("Overwatch", vec!["Overwatch Launcher.exe"], "Pro"),
-        (
-            "StarCraft II",
-            vec!["SC2.exe", "StarCraft II.exe"],
-            "S2",
-        ),
-        (
-            "World of Warcraft",
-            vec!["Wow.exe", "World of Warcraft Launcher.exe"],
-            "WoW",
-        ),
-        ("Hearthstone", vec!["Hearthstone.exe"], "WTCG"),
-        (
-            "Heroes of the Storm",
-            vec!["HeroesOfTheStorm_x64.exe"],
-            "Hero",
-        ),
-        (
-            "Call of Duty Modern Warfare",
-            vec!["ModernWarfare.exe"],
-            "ODIN",
-        ),
-        (
-            "Call of Duty Black Ops Cold War",
-            vec!["BlackOpsColdWar.exe"],
-            "ZEUS",
-        ),
-    ];
+    let mut search_dirs: Vec<PathBuf> = program_files_roots();
+    for drive in fixed_drive_roots() {
+        search_dirs.push(drive.join("Games"));
+    }
 
-    let search_roots: Vec<PathBuf> = ["ProgramFiles(x86)", "ProgramFiles"]
-        .iter()
-        .filter_map(|var| std::env::var(var).ok().map(PathBuf::from))
-        .map(|base| base.join("Battle.net"))
-        .chain(fixed_drive_roots().into_iter().map(|d| d.join("Battle.net")))
-        .collect();
+    for base in search_dirs {
+        if !base.exists() {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&base) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let folder = dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(code) = battlenet_product_code(&folder) else {
+                continue;
+            };
+            if let Some(exe) = find_primary_exe(&dir) {
+                let profile = LaunchVia::new(battlenet_exe, battlenet_launch_args(code));
+                insert_index(&mut out, &exe, Some(&dir), profile);
+            }
+        }
+    }
 
-    for root in search_roots {
+    for base in program_files_roots() {
+        let root = base.join("Battle.net");
         if !root.exists() {
             continue;
         }
-        if let Ok(entries) = fs::read_dir(&root) {
-            for entry in entries.flatten() {
-                let dir = entry.path();
-                if !dir.is_dir() {
-                    continue;
-                }
-                let folder = dir
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_string();
-                let code = product_roots
-                    .iter()
-                    .find(|(name, _, _)| folder.eq_ignore_ascii_case(name))
-                    .map(|(_, _, code)| *code)
-                    .or_else(|| battlenet_code_from_folder(&folder));
-                let Some(code) = code else {
-                    continue;
-                };
-                if let Some(exe) = find_primary_exe(&dir) {
-                    let profile = LaunchVia::new(
-                        battlenet_exe,
-                        vec![format!("--exec=launch {code}")],
-                    );
-                    out.insert(normalize_path(&exe.to_string_lossy()), profile);
-                }
+        let Ok(entries) = fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let folder = dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(code) = battlenet_product_code(&folder) else {
+                continue;
+            };
+            if let Some(exe) = find_primary_exe(&dir) {
+                let profile = LaunchVia::new(battlenet_exe, battlenet_launch_args(code));
+                insert_index(&mut out, &exe, Some(&dir), profile);
             }
         }
     }
@@ -428,22 +568,55 @@ fn load_battlenet_indexes(battlenet_exe: Option<&str>) -> HashMap<String, Launch
 }
 
 #[cfg(target_os = "windows")]
-fn battlenet_code_from_folder(folder: &str) -> Option<&'static str> {
-    let lower = folder.to_lowercase();
-    if lower.contains("diablo iv") || lower == "diablo iv" {
-        return Some("D4");
+fn ea_install_dir_from_metadata(game_dir: &Path) -> Option<PathBuf> {
+    use std::fs;
+
+    let installer_xml = game_dir.join("__Installer").join("installerdata.xml");
+    if installer_xml.exists() {
+        if let Ok(text) = fs::read_to_string(&installer_xml) {
+            if let Some(dir) = extract_xml_element(&text, "installPath")
+                .or_else(|| extract_xml_element(&text, "InstallPath"))
+                .or_else(|| extract_xml_element(&text, "InstallLocation"))
+            {
+                let path = PathBuf::from(dir);
+                if path.exists() {
+                    return Some(path);
+                }
+            }
+        }
     }
-    if lower.contains("diablo ii") {
-        return Some("OSI");
-    }
-    if lower.contains("warcraft iii") {
-        return Some("W3");
+
+    let title = game_dir.file_name()?.to_str()?;
+    for base in program_files_roots() {
+        for rel in [
+            format!("EA Games\\{title}"),
+            format!("Electronic Arts\\{title}"),
+        ] {
+            let candidate = base.join(&rel);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
     }
     None
 }
 
 #[cfg(target_os = "windows")]
-fn load_ea_indexes(ea_helper: Option<&str>) -> HashMap<String, LaunchVia> {
+fn extract_xml_element(text: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = text.find(&open)? + open.len();
+    let end = text[start..].find(&close)? + start;
+    let value = text[start..end].trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn load_ea_indexes(ea_helper: Option<&str>) -> HashMap<String, IndexedProfile> {
     use std::fs;
 
     let Some(ea_helper) = ea_helper else {
@@ -477,19 +650,20 @@ fn load_ea_indexes(ea_helper: Option<&str>) -> HashMap<String, LaunchVia> {
         let Some(offer_id) = offer_id else {
             continue;
         };
-        let Some(exe) = find_primary_exe(&game_dir) else {
+        let install_dir = ea_install_dir_from_metadata(&game_dir)?;
+        let Some(exe) = find_primary_exe(&install_dir) else {
             continue;
         };
         let uri = format!("origin2://game/launch/?offerIds={offer_id}");
         let profile = LaunchVia::single_arg(ea_helper, uri);
-        out.insert(normalize_path(&exe.to_string_lossy()), profile);
+        insert_index(&mut out, &exe, Some(&install_dir), profile);
     }
 
     out
 }
 
 #[cfg(target_os = "windows")]
-fn load_ubisoft_indexes(ubisoft_exe: Option<&str>) -> HashMap<String, LaunchVia> {
+fn load_ubisoft_indexes(ubisoft_exe: Option<&str>) -> HashMap<String, IndexedProfile> {
     use std::fs;
 
     let Some(ubisoft_exe) = ubisoft_exe else {
@@ -497,59 +671,75 @@ fn load_ubisoft_indexes(ubisoft_exe: Option<&str>) -> HashMap<String, LaunchVia>
     };
 
     let mut out = HashMap::new();
-    let config_dir = PathBuf::from(std::env::var("ProgramFiles(x86)").unwrap_or_default())
-        .join("Ubisoft")
-        .join("Ubisoft Game Launcher")
-        .join("cache")
-        .join("configuration");
-    if !config_dir.exists() {
-        return out;
-    }
+    let config_dirs = program_files_roots()
+        .into_iter()
+        .map(|base| {
+            base.join("Ubisoft")
+                .join("Ubisoft Game Launcher")
+                .join("cache")
+                .join("configuration")
+        })
+        .collect::<Vec<_>>();
 
-    let Ok(entries) = fs::read_dir(&config_dir) else {
-        return out;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+    for config_dir in config_dirs {
+        if !config_dir.exists() {
             continue;
         }
-        let Ok(text) = fs::read_to_string(&path) else {
+        let Ok(entries) = fs::read_dir(&config_dir) else {
             continue;
         };
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-            continue;
-        };
-        let game_id = value
-            .pointer("/game/gameId")
-            .or_else(|| value.get("gameId"))
-            .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
-            .map(|id| id.to_string());
-        let install_dir = value
-            .pointer("/game/installDir")
-            .or_else(|| value.get("installDir"))
-            .and_then(|v| v.as_str())
-            .map(PathBuf::from);
-        let (Some(game_id), Some(install_dir)) = (game_id, install_dir) else {
-            continue;
-        };
-        if !install_dir.exists() {
-            continue;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let game_id = value
+                .pointer("/game/gameId")
+                .or_else(|| value.get("gameId"))
+                .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                .map(|id| id.to_string());
+            let install_dir = value
+                .pointer("/game/installDir")
+                .or_else(|| value.get("installDir"))
+                .and_then(|v| v.as_str())
+                .map(PathBuf::from);
+            let (Some(game_id), Some(install_dir)) = (game_id, install_dir) else {
+                continue;
+            };
+            if !install_dir.exists() {
+                continue;
+            }
+            let Some(exe) = find_primary_exe(&install_dir) else {
+                continue;
+            };
+            let uri = format!("ubisoftconnect://launch/{game_id}");
+            let profile = LaunchVia::single_arg(ubisoft_exe, uri);
+            insert_index(&mut out, &exe, Some(&install_dir), profile);
         }
-        let Some(exe) = find_primary_exe(&install_dir) else {
-            continue;
-        };
-        let uri = format!("ubisoftconnect://launch/{game_id}");
-        let profile = LaunchVia::single_arg(ubisoft_exe, uri);
-        out.insert(normalize_path(&exe.to_string_lossy()), profile);
     }
 
     out
 }
 
 #[cfg(target_os = "windows")]
-fn load_gog_indexes(gog_exe: Option<&str>) -> HashMap<String, LaunchVia> {
+fn gog_installed_entries(value: &serde_json::Value) -> Vec<serde_json::Value> {
+    if let Some(arr) = value.as_array() {
+        return arr.clone();
+    }
+    if let Some(obj) = value.as_object() {
+        return obj.values().cloned().collect();
+    }
+    Vec::new()
+}
+
+#[cfg(target_os = "windows")]
+fn load_gog_indexes(gog_exe: Option<&str>) -> HashMap<String, IndexedProfile> {
     use std::fs;
 
     let Some(gog_exe) = gog_exe else {
@@ -570,14 +760,16 @@ fn load_gog_indexes(gog_exe: Option<&str>) -> HashMap<String, LaunchVia> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
         return out;
     };
-    let entries = value.as_array().cloned().unwrap_or_default();
-    for entry in entries {
+    for entry in gog_installed_entries(&value) {
         let game_id = entry.get("gameId").and_then(|v| {
             v.as_str()
                 .map(|s| s.to_string())
                 .or_else(|| v.as_u64().map(|n| n.to_string()))
         });
-        let install_path = entry.get("installPath").and_then(|v| v.as_str());
+        let install_path = entry
+            .get("installPath")
+            .or_else(|| entry.get("installationPath"))
+            .and_then(|v| v.as_str());
         let (Some(game_id), Some(install_path)) = (game_id, install_path) else {
             continue;
         };
@@ -592,14 +784,14 @@ fn load_gog_indexes(gog_exe: Option<&str>) -> HashMap<String, LaunchVia> {
                 format!("/gameId={game_id}"),
             ],
         );
-        out.insert(normalize_path(&exe.to_string_lossy()), profile);
+        insert_index(&mut out, &exe, Some(&install_dir), profile);
     }
 
     out
 }
 
 #[cfg(target_os = "windows")]
-fn load_rockstar_indexes(rockstar_exe: Option<&str>) -> HashMap<String, LaunchVia> {
+fn load_rockstar_indexes(rockstar_exe: Option<&str>) -> HashMap<String, IndexedProfile> {
     use std::fs;
 
     let Some(rockstar_exe) = rockstar_exe else {
@@ -607,9 +799,8 @@ fn load_rockstar_indexes(rockstar_exe: Option<&str>) -> HashMap<String, LaunchVi
     };
 
     let mut out = HashMap::new();
-    let search_roots: Vec<PathBuf> = ["ProgramFiles", "ProgramFiles(x86)"]
-        .iter()
-        .filter_map(|var| std::env::var(var).ok().map(PathBuf::from))
+    let search_roots: Vec<PathBuf> = program_files_roots()
+        .into_iter()
         .map(|base| base.join("Rockstar Games"))
         .collect();
 
@@ -640,7 +831,7 @@ fn load_rockstar_indexes(rockstar_exe: Option<&str>) -> HashMap<String, LaunchVi
                     folder_arg,
                 ],
             );
-            out.insert(normalize_path(&exe.to_string_lossy()), profile);
+            insert_index(&mut out, &exe, Some(&dir), profile);
         }
     }
 
@@ -701,16 +892,50 @@ fn is_noise_exe_name(name: &str) -> bool {
     .any(|needle| name.contains(needle))
 }
 
+/// Count resolved vs unresolved trusted candidates after profile attachment.
+pub fn scan_profile_stats(candidates: &[ScanProfileCandidate]) -> ScanProfileStats {
+    let mut stats = ScanProfileStats::default();
+    for c in candidates {
+        if !c.trusted {
+            continue;
+        }
+        if c.launch_via.is_some() {
+            stats.resolved += 1;
+        } else {
+            stats.unresolved += 1;
+        }
+    }
+    stats
+}
+
+/// Minimal view for stats (avoids scan module dependency).
+#[derive(Debug, Clone)]
+pub struct ScanProfileCandidate {
+    pub trusted: bool,
+    pub launch_via: Option<LaunchVia>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn launch_via_round_trips_json_array() {
-        let via = LaunchVia::new("C:\\Steam\\steam.exe", vec!["-applaunch".to_string(), "730".to_string()]);
+        let via = LaunchVia::new(
+            "C:\\Steam\\steam.exe",
+            vec!["-applaunch".to_string(), "730".to_string()],
+        );
         let json = serde_json::to_string(&via).unwrap();
         let parsed: LaunchVia = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, via);
+    }
+
+    #[test]
+    fn steam_applaunch_uses_two_argv_tokens() {
+        assert_eq!(
+            steam_applaunch_args("730"),
+            vec!["-applaunch", "730"]
+        );
     }
 
     #[test]
@@ -722,26 +947,61 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_splits_simple_args() {
-        assert_eq!(
-            tokenize_arguments("--launch-product=valorant --launch-patchline=live"),
-            vec!["--launch-product=valorant", "--launch-patchline=live"]
-        );
-    }
-
-    #[test]
     fn deserialize_arguments_accepts_string() {
         let raw = r#"{"executablePath":"C:\\steam.exe","arguments":"-applaunch 730"}"#;
         let via: LaunchVia = serde_json::from_str(raw).unwrap();
         assert_eq!(via.arguments, vec!["-applaunch", "730"]);
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
-    fn deserialize_arguments_accepts_array() {
-        let raw =
-            r#"{"executablePath":"C:\\steam.exe","arguments":["-applaunch","730"]}"#;
-        let via: LaunchVia = serde_json::from_str(raw).unwrap();
-        assert_eq!(via.arguments, vec!["-applaunch", "730"]);
+    fn battlenet_code_from_overwatch_folder() {
+        assert_eq!(battlenet_product_code("Overwatch"), Some("Pro"));
+        assert_eq!(battlenet_product_code("Diablo III"), Some("D3"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn epic_app_name_builds_catalog_triple() {
+        let value: serde_json::Value = serde_json::json!({
+            "CatalogNamespace": "ns",
+            "CatalogItemId": "item",
+            "AppName": "app"
+        });
+        assert_eq!(
+            epic_app_name_from_item(&value).as_deref(),
+            Some("ns:item:app")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn extract_xml_install_path() {
+        let xml = r#"<installPath>C:\Games\FIFA</installPath>"#;
+        assert_eq!(
+            extract_xml_element(xml, "installPath").as_deref(),
+            Some("C:\\Games\\FIFA")
+        );
+    }
+
+    #[test]
+    fn scan_profile_stats_counts() {
+        let stats = scan_profile_stats(&[
+            ScanProfileCandidate {
+                trusted: true,
+                launch_via: Some(LaunchVia::single_arg("a", "b")),
+            },
+            ScanProfileCandidate {
+                trusted: true,
+                launch_via: None,
+            },
+            ScanProfileCandidate {
+                trusted: false,
+                launch_via: None,
+            },
+        ]);
+        assert_eq!(stats.resolved, 1);
+        assert_eq!(stats.unresolved, 1);
     }
 
     #[cfg(target_os = "windows")]
@@ -776,6 +1036,6 @@ mod tests {
         let profile =
             resolve_launch_profile("C:\\Steam\\steamapps\\common\\CS2\\cs2.exe", Some("730"), &ctx)
                 .unwrap();
-        assert_eq!(profile.arguments, vec!["-applaunch 730"]);
+        assert_eq!(profile.arguments, vec!["-applaunch", "730"]);
     }
 }

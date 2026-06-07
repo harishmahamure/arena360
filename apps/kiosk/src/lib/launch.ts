@@ -3,6 +3,7 @@ import {
   type LaunchEntry,
   launchViaLabel,
   loadLaunchEntries,
+  normalizeLaunchArguments,
   resolveLaunch,
 } from './allowList';
 import { launchAllowed } from './tauriCommands';
@@ -12,8 +13,20 @@ export function installedEntries(): LaunchEntry[] {
   return loadLaunchEntries().filter((e) => e.present !== false);
 }
 
+function validateLaunchEntry(entry: LaunchEntry): void {
+  if (!entry.launchVia) return;
+  if (!entry.launchVia.executablePath.trim()) {
+    throw new Error(`Launcher path is required to launch ${entry.name}`);
+  }
+  const args = normalizeLaunchArguments(entry.launchVia.arguments);
+  if (!args?.length) {
+    throw new Error(`Launcher arguments are required to launch ${entry.name}`);
+  }
+}
+
 /** Launch an allow-list entry through the native guard (ADR-0019/0020). */
 export async function launchEntry(entry: LaunchEntry, entries: LaunchEntry[]): Promise<void> {
+  validateLaunchEntry(entry);
   const allowList = allowListPaths(entries);
   const resolved = resolveLaunch(entry);
 
