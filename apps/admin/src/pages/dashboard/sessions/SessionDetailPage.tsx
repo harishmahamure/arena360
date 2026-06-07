@@ -238,16 +238,15 @@ export default function ViewSessionPage() {
   return (
     <Box sx={{ px: 4, py: 2 }}>
       <Paper elevation={0} sx={{ p: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+        <Box
+          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}
+        >
           <PageHeader
             title="Session details"
             description="View session information and manage session status"
             backTo="/sessions"
             backLabel="Back to sessions"
-            breadcrumbs={[
-              { label: 'Sessions', to: '/sessions' },
-              { label: 'Session details' },
-            ]}
+            breadcrumbs={[{ label: 'Sessions', to: '/sessions' }, { label: 'Session details' }]}
           />
           <Chip
             label={isActive ? 'Active' : 'Completed'}
@@ -532,7 +531,12 @@ export default function ViewSessionPage() {
           <Button onClick={() => setConfirmForce(false)} disabled={isForcing}>
             Cancel
           </Button>
-          <Button color="error" variant="contained" onClick={handleForceEndConfirm} disabled={isForcing}>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleForceEndConfirm}
+            disabled={isForcing}
+          >
             {isForcing ? 'Ending…' : 'Force-end'}
           </Button>
         </DialogActions>

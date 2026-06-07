@@ -30,10 +30,30 @@ import { clockIn } from '../../services/shifts';
 import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
 
 const quickActions = [
-  { label: 'Start session', path: '/sessions/new', icon: PlayCircle, variant: 'contained' as const },
-  { label: 'Sell items', path: '/product-transactions/new', icon: PointOfSale, variant: 'outlined' as const },
-  { label: 'Buy plan', path: '/plan-transactions/new', icon: Receipt, variant: 'outlined' as const },
-  { label: 'Active sessions', path: '/sessions?active=true', icon: AccessTime, variant: 'outlined' as const },
+  {
+    label: 'Start session',
+    path: '/sessions/new',
+    icon: PlayCircle,
+    variant: 'contained' as const,
+  },
+  {
+    label: 'Sell items',
+    path: '/product-transactions/new',
+    icon: PointOfSale,
+    variant: 'outlined' as const,
+  },
+  {
+    label: 'Buy plan',
+    path: '/plan-transactions/new',
+    icon: Receipt,
+    variant: 'outlined' as const,
+  },
+  {
+    label: 'Active sessions',
+    path: '/sessions?active=true',
+    icon: AccessTime,
+    variant: 'outlined' as const,
+  },
 ];
 
 export default function StaffDashboardView() {

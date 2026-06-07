@@ -11,6 +11,7 @@
 - Requirements (stakeholders): [REQUIREMENTS.md](REQUIREMENTS.md)
 - Design tokens ADR: [adr/0007-design-tokens-shared.md](adr/0007-design-tokens-shared.md)
 - Task tracker: [TASKS-ADMIN-UI-MODERNIZATION.md](TASKS-ADMIN-UI-MODERNIZATION.md)
+- Shell ADR (proposed): [adr/DRAFT-0034-admin-shell-v2.md](adr/DRAFT-0034-admin-shell-v2.md)
 - Shared UI: `packages/ui`
 - Shared theme: `packages/theme`
 - Admin app: `apps/admin`

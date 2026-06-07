@@ -96,22 +96,25 @@ export default function SessionsPage() {
     [navigate],
   );
 
-  const requestEndSession = useCallback((id: string) => {
-    if (currentUserRole === 'staff') {
-      setTotpDialog({ open: true, sessionId: id, loading: false });
-      return;
-    }
-    void (async () => {
-      try {
-        await endSession(id, { reason: 'force' });
-        toast.success('Session ended successfully');
-        void refetch();
-        void queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      } catch {
-        toast.error('Failed to end session');
+  const requestEndSession = useCallback(
+    (id: string) => {
+      if (currentUserRole === 'staff') {
+        setTotpDialog({ open: true, sessionId: id, loading: false });
+        return;
       }
-    })();
-  }, [currentUserRole, refetch, queryClient]);
+      void (async () => {
+        try {
+          await endSession(id, { reason: 'force' });
+          toast.success('Session ended successfully');
+          void refetch();
+          void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+        } catch {
+          toast.error('Failed to end session');
+        }
+      })();
+    },
+    [currentUserRole, refetch, queryClient],
+  );
 
   const handleTotpConfirm = async (staffTotp: string) => {
     setTotpDialog((prev) => ({ ...prev, loading: true }));
@@ -140,8 +143,7 @@ export default function SessionsPage() {
   );
 
   const setSessionFilter = (filter: SessionFilter) => {
-    const active =
-      filter === 'active' ? 'true' : filter === 'completed' ? 'false' : undefined;
+    const active = filter === 'active' ? 'true' : filter === 'completed' ? 'false' : undefined;
     navigate(buildListUrl('/sessions', 1, { active }));
   };
 

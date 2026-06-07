@@ -66,11 +66,7 @@ export function StaffTotpDialog({
         <Button onClick={onClose} disabled={loading}>
           Cancel
         </Button>
-        <Button
-          variant="contained"
-          onClick={handleConfirm}
-          disabled={loading || !totp.trim()}
-        >
+        <Button variant="contained" onClick={handleConfirm} disabled={loading || !totp.trim()}>
           {confirmLabel}
         </Button>
       </DialogActions>

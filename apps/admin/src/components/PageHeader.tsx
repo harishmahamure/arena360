@@ -25,12 +25,7 @@ export function PageHeader({
   return (
     <Box sx={{ mb: 3 }}>
       {backTo && (
-        <Button
-          component={RouterLink}
-          to={backTo}
-          startIcon={<ArrowBack />}
-          sx={{ mb: 1, ml: -1 }}
-        >
+        <Button component={RouterLink} to={backTo} startIcon={<ArrowBack />} sx={{ mb: 1, ml: -1 }}>
           {backLabel}
         </Button>
       )}

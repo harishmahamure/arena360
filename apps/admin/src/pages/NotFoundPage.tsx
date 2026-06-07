@@ -24,12 +24,7 @@ export default function NotFoundPage() {
         The page you are looking for does not exist or may have been moved.
       </Typography>
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <Button
-          component={RouterLink}
-          to={homePath}
-          variant="contained"
-          startIcon={<Home />}
-        >
+        <Button component={RouterLink} to={homePath} variant="contained" startIcon={<Home />}>
           {isStaff ? 'Staff dashboard' : 'Dashboard'}
         </Button>
         <Button

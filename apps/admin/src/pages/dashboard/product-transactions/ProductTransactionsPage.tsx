@@ -6,7 +6,6 @@ import { Box, Chip, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { buildListUrl } from '../../../utils/buildListUrl';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -17,6 +16,7 @@ import {
   type Transaction,
   TransactionType,
 } from '../../../services/transaction/list';
+import { buildListUrl } from '../../../utils/buildListUrl';
 
 const getStatusColor = (status: PaymentStatusValue) => {
   switch (status) {

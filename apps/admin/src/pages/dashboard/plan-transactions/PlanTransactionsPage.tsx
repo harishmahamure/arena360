@@ -6,16 +6,16 @@ import { Box, Chip, Pagination, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { buildListUrl } from '../../../utils/buildListUrl';
 import { useEnrichedTransactions } from '../../../hooks/useEnrichedTransactions';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   getTransactions,
-  PaymentStatus,
   type PaymentMethod,
+  PaymentStatus,
   type TransactionResponse,
   TransactionType,
 } from '../../../services/transactions/list';
+import { buildListUrl } from '../../../utils/buildListUrl';
 
 const getStatusColor = (status: PaymentStatusValue) => {
   switch (status) {
