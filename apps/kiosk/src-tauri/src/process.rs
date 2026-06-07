@@ -313,7 +313,7 @@ fn window_area(hwnd: windows::Win32::Foundation::HWND) -> i32 {
 
     let mut rect = RECT::default();
     unsafe {
-        if !GetWindowRect(hwnd, &mut rect).as_bool() {
+        if GetWindowRect(hwnd, &mut rect).is_err() {
             return 0;
         }
     }
@@ -404,9 +404,10 @@ pub fn refresh_tracked_state() {}
 #[cfg(target_os = "windows")]
 pub fn bring_hwnd_to_foreground(hwnd: isize) {
     use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Threading::AttachThreadInput;
     use windows::Win32::UI::WindowsAndMessaging::{
-        AttachThreadInput, BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId,
-        SetForegroundWindow, ShowWindow, SW_RESTORE,
+        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+        ShowWindow, SW_RESTORE,
     };
 
     unsafe {
@@ -484,7 +485,9 @@ fn fullscreen_process_window(pid: u32) -> Option<isize> {
     for _ in 0..24 {
         if let Some(hwnd) = best_visible_hwnd_for_pids(&[pid]) {
             let hwnd = HWND(hwnd as *mut _);
-            make_borderless_fullscreen(hwnd);
+            unsafe {
+                make_borderless_fullscreen(hwnd);
+            }
             bring_hwnd_to_foreground(hwnd.0 as isize);
             set_last_allowed_hwnd(hwnd.0 as isize);
             return Some(hwnd.0 as isize);
