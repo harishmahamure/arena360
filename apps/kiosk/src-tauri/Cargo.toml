@@ -1,6 +1,6 @@
 [package]
 name = "kiosk"
-version = "2.1.1"
+version = "3.0.0"
 description = "Gaming Cafe in-cafe kiosk (Tauri 2)"
 authors = ["Gaming Cafe"]
 edition = "2021"
