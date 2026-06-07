@@ -1,4 +1,5 @@
 mod audio;
+mod boost;
 mod cache;
 mod fingerprint;
 mod lockdown;
@@ -69,6 +70,8 @@ pub fn run() {
             process::get_tracked_processes,
             process::kill_tracked_processes,
             process::clear_tracked_processes,
+            boost::set_game_boost_config,
+            boost::get_game_boost_config,
             cache::cache_asset,
         ])
         .build(tauri::generate_context!())

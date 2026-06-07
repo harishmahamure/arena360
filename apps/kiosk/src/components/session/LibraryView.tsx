@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useGameLibrary } from '../../hooks/useGameLibrary';
 import { fetchGames } from '../../lib/allowList';
 import { GameCard } from './GameCard';
 import { useAllowList } from './useAllowList';
@@ -6,24 +6,26 @@ import { useLauncher } from './useLauncher';
 
 interface LibraryViewProps {
   disabled?: boolean;
+  initialQuery?: string;
   onError?: (message: string) => void;
   onLaunched?: () => void;
 }
 
-/** Arena360 Game Library: search across allowed games on this station. */
-export function LibraryView({ disabled, onError, onLaunched }: LibraryViewProps) {
+/** Arena360 Game Library: search and filter allowed games on this station. */
+export function LibraryView({
+  disabled,
+  initialQuery = '',
+  onError,
+  onLaunched,
+}: LibraryViewProps) {
   const { items: games } = useAllowList(fetchGames);
-  const [query, setQuery] = useState('');
+  const { query, setQuery, genre, setGenre, sort, setSort, visible, genres, resultLabel } =
+    useGameLibrary({ games, initialQuery });
   const { launchingKey, isLaunchable, launch } = useLauncher(
     Boolean(disabled),
     onError,
     onLaunched,
   );
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return games.filter((g) => !q || g.name.toLowerCase().includes(q));
-  }, [games, query]);
 
   return (
     <section className="a360-section">
@@ -44,11 +46,42 @@ export function LibraryView({ disabled, onError, onLaunched }: LibraryViewProps)
               value={query}
               placeholder="Search games…"
               aria-label="Search games"
+              data-library-search=""
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
+          {genres.length > 0 ? (
+            <select
+              className="a360-library-filter"
+              aria-label="Filter by genre"
+              value={genre ?? ''}
+              onChange={(e) => setGenre(e.target.value || null)}
+            >
+              <option value="">All genres</option>
+              {genres.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <select
+            className="a360-library-filter"
+            aria-label="Sort games"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'name' | 'sortOrder')}
+          >
+            <option value="sortOrder">Staff order</option>
+            <option value="name">Name A–Z</option>
+          </select>
         </div>
       </header>
+
+      {games.length > 0 ? (
+        <p className="a360-library-count" aria-live="polite">
+          {resultLabel}
+        </p>
+      ) : null}
 
       {games.length === 0 ? (
         <p className="a360-empty">No games allowed yet. Ask staff to set up this station.</p>

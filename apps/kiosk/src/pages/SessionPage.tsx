@@ -37,6 +37,7 @@ export function SessionPage() {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [view, setView] = useState<SessionView>('home');
+  const [libraryQuery, setLibraryQuery] = useState('');
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [graceLeft, setGraceLeft] = useState(0);
@@ -71,6 +72,31 @@ export function SessionPage() {
     enabled: Boolean(activeSession) && forceEndGraceEndsAt === null,
     onError,
   });
+
+  // "/" focuses library search when not typing in an input.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT')
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setView('library');
+      requestAnimationFrame(() => {
+        const input = document.querySelector<HTMLInputElement>('[data-library-search]');
+        input?.focus();
+      });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // When the player returns from a launched game, land on the session homepage.
   useEffect(() => {
@@ -212,9 +238,14 @@ export function SessionPage() {
         ) : null}
 
         {view === 'home' ? (
-          <HomeView onError={onError} onNavigate={setView} onLaunched={refresh} />
+          <HomeView
+            onError={onError}
+            onNavigate={setView}
+            onSearchLibrary={setLibraryQuery}
+            onLaunched={refresh}
+          />
         ) : view === 'library' ? (
-          <LibraryView onError={onError} onLaunched={refresh} />
+          <LibraryView initialQuery={libraryQuery} onError={onError} onLaunched={refresh} />
         ) : (
           <SettingsView onError={onError} onLaunched={refresh} />
         )}

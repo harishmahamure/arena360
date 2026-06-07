@@ -19,6 +19,11 @@ import {
   updateLaunchEntry,
 } from '../lib/allowList';
 import {
+  applyGameBoostSettings,
+  loadGameBoostSettings,
+  syncGameBoostToNative,
+} from '../lib/gameBoost';
+import {
   launchAllowed,
   pickExecutable,
   type ScanCandidate,
@@ -60,8 +65,16 @@ export function AllowListEditor() {
   const [manualCategory, setManualCategory] = useState<LaunchCategory>('game');
   const [status, setStatus] = useState<string | null>(null);
   const [picker, setPicker] = useState<{ field: MediaField } | null>(null);
+  const [gameBoostEnabled, setGameBoostEnabled] = useState(() => loadGameBoostSettings().enabled);
+  const [gameBoostAggressive, setGameBoostAggressive] = useState(
+    () => loadGameBoostSettings().aggressive,
+  );
 
   const selected = entries.find((e) => e.id === selectedId) ?? null;
+
+  useEffect(() => {
+    void syncGameBoostToNative();
+  }, []);
 
   useEffect(() => {
     const unlisten = listen<ScanProgress>('scan-progress', (event) => {
@@ -298,6 +311,38 @@ export function AllowListEditor() {
             </button>
             <button type="submit">Add</button>
           </form>
+        </div>
+
+        <div className="allow-list-section">
+          <h3 className="allow-list-subhead">Game boost</h3>
+          <label className="allow-list-boost-toggle">
+            <input
+              type="checkbox"
+              checked={gameBoostEnabled}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                setGameBoostEnabled(enabled);
+                void applyGameBoostSettings({ enabled, aggressive: gameBoostAggressive });
+              }}
+            />
+            Boost performance when launching games
+          </label>
+          <label className="allow-list-boost-toggle">
+            <input
+              type="checkbox"
+              checked={gameBoostAggressive}
+              disabled={!gameBoostEnabled}
+              onChange={(e) => {
+                const aggressive = e.target.checked;
+                setGameBoostAggressive(aggressive);
+                void applyGameBoostSettings({ enabled: gameBoostEnabled, aggressive });
+              }}
+            />
+            Close background apps (Discord, browsers, Spotify)
+          </label>
+          <p className="hint">
+            Boost runs automatically on each game launch and resets when the session ends.
+          </p>
         </div>
 
         {status ? <p className="meta">{status}</p> : null}

@@ -609,6 +609,7 @@ fn start_monitor_if_needed(app: AppHandle) {
             tracked.is_empty()
         };
         if is_empty {
+            crate::boost::restore_game_boost();
             restore_kiosk_window(&app);
             if let Ok(mut running) = MONITOR_RUNNING.lock() {
                 *running = false;
@@ -634,7 +635,9 @@ pub fn launch_allowed(
         return Err("Executable not in allow-list".to_string());
     }
     prepare_kiosk_for_game_mode(&app)?;
+    crate::boost::prepare_game_boost();
     let pid = spawn_process(&executable_path, arguments.as_deref())?;
+    crate::boost::apply_game_priority(pid);
     let window_handle = if is_launcher_executable(&executable_path) {
         None
     } else {
@@ -680,6 +683,7 @@ pub fn kill_tracked_processes(
     kill_process_trees(&entries);
     TRACKED.lock().map_err(|e| e.to_string())?.clear();
     if killed > 0 {
+        crate::boost::restore_game_boost();
         restore_kiosk_window(&app);
     }
     Ok(KillResult { killed })

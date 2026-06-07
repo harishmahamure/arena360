@@ -10,6 +10,7 @@ interface HomeViewProps {
   disabled?: boolean;
   onError?: (message: string) => void;
   onNavigate: (view: SessionView) => void;
+  onSearchLibrary?: (query: string) => void;
   onLaunched?: () => void;
 }
 
@@ -17,7 +18,13 @@ function tryAutoplay(video: HTMLVideoElement) {
   void Promise.resolve(video.play()).catch(() => {});
 }
 
-export function HomeView({ disabled, onError, onNavigate, onLaunched }: HomeViewProps) {
+export function HomeView({
+  disabled,
+  onError,
+  onNavigate,
+  onSearchLibrary,
+  onLaunched,
+}: HomeViewProps) {
   const { items: games } = useAllowList(fetchGames);
   const { launchingKey, isLaunchable, launch } = useLauncher(
     Boolean(disabled),
@@ -25,6 +32,7 @@ export function HomeView({ disabled, onError, onNavigate, onLaunched }: HomeView
     onLaunched,
   );
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [homeQuery, setHomeQuery] = useState('');
 
   useEffect(() => {
     if (selectedIndex >= games.length) setSelectedIndex(0);
@@ -35,6 +43,17 @@ export function HomeView({ disabled, onError, onNavigate, onLaunched }: HomeView
   const canPlay = featured ? isLaunchable(featured) : false;
   const isLaunching = featured ? launchingKey === featured.id : false;
   const background = featured?.videoUrl ?? LOGIN_BACKGROUND_VIDEO_URL;
+
+  function submitLibrarySearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = homeQuery.trim();
+    if (!q) {
+      onNavigate('library');
+      return;
+    }
+    onSearchLibrary?.(q);
+    onNavigate('library');
+  }
 
   return (
     <div className="a360-home">
@@ -55,6 +74,24 @@ export function HomeView({ disabled, onError, onNavigate, onLaunched }: HomeView
         <div className="a360-hero-scrim a360-hero-scrim--cinematic" />
 
         <div className="a360-hero-content">
+          {games.length > 0 ? (
+            <form className="a360-home-search" onSubmit={submitLibrarySearch}>
+              <span className="material-symbols-outlined" aria-hidden="true">
+                search
+              </span>
+              <input
+                type="search"
+                value={homeQuery}
+                placeholder="Search your library…"
+                aria-label="Search games in library"
+                onChange={(e) => setHomeQuery(e.target.value)}
+              />
+              <button type="submit" className="a360-btn-ghost a360-home-search-btn">
+                Browse
+              </button>
+            </form>
+          ) : null}
+
           <HeroGameCarousel
             games={games}
             selectedIndex={selectedIndex}

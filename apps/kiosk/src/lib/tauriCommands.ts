@@ -167,6 +167,19 @@ export async function clearTrackedProcesses(): Promise<void> {
   await invoke('clear_tracked_processes');
 }
 
+export interface GameBoostConfig {
+  enabled: boolean;
+  aggressive: boolean;
+}
+
+export async function setGameBoostConfig(config: GameBoostConfig): Promise<void> {
+  await invoke('set_game_boost_config', { config });
+}
+
+export async function getGameBoostConfig(): Promise<GameBoostConfig> {
+  return invoke<GameBoostConfig>('get_game_boost_config');
+}
+
 /**
  * Download a remote asset into the on-device cache (once) and return a source
  * the webview can render. Falls back to the remote URL when not running under

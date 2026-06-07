@@ -1126,6 +1126,57 @@ body,
   box-shadow: 0 0 0 1px var(--a360-primary);
 }
 
+.a360-library-filter {
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--a360-radius-md);
+  border: 1px solid rgba(49, 52, 65, 0.4);
+  background: var(--a360-surface-low);
+  color: var(--a360-on-surface);
+  font-size: 0.9rem;
+}
+
+.a360-library-count {
+  margin: 0 0 1rem;
+  color: var(--a360-on-surface-variant);
+  font-size: 0.9rem;
+}
+
+.a360-home-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 28rem;
+  margin-bottom: 1rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+  border-radius: var(--a360-radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.a360-home-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--a360-on-surface);
+  font-size: 0.95rem;
+}
+
+.a360-home-search input:focus {
+  outline: none;
+}
+
+.a360-home-search .material-symbols-outlined {
+  color: var(--a360-on-surface-variant);
+  font-size: 1.25rem;
+}
+
+.a360-home-search-btn {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+}
+
 .a360-filters {
   display: flex;
   gap: 0.25rem;
