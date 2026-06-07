@@ -1,11 +1,12 @@
 import { Home, PlayCircle } from '@mui/icons-material';
 import { Box, Button, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
-import { Permission, usePermissions } from '../hooks/usePermissions';
+import { usePermissions } from '../hooks/usePermissions';
+import { getDefaultHomePath } from '../utils/homePath';
 
 export default function NotFoundPage() {
   const { can, isStaff } = usePermissions();
-  const homePath = can(Permission.StatsRead) ? '/' : '/sessions';
+  const homePath = getDefaultHomePath(can);
 
   return (
     <Box

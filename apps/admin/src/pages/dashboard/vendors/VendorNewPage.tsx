@@ -1,14 +1,13 @@
+import { FormPage } from '@gaming-cafe/ui';
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   FormControlLabel,
+  FormHelperText,
   Stack,
   Switch,
   TextField,
-  Typography,
 } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -54,86 +53,91 @@ export default function VendorNewPage() {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 600 }}>
-      <Typography variant="h4" fontWeight={600} gutterBottom>
-        New Vendor
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Add a new supplier or vendor
-      </Typography>
-
+    <FormPage
+      title="New Vendor"
+      description="Add a new supplier or vendor"
+      backTo="/vendors"
+      backLabel="Back to vendors"
+      breadcrumbs={[{ label: 'Vendors', to: '/vendors' }, { label: 'New vendor' }]}
+      maxWidth={600}
+    >
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(undefined)}>
           {error}
         </Alert>
       )}
 
-      <Card>
-        <CardContent>
-          <Stack spacing={3}>
-            <TextField
-              label="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fullWidth
-              required
-            />
-            <TextField
-              label="Contact Person"
-              value={contactPerson}
-              onChange={(e) => setContactPerson(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              label="Phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              label="Address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              fullWidth
-              multiline
-              rows={2}
-            />
-            <TextField
-              label="GST Number"
-              value={gstNumber}
-              onChange={(e) => setGstNumber(e.target.value)}
-              fullWidth
-            />
-            <FormControlLabel
-              control={
-                <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-              }
-              label="Active"
-            />
+      <Stack spacing={3}>
+        <TextField
+          label="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          fullWidth
+          required
+          helperText="Business or supplier name shown on expense records"
+        />
+        <TextField
+          label="Contact Person"
+          value={contactPerson}
+          onChange={(e) => setContactPerson(e.target.value)}
+          fullWidth
+          helperText="Primary contact at the vendor (optional)"
+        />
+        <TextField
+          label="Phone"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          fullWidth
+          helperText="Contact phone number (optional)"
+        />
+        <TextField
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          fullWidth
+          helperText="Contact email for invoices and orders (optional)"
+        />
+        <TextField
+          label="Address"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          fullWidth
+          multiline
+          rows={2}
+          helperText="Vendor address for records (optional)"
+        />
+        <TextField
+          label="GST Number"
+          value={gstNumber}
+          onChange={(e) => setGstNumber(e.target.value)}
+          fullWidth
+          helperText="GSTIN for tax reporting (optional)"
+        />
+        <Box>
+          <FormControlLabel
+            control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />}
+            label="Active"
+          />
+          <FormHelperText sx={{ mx: 0 }}>
+            Inactive vendors are hidden from expense vendor pickers
+          </FormHelperText>
+        </Box>
 
-            <Stack direction="row" spacing={2}>
-              <Button variant="contained" onClick={handleSubmit} disabled={loading} fullWidth>
-                {loading ? 'Creating...' : 'Create Vendor'}
-              </Button>
-              <Button
-                variant="outlined"
-                onClick={() => navigate('/vendors')}
-                disabled={loading}
-                fullWidth
-              >
-                Cancel
-              </Button>
-            </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
-    </Box>
+        <Stack direction="row" spacing={2}>
+          <Button variant="contained" onClick={handleSubmit} disabled={loading} fullWidth>
+            {loading ? 'Creating...' : 'Create Vendor'}
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => navigate('/vendors')}
+            disabled={loading}
+            fullWidth
+          >
+            Cancel
+          </Button>
+        </Stack>
+      </Stack>
+    </FormPage>
   );
 }

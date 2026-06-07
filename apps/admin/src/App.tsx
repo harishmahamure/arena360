@@ -83,9 +83,7 @@ function App() {
                   <Route path="/login" element={<LoginPage />} />
                 </Route>
                 <Route element={<DashboardLayout />}>
-                  <Route element={<RequirePermission permission={Permission.StatsRead} />}>
-                    <Route path="/" element={<DashboardPage />} />
-                  </Route>
+                  <Route path="/" element={<DashboardPage />} />
                   <Route element={<RequirePermission permission={Permission.PlayersRead} />}>
                     <Route path="/players" element={<PlayersPage />} />
                     <Route path="/players/:id" element={<PlayerDetailPage />} />

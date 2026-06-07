@@ -1,7 +1,6 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
-import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
+import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -10,7 +9,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  Paper,
   Typography,
 } from '@mui/material';
 import { useState } from 'react';
@@ -145,16 +143,13 @@ export default function AddNewDevicePage() {
   };
 
   return (
-    <Paper elevation={0} sx={{ p: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          Add New Device
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Register a new gaming device or station in your game zone
-        </Typography>
-      </Box>
-
+    <FormPage
+      title="Add New Device"
+      description="Register a new gaming device or station in your game zone"
+      backTo="/devices"
+      backLabel="Back to devices"
+      breadcrumbs={[{ label: 'Devices', to: '/devices' }, { label: 'New device' }]}
+    >
       <FormBuilder<CreateDeviceFormData>
         fields={deviceFormFields}
         schema={createDeviceSchema}
@@ -193,6 +188,6 @@ export default function AddNewDevicePage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Paper>
+    </FormPage>
   );
 }

@@ -109,8 +109,23 @@ export interface FieldConfig<T extends FieldValues = FieldValues> {
   /** Query key for search field caching */
   searchQueryKey?: string;
 
-  /** Helper text for the field */
+  /**
+   * @deprecated Use `helperText` instead. Kept for backward compatibility.
+   */
   formHelperText?: string;
+}
+
+function FieldHelperCaption({ text }: { text?: string }) {
+  if (!text) return null;
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{ display: 'block', mt: 0.5, px: 0.2 }}
+    >
+      {text}
+    </Typography>
+  );
 }
 
 interface ControllerRenderProps {
@@ -260,10 +275,12 @@ function FieldRenderer<T extends FieldValues>({
     return null;
   }
 
+  const resolvedHelper = errorMessage || helperText || formHelperText;
+
   const commonProps = {
     fullWidth: true,
     error: !!errorMessage,
-    helperText: errorMessage || helperText,
+    helperText: resolvedHelper,
     disabled: isDisabled,
     required,
     placeholder,
@@ -317,7 +334,6 @@ function FieldRenderer<T extends FieldValues>({
                     autoComplete: 'one-time-code',
                   }}
                   InputLabelProps={{ shrink: true }}
-                  helperText={formHelperText}
                 />
               );
 
@@ -350,7 +366,6 @@ function FieldRenderer<T extends FieldValues>({
                   value={field.value ?? ''}
                   autoComplete="one-time-code"
                   inputProps={{ autoComplete: 'one-time-code' }}
-                  helperText={formHelperText}
                 />
               );
 
@@ -366,7 +381,6 @@ function FieldRenderer<T extends FieldValues>({
                     autoComplete: 'off',
                   }}
                   InputLabelProps={{ shrink: true }}
-                  helperText={helperText || formHelperText}
                 />
               );
 
@@ -380,7 +394,6 @@ function FieldRenderer<T extends FieldValues>({
                   onChange={(e) => field.onChange(e.target.value)}
                   onBlur={field.onBlur}
                   name={field.name}
-                  helperText={formHelperText}
                 />
               );
 
@@ -418,7 +431,7 @@ function FieldRenderer<T extends FieldValues>({
                       {...params}
                       placeholder={placeholder}
                       error={!!errorMessage}
-                      helperText={formHelperText}
+                      helperText={resolvedHelper}
                       size="small"
                     />
                   )}
@@ -428,41 +441,56 @@ function FieldRenderer<T extends FieldValues>({
 
             case 'checkbox':
               return (
-                <FormCheckbox
-                  {...commonProps}
-                  label={''}
-                  checked={!!field.value}
-                  onChange={(e) => field.onChange(e.target.checked)}
-                  onBlur={field.onBlur}
-                  name={field.name}
-                  inputRef={field.ref}
-                />
+                <>
+                  <FormCheckbox
+                    {...commonProps}
+                    label={''}
+                    checked={!!field.value}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    inputRef={field.ref}
+                  />
+                  <FieldHelperCaption
+                    text={!errorMessage ? helperText || formHelperText : undefined}
+                  />
+                </>
               );
 
             case 'switch':
               return (
-                <FormSwitch
-                  {...commonProps}
-                  label={''}
-                  checked={!!field.value}
-                  onChange={(e) => field.onChange(e.target.checked)}
-                  onBlur={field.onBlur}
-                  name={field.name}
-                  inputRef={field.ref}
-                />
+                <>
+                  <FormSwitch
+                    {...commonProps}
+                    label={''}
+                    checked={!!field.value}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    inputRef={field.ref}
+                  />
+                  <FieldHelperCaption
+                    text={!errorMessage ? helperText || formHelperText : undefined}
+                  />
+                </>
               );
 
             case 'radio':
               return (
-                <FormRadioGroup
-                  {...commonProps}
-                  label={''}
-                  options={options as FormRadioOption[]}
-                  value={field.value ?? ''}
-                  onChange={(e) => field.onChange(e.target.value)}
-                  onBlur={field.onBlur}
-                  name={field.name}
-                />
+                <>
+                  <FormRadioGroup
+                    {...commonProps}
+                    label={''}
+                    options={options as FormRadioOption[]}
+                    value={field.value ?? ''}
+                    onChange={(e) => field.onChange(e.target.value)}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                  />
+                  <FieldHelperCaption
+                    text={!errorMessage ? helperText || formHelperText : undefined}
+                  />
+                </>
               );
 
             case 'file':
@@ -501,7 +529,7 @@ function FieldRenderer<T extends FieldValues>({
                   onSearch={onSearch as (query: string) => Promise<SearchOption[]>}
                   disabled={isDisabled}
                   queryKey={searchQueryKey}
-                  helperText={formHelperText}
+                  helperText={resolvedHelper}
                   multiple={multiple}
                   onSearchComplete={onSearchComplete}
                 />

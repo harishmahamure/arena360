@@ -1,5 +1,4 @@
-import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Box, Paper, Typography } from '@mui/material';
+import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -99,21 +98,13 @@ export default function AddNewUnitPage() {
   };
 
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 4,
-      }}
+    <FormPage
+      title="Add New Unit"
+      description="Fill in the details below to create a new measurement unit"
+      backTo="/units"
+      backLabel="Back to units"
+      breadcrumbs={[{ label: 'Units', to: '/units' }, { label: 'New unit' }]}
     >
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          Add New Unit
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Fill in the details below to create a new measurement unit
-        </Typography>
-      </Box>
-
       <FormBuilder<CreateUnitFormData>
         fields={unitFormFields}
         schema={createUnitSchema}
@@ -132,6 +123,6 @@ export default function AddNewUnitPage() {
         buttonAlign="right"
         spacing={3}
       />
-    </Paper>
+    </FormPage>
   );
 }

@@ -663,6 +663,64 @@ staff loop.
 
 ---
 
+### UI-024: Form helper text audit
+
+**Type:** UI
+**Complexity:** M
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-009
+**Blocks:** —
+
+#### Description
+
+Fix `FormBuilder` to render `helperText` on all field types; add descriptive
+helper text to every admin create form field.
+
+#### Acceptance criteria
+
+- [x] `helperText` on `FieldConfig` renders for text, number, select, search, textarea, switch
+- [x] Legacy ad-hoc forms (Expense, Vendor, Inventory, Game) have field helper text
+- [x] Product create form has helper text on all fields
+
+#### Key files
+
+- `packages/ui/src/lib/components/FormBuilder.tsx`
+- `apps/admin/src/pages/dashboard/**/*NewPage.tsx`
+- `apps/admin/src/containers/games/GameForm.tsx`
+
+---
+
+### UI-025: Plan sell POS-style flow
+
+**Type:** UI
+**Complexity:** L
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-017
+**Blocks:** —
+
+#### Description
+
+Rebuild plan purchase (`PlanTransactionNewPage`) as a POS-style counter flow
+matching product sales: plan card grid, sticky summary, shared payment tiles.
+Extract shared sales components from product POS.
+
+#### Acceptance criteria
+
+- [x] Plan sell uses card grid + sticky summary (not vertical FormBuilder)
+- [x] Shared `PosPaymentTiles`, `PosPlayerPicker`, `CounterSaleLayout` extracted
+- [x] `ActiveShiftGuard` and transaction payload unchanged
+- [x] Helper text on POS fields (store, player, search, split, notes)
+
+#### Key files
+
+- `apps/admin/src/containers/sales/*`
+- `apps/admin/src/pages/dashboard/plan-transactions/PlanTransactionNewPage.tsx`
+- `apps/admin/src/pages/dashboard/product-transactions/ProductTransactionNewPage.tsx`
+
+---
+
 ## Task index (quick reference)
 
 | ID | Title | Size | Priority | Milestone |
@@ -690,6 +748,8 @@ staff loop.
 | UI-021 | Grid2 migration | M | Could | M6 |
 | UI-022 | UI package docs | S | Should | M6 |
 | UI-023 | Visual regression checklist | S | Should | M6 |
+| UI-024 | Form helper text audit | M | Should | M6 |
+| UI-025 | Plan sell POS-style flow | L | Must | M6 |
 
 ---
 

@@ -1,3 +1,4 @@
+import { permissionsForRole } from '@gaming-cafe/contracts';
 import { FormButton, FormTextField } from '@gaming-cafe/ui';
 import { local, toastUtils } from '@gaming-cafe/utils';
 import {
@@ -23,8 +24,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../hooks/store';
+import type { Permission } from '../hooks/usePermissions';
 import { DENOMINATIONS } from '../services/cash-registers';
 import { closeShift, getExpectedClosing, handoverShift } from '../services/shifts';
+import { getDefaultHomePath } from '../utils/homePath';
 
 interface ShiftHandoverDialogProps {
   open: boolean;
@@ -209,7 +212,9 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
         void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
         void queryClient.invalidateQueries({ queryKey: ['shifts'] });
         void queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
-        navigate('/');
+        const permissions = permissionsForRole(response.newUser.role);
+        const can = (permission: Permission) => permissions.includes(permission);
+        navigate(getDefaultHomePath(can));
       }
     } catch (error: unknown) {
       const message =

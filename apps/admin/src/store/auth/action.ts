@@ -33,6 +33,7 @@ export const authReducer = (action: AuthAction, state: AuthState): AuthState => 
       return {
         ...state,
         ...action.payload,
+        role: action.payload.role?.toLowerCase() ?? '',
       };
     }
     case 'Reset': {

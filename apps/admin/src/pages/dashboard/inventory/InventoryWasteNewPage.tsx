@@ -1,14 +1,6 @@
+import { FormPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
-import {
-  Alert,
-  Autocomplete,
-  Box,
-  Button,
-  MenuItem,
-  Paper,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Autocomplete, Box, Button, MenuItem, TextField } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -76,27 +68,28 @@ export default function InventoryWasteNewPage() {
     (!needsNote || lineNote.trim().length >= 10);
 
   return (
-    <Paper sx={{ p: 4 }}>
-      <Typography variant="h5" fontWeight={600} gutterBottom>
-        Record stock waste
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Quantities in pieces. Admin must approve before stock is deducted.
-      </Typography>
-
+    <FormPage
+      title="Record stock waste"
+      description="Quantities in pieces. Admin must approve before stock is deducted."
+      backTo="/inventory/waste"
+      backLabel="Back to waste log"
+      breadcrumbs={[{ label: 'Inventory', to: '/inventory/waste' }, { label: 'Record waste' }]}
+      maxWidth={600}
+    >
       {activeLocations.length === 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           No inventory locations configured.
         </Alert>
       )}
 
-      <Box sx={{ display: 'grid', gap: 2, maxWidth: 560 }}>
+      <Box sx={{ display: 'grid', gap: 2 }}>
         <TextField
           select
           label="Location"
           value={locationId}
           onChange={(e) => setLocationId(e.target.value)}
           required
+          helperText="Store or warehouse where the waste occurred"
         >
           {activeLocations.map((l) => (
             <MenuItem key={l.id} value={l.id}>
@@ -109,7 +102,14 @@ export default function InventoryWasteNewPage() {
           options={productsData?.data ?? []}
           getOptionLabel={(p) => p.name}
           onChange={(_, p) => setProductId(p?.id ?? '')}
-          renderInput={(params) => <TextField {...params} label="Product" required />}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Product"
+              required
+              helperText="Product being written off from inventory"
+            />
+          )}
         />
 
         <TextField
@@ -119,6 +119,7 @@ export default function InventoryWasteNewPage() {
           onChange={(e) => setQuantityPieces(e.target.value)}
           inputProps={{ min: 1 }}
           required
+          helperText="Number of individual pieces wasted"
         />
 
         <TextField
@@ -126,6 +127,7 @@ export default function InventoryWasteNewPage() {
           label="Reason"
           value={reasonCode}
           onChange={(e) => setReasonCode(e.target.value)}
+          helperText="Why the stock is being removed"
         >
           {REASON_OPTIONS.map((r) => (
             <MenuItem key={r.value} value={r.value}>
@@ -141,6 +143,11 @@ export default function InventoryWasteNewPage() {
           multiline
           rows={2}
           required={needsNote}
+          helperText={
+            needsNote
+              ? 'Required when reason is Other — describe what happened (min 10 chars)'
+              : 'Optional detail for this line item'
+          }
         />
 
         <TextField
@@ -149,6 +156,7 @@ export default function InventoryWasteNewPage() {
           onChange={(e) => setNotes(e.target.value)}
           multiline
           rows={2}
+          helperText="Optional notes for the whole waste event"
         />
       </Box>
 
@@ -164,6 +172,6 @@ export default function InventoryWasteNewPage() {
           Submit for approval
         </Button>
       </Box>
-    </Paper>
+    </FormPage>
   );
 }

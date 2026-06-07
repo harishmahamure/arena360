@@ -1,5 +1,4 @@
-import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Box, Paper, Typography } from '@mui/material';
+import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -37,6 +36,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         placeholder: 'e.g., Coca Cola 500ml',
         required: true,
         gridCols: 6,
+        helperText: 'Shown on receipts and the POS product grid',
       },
       {
         name: 'sku',
@@ -44,6 +44,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         type: 'text',
         placeholder: 'e.g., COCA-500',
         gridCols: 6,
+        helperText: 'Optional stock-keeping unit for inventory tracking',
       },
       {
         name: 'description',
@@ -51,6 +52,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         type: 'textarea',
         fullWidth: true,
         rows: 2,
+        helperText: 'Optional short description shown on POS cards',
       },
       {
         name: 'price',
@@ -59,6 +61,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         required: true,
         gridCols: 4,
         min: 0,
+        helperText: 'Day price in ₹; charged during 8 AM – 11 PM venue time',
       },
       {
         name: 'nightPrice',
@@ -75,6 +78,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         type: 'number',
         gridCols: 4,
         min: 0,
+        helperText: 'Cost per purchase unit (box); used for margin reporting',
       },
       {
         name: 'unitsPerPurchaseUnit',
@@ -90,6 +94,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         type: 'select',
         gridCols: 4,
         options: [{ value: '', label: 'Default (piece)' }, ...unitOptions],
+        helperText: 'Unit sold to players at POS (defaults to piece)',
       },
       {
         name: 'purchaseUnitId',
@@ -97,6 +102,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         type: 'select',
         gridCols: 4,
         options: [{ value: '', label: 'Default (box)' }, ...unitOptions],
+        helperText: 'Unit used when receiving stock from vendors',
       },
       {
         name: 'category',
@@ -105,6 +111,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         required: true,
         gridCols: 4,
         options: productCategoryOptions,
+        helperText: 'Product category for reporting and filtering',
       },
       {
         name: 'stockQuantity',
@@ -119,6 +126,7 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
         label: 'Active (Available for sale)',
         type: 'switch',
         gridCols: 12,
+        helperText: 'Inactive products are hidden from POS but kept in catalog',
       },
     ],
     [unitOptions],
@@ -167,16 +175,13 @@ export default function AddNewProductPage() {
   };
 
   return (
-    <Paper elevation={0} sx={{ p: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          Add New Product
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Configure pricing, box units, and sale units
-        </Typography>
-      </Box>
-
+    <FormPage
+      title="Add New Product"
+      description="Configure pricing, box units, and sale units"
+      backTo="/products"
+      backLabel="Back to products"
+      breadcrumbs={[{ label: 'Products', to: '/products' }, { label: 'New product' }]}
+    >
       <FormBuilder<CreateProductFormData>
         fields={productFormFields}
         schema={createProductSchema}
@@ -195,7 +200,7 @@ export default function AddNewProductPage() {
         buttonAlign="right"
         spacing={3}
       />
-    </Paper>
+    </FormPage>
   );
 }
 

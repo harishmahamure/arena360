@@ -3,6 +3,7 @@ import { Box, Typography } from '@mui/material';
 import { useEffect, useRef } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { type Permission, usePermissions } from '../hooks/usePermissions';
+import { getDefaultHomePath } from '../utils/homePath';
 
 interface RequirePermissionProps {
   permission: Permission;
@@ -27,18 +28,16 @@ function PermissionDeniedRedirect({
   return <Navigate to={redirectTo} replace />;
 }
 
-export default function RequirePermission({
-  permission,
-  redirectTo = '/sessions',
-}: RequirePermissionProps) {
+export default function RequirePermission({ permission, redirectTo }: RequirePermissionProps) {
   const { can } = usePermissions();
+  const fallbackPath = redirectTo ?? getDefaultHomePath(can);
 
   if (can(permission)) {
     return <Outlet />;
   }
 
-  if (redirectTo) {
-    return <PermissionDeniedRedirect redirectTo={redirectTo} permission={permission} />;
+  if (fallbackPath) {
+    return <PermissionDeniedRedirect redirectTo={fallbackPath} permission={permission} />;
   }
 
   return (

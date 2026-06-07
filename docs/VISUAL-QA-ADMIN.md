@@ -14,8 +14,9 @@ Manual regression pass for the admin modernization track (M5–M6). No Playwrigh
 - [ ] Staff dashboard — shift hero, quick actions 44px, ending-soon strip
 - [ ] Sessions list — card layout, no horizontal scroll
 - [ ] Session detail — sticky mobile actions, hero countdown
-- [ ] POS — product grid, sticky cart, payment tiles
-- [ ] Plan purchase — FormPage, shift guard
+- [ ] POS — product grid, sticky cart, payment tiles, helper text on store/player/search
+- [ ] Plan purchase — POS-style plan grid, sticky summary, payment tiles (matches product POS)
+- [ ] Config form sample — Product or Plan create shows gray helper text under every field
 
 ## Owner / admin
 

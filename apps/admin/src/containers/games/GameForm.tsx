@@ -1,4 +1,13 @@
-import { Alert, Box, Button, FormControlLabel, Stack, Switch, TextField } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  FormControlLabel,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { useState } from 'react';
 import { AssetUploadField } from '../../components/AssetUploadField';
 import type { GamePayload } from '../../services/game/add';
@@ -92,11 +101,19 @@ export function GameForm({
             value={sortOrder}
             onChange={(e) => setSortOrder(Number.parseInt(e.target.value, 10) || 0)}
             sx={{ width: { xs: '100%', sm: 200 } }}
+            helperText="Lower numbers appear first on the kiosk grid"
           />
-          <FormControlLabel
-            control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />}
-            label="Active (shown on kiosk)"
-          />
+          <Box>
+            <FormControlLabel
+              control={
+                <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+              }
+              label="Active (shown on kiosk)"
+            />
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 0.5 }}>
+              Inactive games are hidden from the kiosk launcher
+            </Typography>
+          </Box>
         </Stack>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>

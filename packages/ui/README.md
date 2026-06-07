@@ -35,7 +35,7 @@ Slots: `toolbar` (filters, date toggles), `footer` (pagination), `dense` / `maxW
 | Standard list | `ListPage` | Raw `DataGrid` + manual `PageShell` |
 | Create/edit form | `FormPage` + `FormBuilder` | `Typography h4` + loose `Paper` |
 | Entity detail | `DetailPage` | Duplicate header/summary chrome |
-| Bespoke counter (POS) | `PageShell` only | `FormPage` (single Paper fights layout) |
+| Bespoke counter (POS) | `CounterSaleLayout` in admin (`containers/sales`) or `PageShell` | `FormPage` (single Paper fights layout) |
 | Mobile list cards | `ListPage` + `mobileCardRender` | Custom page-only table fork |
 
 Extend composites only when a prop gap is real — prefer composing primitives (`PageShell` + local sections) over forking package components.
@@ -92,6 +92,25 @@ import { ActiveShiftGuard } from '../components/ActiveShiftGuard';
 ```
 
 Wrap with `ActiveShiftGuard` in admin when the flow requires an active shift. Alerts and auxiliary content go in `children` before `FormBuilder`.
+
+### Form helper text
+
+On `FormBuilder` fields, set **`helperText`** on each `FieldConfig` — one short sentence describing what the field controls and any constraint (e.g. `"Day price in ₹; charged during 8 AM – 11 PM"`).
+
+```tsx
+{
+  name: 'price',
+  label: 'Day price (₹)',
+  type: 'number',
+  helperText: 'Day price in ₹; charged during 8 AM – 11 PM venue time',
+}
+```
+
+`FormBuilder` renders `helperText` below every supported field type (text, number, select, search, switch, etc.). Validation errors replace helper text when present. The legacy `formHelperText` prop is deprecated — use `helperText` only.
+
+### Counter sale flows (admin)
+
+Product POS and plan sell use **`CounterSaleLayout`** (`apps/admin/src/containers/sales/`) — shared payment tiles, player picker, and a 7/5 catalog + sticky summary grid. Use `FormPage` for config/create forms; use `CounterSaleLayout` for staff counter checkout flows.
 
 ## Detail pages
 

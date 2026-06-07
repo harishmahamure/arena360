@@ -1,6 +1,5 @@
 import type { DeductionProfile, PlanTypeValue } from '@gaming-cafe/contracts';
-import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Box, Paper, Typography } from '@mui/material';
+import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -279,21 +278,13 @@ export default function AddNewPlanPage() {
   };
 
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 4,
-      }}
+    <FormPage
+      title="Add New Plan"
+      description="Fill in the details below to create a new gaming plan"
+      backTo="/plans"
+      backLabel="Back to plans"
+      breadcrumbs={[{ label: 'Plans', to: '/plans' }, { label: 'New plan' }]}
     >
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          Add New Plan
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Fill in the details below to create a new gaming plan
-        </Typography>
-      </Box>
-
       <FormBuilder<CreatePlanFormData>
         fields={planFormFields}
         schema={createPlanSchema}
@@ -312,6 +303,6 @@ export default function AddNewPlanPage() {
         buttonAlign="right"
         spacing={3}
       />
-    </Paper>
+    </FormPage>
   );
 }

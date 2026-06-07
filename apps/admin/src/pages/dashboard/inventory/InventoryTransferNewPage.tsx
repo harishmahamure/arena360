@@ -1,15 +1,7 @@
+import { FormPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { Delete } from '@mui/icons-material';
-import {
-  Alert,
-  Autocomplete,
-  Box,
-  Button,
-  IconButton,
-  Paper,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Autocomplete, Box, Button, IconButton, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -87,18 +79,30 @@ export default function InventoryTransferNewPage() {
   });
 
   if (!store || !warehouse) {
-    return <Alert severity="warning">Configure active warehouse and store locations first.</Alert>;
+    return (
+      <FormPage
+        title="Request stock for store"
+        description="Transfer stock from warehouse to store"
+        backTo="/inventory/transfers"
+        backLabel="Back to transfers"
+        breadcrumbs={[
+          { label: 'Inventory', to: '/inventory/transfers' },
+          { label: 'New transfer' },
+        ]}
+      >
+        <Alert severity="warning">Configure active warehouse and store locations first.</Alert>
+      </FormPage>
+    );
   }
 
   return (
-    <Paper sx={{ p: 4 }}>
-      <Typography variant="h5" fontWeight={600} gutterBottom>
-        Request stock for store
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Request: {warehouse.name} → {store.name} (quantities in pieces)
-      </Typography>
-
+    <FormPage
+      title="Request stock for store"
+      description={`Request: ${warehouse.name} → ${store.name} (quantities in pieces)`}
+      backTo="/inventory/transfers"
+      backLabel="Back to transfers"
+      breadcrumbs={[{ label: 'Inventory', to: '/inventory/transfers' }, { label: 'New transfer' }]}
+    >
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3 }}>
         <Autocomplete
           sx={{ flex: 1, minWidth: 240 }}
@@ -108,7 +112,12 @@ export default function InventoryTransferNewPage() {
           onInputChange={(_, v) => setProductInput(v)}
           onChange={(_, p) => p && addLine(p.id, p.name)}
           renderInput={(params) => (
-            <TextField {...params} label="Add product" placeholder="Search product..." />
+            <TextField
+              {...params}
+              label="Add product"
+              placeholder="Search product..."
+              helperText="Search and select a product to add to the transfer request"
+            />
           )}
         />
         <TextField
@@ -118,11 +127,14 @@ export default function InventoryTransferNewPage() {
           onChange={(e) => setQty(e.target.value)}
           inputProps={{ min: 1 }}
           sx={{ width: 120 }}
+          helperText="Qty per add"
         />
       </Box>
 
       {lines.length === 0 ? (
-        <Typography color="text.secondary">No items added yet.</Typography>
+        <Typography color="text.secondary">
+          No items added yet. Search for products above to build the request.
+        </Typography>
       ) : (
         lines.map((line) => (
           <Box key={line.productId} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
@@ -141,6 +153,8 @@ export default function InventoryTransferNewPage() {
               }}
               inputProps={{ min: 1 }}
               sx={{ width: 100 }}
+              helperText="Pieces"
+              FormHelperTextProps={{ sx: { mx: 0, textAlign: 'center' } }}
             />
             <Typography variant="body2">pcs</Typography>
             <IconButton
@@ -165,6 +179,6 @@ export default function InventoryTransferNewPage() {
           Submit request
         </Button>
       </Box>
-    </Paper>
+    </FormPage>
   );
 }

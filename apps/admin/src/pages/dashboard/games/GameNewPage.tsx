@@ -1,4 +1,4 @@
-import { Box, Paper, Typography } from '@mui/material';
+import { FormPage } from '@gaming-cafe/ui';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GameForm } from '../../../containers/games/GameForm';
@@ -26,15 +26,13 @@ export default function GameNewPage() {
   }
 
   return (
-    <Paper elevation={0} sx={{ p: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          Add New Game
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Upload branding assets and configure how this game appears on the kiosk.
-        </Typography>
-      </Box>
+    <FormPage
+      title="Add New Game"
+      description="Upload branding assets and configure how this game appears on the kiosk."
+      backTo="/games"
+      backLabel="Back to games"
+      breadcrumbs={[{ label: 'Games', to: '/games' }, { label: 'New game' }]}
+    >
       <GameForm
         submitLabel="Create Game"
         loading={loading}
@@ -43,6 +41,6 @@ export default function GameNewPage() {
         onSubmit={handleSubmit}
         onCancel={() => navigate('/games')}
       />
-    </Paper>
+    </FormPage>
   );
 }

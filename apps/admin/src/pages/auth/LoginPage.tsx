@@ -1,3 +1,4 @@
+import { permissionsForRole } from '@gaming-cafe/contracts';
 import { FormButton, FormTextField, PasswordField } from '@gaming-cafe/ui';
 import { local, toastUtils } from '@gaming-cafe/utils';
 import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
@@ -5,8 +6,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OtpModal from '../../components/OtpModal';
 import { useDispatch } from '../../hooks/store';
+import type { Permission } from '../../hooks/usePermissions';
 import { loginAPI, loginStaffAPI, verifyOtpAPI } from '../../services/auth/auth';
 import type { VerifyOtpResponseUser } from '../../services/auth/types';
+import { getDefaultHomePath } from '../../utils/homePath';
 
 type LoginMode = 'admin' | 'staff';
 
@@ -40,7 +43,9 @@ export default function LoginPage() {
         ...user,
       },
     });
-    navigate('/');
+    const permissions = permissionsForRole(user.role);
+    const can = (permission: Permission) => permissions.includes(permission);
+    navigate(getDefaultHomePath(can));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
