@@ -18,7 +18,43 @@ export type LaunchCategory = 'game' | 'launcher' | 'util';
 /** Launch through a platform launcher (Riot Client, Steam, etc.). */
 export interface LaunchVia {
   executablePath: string;
-  arguments: string;
+  arguments: string | string[];
+}
+
+/** Tokenize a command-line string respecting double quotes (Windows-style). */
+export function tokenizeArguments(input: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const ch of input) {
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if ((ch === ' ' || ch === '\t') && !inQuotes) {
+      if (current) {
+        out.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += ch;
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+/** Normalize launch arguments to a argv list for native spawn. */
+export function normalizeLaunchArguments(args?: string | string[]): string[] | undefined {
+  if (args == null) return undefined;
+  const list = Array.isArray(args) ? args : tokenizeArguments(args);
+  const trimmed = list.map((a) => a.trim()).filter(Boolean);
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** Serialize launch arguments for storage / display in a single text field. */
+export function formatLaunchArguments(args: string | string[]): string {
+  return Array.isArray(args) ? args.join(' ') : args;
 }
 
 export interface LaunchEntry {
@@ -192,7 +228,7 @@ export function allowListPaths(entries: LaunchEntry[] = loadLaunchEntries()): st
 
 export interface ResolvedLaunch {
   executablePath: string;
-  arguments?: string;
+  arguments?: string[];
   /** Display / presence path from the allow-list entry. */
   entryPath: string;
 }
@@ -202,13 +238,13 @@ export function resolveLaunch(entry: LaunchEntry): ResolvedLaunch {
   if (entry.launchVia) {
     return {
       executablePath: entry.launchVia.executablePath,
-      arguments: entry.launchVia.arguments,
+      arguments: normalizeLaunchArguments(entry.launchVia.arguments),
       entryPath: entry.executablePath,
     };
   }
   return {
     executablePath: entry.executablePath,
-    arguments: entry.arguments,
+    arguments: normalizeLaunchArguments(entry.arguments),
     entryPath: entry.executablePath,
   };
 }
@@ -302,7 +338,21 @@ export function mergeScanCandidates(
     } else {
       const patch: Partial<LaunchEntry> = {};
       if (existing.present !== true) patch.present = true;
-      if (candidate.launchVia && !existing.launchVia) patch.launchVia = candidate.launchVia;
+      if (candidate.launchVia) {
+        const nextVia = {
+          executablePath: candidate.launchVia.executablePath,
+          arguments: candidate.launchVia.arguments,
+        };
+        const existingVia = existing.launchVia;
+        const viaChanged =
+          !existingVia ||
+          existingVia.executablePath !== nextVia.executablePath ||
+          JSON.stringify(normalizeLaunchArguments(existingVia.arguments)) !==
+            JSON.stringify(normalizeLaunchArguments(nextVia.arguments));
+        if (viaChanged) {
+          patch.launchVia = nextVia;
+        }
+      }
       if (Object.keys(patch).length > 0) {
         entries = entries.map((e) => (e.id === existing.id ? { ...e, ...patch, id: e.id } : e));
         updated += 1;

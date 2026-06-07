@@ -74,7 +74,7 @@ export async function shutdownStation(): Promise<void> {
 
 export interface ScanLaunchVia {
   executablePath: string;
-  arguments: string;
+  arguments: string | string[];
 }
 
 export interface ScanCandidate {
@@ -146,7 +146,7 @@ export async function focusKiosk(): Promise<void> {
 export async function launchAllowed(
   executablePath: string,
   allowList: string[],
-  args?: string,
+  args?: string[],
 ): Promise<{ pid: number }> {
   return invoke('launch_allowed', {
     executablePath,

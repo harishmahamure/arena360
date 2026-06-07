@@ -36,11 +36,18 @@ function displayNameForPath(path: string, entries: LaunchEntry[]): string {
 
 function isLauncherTrackedPath(path: string): boolean {
   const base = (path.split(/[/\\]/).pop() ?? '').toLowerCase();
+  const norm = path.replace(/\\/g, '/').toLowerCase();
   return (
     base === 'riotclientservices.exe' ||
     base === 'steam.exe' ||
     base === 'epicgameslauncher.exe' ||
-    base === 'battle.net launcher.exe'
+    base === 'battle.net launcher.exe' ||
+    base === 'battle.net.exe' ||
+    base === 'ubisoftconnect.exe' ||
+    base === 'ealauncher.exe' ||
+    base === 'ealaunchhelper.exe' ||
+    base === 'galaxyclient.exe' ||
+    (base === 'launcher.exe' && norm.includes('/rockstar games/launcher/'))
   );
 }
 

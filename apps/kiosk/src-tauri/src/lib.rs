@@ -2,6 +2,7 @@ mod audio;
 mod boost;
 mod cache;
 mod fingerprint;
+mod launch_profile;
 mod lockdown;
 mod power;
 mod process;

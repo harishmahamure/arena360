@@ -63,7 +63,7 @@ fn is_allowed(path: &str, allow_list: &[String]) -> bool {
         .any(|entry| norm.ends_with(&normalize_path(entry)))
 }
 
-fn spawn_process(path: &str, args: Option<&str>) -> Result<u32, String> {
+fn spawn_process(path: &str, args: Option<&[String]>) -> Result<u32, String> {
     let mut cmd = Command::new(path);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -73,13 +73,21 @@ fn spawn_process(path: &str, args: Option<&str>) -> Result<u32, String> {
     if let Some(parent) = Path::new(path).parent() {
         cmd.current_dir(parent);
     }
-    if let Some(a) = args {
-        for part in a.split_whitespace() {
+    if let Some(parts) = args {
+        for part in parts {
             cmd.arg(part);
         }
     }
     let child = cmd.spawn().map_err(|e| e.to_string())?;
     Ok(child.id())
+}
+
+fn normalize_launch_arguments(arguments: Option<Vec<String>>) -> Option<Vec<String>> {
+    let args = arguments?;
+    if args.is_empty() {
+        return None;
+    }
+    Some(args)
 }
 
 fn is_running(pid: u32) -> bool {
@@ -167,14 +175,21 @@ fn executable_basename(path: &str) -> String {
 
 fn is_launcher_executable(path: &str) -> bool {
     let name = executable_basename(path);
+    let norm = normalize_path(path);
+    if name == "launcher.exe" && norm.contains("/rockstar games/launcher/") {
+        return true;
+    }
     matches!(
         name.as_str(),
         "riotclientservices.exe"
             | "steam.exe"
             | "epicgameslauncher.exe"
             | "battle.net launcher.exe"
+            | "battle.net.exe"
             | "ubisoftconnect.exe"
             | "ealauncher.exe"
+            | "ealaunchhelper.exe"
+            | "galaxyclient.exe"
     )
 }
 
@@ -740,14 +755,17 @@ pub fn launch_allowed(
     app: AppHandle,
     executable_path: String,
     allow_list: Vec<String>,
-    arguments: Option<String>,
+    arguments: Option<Vec<String>>,
 ) -> Result<LaunchResult, String> {
     if !is_allowed(&executable_path, &allow_list) {
         return Err("Executable not in allow-list".to_string());
     }
     prepare_kiosk_for_game_mode(&app)?;
     crate::boost::prepare_game_boost();
-    let pid = spawn_process(&executable_path, arguments.as_deref())?;
+    let pid = spawn_process(
+        &executable_path,
+        normalize_launch_arguments(arguments).as_deref(),
+    )?;
     crate::boost::apply_game_priority(pid);
     let window_handle = if is_launcher_executable(&executable_path) {
         None
@@ -849,10 +867,14 @@ mod tests {
         assert!(is_launcher_executable(
             "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
         ));
+        assert!(is_launcher_executable(
+            "C:\\Program Files\\Electronic Arts\\EA Desktop\\EA Desktop\\EALaunchHelper.exe"
+        ));
         assert!(!is_launcher_executable(
             "C:\\Riot Games\\VALORANT\\live\\VALORANT.exe"
         ));
     }
+
 
     #[test]
     fn all_tree_pids_dedupes_roots_and_descendants() {

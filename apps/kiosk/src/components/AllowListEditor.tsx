@@ -7,6 +7,7 @@ import {
   candidateToEntry,
   categorizeByName,
   entryCategory,
+  formatLaunchArguments,
   isTrustedScanSource,
   type LaunchCategory,
   type LaunchEntry,
@@ -16,6 +17,7 @@ import {
   mergeScanCandidates,
   removeLaunchEntry,
   resolveLaunch,
+  tokenizeArguments,
   updateLaunchEntry,
 } from '../lib/allowList';
 import {
@@ -407,10 +409,33 @@ export function AllowListEditor() {
                 <input value={selected.executablePath} readOnly />
               </label>
 
+              {entryCategory(selected) === 'game' ? (
+                <label className="allow-list-boost-toggle catalog-field--wide">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selected.launchVia)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        patchSelected({
+                          launchVia: {
+                            executablePath: '',
+                            arguments: '',
+                          },
+                          arguments: undefined,
+                        });
+                      } else {
+                        patchSelected({ launchVia: undefined });
+                      }
+                    }}
+                  />
+                  Launch via platform launcher
+                </label>
+              ) : null}
+
               {selected.launchVia ? (
                 <LaunchViaFields
                   launchVia={selected.launchVia}
-                  onChange={(launchVia) => patchSelected({ launchVia })}
+                  onChange={(launchVia) => patchSelected({ launchVia, arguments: undefined })}
                 />
               ) : (
                 <label className="catalog-field catalog-field--wide">
@@ -422,6 +447,13 @@ export function AllowListEditor() {
                   />
                 </label>
               )}
+
+              {selected.launchVia ? (
+                <p className="hint">
+                  Re-scan updates launcher profiles from trusted sources. Edit fields here to
+                  override.
+                </p>
+              ) : null}
 
               <label className="catalog-field">
                 Section
@@ -503,6 +535,7 @@ interface LaunchViaFieldsProps {
 }
 
 function LaunchViaFields({ launchVia, onChange }: LaunchViaFieldsProps) {
+  const argsText = formatLaunchArguments(launchVia.arguments);
   return (
     <>
       <label className="catalog-field catalog-field--wide">
@@ -510,13 +543,19 @@ function LaunchViaFields({ launchVia, onChange }: LaunchViaFieldsProps) {
         <input
           value={launchVia.executablePath}
           onChange={(e) => onChange({ ...launchVia, executablePath: e.target.value })}
+          placeholder="C:\\Path\\To\\steam.exe"
         />
       </label>
       <label className="catalog-field catalog-field--wide">
         Launcher arguments
         <input
-          value={launchVia.arguments}
-          onChange={(e) => onChange({ ...launchVia, arguments: e.target.value })}
+          value={argsText}
+          onChange={(e) =>
+            onChange({
+              ...launchVia,
+              arguments: tokenizeArguments(e.target.value),
+            })
+          }
           placeholder="e.g. --launch-product=valorant --launch-patchline=live"
         />
       </label>

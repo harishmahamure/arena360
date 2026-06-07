@@ -11,16 +11,16 @@
 //! `{ scanned, total }` so the UI can render a determinate bar. The whole scan
 //! is filesystem/registry only and completes well under the 60 s budget.
 
+use crate::launch_profile::{LaunchContext, LaunchVia, LauncherPaths};
 use serde::Serialize;
-use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScanLaunchVia {
-    pub executable_path: String,
-    pub arguments: String,
-}
+#[cfg(target_os = "windows")]
+use crate::launch_profile::{resolve_launch_profile, steam_app_id_from_manifest};
+#[cfg(target_os = "windows")]
+use std::path::Path;
+
+pub type ScanLaunchVia = LaunchVia;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +31,8 @@ pub struct ScanCandidate {
     pub present: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launch_via: Option<ScanLaunchVia>,
+    #[serde(skip)]
+    pub steam_app_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -233,16 +235,16 @@ fn scan_windows(app: &AppHandle) -> Result<Vec<ScanCandidate>, String> {
     }
     progress.finish();
 
-    let steam_exe = KNOWN_APPS
-        .iter()
-        .filter(|a| a.name == "Steam")
-        .find_map(known_app_path);
-    let riot_exe = KNOWN_APPS
-        .iter()
-        .filter(|a| a.name == "Riot Client")
-        .find_map(known_app_path);
+    let launch_ctx = build_launch_context();
     for candidate in &mut out {
-        enrich_with_launch_profile(candidate, steam_exe.as_deref(), riot_exe.as_deref());
+        if !should_attach_launch_profile(&candidate.source) {
+            continue;
+        }
+        candidate.launch_via = resolve_launch_profile(
+            &candidate.executable_path,
+            candidate.steam_app_id.as_deref(),
+            &launch_ctx,
+        );
     }
 
     Ok(out)
@@ -301,36 +303,71 @@ fn candidate(
         source: source.to_string(),
         present,
         launch_via: None,
+        steam_app_id: None,
     }
 }
 
-/// Attach launcher-mediated launch metadata for known platform-dependent games.
+fn should_attach_launch_profile(source: &str) -> bool {
+    matches!(source, "known" | "steam" | "manifest")
+}
+
 #[cfg(target_os = "windows")]
-fn enrich_with_launch_profile(
-    candidate: &mut ScanCandidate,
-    steam_exe: Option<&str>,
-    riot_exe: Option<&str>,
-) {
-    let path = normalize_path(&candidate.executable_path);
-    if path.ends_with("/valorant/live/valorant.exe") {
-        if let Some(riot) = riot_exe {
-            candidate.name = "Valorant".to_string();
-            candidate.launch_via = Some(ScanLaunchVia {
-                executable_path: riot.to_string(),
-                arguments: "--launch-product=valorant --launch-patchline=live".to_string(),
-            });
+fn build_launch_context() -> LaunchContext {
+    let ea_helper = resolve_ea_helper_path();
+    LaunchContext::new(LauncherPaths {
+        steam: known_app_path_by_name("Steam"),
+        riot: known_app_path_by_name("Riot Client"),
+        epic: known_app_path_by_name("Epic Games Launcher"),
+        battlenet: known_app_path_by_name("Battle.net").or_else(|| resolve_battlenet_exe()),
+        ea_helper,
+        ubisoft: known_app_path_by_name("Ubisoft Connect"),
+        gog: known_app_path_by_name("GOG Galaxy"),
+        rockstar: known_app_path_by_name("Rockstar Games Launcher"),
+    })
+    .with_platform_indexes()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn build_launch_context() -> LaunchContext {
+    LaunchContext::new(LauncherPaths::default())
+}
+
+#[cfg(target_os = "windows")]
+fn known_app_path_by_name(name: &str) -> Option<String> {
+    KNOWN_APPS
+        .iter()
+        .find(|a| a.name == name)
+        .and_then(known_app_path)
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_battlenet_exe() -> Option<String> {
+    for var in ["ProgramFiles(x86)", "ProgramFiles"] {
+        let Ok(base) = std::env::var(var) else {
+            continue;
+        };
+        for rel in ["Battle.net/Battle.net.exe", "Battle.net/Battle.net Launcher.exe"] {
+            let path = format!("{base}\\{}", rel.replace('/', "\\"));
+            if Path::new(&path).exists() {
+                return Some(path);
+            }
         }
-        return;
     }
-    if path.contains("/counter-strike") && path.ends_with("/cs2.exe") {
-        if let Some(steam) = steam_exe {
-            candidate.name = "Counter-Strike 2".to_string();
-            candidate.launch_via = Some(ScanLaunchVia {
-                executable_path: steam.to_string(),
-                arguments: "-applaunch 730".to_string(),
-            });
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_ea_helper_path() -> Option<String> {
+    for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+        let base = std::env::var(var).ok()?;
+        let helper = format!(
+            "{base}\\Electronic Arts\\EA Desktop\\EA Desktop\\EALaunchHelper.exe"
+        );
+        if Path::new(&helper).exists() {
+            return Some(helper);
         }
     }
+    known_app_path_by_name("EA app")
 }
 
 #[cfg(target_os = "windows")]
@@ -433,12 +470,14 @@ fn read_steam_manifest(
         .unwrap_or_else(|| name.clone());
     let install_root = steamapps.join("common").join(installdir);
     let exe = find_game_exe(&install_root, &name)?;
-    Some(candidate(
+    let mut item = candidate(
         name,
         exe.to_string_lossy().to_string(),
         "steam",
         true,
-    ))
+    );
+    item.steam_app_id = steam_app_id_from_manifest(path);
+    Some(item)
 }
 
 #[cfg(target_os = "windows")]
@@ -811,6 +850,7 @@ fn scan_registry() -> Vec<ScanCandidate> {
                 source: "registry".to_string(),
                 present: std::path::Path::new(exe).exists(),
                 launch_via: None,
+                steam_app_id: None,
             });
         }
     }
@@ -826,6 +866,7 @@ fn dev_fixture() -> Vec<ScanCandidate> {
             source: "known".to_string(),
             present: true,
             launch_via: None,
+            steam_app_id: None,
         },
         ScanCandidate {
             name: "Google Chrome (dev)".to_string(),
@@ -833,6 +874,7 @@ fn dev_fixture() -> Vec<ScanCandidate> {
             source: "known".to_string(),
             present: true,
             launch_via: None,
+            steam_app_id: None,
         },
         ScanCandidate {
             name: "Epic Games (dev)".to_string(),
@@ -840,6 +882,7 @@ fn dev_fixture() -> Vec<ScanCandidate> {
             source: "registry".to_string(),
             present: false,
             launch_via: None,
+            steam_app_id: None,
         },
     ]
 }

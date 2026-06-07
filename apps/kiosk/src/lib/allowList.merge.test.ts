@@ -14,7 +14,7 @@ const valorantCandidate: ScanCandidate = {
   present: true,
   launchVia: {
     executablePath: riotLauncher,
-    arguments: '--launch-product=valorant --launch-patchline=live',
+    arguments: ['--launch-product=valorant', '--launch-patchline=live'],
   },
 };
 
@@ -103,5 +103,61 @@ describe('mergeScanCandidates', () => {
 
     expect(result.added).toBe(0);
     expect(localStorage.getItem(STORAGE_KEY)).toBe('[]');
+  });
+
+  it('upgrades existing direct-launch Steam entry on re-scan', () => {
+    const cs2Exe = 'C:\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\cs2.exe';
+    const steamLauncher = 'C:\\Steam\\steam.exe';
+    saveLaunchEntries([
+      {
+        id: 'steam-direct',
+        name: 'Counter-Strike 2',
+        executablePath: cs2Exe,
+        category: 'game',
+        present: true,
+      },
+    ]);
+
+    const steamCandidate: ScanCandidate = {
+      name: 'Counter-Strike 2',
+      executablePath: cs2Exe,
+      source: 'steam',
+      present: true,
+      launchVia: {
+        executablePath: steamLauncher,
+        arguments: ['-applaunch', '730'],
+      },
+    };
+
+    const result = mergeScanCandidates([steamCandidate]);
+
+    expect(result.updated).toBe(1);
+    expect(loadLaunchEntries().find((e) => e.id === 'steam-direct')?.launchVia).toEqual({
+      executablePath: steamLauncher,
+      arguments: ['-applaunch', '730'],
+    });
+  });
+
+  it('overwrites operator-edited launchVia when trusted scan provides a profile', () => {
+    saveLaunchEntries([
+      {
+        id: 'existing',
+        name: 'VALORANT',
+        executablePath: valorantExe,
+        category: 'game',
+        present: true,
+        launchVia: {
+          executablePath: riotLauncher,
+          arguments: ['--launch-product=valorant', '--launch-patchline=pbe'],
+        },
+      },
+    ]);
+
+    const result = mergeScanCandidates([valorantCandidate]);
+
+    expect(result.updated).toBe(1);
+    expect(loadLaunchEntries().find((e) => e.id === 'existing')?.launchVia).toEqual(
+      valorantCandidate.launchVia,
+    );
   });
 });
