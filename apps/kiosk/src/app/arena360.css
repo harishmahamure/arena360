@@ -219,6 +219,15 @@ body,
   color: var(--a360-on-surface);
 }
 
+.a360-login-version {
+  margin: 0.25rem 0 0;
+  text-align: center;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--a360-muted);
+  opacity: 0.8;
+}
+
 .a360-login-subtitle {
   margin: 0;
   font-size: 0.95rem;

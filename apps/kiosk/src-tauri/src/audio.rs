@@ -3,7 +3,7 @@ use tauri::AppHandle;
 #[cfg(target_os = "windows")]
 mod win {
     use std::ffi::c_void;
-    use tauri::{AppHandle, Manager};
+    use tauri::AppHandle;
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use windows::Win32::Media::Audio::{
         eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator,

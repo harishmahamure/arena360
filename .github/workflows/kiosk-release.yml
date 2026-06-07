@@ -121,7 +121,7 @@ jobs:
           releaseName: "Arena360 v${{ steps.bump.outputs.version }}"
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
           updaterJsonPreferNsis: true
           args: --config src-tauri/tauri.updater.conf.json
 

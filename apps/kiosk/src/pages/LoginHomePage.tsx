@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
-import { KIOSK_LOGO_URL, LOGIN_BACKGROUND_VIDEO_URL } from '../lib/config';
+import { KIOSK_APP_VERSION, KIOSK_LOGO_URL, LOGIN_BACKGROUND_VIDEO_URL } from '../lib/config';
 import { clearFailures, getLockout, recordFailure } from '../lib/loginLockout';
 import { cachedAssetSrc } from '../lib/tauriCommands';
 
@@ -176,6 +176,11 @@ export function LoginHomePage() {
         </form>
 
         <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
+
+        {/** biome-ignore lint/a11y/useAriaPropsSupportedByRole: <explanation> */}
+        <p className="a360-login-version" aria-label={`App version ${KIOSK_APP_VERSION}`}>
+          v{KIOSK_APP_VERSION}
+        </p>
       </main>
     </div>
   );

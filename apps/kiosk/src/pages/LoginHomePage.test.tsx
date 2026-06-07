@@ -24,6 +24,7 @@ describe('LoginHomePage', () => {
   it('renders the sign-in form', () => {
     render(<LoginHomePage />);
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/app version/i)).toHaveTextContent(/^v\d/);
   });
 
   it('locks the form after too many failures', () => {

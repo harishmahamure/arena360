@@ -1,4 +1,8 @@
 import { BRAND_LOGO_URL } from '@gaming-cafe/theme';
+import pkg from '../../package.json';
+
+/** Shipped kiosk app version (kept in sync with `src-tauri/tauri.conf.json`). */
+export const KIOSK_APP_VERSION = pkg.version;
 
 const DEFAULT_API_URL = 'http://localhost:3000';
 

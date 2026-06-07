@@ -18,6 +18,7 @@ mod win {
     use windows::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    use windows::core::PWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{
         GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
         SetForegroundWindow,
@@ -32,9 +33,13 @@ mod win {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
             let mut buffer = [0u16; 260];
             let mut size = buffer.len() as u32;
-            QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, &mut buffer, &mut size)
-                .ok()
-                .ok()?;
+            QueryFullProcessImageNameW(
+                handle,
+                PROCESS_NAME_WIN32,
+                PWSTR(buffer.as_mut_ptr()),
+                &mut size,
+            )
+            .ok()?;
             let len = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
             Some(String::from_utf16_lossy(&buffer[..len]))
         }
