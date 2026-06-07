@@ -11,6 +11,7 @@ import {
 import {
   Avatar,
   Box,
+  Chip,
   Divider,
   IconButton,
   InputAdornment,
@@ -35,6 +36,12 @@ export interface AppBarQuickActions {
   onPlanClick?: () => void;
 }
 
+export interface ShiftBadgeProps {
+  active: boolean;
+  label: string;
+  onClick?: () => void;
+}
+
 export interface AppBarProps {
   onMenuClick: () => void;
   sidebarCollapsed: boolean;
@@ -45,6 +52,8 @@ export interface AppBarProps {
   showThemeToggle?: boolean;
   quickActions?: AppBarQuickActions;
   settingsPath?: string;
+  pageTitle?: string;
+  shiftBadge?: ShiftBadgeProps;
   user?: {
     name: string;
     email: string;
@@ -65,6 +74,8 @@ export default function AppBar({
   showThemeToggle = false,
   quickActions,
   settingsPath,
+  pageTitle,
+  shiftBadge,
   user = { name: 'John Doe', email: 'john.doe@example.com' },
 }: AppBarProps) {
   const navigate = useNavigate();
@@ -120,17 +131,44 @@ export default function AppBar({
           gap: 2,
         }}
       >
-        {/* Left Section */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}>
           {isMobile && (
             <IconButton
               edge="start"
               color="inherit"
               onClick={onMenuClick}
-              sx={{ color: 'text.primary' }}
+              sx={{ color: 'text.primary', flexShrink: 0 }}
             >
               <MenuIcon />
             </IconButton>
+          )}
+
+          {pageTitle && (
+            <Typography
+              variant="h6"
+              fontWeight={600}
+              noWrap
+              sx={{ color: 'text.primary', display: { xs: 'none', sm: 'block' } }}
+            >
+              {pageTitle}
+            </Typography>
+          )}
+
+          {pageTitle && isMobile && (
+            <Typography variant="subtitle1" fontWeight={600} noWrap sx={{ color: 'text.primary' }}>
+              {pageTitle}
+            </Typography>
+          )}
+
+          {shiftBadge && (
+            <Chip
+              size="small"
+              label={shiftBadge.label}
+              color={shiftBadge.active ? 'success' : 'warning'}
+              variant={shiftBadge.active ? 'filled' : 'outlined'}
+              onClick={shiftBadge.onClick}
+              sx={{ cursor: shiftBadge.onClick ? 'pointer' : 'default', flexShrink: 0 }}
+            />
           )}
 
           {showGlobalSearch && (
@@ -154,8 +192,7 @@ export default function AppBar({
           )}
         </Box>
 
-        {/* Right Section */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
           {showThemeToggle && (
             <IconButton sx={{ display: { xs: 'none', sm: 'flex' } }}>
               <LightMode sx={{ color: 'text.secondary' }} />
@@ -178,7 +215,6 @@ export default function AppBar({
             </Tooltip>
           )}
 
-          {/* Profile */}
           <IconButton onClick={handleProfileMenu} sx={{ p: 0, ml: 1 }}>
             <Avatar
               sx={{
@@ -193,7 +229,6 @@ export default function AppBar({
           </IconButton>
         </Box>
 
-        {/* Profile Menu */}
         <Menu
           anchorEl={anchorEl}
           open={Boolean(anchorEl)}
@@ -201,8 +236,8 @@ export default function AppBar({
           onClick={handleClose}
           transformOrigin={{ horizontal: 'right', vertical: 'top' }}
           anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-          PaperProps={{
-            sx: { width: 220, mt: 1.5 },
+          slotProps={{
+            paper: { sx: { width: 220, mt: 1.5 } },
           }}
         >
           <Box sx={{ px: 2, py: 1.5 }}>

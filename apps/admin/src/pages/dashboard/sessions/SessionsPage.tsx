@@ -1,11 +1,10 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
-import { formatTimeAgo } from '@gaming-cafe/utils';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { formatTimeAgo, toastUtils } from '@gaming-cafe/utils';
 import { Pause, Timer, Visibility } from '@mui/icons-material';
-import { Box, Chip, Pagination, Stack, Typography } from '@mui/material';
+import { Chip, Stack, Typography } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import { StaffTotpDialog } from '../../../components/StaffTotpDialog';
 import { useSelector } from '../../../hooks/store';
@@ -14,6 +13,7 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getSessions, type SessionResponse } from '../../../services/sessions/list';
 import { endSession } from '../../../services/sessions/update';
 import { buildListUrl } from '../../../utils/buildListUrl';
+import { SessionListMobileCard } from './SessionListMobileCard';
 
 const getStatusColor = (isActive: boolean) => {
   return isActive ? 'success' : 'default';
@@ -105,11 +105,11 @@ export default function SessionsPage() {
       void (async () => {
         try {
           await endSession(id, { reason: 'force' });
-          toast.success('Session ended successfully');
+          toastUtils.success('Session ended successfully');
           void refetch();
           void queryClient.invalidateQueries({ queryKey: ['sessions'] });
         } catch {
-          toast.error('Failed to end session');
+          toastUtils.error('Failed to end session');
         }
       })();
     },
@@ -120,12 +120,12 @@ export default function SessionsPage() {
     setTotpDialog((prev) => ({ ...prev, loading: true }));
     try {
       await endSession(totpDialog.sessionId, { staffTotp, reason: 'force' });
-      toast.success('Session ended successfully');
+      toastUtils.success('Session ended successfully');
       setTotpDialog({ open: false, sessionId: '', loading: false });
       void refetch();
       void queryClient.invalidateQueries({ queryKey: ['sessions'] });
     } catch {
-      toast.error('Failed to end session');
+      toastUtils.error('Failed to end session');
       setTotpDialog((prev) => ({ ...prev, loading: false }));
     }
   };
@@ -169,6 +169,7 @@ export default function SessionsPage() {
       },
       {
         id: 'id',
+        key: 'started',
         label: 'Started',
         minWidth: 120,
         hideOnMobile: true,
@@ -185,6 +186,7 @@ export default function SessionsPage() {
       },
       {
         id: 'id',
+        key: 'time-left',
         label: 'Time left',
         minWidth: 100,
         format: (value) => {
@@ -257,50 +259,45 @@ export default function SessionsPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
-        {filterChips.map((chip) => (
-          <Chip
-            key={chip.key}
-            label={chip.label}
-            variant={sessionFilter === chip.key ? 'filled' : 'outlined'}
-            color={sessionFilter === chip.key ? 'primary' : 'default'}
-            onClick={() => setSessionFilter(chip.key)}
-            clickable
-          />
-        ))}
-      </Stack>
-
-      <ListViewPage<SessionResponse>
+    <>
+      <ListPage<SessionResponse>
         title="Sessions"
         description="Manage player gaming sessions and usage tracking."
         data={enrichedSessions}
         columns={columns}
         actions={actions}
         isLoading={isLoading}
-        inputValue=""
-        handleSearch={() => {}}
-        handleClearSearch={() => {}}
+        filters={
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+            {filterChips.map((chip) => (
+              <Chip
+                key={chip.key}
+                label={chip.label}
+                variant={sessionFilter === chip.key ? 'filled' : 'outlined'}
+                color={sessionFilter === chip.key ? 'primary' : 'default'}
+                onClick={() => setSessionFilter(chip.key)}
+                clickable
+              />
+            ))}
+          </Stack>
+        }
         showSearch={false}
         onAddClick={can(Permission.SessionsWrite) ? handleStartNewSession : undefined}
         addButtonLabel="Start New Session"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) =>
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) =>
             navigate(
               buildListUrl('/sessions', value, {
                 active: activeParam ?? undefined,
               }),
-            )
-          }
-        />
-      </Box>
+            ),
+        }}
+        mobileCardRender={(row, rowActions) => (
+          <SessionListMobileCard row={row} actions={rowActions} />
+        )}
+      />
 
       <StaffTotpDialog
         open={totpDialog.open}
@@ -311,6 +308,6 @@ export default function SessionsPage() {
         onClose={() => setTotpDialog({ open: false, sessionId: '', loading: false })}
         onConfirm={handleTotpConfirm}
       />
-    </Box>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import { type Action, type Column, DataGrid, GridSkeleton } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Payment as PaymentIcon } from '@mui/icons-material';
 import {
   Alert,
@@ -25,7 +26,6 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -186,7 +186,7 @@ export default function CreditPage() {
               : undefined,
         notes: notes || undefined,
       });
-      toast.success('Credit bill settled');
+      toastUtils.success('Credit bill settled');
       closeSettlement();
       refetch();
       queryClient.invalidateQueries({ queryKey: ['player-credit'] });

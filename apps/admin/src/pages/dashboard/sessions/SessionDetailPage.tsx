@@ -1,7 +1,8 @@
-import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
+import { DetailPage, type DetailPageSection, type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
 import { formatDate } from '@gaming-cafe/utils';
-import { Stop } from '@mui/icons-material';
+import { Stop, Timer } from '@mui/icons-material';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -13,14 +14,13 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
-  GridLegacy as Grid,
-  Paper,
+  Grid,
+  Stack,
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PageHeader } from '../../../components/PageHeader';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import { StaffTotpDialog } from '../../../components/StaffTotpDialog';
 import {
@@ -42,6 +42,89 @@ const formatDuration = (minutes?: number | null) => {
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 };
 
+const endSessionFormFields: FieldConfig<EndSessionFormData>[] = [
+  {
+    name: 'endTime',
+    label: 'End Time (Optional)',
+    type: 'datetime',
+    placeholder: 'Leave empty to use current time',
+    fullWidth: true,
+    helperText: 'Optional: Specify a custom end time or leave empty for current time',
+  },
+];
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Grid size={{ xs: 12, md: 6 }}>
+      <Typography variant="caption" color="text.secondary" display="block">
+        {label}
+      </Typography>
+      {children}
+    </Grid>
+  );
+}
+
+function TimelineCard({ children }: { children: ReactNode }) {
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        borderLeft: 3,
+        borderLeftColor: 'primary.main',
+      }}
+    >
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function SessionDetailActionBar({
+  onBuyMoreTime,
+  onEndSession,
+  onForceEnd,
+}: {
+  onBuyMoreTime: () => void;
+  onEndSession: () => void;
+  onForceEnd: () => void;
+}) {
+  return (
+    <Box
+      sx={{
+        display: { xs: 'flex', md: 'none' },
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        p: 2,
+        gap: 1,
+        flexDirection: 'column',
+        bgcolor: 'background.paper',
+        borderTop: 1,
+        borderColor: 'divider',
+        zIndex: (theme) => theme.zIndex.appBar - 1,
+      }}
+    >
+      <Button
+        variant="contained"
+        fullWidth
+        startIcon={<Timer />}
+        onClick={onBuyMoreTime}
+        sx={{ minHeight: 44 }}
+      >
+        Buy more time
+      </Button>
+      <Stack direction="row" spacing={1}>
+        <Button variant="outlined" fullWidth onClick={onEndSession} sx={{ minHeight: 44 }}>
+          End session
+        </Button>
+        <Button variant="text" color="error" fullWidth onClick={onForceEnd} sx={{ minHeight: 44 }}>
+          Force-end
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
 export default function ViewSessionPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -61,6 +144,7 @@ export default function ViewSessionPage() {
   const {
     data: session,
     isLoading,
+    error: fetchError,
     refetch,
   } = useQuery({
     queryKey: ['session', id],
@@ -141,17 +225,6 @@ export default function ViewSessionPage() {
 
   const isActive = !endTime;
 
-  const endSessionFormFields: FieldConfig<EndSessionFormData>[] = [
-    {
-      name: 'endTime',
-      label: 'End Time (Optional)',
-      type: 'datetime',
-      placeholder: 'Leave empty to use current time',
-      fullWidth: true,
-      helperText: 'Optional: Specify a custom end time or leave empty for current time',
-    },
-  ];
-
   const submitEndSession = async (data: EndSessionFormData, staffTotp?: string) => {
     setIsSubmitting(true);
     setError(undefined);
@@ -227,243 +300,194 @@ export default function ViewSessionPage() {
     navigate('/sessions');
   };
 
-  if (isLoading) {
+  const handleBuyMoreTime = () => {
+    if (playerId) {
+      navigate(`/plan-transactions/new?playerId=${playerId}`);
+    } else {
+      navigate('/plan-transactions/new');
+    }
+  };
+
+  const scrollToEndSession = () => {
+    document.getElementById('end-session')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const summary = useMemo(() => {
+    if (!session) return undefined;
+
     return (
-      <Paper elevation={0} sx={{ p: 4 }}>
-        <FormSkeleton />
-      </Paper>
-    );
-  }
-
-  return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <Paper elevation={0} sx={{ p: 4 }}>
-        <Box
-          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}
-        >
-          <PageHeader
-            title="Session details"
-            description="View session information and manage session status"
-            backTo="/sessions"
-            backLabel="Back to sessions"
-            breadcrumbs={[{ label: 'Sessions', to: '/sessions' }, { label: 'Session details' }]}
-          />
-          <Chip
-            label={isActive ? 'Active' : 'Completed'}
-            color={isActive ? 'success' : 'default'}
-            size="medium"
-            sx={{ mt: 1 }}
-          />
-        </Box>
-
-        {/* Session Information */}
-        <Card variant="outlined" sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-              Session Information
+      <Grid container spacing={2} alignItems="center">
+        <Grid size={{ xs: 12, sm: isActive && balance?.remainingMinutes != null ? 6 : 12 }}>
+          <Typography variant="h5" fontWeight={600}>
+            {balance?.player?.username || 'Unknown player'}
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            {device?.name || 'Unknown device'}
+          </Typography>
+          {startTime && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Started {formatDate(startTime, 'datetime')}
             </Typography>
-            <Divider sx={{ mb: 2 }} />
+          )}
+        </Grid>
+        {isActive && balance?.remainingMinutes != null && (
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <Typography variant="caption" color="text.secondary" display="block">
+              Time remaining
+            </Typography>
+            <SessionRemainingClock
+              variant="prominent"
+              remainingMinutes={balance.remainingMinutes}
+              deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
+            />
+          </Grid>
+        )}
+      </Grid>
+    );
+  }, [session, balance, device, startTime, isActive, balanceRecord?.deductionProfile]);
+
+  const sections: DetailPageSection[] = (() => {
+    if (!session) return [];
+
+    const result: DetailPageSection[] = [
+      {
+        title: 'Session timeline',
+        content: (
+          <TimelineCard>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Session ID
-                </Typography>
-                <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
+              <DetailField label="Session ID">
+                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                   {id}
                 </Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Start Time
-                </Typography>
+              </DetailField>
+              <DetailField label="Start time">
                 <Typography variant="body1">
                   {startTime ? formatDate(startTime, 'datetime') : 'N/A'}
                 </Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  End Time
-                </Typography>
+              </DetailField>
+              <DetailField label="End time">
                 <Typography variant="body1">
-                  {endTime ? formatDate(endTime, 'datetime') : 'Still Active'}
+                  {endTime ? formatDate(endTime, 'datetime') : 'Still active'}
                 </Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Duration
-                </Typography>
-                <Typography variant="h6" color="primary">
+              </DetailField>
+              <DetailField label="Duration">
+                <Typography variant="body1" fontWeight={600} color="primary.main">
                   {formatDuration(durationMinutes)}
                 </Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Time Credits Consumed
-                </Typography>
+              </DetailField>
+              <DetailField label="Time credits consumed">
                 <Typography variant="body1">
                   {timeCreditsConsumed ? `${timeCreditsConsumed} minutes` : 'N/A'}
                 </Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Status
-                </Typography>
-                <Chip
-                  label={isActive ? 'Active' : 'Completed'}
-                  color={isActive ? 'success' : 'default'}
-                  size="small"
-                  sx={{ mt: 0.5 }}
-                />
-              </Grid>
+              </DetailField>
             </Grid>
-          </CardContent>
-        </Card>
+          </TimelineCard>
+        ),
+      },
+    ];
 
-        {/* Player & Balance Information */}
-        {balance && (
-          <Card variant="outlined" sx={{ mb: 4 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-                Player & Plan Information
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Player Username
-                  </Typography>
-                  <Typography variant="body1">{balance.player?.username || 'N/A'}</Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Player Name
-                  </Typography>
+    if (balance) {
+      result.push({
+        title: 'Player & plan',
+        content: (
+          <TimelineCard>
+            <Grid container spacing={2}>
+              <DetailField label="Player username">
+                <Typography variant="body1">{balance.player?.username || 'N/A'}</Typography>
+              </DetailField>
+              <DetailField label="Player name">
+                <Typography variant="body1">
+                  {balance.player?.firstName && balance.player?.lastName
+                    ? `${balance.player.firstName} ${balance.player.lastName}`
+                    : 'N/A'}
+                </Typography>
+              </DetailField>
+              <DetailField label="Plan name">
+                <Typography variant="body1">{balance.plan?.name || 'N/A'}</Typography>
+              </DetailField>
+              <DetailField label={isActive ? 'Time remaining' : 'Remaining minutes'}>
+                {isActive && balance.remainingMinutes != null ? (
+                  <SessionRemainingClock
+                    remainingMinutes={balance.remainingMinutes}
+                    deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
+                  />
+                ) : (
                   <Typography variant="body1">
-                    {balance.player?.firstName && balance.player?.lastName
-                      ? `${balance.player.firstName} ${balance.player.lastName}`
+                    {balance.remainingMinutes != null
+                      ? `${balance.remainingMinutes} minutes`
                       : 'N/A'}
                   </Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Plan Name
-                  </Typography>
-                  <Typography variant="body1">{balance.plan?.name || 'N/A'}</Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    {isActive ? 'Time Remaining' : 'Remaining Minutes'}
-                  </Typography>
-                  {isActive && balance.remainingMinutes != null ? (
-                    <SessionRemainingClock
-                      remainingMinutes={balance.remainingMinutes}
-                      deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
-                    />
-                  ) : (
-                    <Typography variant="body1">
-                      {balance.remainingMinutes != null
-                        ? `${balance.remainingMinutes} minutes`
-                        : 'N/A'}
-                    </Typography>
-                  )}
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Plan Kind
-                  </Typography>
-                  <Chip
-                    label={balance.kind === 'happy_hours' ? 'Happy Hours' : 'Time Plan'}
-                    size="small"
-                    color={balance.kind === 'happy_hours' ? 'secondary' : 'primary'}
-                    sx={{ mt: 0.5 }}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Balance Status
-                  </Typography>
-                  <Typography variant="body1">{balance.status || 'N/A'}</Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Device Information */}
-        {device && (
-          <Card variant="outlined" sx={{ mb: 4 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-                Device Information
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Device Name
-                  </Typography>
-                  <Typography variant="body1">{device.name || 'N/A'}</Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Device Type
-                  </Typography>
-                  <Typography variant="body1">{device.deviceType || 'N/A'}</Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Serial Number
-                  </Typography>
-                  <Typography
-                    variant="body1"
-                    sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}
-                  >
-                    {(device as { serialNumber?: string }).serialNumber ?? 'N/A'}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    Status
-                  </Typography>
-                  <Typography variant="body1">{device.status || 'N/A'}</Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Metadata */}
-        <Card variant="outlined" sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-              Metadata
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Created At
-                </Typography>
-                <Typography variant="body1">
-                  {createdAt ? formatDate(createdAt, 'datetime') : 'N/A'}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Last Updated
-                </Typography>
-                <Typography variant="body1">
-                  {updatedAt ? formatDate(updatedAt, 'datetime') : 'N/A'}
-                </Typography>
-              </Grid>
+                )}
+              </DetailField>
+              <DetailField label="Plan kind">
+                <Chip
+                  label={balance.kind === 'happy_hours' ? 'Happy Hours' : 'Time Plan'}
+                  size="small"
+                  color={balance.kind === 'happy_hours' ? 'secondary' : 'primary'}
+                  sx={{ mt: 0.5 }}
+                />
+              </DetailField>
+              <DetailField label="Balance status">
+                <Typography variant="body1">{balance.status || 'N/A'}</Typography>
+              </DetailField>
             </Grid>
-          </CardContent>
-        </Card>
+          </TimelineCard>
+        ),
+      });
+    }
 
-        {/* End Session Form - Only show for active sessions */}
-        {isActive && (
-          <Card variant="outlined">
-            <CardContent>
+    if (device) {
+      result.push({
+        title: 'Device',
+        content: (
+          <TimelineCard>
+            <Grid container spacing={2}>
+              <DetailField label="Device name">
+                <Typography variant="body1">{device.name || 'N/A'}</Typography>
+              </DetailField>
+              <DetailField label="Device type">
+                <Typography variant="body1">{device.deviceType || 'N/A'}</Typography>
+              </DetailField>
+              <DetailField label="Serial number">
+                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                  {(device as { serialNumber?: string }).serialNumber ?? 'N/A'}
+                </Typography>
+              </DetailField>
+              <DetailField label="Status">
+                <Typography variant="body1">{device.status || 'N/A'}</Typography>
+              </DetailField>
+            </Grid>
+          </TimelineCard>
+        ),
+      });
+    }
+
+    result.push({
+      title: 'Metadata',
+      content: (
+        <TimelineCard>
+          <Grid container spacing={2}>
+            <DetailField label="Created at">
+              <Typography variant="body1">
+                {createdAt ? formatDate(createdAt, 'datetime') : 'N/A'}
+              </Typography>
+            </DetailField>
+            <DetailField label="Last updated">
+              <Typography variant="body1">
+                {updatedAt ? formatDate(updatedAt, 'datetime') : 'N/A'}
+              </Typography>
+            </DetailField>
+          </Grid>
+        </TimelineCard>
+      ),
+    });
+
+    if (isActive) {
+      result.push({
+        title: 'End session',
+        content: (
+          <Box id="end-session">
+            <TimelineCard>
               <Box
                 sx={{
                   display: 'flex',
@@ -475,13 +499,17 @@ export default function ViewSessionPage() {
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Stop color="error" />
-                  <Typography variant="h6">End Session</Typography>
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    End session
+                  </Typography>
                 </Box>
                 <Button
                   variant="contained"
                   color="error"
+                  size="small"
                   disabled={isForcing}
                   onClick={() => setConfirmForce(true)}
+                  sx={{ display: { xs: 'none', md: 'inline-flex' } }}
                 >
                   Force-end (kiosk)
                 </Button>
@@ -497,27 +525,87 @@ export default function ViewSessionPage() {
                 onSubmit={handleEndSession}
                 onCancel={handleCancel}
                 loading={isSubmitting}
-                error={error}
-                success={success}
                 showCancel
                 submitLabel="End Session"
                 cancelLabel="Back to List"
                 buttonAlign="right"
                 spacing={3}
               />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Back button for completed sessions */}
-        {!isActive && (
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-            <Button variant="outlined" onClick={handleCancel}>
-              Back to List
-            </Button>
+            </TimelineCard>
           </Box>
+        ),
+      });
+    }
+
+    return result;
+  })();
+
+  const banner =
+    error || success ? (
+      <Box sx={{ mb: 2 }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: success ? 1 : 0 }} onClose={() => setError(undefined)}>
+            {error}
+          </Alert>
         )}
-      </Paper>
+        {success && <Alert severity="success">{success}</Alert>}
+      </Box>
+    ) : undefined;
+
+  const sessionActions = isActive ? (
+    <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+      <Button variant="contained" startIcon={<Timer />} onClick={handleBuyMoreTime}>
+        Buy more time
+      </Button>
+      <Button variant="outlined" onClick={scrollToEndSession}>
+        End session
+      </Button>
+      <Button variant="text" color="error" onClick={() => setConfirmForce(true)}>
+        Force-end
+      </Button>
+    </Stack>
+  ) : (
+    <Button variant="outlined" onClick={handleCancel}>
+      Back to List
+    </Button>
+  );
+
+  return (
+    <>
+      <Box sx={{ pb: { xs: isActive ? 12 : 0, md: 0 } }}>
+        <DetailPage
+          title="Session details"
+          description="View session information and manage session status"
+          backTo="/sessions"
+          backLabel="Back to sessions"
+          breadcrumbs={[{ label: 'Sessions', to: '/sessions' }, { label: 'Session details' }]}
+          isLoading={isLoading}
+          error={
+            !isLoading && (fetchError || !session)
+              ? fetchError instanceof Error
+                ? fetchError.message
+                : 'Session not found'
+              : null
+          }
+          onRetry={() => void refetch()}
+          status={{
+            label: isActive ? 'Active' : 'Completed',
+            color: isActive ? 'success' : 'default',
+          }}
+          banner={banner}
+          summary={summary}
+          actions={sessionActions}
+          sections={sections}
+        />
+      </Box>
+
+      {isActive && (
+        <SessionDetailActionBar
+          onBuyMoreTime={handleBuyMoreTime}
+          onEndSession={scrollToEndSession}
+          onForceEnd={() => setConfirmForce(true)}
+        />
+      )}
 
       <Dialog open={confirmForce} onClose={() => setConfirmForce(false)}>
         <DialogTitle>Force-end this session?</DialogTitle>
@@ -547,6 +635,7 @@ export default function ViewSessionPage() {
         title={totpDialog.mode === 'force' ? 'Force-end session' : 'End session'}
         description="Enter your authenticator code to confirm."
         confirmLabel={totpDialog.mode === 'force' ? 'Force-end' : 'End session'}
+        confirmColor={totpDialog.mode === 'force' ? 'error' : 'primary'}
         loading={totpDialog.loading || isSubmitting || isForcing}
         onClose={() => {
           setTotpDialog({ open: false, mode: 'end', loading: false });
@@ -554,6 +643,6 @@ export default function ViewSessionPage() {
         }}
         onConfirm={handleTotpConfirm}
       />
-    </Box>
+    </>
   );
 }

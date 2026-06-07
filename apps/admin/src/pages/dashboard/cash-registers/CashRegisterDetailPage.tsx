@@ -1,25 +1,20 @@
-import { type Column, FormSkeleton, ListViewPage } from '@gaming-cafe/ui';
+import { type Column, DataGrid, DetailPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Edit } from '@mui/icons-material';
 import {
-  Alert,
-  Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  GridLegacy as Grid,
+  Grid,
+  Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { PageHeader } from '../../../components/PageHeader';
+import { useParams } from 'react-router-dom';
 import { usePermissions } from '../../../hooks/usePermissions';
 import {
   type CashRegisterEntry,
@@ -42,7 +37,6 @@ const entryTypeLabels: Record<string, string> = {
 
 export default function CashRegisterDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
 
@@ -60,7 +54,7 @@ export default function CashRegisterDetailPage() {
   const {
     data: register,
     isLoading,
-    error,
+    error: fetchError,
   } = useQuery({
     queryKey: ['cash-register', id],
     queryFn: () => getCashRegister(id as string),
@@ -130,130 +124,127 @@ export default function CashRegisterDetailPage() {
     },
   ];
 
-  if (isLoading) {
-    return (
-      <Box sx={{ px: 4, py: 3 }}>
-        <FormSkeleton />
-      </Box>
-    );
-  }
-
-  if (error || !register) {
-    return (
-      <Box sx={{ px: 4, py: 3 }}>
-        <Alert severity="error">Cash register not found</Alert>
-        <Button onClick={() => navigate('/cash-registers')} sx={{ mt: 2 }}>
-          Back to cash registers
-        </Button>
-      </Box>
-    );
-  }
-
-  const status = statusConfig[register.status] ?? {
-    label: 'Unknown',
-    color: 'default' as const,
-  };
+  const status = register
+    ? (statusConfig[register.status] ?? { label: 'Unknown', color: 'default' as const })
+    : undefined;
 
   return (
-    <Box sx={{ px: 4, py: 3 }}>
-      <PageHeader
+    <>
+      <DetailPage
         title="Cash register"
-        description={`Opened ${formatDisplayDateTime(register.createdAt)}`}
+        description={register ? `Opened ${formatDisplayDateTime(register.createdAt)}` : undefined}
         backTo="/cash-registers"
         backLabel="Back to cash registers"
         breadcrumbs={[
           { label: 'Cash registers', to: '/cash-registers' },
           { label: 'Register details' },
         ]}
-      />
-      <Chip label={status.label} color={status.color} size="small" sx={{ mb: 3 }} />
-
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={2}>
-            {[
-              { label: 'Opening', value: formatCurrency(register.openingBalance) },
-              { label: 'Cash in', value: formatCurrency(register.totalCashIn ?? 0) },
-              { label: 'Cash out', value: formatCurrency(register.totalCashOut ?? 0) },
-              { label: 'Deposited', value: formatCurrency(register.totalDeposited ?? 0) },
-              {
-                label: 'Expected closing',
-                value:
-                  register.expectedClosing != null ? formatCurrency(register.expectedClosing) : '—',
-              },
-              {
-                label: 'Closing',
-                value:
-                  register.closingBalance != null ? formatCurrency(register.closingBalance) : '—',
-              },
-              {
-                label: 'Variance',
-                value: register.variance != null ? formatCurrency(register.variance) : '—',
-                color:
-                  register.variance != null && register.variance !== 0
-                    ? 'error.main'
-                    : 'success.main',
-              },
-            ].map((item) => (
-              <Grid item xs={6} sm={4} md={3} key={item.label}>
-                <Typography variant="caption" color="text.secondary">
-                  {item.label}
-                </Typography>
-                <Typography variant="body1" fontWeight={600} color={item.color}>
-                  {item.value}
-                </Typography>
+        isLoading={isLoading}
+        error={!isLoading && (fetchError || !register) ? 'Cash register not found' : null}
+        onRetry={() => void queryClient.invalidateQueries({ queryKey: ['cash-register', id] })}
+        status={status}
+        summary={
+          register ? (
+            <>
+              <Grid container spacing={2}>
+                {[
+                  { label: 'Opening', value: formatCurrency(register.openingBalance) },
+                  { label: 'Cash in', value: formatCurrency(register.totalCashIn ?? 0) },
+                  { label: 'Cash out', value: formatCurrency(register.totalCashOut ?? 0) },
+                  { label: 'Deposited', value: formatCurrency(register.totalDeposited ?? 0) },
+                  {
+                    label: 'Expected closing',
+                    value:
+                      register.expectedClosing != null
+                        ? formatCurrency(register.expectedClosing)
+                        : '—',
+                  },
+                  {
+                    label: 'Closing',
+                    value:
+                      register.closingBalance != null
+                        ? formatCurrency(register.closingBalance)
+                        : '—',
+                  },
+                  {
+                    label: 'Variance',
+                    value: register.variance != null ? formatCurrency(register.variance) : '—',
+                    color:
+                      register.variance != null && register.variance !== 0
+                        ? 'error.main'
+                        : 'success.main',
+                  },
+                ].map((item) => (
+                  <Grid key={item.label} size={{ xs: 6, sm: 4, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {item.label}
+                    </Typography>
+                    <Typography variant="body1" fontWeight={600} color={item.color}>
+                      {item.value}
+                    </Typography>
+                  </Grid>
+                ))}
               </Grid>
-            ))}
-          </Grid>
 
-          {register.notes && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Notes: {register.notes}
-            </Typography>
-          )}
-
-          <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-            {isAdmin && register.status === 'closed' && (
-              <Button
-                variant="outlined"
-                color="success"
-                startIcon={<CheckCircleOutline />}
-                onClick={() => {
-                  setReconcileNotes('');
-                  setReconcileOpen(true);
-                }}
-              >
-                Reconcile
-              </Button>
-            )}
-            {isAdmin && register.status === 'open' && (
-              <Button
-                variant="outlined"
-                color="warning"
-                startIcon={<Edit />}
-                onClick={() => {
-                  setOpeningBalance(register.openingBalance.toString());
-                  setBalanceOpen(true);
-                }}
-              >
-                Set opening balance
-              </Button>
-            )}
-          </Box>
-        </CardContent>
-      </Card>
-
-      <ListViewPage<CashRegisterEntry>
-        title="Entries"
-        description="Cash movements recorded against this register"
-        columns={entryColumns}
-        data={register.entries ?? []}
-        actions={[]}
-        isLoading={false}
-        inputValue=""
-        handleSearch={() => {}}
-        handleClearSearch={() => {}}
-        showSearch={false}
+              {register.notes && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  Notes: {register.notes}
+                </Typography>
+              )}
+            </>
+          ) : undefined
+        }
+        actions={
+          register && isAdmin ? (
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {register.status === 'closed' && (
+                <Button
+                  variant="outlined"
+                  color="success"
+                  startIcon={<CheckCircleOutline />}
+                  onClick={() => {
+                    setReconcileNotes('');
+                    setReconcileOpen(true);
+                  }}
+                >
+                  Reconcile
+                </Button>
+              )}
+              {register.status === 'open' && (
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  startIcon={<Edit />}
+                  onClick={() => {
+                    setOpeningBalance(register.openingBalance.toString());
+                    setBalanceOpen(true);
+                  }}
+                >
+                  Set opening balance
+                </Button>
+              )}
+            </Stack>
+          ) : undefined
+        }
+        sections={
+          register
+            ? [
+                {
+                  title: 'Entries',
+                  description: 'Cash movements recorded against this register',
+                  content: (
+                    <DataGrid<CashRegisterEntry>
+                      columns={entryColumns}
+                      data={register.entries ?? []}
+                      rowKey={(row) => row.id}
+                      showActionsLabel={false}
+                      emptyMessage="No entries"
+                    />
+                  ),
+                },
+              ]
+            : undefined
+        }
       />
 
       <Dialog open={reconcileOpen} onClose={() => setReconcileOpen(false)} fullWidth maxWidth="sm">
@@ -311,6 +302,6 @@ export default function CashRegisterDetailPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

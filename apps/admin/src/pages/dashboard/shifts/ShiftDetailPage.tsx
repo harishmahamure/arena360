@@ -1,26 +1,20 @@
-import { FormSkeleton } from '@gaming-cafe/ui';
+import { DetailPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { Block } from '@mui/icons-material';
 import {
   Alert,
-  Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  GridLegacy as Grid,
-  Stack,
+  Grid,
   Typography,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { PageHeader } from '../../../components/PageHeader';
+import { useParams } from 'react-router-dom';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { getPlayerById } from '../../../services/players/getById';
 import { forceCloseShift, getShift } from '../../../services/shifts';
@@ -34,7 +28,6 @@ const statusConfig: Record<string, { label: string; color: 'success' | 'default'
 
 export default function ShiftDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAdmin } = usePermissions();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -86,103 +79,86 @@ export default function ShiftDetailPage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <Box sx={{ px: 4, py: 3 }}>
-        <FormSkeleton />
-      </Box>
-    );
-  }
-
-  if (fetchError || !shift) {
-    return (
-      <Box sx={{ px: 4, py: 3 }}>
-        <Alert severity="error">Shift not found</Alert>
-        <Button onClick={() => navigate('/shifts')} sx={{ mt: 2 }}>
-          Back to shifts
-        </Button>
-      </Box>
-    );
-  }
-
-  const status = statusConfig[shift.status] ?? {
-    label: 'Unknown',
-    color: 'default' as const,
-  };
+  const status = shift
+    ? (statusConfig[shift.status] ?? { label: 'Unknown', color: 'default' as const })
+    : undefined;
 
   return (
-    <Box sx={{ px: 4, py: 3, maxWidth: 800 }}>
-      <PageHeader
+    <>
+      <DetailPage
         title="Shift details"
         backTo="/shifts"
         backLabel="Back to shifts"
         breadcrumbs={[{ label: 'Shifts', to: '/shifts' }, { label: 'Shift details' }]}
-      />
-      <Chip label={status.label} color={status.color} size="small" sx={{ mb: 3 }} />
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(undefined)}>
-          {error}
-        </Alert>
-      )}
-
-      <Card variant="outlined" sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="caption" color="text.secondary">
-                Staff
-              </Typography>
-              <Typography variant="body1" fontWeight={600}>
-                {staffName}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="caption" color="text.secondary">
-                Duration
-              </Typography>
-              <Typography variant="body1" fontWeight={600}>
-                {formatDuration(durationMinutes)}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="caption" color="text.secondary">
-                Clock in
-              </Typography>
-              <Typography variant="body1">{formatDisplayDateTime(shift.clockIn)}</Typography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="caption" color="text.secondary">
-                Clock out
-              </Typography>
-              <Typography variant="body1">
-                {shift.clockOut ? formatDisplayDateTime(shift.clockOut) : '—'}
-              </Typography>
-            </Grid>
-            {shift.notes && (
-              <Grid item xs={12}>
+        isLoading={isLoading}
+        error={!isLoading && (fetchError || !shift) ? 'Shift not found' : null}
+        onRetry={() => void queryClient.invalidateQueries({ queryKey: ['shift', id] })}
+        maxWidth={800}
+        status={status}
+        banner={
+          error ? (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(undefined)}>
+              {error}
+            </Alert>
+          ) : undefined
+        }
+        summary={
+          shift ? (
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
                 <Typography variant="caption" color="text.secondary">
-                  Notes
+                  Staff
                 </Typography>
-                <Typography variant="body1">{shift.notes}</Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {staffName}
+                </Typography>
               </Grid>
-            )}
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {isAdmin && shift.status === 'active' && (
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            color="warning"
-            startIcon={<Block />}
-            onClick={() => setConfirmOpen(true)}
-          >
-            Force close shift
-          </Button>
-        </Stack>
-      )}
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Duration
+                </Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {formatDuration(durationMinutes)}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Clock in
+                </Typography>
+                <Typography variant="body1">{formatDisplayDateTime(shift.clockIn)}</Typography>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Clock out
+                </Typography>
+                <Typography variant="body1">
+                  {shift.clockOut ? formatDisplayDateTime(shift.clockOut) : '—'}
+                </Typography>
+              </Grid>
+              {shift.notes && (
+                <Grid size={{ xs: 12 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Notes
+                  </Typography>
+                  <Typography variant="body1">{shift.notes}</Typography>
+                </Grid>
+              )}
+            </Grid>
+          ) : undefined
+        }
+        actions={
+          isAdmin && shift?.status === 'active' ? (
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<Block />}
+              onClick={() => setConfirmOpen(true)}
+            >
+              Force close shift
+            </Button>
+          ) : undefined
+        }
+      />
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Force close shift?</DialogTitle>
@@ -207,6 +183,6 @@ export default function ShiftDetailPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

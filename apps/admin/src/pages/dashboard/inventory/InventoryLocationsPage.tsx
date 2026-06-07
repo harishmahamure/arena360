@@ -1,4 +1,5 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Edit } from '@mui/icons-material';
 import {
   Alert,
@@ -16,7 +17,6 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   createInventoryLocation,
@@ -49,11 +49,11 @@ export default function InventoryLocationsPage() {
       return createInventoryLocation({ name, kind, isActive });
     },
     onSuccess: () => {
-      toast.success(editing ? 'Location updated' : 'Location created');
+      toastUtils.success(editing ? 'Location updated' : 'Location created');
       queryClient.invalidateQueries({ queryKey: ['inventory-locations'] });
       setDialogOpen(false);
     },
-    onError: () => toast.error('Failed to save location'),
+    onError: () => toastUtils.error('Failed to save location'),
   });
 
   const openCreate = () => {
@@ -105,22 +105,23 @@ export default function InventoryLocationsPage() {
     data?.data.filter((l) => l.name.toLowerCase().includes(search.toLowerCase())) ?? [];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
+    <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load locations
         </Alert>
       )}
-      <ListViewPage
+      <ListPage
         title="Inventory Locations"
         description="Configure warehouse and store locations for stock tracking"
         columns={columns}
         data={filtered}
         actions={actions}
         isLoading={isLoading}
-        inputValue={search}
-        handleSearch={(e) => setSearch(e.target.value)}
-        handleClearSearch={() => setSearch('')}
+        showSearch
+        searchValue={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        onSearchClear={() => setSearch('')}
         onAddClick={canManage ? openCreate : undefined}
         addButtonLabel="Add Location"
       />
@@ -163,6 +164,6 @@ export default function InventoryLocationsPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

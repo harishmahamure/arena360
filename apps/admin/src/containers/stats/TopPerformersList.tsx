@@ -10,7 +10,7 @@ interface TopPerformerItem {
 interface TopPerformersListProps {
   title: string;
   items: TopPerformerItem[];
-  primaryLabel: string;
+  primaryLabel?: string;
   secondaryLabel: string;
 }
 
@@ -24,7 +24,7 @@ export function TopPerformersList({
   secondaryLabel,
 }: TopPerformersListProps) {
   return (
-    <Card>
+    <Card variant="outlined">
       <CardHeader title={title} />
       <Divider />
       <CardContent>
@@ -56,7 +56,8 @@ export function TopPerformersList({
               </Box>
             </Box>
             <Typography variant="body2" fontWeight={600}>
-              {primaryLabel}: {item.primaryMetric}
+              {primaryLabel ? `${primaryLabel}: ` : ''}
+              {item.primaryMetric}
             </Typography>
           </Box>
         ))}

@@ -3,13 +3,15 @@ import { local, toastUtils } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
-  Button,
+  Card,
+  CardActionArea,
+  CardContent,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControlLabel,
-  GridLegacy as Grid,
+  Grid,
   Step,
   StepLabel,
   Stepper,
@@ -29,11 +31,29 @@ interface ShiftHandoverDialogProps {
   onClose: () => void;
 }
 
+const MODE_OPTIONS = [
+  {
+    mode: 'handover' as const,
+    title: 'Handover to next staff',
+    description: 'Validator confirms balance and session continues',
+  },
+  {
+    mode: 'close' as const,
+    title: 'Close shift (no replacement)',
+    description: 'Ends shift and logs you out',
+  },
+];
+
 function sumDenominations(denominations: Record<string, number>) {
   return Object.entries(denominations).reduce(
     (total, [value, count]) => total + Number(value) * count,
     0,
   );
+}
+
+function varianceColor(variance: number): string {
+  if (Math.abs(variance) <= 0.01) return 'success.main';
+  return 'warning.main';
 }
 
 export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDialogProps) {
@@ -116,7 +136,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
   ) => (
     <Grid container spacing={1.5} sx={{ mt: 1 }}>
       {DENOMINATIONS.notes.map((value) => (
-        <Grid item xs={6} sm={4} md={3} key={value}>
+        <Grid key={value} size={{ xs: 6, sm: 4, md: 3 }}>
           <TextField
             fullWidth
             size="small"
@@ -203,23 +223,41 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
-      <DialogTitle>End Shift</DialogTitle>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onClose={loading ? undefined : handleClose}
+      fullWidth
+      maxWidth="md"
+      PaperProps={{ sx: { borderRadius: 2 } }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="subtitle1" component="div" fontWeight={600}>
+          End shift
+        </Typography>
+      </DialogTitle>
+      <DialogContent sx={{ pt: 1 }}>
         {!mode && (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
-            <Button variant="outlined" size="large" onClick={() => setMode('handover')}>
-              Handover to next staff
-            </Button>
-            <Button variant="outlined" size="large" onClick={() => setMode('close')}>
-              Close shift (no replacement)
-            </Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            {MODE_OPTIONS.map((option) => (
+              <Card key={option.mode} variant="outlined">
+                <CardActionArea onClick={() => setMode(option.mode)} sx={{ minHeight: 56 }}>
+                  <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+                    <Typography variant="body1" fontWeight={600}>
+                      {option.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {option.description}
+                    </Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
+            ))}
           </Box>
         )}
 
         {mode && (
-          <>
-            <Stepper activeStep={step} sx={{ mb: 3, mt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Stepper activeStep={step} sx={{ mb: 1, mt: 1 }}>
               <Step>
                 <StepLabel>Closing Balance</StepLabel>
               </Step>
@@ -233,46 +271,79 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
               )}
             </Stepper>
 
-            {mode && step === 0 && (
-              <Box>
-                <Alert severity="info" sx={{ mb: 2 }}>
-                  Expected closing balance: ₹{expectedClosing.toFixed(2)}
-                </Alert>
+            {step === 0 && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 4 }}>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Expected
+                        </Typography>
+                        <Typography variant="body1" fontWeight={600}>
+                          ₹{expectedClosing.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4 }}>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Counted
+                        </Typography>
+                        <Typography variant="body1" fontWeight={600}>
+                          ₹{closingAmount.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                      <Grid size={{ xs: 4 }}>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Variance
+                        </Typography>
+                        <Typography
+                          variant="body1"
+                          fontWeight={600}
+                          color={varianceColor(variance)}
+                        >
+                          ₹{variance.toFixed(2)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+
+                {Math.abs(variance) > 0.01 && (
+                  <Alert severity="warning">
+                    Counted balance differs from expected by ₹{Math.abs(variance).toFixed(2)}.
+                  </Alert>
+                )}
+
                 <FormTextField
                   fullWidth
+                  size="small"
                   label="Closing Balance (optional if using denominations)"
                   type="number"
                   value={closingBalance}
                   onChange={(event) => setClosingBalance(event.target.value)}
-                  sx={{ mb: 2 }}
                 />
-                <Typography variant="subtitle2">Closing Denominations</Typography>
-                {renderDenominationGrid(closingDenominations, setClosingDenominations)}
-                <Typography variant="body2" sx={{ mt: 2 }}>
-                  Counted total: ₹{closingAmount.toFixed(2)}
-                </Typography>
-                {variance !== 0 && (
-                  <Alert
-                    severity={Math.abs(variance) > 0.01 ? 'warning' : 'success'}
-                    sx={{ mt: 2 }}
-                  >
-                    Variance: ₹{variance.toFixed(2)}
-                  </Alert>
-                )}
+
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Closing denominations
+                  </Typography>
+                  {renderDenominationGrid(closingDenominations, setClosingDenominations)}
+                </Box>
+
                 <TextField
                   fullWidth
+                  size="small"
                   label="Notes"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
-                  sx={{ mt: 2 }}
                   multiline
                   minRows={2}
                 />
               </Box>
             )}
 
-            {mode && step === 1 && (
-              <Box>
+            {step === 1 && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <FormControlLabel
                   control={
                     <Switch
@@ -283,27 +354,31 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
                   label="Withdraw cash for deposit today"
                 />
                 {!includeDeposit && (
-                  <Alert severity="info" sx={{ mt: 2 }}>
+                  <Alert severity="info">
                     No deposit will be created. You can choose deposit on any shift close.
                   </Alert>
                 )}
                 {includeDeposit && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="subtitle2">Deposit Denominations</Typography>
-                    {renderDenominationGrid(depositDenominations, setDepositDenominations)}
-                    <Typography variant="body2" sx={{ mt: 2 }}>
-                      Deposit amount: ₹{depositAmount.toFixed(2)}
-                    </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                        Deposit denominations
+                      </Typography>
+                      {renderDenominationGrid(depositDenominations, setDepositDenominations)}
+                      <Typography variant="body2" sx={{ mt: 2 }}>
+                        Deposit amount: ₹{depositAmount.toFixed(2)}
+                      </Typography>
+                    </Box>
                     <TextField
                       fullWidth
+                      size="small"
                       label="Deposit Notes"
                       value={depositNotes}
                       onChange={(event) => setDepositNotes(event.target.value)}
-                      sx={{ mt: 2 }}
                       multiline
                       minRows={2}
                     />
-                    <Alert severity="warning" sx={{ mt: 2 }}>
+                    <Alert severity="warning">
                       Admin must physically verify denominations and approve the deposit destination
                       (bank or home).
                     </Alert>
@@ -313,41 +388,44 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
             )}
 
             {mode === 'handover' && step === 2 && (
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Typography variant="body2" color="text.secondary">
                   Another staff member must validate the closing balance and enter their TOTP code.
                 </Typography>
                 <FormTextField
                   fullWidth
-                  label="Validator Username"
+                  size="small"
+                  label="Validator username"
                   value={validatorUsername}
                   onChange={(event) => setValidatorUsername(event.target.value)}
-                  sx={{ mb: 2 }}
                 />
                 <FormTextField
                   fullWidth
-                  label="Validator Password"
+                  size="small"
+                  label="Validator password"
                   type="password"
                   value={validatorPassword}
                   onChange={(event) => setValidatorPassword(event.target.value)}
-                  sx={{ mb: 2 }}
                 />
                 <FormTextField
                   fullWidth
-                  label="Validator TOTP Code"
+                  size="small"
+                  label="Authenticator code"
+                  placeholder="6-digit code"
+                  helperText="Enter the code from the validator's authenticator app"
                   value={validatorTotp}
                   onChange={(event) =>
                     setValidatorTotp(event.target.value.replace(/\s+/g, '').slice(0, 6))
                   }
-                  inputProps={{ autoComplete: 'one-time-code' }}
+                  inputProps={{ autoComplete: 'one-time-code', inputMode: 'numeric' }}
                 />
               </Box>
             )}
-          </>
+          </Box>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <FormButton onClick={handleClose} disabled={loading}>
+        <FormButton variant="text" onClick={handleClose} disabled={loading}>
           Cancel
         </FormButton>
         {mode && step > 0 && (

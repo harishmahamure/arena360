@@ -29,6 +29,7 @@
     "@types/react-dom": "^19"
   },
   "dependencies": {
+    "@gaming-cafe/utils": "workspace:*",
     "@gaming-cafe/theme": "workspace:*",
     "@mui/material": "^7.3.6",
     "react-toastify": "^11.0.5"

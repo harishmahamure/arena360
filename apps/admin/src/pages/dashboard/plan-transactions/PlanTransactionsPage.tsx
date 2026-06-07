@@ -1,8 +1,8 @@
 import type { PaymentStatusValue } from '@gaming-cafe/contracts';
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
 import { capitalize, formatCurrency, formatTimeAgo } from '@gaming-cafe/utils';
 import { Visibility } from '@mui/icons-material';
-import { Box, Chip, Pagination, Typography } from '@mui/material';
+import { Chip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -165,37 +165,26 @@ export default function PlanTransactionsPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<TransactionResponse>
-        title="Plan sales"
-        description="Plan purchases and assignments for players."
-        data={enrichedTransactions}
-        columns={columns}
-        actions={actions}
-        isLoading={isLoading}
-        inputValue=""
-        handleSearch={() => {}}
-        handleClearSearch={() => {}}
-        showSearch={false}
-        onAddClick={can(Permission.PlayerPlansWrite) ? handleAddNewTransaction : undefined}
-        addButtonLabel="Buy plan"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) =>
-            navigate(
-              buildListUrl('/plan-transactions', value, {
-                status: statusFilter ?? undefined,
-              }),
-            )
-          }
-        />
-      </Box>
-    </Box>
+    <ListPage<TransactionResponse>
+      title="Plan sales"
+      description="Plan purchases and assignments for players."
+      data={enrichedTransactions}
+      columns={columns}
+      actions={actions}
+      isLoading={isLoading}
+      showSearch={false}
+      onAddClick={can(Permission.PlayerPlansWrite) ? handleAddNewTransaction : undefined}
+      addButtonLabel="Buy plan"
+      pagination={{
+        page,
+        totalPages: data?.totalPages,
+        onPageChange: (value) =>
+          navigate(
+            buildListUrl('/plan-transactions', value, {
+              status: statusFilter ?? undefined,
+            }),
+          ),
+      }}
+    />
   );
 }

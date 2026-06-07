@@ -1,14 +1,14 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
-import { formatCurrency } from '@gaming-cafe/utils';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { formatCurrency, toastUtils } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
-import { Box, Chip, debounce, Pagination } from '@mui/material';
+import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deleteProduct } from '../../../services/product/delete';
 import { getProducts, type ProductResponse } from '../../../services/product/list';
+import { buildListUrl } from '../../../utils/buildListUrl';
 
 export default function ProductsPage() {
   const [inputValue, setInputValue] = useState<string>('');
@@ -108,10 +108,10 @@ export default function ProductsPage() {
     async (id: string) => {
       try {
         await deleteProduct(id);
-        toast.success('Product deactivated successfully');
+        toastUtils.success('Product deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to deactivate product');
+        toastUtils.error('Failed to deactivate product');
       }
     },
     [refetch],
@@ -131,32 +131,30 @@ export default function ProductsPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<ProductResponse>
-        title="Products"
-        description="Manage your game zone Products here."
-        data={data?.data || []}
-        columns={columns}
-        actions={canWrite ? actions : []}
-        isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
-        onAddClick={canWrite ? handleAddNewProduct : undefined}
-        addButtonLabel="Add Product"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) =>
-            navigate(value === 1 ? `/products` : `/products?page=${value}`)
-          }
-        />
-      </Box>
-    </Box>
+    <ListPage<ProductResponse>
+      title="Products"
+      description="Manage your game zone Products here."
+      data={data?.data || []}
+      columns={columns}
+      actions={canWrite ? actions : []}
+      isLoading={isLoading}
+      showSearch
+      searchValue={inputValue}
+      onSearchChange={handleSearch}
+      onSearchClear={handleClearSearch}
+      onAddClick={canWrite ? handleAddNewProduct : undefined}
+      addButtonLabel="Add Product"
+      pagination={{
+        page,
+        totalPages: data?.totalPages,
+        onPageChange: (value) =>
+          navigate(
+            buildListUrl('/products', value, {
+              deleted: deletedProducts ? 'true' : undefined,
+              stockExpiringSoon: stockExpiringSoon ? 'true' : undefined,
+            }),
+          ),
+      }}
+    />
   );
 }

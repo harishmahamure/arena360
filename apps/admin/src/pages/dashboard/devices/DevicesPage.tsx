@@ -1,5 +1,5 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
 import {
   Build,
   CheckCircle,
@@ -10,12 +10,13 @@ import {
   SportsEsports,
   Tv,
 } from '@mui/icons-material';
-import { Box, Chip, debounce, Pagination, Typography } from '@mui/material';
+import { Box, Chip, debounce, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { type DeviceResponse, DeviceStatus, getDevices } from '../../../services/devices/list';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
 
 const getStatusColor = (status: DeviceStatusValue) => {
@@ -238,32 +239,30 @@ export default function DevicesPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<DeviceResponse>
-        title="Devices"
-        description="Manage your game zone devices and stations here."
-        data={data?.data || []}
-        columns={columns}
-        actions={canWrite ? actions : []}
-        isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
-        onAddClick={canWrite ? handleAddNewDevice : undefined}
-        addButtonLabel="Add Device"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) =>
-            navigate(value === 1 ? `/devices` : `/devices?page=${value}`)
-          }
-        />
-      </Box>
-    </Box>
+    <ListPage<DeviceResponse>
+      title="Devices"
+      description="Manage your game zone devices and stations here."
+      data={data?.data || []}
+      columns={columns}
+      actions={canWrite ? actions : []}
+      isLoading={isLoading}
+      showSearch
+      searchValue={inputValue}
+      onSearchChange={handleSearch}
+      onSearchClear={handleClearSearch}
+      onAddClick={canWrite ? handleAddNewDevice : undefined}
+      addButtonLabel="Add Device"
+      pagination={{
+        page,
+        totalPages: data?.totalPages,
+        onPageChange: (value) =>
+          navigate(
+            buildListUrl('/devices', value, {
+              status: statusFilter ?? undefined,
+              type: typeFilter ?? undefined,
+            }),
+          ),
+      }}
+    />
   );
 }

@@ -1,33 +1,46 @@
 import { type ToastOptions, toast } from 'react-toastify';
+import { DEFAULT_TOAST_OPTIONS } from './toast-config';
 
-const defaultOptions: ToastOptions = {
-  position: 'top-right',
-  autoClose: 3000,
-  hideProgressBar: false,
-  closeOnClick: true,
-  pauseOnHover: true,
-  draggable: true,
-};
+export interface SessionWarningOptions {
+  sessionId?: string;
+  tag?: string;
+  autoClose?: number;
+}
 
 export const toastUtils = {
   success: (message: string, options?: ToastOptions) => {
-    toast.success(message, { ...defaultOptions, ...options });
+    toast.success(message, { ...DEFAULT_TOAST_OPTIONS, ...options });
   },
 
   error: (message: string, options?: ToastOptions) => {
-    toast.error(message, { ...defaultOptions, ...options });
+    toast.error(message, { ...DEFAULT_TOAST_OPTIONS, ...options });
   },
 
   info: (message: string, options?: ToastOptions) => {
-    toast.info(message, { ...defaultOptions, ...options });
+    toast.info(message, { ...DEFAULT_TOAST_OPTIONS, ...options });
   },
 
   warning: (message: string, options?: ToastOptions) => {
-    toast.warning(message, { ...defaultOptions, ...options });
+    toast.warning(message, { ...DEFAULT_TOAST_OPTIONS, ...options });
+  },
+
+  sessionWarning: (message: string, options?: SessionWarningOptions) => {
+    const { sessionId, tag, autoClose = 10000 } = options ?? {};
+    toast.warning(message, {
+      ...DEFAULT_TOAST_OPTIONS,
+      autoClose,
+      toastId: tag,
+      className: 'gc-toast--session-warning',
+      onClick: sessionId
+        ? () => {
+            window.location.assign(`/sessions/${sessionId}`);
+          }
+        : undefined,
+    });
   },
 
   default: (message: string, options?: ToastOptions) => {
-    toast(message, { ...defaultOptions, ...options });
+    toast(message, { ...DEFAULT_TOAST_OPTIONS, ...options });
   },
 
   promise: <T>(
@@ -39,7 +52,7 @@ export const toastUtils = {
     },
     options?: ToastOptions,
   ) => {
-    return toast.promise(promise, messages, { ...defaultOptions, ...options });
+    return toast.promise(promise, messages, { ...DEFAULT_TOAST_OPTIONS, ...options });
   },
 
   dismiss: (toastId?: string | number) => {

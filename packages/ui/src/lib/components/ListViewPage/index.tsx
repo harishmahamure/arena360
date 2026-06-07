@@ -1,9 +1,8 @@
 'use client';
 
-import { Add, Clear, Search } from '@mui/icons-material';
-import { Box, Button, IconButton, InputAdornment, TextField, Typography } from '@mui/material';
-import { type Action, type Column, DataGrid } from '../DataGrid';
-import { GridSkeleton } from '../GridSkeleton';
+import { Typography } from '@mui/material';
+import type { Action, Column } from '../DataGrid';
+import { ListPageContent } from '../ListPage/ListPageContent';
 
 export interface ListViewPageProps<T extends { id: string | number }> {
   title: string;
@@ -20,6 +19,9 @@ export interface ListViewPageProps<T extends { id: string | number }> {
   showSearch?: boolean;
 }
 
+/**
+ * @deprecated Use `ListPage` from `@gaming-cafe/ui` instead.
+ */
 export function ListViewPage<T extends { id: string | number }>({
   isLoading,
   title,
@@ -43,63 +45,18 @@ export function ListViewPage<T extends { id: string | number }>({
         {description}
       </Typography>
 
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '16px',
-        }}
-      >
-        {showSearch ? (
-          <Box sx={{ width: '100%', maxWidth: 300 }}>
-            <TextField
-              label="Search"
-              variant="outlined"
-              size="small"
-              fullWidth
-              value={inputValue}
-              onChange={handleSearch}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-                endAdornment: inputValue && (
-                  <InputAdornment position="end">
-                    <IconButton size="small" onClick={handleClearSearch} edge="end">
-                      <Clear fontSize="small" />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
-        ) : (
-          <Box />
-        )}
-        {onAddClick && (
-          <Button variant="contained" color="primary" onClick={onAddClick}>
-            <Add />
-            {addButtonLabel}
-          </Button>
-        )}
-      </Box>
-
-      {isLoading ? (
-        <GridSkeleton />
-      ) : (
-        <DataGrid<T>
-          columns={columns}
-          data={data}
-          rowKey={(row) => row.id}
-          showActionsLabel={true}
-          emptyMessage="No items found"
-          actions={actions}
-          maxHeight="calc(100vh - 280px)"
-        />
-      )}
+      <ListPageContent<T>
+        data={data}
+        columns={columns}
+        actions={actions}
+        isLoading={isLoading}
+        showSearch={showSearch}
+        searchValue={inputValue}
+        onSearchChange={handleSearch}
+        onSearchClear={handleClearSearch}
+        onAddClick={onAddClick}
+        addButtonLabel={addButtonLabel}
+      />
     </>
   );
 }

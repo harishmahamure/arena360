@@ -1,3 +1,4 @@
+import { toastUtils } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -17,7 +18,6 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { deleteVendor, getVendor, updateVendor, type Vendor } from '../../../services/vendors';
 
 export default function VendorDetailPage() {
@@ -79,7 +79,7 @@ export default function VendorDetailPage() {
         gstNumber: gstNumber || undefined,
         isActive,
       });
-      toast.success('Vendor updated');
+      toastUtils.success('Vendor updated');
       queryClient.invalidateQueries({ queryKey: ['vendor', id] });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to update vendor');
@@ -93,10 +93,10 @@ export default function VendorDetailPage() {
     setSaving(true);
     try {
       await deleteVendor(id);
-      toast.success('Vendor deleted');
+      toastUtils.success('Vendor deleted');
       navigate('/vendors');
     } catch {
-      toast.error('Failed to delete vendor');
+      toastUtils.error('Failed to delete vendor');
     } finally {
       setSaving(false);
       setDeleteDialogOpen(false);

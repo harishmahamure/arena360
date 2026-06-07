@@ -1,3 +1,4 @@
+import { toastUtils } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -17,7 +18,6 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import {
   approveExpense,
   type Expense,
@@ -71,7 +71,7 @@ export default function ExpenseDetailPage() {
         paymentMethod: editPaymentMethod,
         description: editDescription || undefined,
       });
-      toast.success('Expense updated');
+      toastUtils.success('Expense updated');
       queryClient.invalidateQueries({ queryKey: ['expense', id] });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to update');
@@ -85,10 +85,10 @@ export default function ExpenseDetailPage() {
     setSaving(true);
     try {
       await approveExpense(id);
-      toast.success('Expense approved');
+      toastUtils.success('Expense approved');
       queryClient.invalidateQueries({ queryKey: ['expense', id] });
     } catch {
-      toast.error('Failed to approve expense');
+      toastUtils.error('Failed to approve expense');
     } finally {
       setSaving(false);
     }
@@ -99,11 +99,11 @@ export default function ExpenseDetailPage() {
     setSaving(true);
     try {
       await rejectExpense(id, rejectionReason.trim());
-      toast.success('Expense rejected');
+      toastUtils.success('Expense rejected');
       setRejectDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['expense', id] });
     } catch {
-      toast.error('Failed to reject expense');
+      toastUtils.error('Failed to reject expense');
     } finally {
       setSaving(false);
     }

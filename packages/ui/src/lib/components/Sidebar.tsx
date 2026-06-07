@@ -1,20 +1,4 @@
-import {
-  BarChart,
-  ChevronLeft,
-  ChevronRight,
-  Dashboard,
-  ExpandLess,
-  ExpandMore,
-  Group,
-  Inventory,
-  LocalOffer,
-  Logout,
-  People,
-  Receipt,
-  Settings,
-  ShoppingCart,
-  Storefront,
-} from '@mui/icons-material';
+import { ChevronLeft, ChevronRight, ExpandLess, ExpandMore, Logout } from '@mui/icons-material';
 import {
   Avatar,
   Box,
@@ -26,11 +10,15 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
   Tooltip,
   Typography,
   useMediaQuery,
-  useTheme,
 } from '@mui/material';
+import type { Theme } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
+import type { SxProps } from '@mui/system';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -41,46 +29,16 @@ export interface NavItem {
   title: string;
   path: string;
   icon: React.ReactNode;
+  section?: string;
   children?: { title: string; path: string }[];
 }
-
-const defaultNavItems: NavItem[] = [
-  { title: 'Dashboard', path: '/', icon: <Dashboard /> },
-  {
-    title: 'Products',
-    path: '/products',
-    icon: <Inventory />,
-    children: [
-      { title: 'All Products', path: '/products' },
-      { title: 'Add Product', path: '/products/add' },
-      { title: 'Categories', path: '/products/categories' },
-    ],
-  },
-  {
-    title: 'Orders',
-    path: '/orders',
-    icon: <ShoppingCart />,
-    children: [
-      { title: 'All Orders', path: '/orders' },
-      { title: 'Pending', path: '/orders/pending' },
-      { title: 'Completed', path: '/orders/completed' },
-    ],
-  },
-  { title: 'Customers', path: '/customers', icon: <People /> },
-  { title: 'Analytics', path: '/analytics', icon: <BarChart /> },
-  { title: 'Store', path: '/store', icon: <Storefront /> },
-  { title: 'Transactions', path: '/transactions', icon: <Receipt /> },
-  { title: 'Promotions', path: '/promotions', icon: <LocalOffer /> },
-  { title: 'Team', path: '/team', icon: <Group /> },
-  { title: 'Settings', path: '/settings', icon: <Settings /> },
-];
 
 export interface SidebarProps {
   open: boolean;
   onClose: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  navItems?: NavItem[];
+  navItems: NavItem[];
   logo?: React.ReactNode;
   logoText?: string;
   user?: {
@@ -91,12 +49,60 @@ export interface SidebarProps {
   onLogout?: () => void;
 }
 
+function activeAccentSx(isActive: boolean): SxProps<Theme> {
+  if (!isActive) return {};
+  return {
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      left: 4,
+      top: '22%',
+      bottom: '22%',
+      width: 3,
+      borderRadius: '0 2px 2px 0',
+      bgcolor: 'primary.main',
+    },
+  };
+}
+
+function navItemSx(theme: Theme, isActive: boolean, collapsedDesktop: boolean): SxProps<Theme> {
+  const primary = theme.palette.primary.main;
+  return {
+    position: 'relative',
+    borderRadius: 2,
+    mb: 0.5,
+    justifyContent: collapsedDesktop ? 'center' : 'flex-start',
+    px: collapsedDesktop ? 1.5 : 2,
+    bgcolor: isActive ? alpha(primary, 0.15) : 'transparent',
+    ...activeAccentSx(isActive),
+    '&:hover': {
+      bgcolor: isActive ? alpha(primary, 0.2) : alpha(theme.palette.common.white, 0.08),
+    },
+  };
+}
+
+function childNavItemSx(theme: Theme, isActive: boolean): SxProps<Theme> {
+  const primary = theme.palette.primary.main;
+  return {
+    position: 'relative',
+    pl: 6,
+    py: 1,
+    borderRadius: 2,
+    mb: 0.5,
+    bgcolor: isActive ? alpha(primary, 0.15) : 'transparent',
+    ...activeAccentSx(isActive),
+    '&:hover': {
+      bgcolor: isActive ? alpha(primary, 0.2) : alpha(theme.palette.common.white, 0.08),
+    },
+  };
+}
+
 export default function Sidebar({
   open,
   onClose,
   collapsed,
   onToggleCollapse,
-  navItems = defaultNavItems,
+  navItems,
   logo,
   logoText = 'Admin',
   user = { name: 'John Doe', role: 'Administrator' },
@@ -110,42 +116,41 @@ export default function Sidebar({
   const completePath = `${location.pathname}${
     searchParams.size > 0 ? `?` : ''
   }${searchParams.toString()}`;
-  const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [flyoutAnchor, setFlyoutAnchor] = useState<HTMLElement | null>(null);
+  const [flyoutItem, setFlyoutItem] = useState<NavItem | null>(null);
+
+  const collapsedDesktop = collapsed && !isMobile;
 
   useEffect(() => {
-    const parentsToExpand = navItems
-      .filter((item) => {
-        if (!item.children?.length) return false;
-        if (item.path === '/') return location.pathname === '/';
-        return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
-      })
-      .map((item) => item.title);
-
-    if (parentsToExpand.length === 0) return;
-
-    setExpandedItems((prev) => {
-      const merged = new Set([...prev, ...parentsToExpand]);
-      if (merged.size === prev.length && parentsToExpand.every((title) => prev.includes(title))) {
-        return prev;
-      }
-      return [...merged];
+    const activeParent = navItems.find((item) => {
+      if (!item.children?.length) return false;
+      if (item.path === '/') return location.pathname === '/';
+      return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     });
+
+    setExpandedItem(activeParent?.title ?? null);
   }, [location.pathname, navItems]);
 
   const handleExpand = (title: string) => {
-    setExpandedItems((prev) =>
-      prev.includes(title) ? prev.filter((item) => item !== title) : [...prev, title],
-    );
+    setExpandedItem((prev) => (prev === title ? null : title));
   };
 
-  const handleParentClick = (item: NavItem) => {
-    setExpandedItems((prev) => (prev.includes(item.title) ? prev : [...prev, item.title]));
+  const handleParentClick = (item: NavItem, event: React.MouseEvent<HTMLElement>) => {
+    if (collapsedDesktop && item.children?.length) {
+      setFlyoutAnchor(event.currentTarget);
+      setFlyoutItem(item);
+      return;
+    }
+    setExpandedItem(item.title);
     navigate(item.path);
     if (isMobile) onClose();
   };
 
   const handleNavigate = (path: string) => {
     navigate(path);
+    setFlyoutAnchor(null);
+    setFlyoutItem(null);
     if (isMobile) onClose();
   };
 
@@ -157,10 +162,50 @@ export default function Sidebar({
     return completePath.startsWith(path);
   };
 
+  const isExactPath = (path: string) => completePath === path;
+
+  const isAnyChildActive = (item: NavItem) =>
+    item.children?.some((child) => isExactPath(child.path)) ?? false;
+
   const userInitials = user.name
     .split(' ')
     .map((n) => n[0])
     .join('');
+
+  const logoFallbackSx = {
+    width: 40,
+    height: 40,
+    borderRadius: 2,
+    background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.primary.main} 100%)`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 700,
+    fontSize: '1.25rem',
+  };
+
+  const renderSectionHeader = (section: string | undefined, index: number) => {
+    if (!section || collapsedDesktop) return null;
+    const prevSection = index > 0 ? navItems[index - 1]?.section : undefined;
+    if (section === prevSection) return null;
+    return (
+      <Box key={`section-${section}-${index}`} sx={{ px: 1, pt: index === 0 ? 0 : 1.5, pb: 0.5 }}>
+        <Divider sx={{ borderColor: alpha(theme.palette.common.white, 0.1), mb: 1 }} />
+        <Typography
+          variant="caption"
+          sx={{
+            color: alpha(theme.palette.common.white, 0.5),
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            px: 1,
+          }}
+        >
+          {section}
+        </Typography>
+      </Box>
+    );
+  };
 
   const drawerContent = (
     <Box
@@ -172,67 +217,32 @@ export default function Sidebar({
         color: 'white',
       }}
     >
-      {/* Logo Section */}
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
+          justifyContent: collapsedDesktop ? 'center' : 'space-between',
           p: 2,
           minHeight: 64,
         }}
       >
         {(!collapsed || isMobile) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            {logo ?? (
-              <Box
-                sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 2,
-                  background: 'linear-gradient(135deg, #FF6900 0%, #CC5400 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: '1.25rem',
-                }}
-              >
-                {logoText.charAt(0)}
-              </Box>
-            )}
+            {logo ?? <Box sx={logoFallbackSx}>{logoText.charAt(0)}</Box>}
             <Typography variant="h6" fontWeight={700}>
               {logoText}
             </Typography>
           </Box>
         )}
-        {collapsed &&
-          !isMobile &&
-          (logo ?? (
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: 2,
-                background: 'linear-gradient(135deg, #FF6900 0%, #CC5400 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '1.25rem',
-              }}
-            >
-              {logoText.charAt(0)}
-            </Box>
-          ))}
+        {collapsedDesktop && (logo ?? <Box sx={logoFallbackSx}>{logoText.charAt(0)}</Box>)}
         {!isMobile && (
           <IconButton
             onClick={onToggleCollapse}
             sx={{
               color: 'white',
-              ml: collapsed ? 0 : 'auto',
-              bgcolor: 'rgba(255,255,255,0.1)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
+              ml: collapsedDesktop ? 0 : 'auto',
+              bgcolor: alpha(theme.palette.common.white, 0.1),
+              '&:hover': { bgcolor: alpha(theme.palette.common.white, 0.15) },
             }}
             size="small"
           >
@@ -241,35 +251,24 @@ export default function Sidebar({
         )}
       </Box>
 
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+      <Divider sx={{ borderColor: alpha(theme.palette.common.white, 0.1) }} />
 
-      {/* Navigation */}
       <Box sx={{ flex: 1, overflow: 'auto', py: 2 }}>
-        <List component="nav" sx={{ px: collapsed && !isMobile ? 0.5 : 1 }}>
-          {navItems.map((item) => (
+        <List component="nav" sx={{ px: collapsedDesktop ? 0.5 : 1 }}>
+          {navItems.map((item, index) => (
             <Box key={item.title}>
+              {renderSectionHeader(item.section, index)}
               {item.children ? (
                 <>
-                  <Tooltip title={collapsed && !isMobile ? item.title : ''} placement="right">
+                  <Tooltip title={collapsedDesktop ? item.title : ''} placement="right">
                     <ListItemButton
-                      onClick={() => handleParentClick(item)}
-                      sx={{
-                        borderRadius: 2,
-                        mb: 0.5,
-                        justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
-                        px: collapsed && !isMobile ? 1.5 : 2,
-                        bgcolor: isActive(item.path) ? 'rgba(255,105,0,0.2)' : 'transparent',
-                        '&:hover': {
-                          bgcolor: isActive(item.path)
-                            ? 'rgba(255,105,0,0.25)'
-                            : 'rgba(255,255,255,0.08)',
-                        },
-                      }}
+                      onClick={(event) => handleParentClick(item, event)}
+                      sx={navItemSx(theme, false, collapsedDesktop)}
                     >
                       <ListItemIcon
                         sx={{
-                          color: isActive(item.path) ? 'primary.main' : 'inherit',
-                          minWidth: collapsed && !isMobile ? 0 : 40,
+                          color: isAnyChildActive(item) ? 'primary.main' : 'inherit',
+                          minWidth: collapsedDesktop ? 0 : 40,
                         }}
                       >
                         {item.icon}
@@ -280,7 +279,7 @@ export default function Sidebar({
                           <IconButton
                             size="small"
                             aria-label={
-                              expandedItems.includes(item.title)
+                              expandedItem === item.title
                                 ? `Collapse ${item.title}`
                                 : `Expand ${item.title}`
                             }
@@ -291,33 +290,20 @@ export default function Sidebar({
                             }}
                             sx={{ color: 'inherit' }}
                           >
-                            {expandedItems.includes(item.title) ? <ExpandLess /> : <ExpandMore />}
+                            {expandedItem === item.title ? <ExpandLess /> : <ExpandMore />}
                           </IconButton>
                         </>
                       )}
                     </ListItemButton>
                   </Tooltip>
                   {(!collapsed || isMobile) && (
-                    <Collapse in={expandedItems.includes(item.title)} timeout="auto">
+                    <Collapse in={expandedItem === item.title} timeout="auto">
                       <List component="div" disablePadding>
                         {item.children.map((child) => (
                           <ListItemButton
                             key={child.path}
                             onClick={() => handleNavigate(child.path)}
-                            sx={{
-                              pl: 6,
-                              py: 1,
-                              borderRadius: 2,
-                              mb: 0.5,
-                              bgcolor:
-                                completePath === child.path ? 'rgba(255,105,0,0.2)' : 'transparent',
-                              '&:hover': {
-                                bgcolor:
-                                  completePath === child.path
-                                    ? 'rgba(255,105,0,0.25)'
-                                    : 'rgba(255,255,255,0.08)',
-                              },
-                            }}
+                            sx={childNavItemSx(theme, isExactPath(child.path))}
                           >
                             <ListItemText
                               primary={child.title}
@@ -333,26 +319,15 @@ export default function Sidebar({
                   )}
                 </>
               ) : (
-                <Tooltip title={collapsed && !isMobile ? item.title : ''} placement="right">
+                <Tooltip title={collapsedDesktop ? item.title : ''} placement="right">
                   <ListItemButton
                     onClick={() => handleNavigate(item.path)}
-                    sx={{
-                      borderRadius: 2,
-                      mb: 0.5,
-                      justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
-                      px: collapsed && !isMobile ? 1.5 : 2,
-                      bgcolor: isActive(item.path) ? 'rgba(255,105,0,0.2)' : 'transparent',
-                      '&:hover': {
-                        bgcolor: isActive(item.path)
-                          ? 'rgba(255,105,0,0.25)'
-                          : 'rgba(255,255,255,0.08)',
-                      },
-                    }}
+                    sx={navItemSx(theme, isActive(item.path), collapsedDesktop)}
                   >
                     <ListItemIcon
                       sx={{
                         color: isActive(item.path) ? 'primary.main' : 'inherit',
-                        minWidth: collapsed && !isMobile ? 0 : 40,
+                        minWidth: collapsedDesktop ? 0 : 40,
                       }}
                     >
                       {item.icon}
@@ -366,22 +341,59 @@ export default function Sidebar({
         </List>
       </Box>
 
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+      <Menu
+        anchorEl={flyoutAnchor}
+        open={Boolean(flyoutAnchor && flyoutItem)}
+        onClose={() => {
+          setFlyoutAnchor(null);
+          setFlyoutItem(null);
+        }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        slotProps={{
+          paper: { sx: { minWidth: 200, ml: 0.5 } },
+        }}
+      >
+        {flyoutItem?.children?.map((child) => (
+          <MenuItem
+            key={child.path}
+            selected={completePath === child.path}
+            onClick={() => handleNavigate(child.path)}
+          >
+            {child.title}
+          </MenuItem>
+        ))}
+      </Menu>
 
-      {/* User Section */}
+      <Divider sx={{ borderColor: alpha(theme.palette.common.white, 0.1) }} />
+
       <Box sx={{ p: 2 }}>
-        {collapsed && !isMobile ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            <Avatar
-              sx={{
-                bgcolor: 'primary.main',
-                width: 36,
-                height: 36,
-                fontSize: '0.875rem',
-              }}
-            >
-              {userInitials}
-            </Avatar>
+        {collapsedDesktop ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+            <Tooltip title={user.name} placement="right">
+              <Avatar
+                sx={{
+                  bgcolor: 'primary.main',
+                  width: 36,
+                  height: 36,
+                  fontSize: '0.875rem',
+                }}
+              >
+                {userInitials}
+              </Avatar>
+            </Tooltip>
+            {onLogout && (
+              <Tooltip title="Log out" placement="right">
+                <IconButton
+                  size="small"
+                  sx={{ color: alpha(theme.palette.common.white, 0.6) }}
+                  onClick={onLogout}
+                  aria-label="Log out"
+                >
+                  <Logout fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
         ) : (
           <Box
@@ -391,7 +403,7 @@ export default function Sidebar({
               gap: 1.5,
               p: 1.5,
               borderRadius: 2,
-              bgcolor: 'rgba(255,255,255,0.05)',
+              bgcolor: alpha(theme.palette.common.white, 0.05),
             }}
           >
             <Avatar
@@ -408,13 +420,17 @@ export default function Sidebar({
               <Typography variant="body2" fontWeight={600} noWrap>
                 {user.name}
               </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }} noWrap>
+              <Typography
+                variant="caption"
+                sx={{ color: alpha(theme.palette.common.white, 0.6) }}
+                noWrap
+              >
                 {user.role}
               </Typography>
             </Box>
             <IconButton
               size="small"
-              sx={{ color: 'rgba(255,255,255,0.6)' }}
+              sx={{ color: alpha(theme.palette.common.white, 0.6) }}
               onClick={onLogout}
               aria-label="Log out"
             >
@@ -428,7 +444,6 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Mobile Drawer */}
       {isMobile && (
         <Drawer
           variant="temporary"
@@ -447,7 +462,6 @@ export default function Sidebar({
         </Drawer>
       )}
 
-      {/* Desktop Drawer */}
       {!isMobile && (
         <Drawer
           variant="permanent"

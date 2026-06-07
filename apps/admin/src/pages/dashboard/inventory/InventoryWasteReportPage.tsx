@@ -1,4 +1,4 @@
-import { type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Column, ListPage } from '@gaming-cafe/ui';
 import { Box, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -63,40 +63,40 @@ export default function InventoryWasteReportPage() {
   const totalPieces = rows.reduce((s, r) => s + r.totalPieces, 0);
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          type="date"
-          label="From"
-          InputLabelProps={{ shrink: true }}
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          size="small"
-        />
-        <TextField
-          type="date"
-          label="To"
-          InputLabelProps={{ shrink: true }}
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          size="small"
-        />
-        <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
-          Total: {totalPieces} pcs · {formatCurrency(totalCost)}
-        </Typography>
-      </Box>
-
-      <ListViewPage
-        title="Waste Report"
-        description="Approved waste aggregated by location, product, and reason"
-        columns={columns}
-        data={rows}
-        actions={[]}
-        isLoading={isLoading}
-        inputValue={search}
-        handleSearch={(e) => setSearch(e.target.value)}
-        handleClearSearch={() => setSearch('')}
-      />
-    </Box>
+    <ListPage
+      title="Waste Report"
+      description="Approved waste aggregated by location, product, and reason"
+      columns={columns}
+      data={rows}
+      actions={[]}
+      isLoading={isLoading}
+      showSearch
+      searchValue={search}
+      onSearchChange={(e) => setSearch(e.target.value)}
+      onSearchClear={() => setSearch('')}
+      filters={
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            type="date"
+            label="From"
+            InputLabelProps={{ shrink: true }}
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            size="small"
+          />
+          <TextField
+            type="date"
+            label="To"
+            InputLabelProps={{ shrink: true }}
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            size="small"
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+            Total: {totalPieces} pcs · {formatCurrency(totalCost)}
+          </Typography>
+        </Box>
+      }
+    />
   );
 }

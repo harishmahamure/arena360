@@ -1,0 +1,43 @@
+/* Token-aligned toast styling. Requires @gaming-cafe/theme/tokens.css loaded in the app. */
+
+.Toastify__toast {
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-weight: 500;
+}
+
+.Toastify__toast--success {
+  background: var(--gz-color-success, #10b981);
+  color: #fff;
+}
+
+.Toastify__toast--error {
+  background: var(--gz-color-danger, #ef4444);
+  color: #fff;
+}
+
+.Toastify__toast--warning:not(.gc-toast--session-warning) {
+  background: var(--gz-color-warning, #f59e0b);
+  color: #fff;
+}
+
+.Toastify__toast--info {
+  background: var(--gz-color-info, #3b82f6);
+  color: #fff;
+}
+
+.gc-toast--session-warning {
+  background: var(--gz-color-primary, #ff6900) !important;
+  color: var(--gz-color-on-primary, #fff) !important;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.gc-toast--session-warning .Toastify__progress-bar {
+  background: var(--gz-color-on-primary, #fff);
+}
+
+.Toastify__progress-bar {
+  background: rgba(255, 255, 255, 0.7);
+}

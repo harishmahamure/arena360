@@ -7,6 +7,7 @@ interface SessionRemainingClockProps {
   remainingMinutes: number;
   deductionProfile?: DeductionProfile | null;
   cafeTimezone?: string;
+  variant?: 'default' | 'prominent';
 }
 
 /**
@@ -17,16 +18,30 @@ export function SessionRemainingClock({
   remainingMinutes,
   deductionProfile,
   cafeTimezone = DEFAULT_CAFE_TZ,
+  variant = 'default',
 }: SessionRemainingClockProps) {
   const localMinutes = useSessionRemainingMinutes(remainingMinutes, deductionProfile, cafeTimezone);
+  const isProminent = variant === 'prominent';
 
   if (localMinutes === null || localMinutes <= 0) {
     return (
-      <Typography variant="body2" color="error">
+      <Typography
+        variant={isProminent ? 'h4' : 'body2'}
+        fontWeight={isProminent ? 700 : undefined}
+        color="error"
+      >
         Expired
       </Typography>
     );
   }
 
-  return <Typography variant="body2">{formatRemainingLabel(localMinutes)}</Typography>;
+  return (
+    <Typography
+      variant={isProminent ? 'h4' : 'body2'}
+      fontWeight={isProminent ? 700 : undefined}
+      color={isProminent ? 'primary.main' : undefined}
+    >
+      {formatRemainingLabel(localMinutes)}
+    </Typography>
+  );
 }

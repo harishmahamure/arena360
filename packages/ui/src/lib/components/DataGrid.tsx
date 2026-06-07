@@ -5,6 +5,7 @@ import {
   Box,
   IconButton,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -20,6 +21,8 @@ import type { ReactNode } from 'react';
 
 export interface Column<T = Record<string, unknown>> {
   id: keyof T;
+  /** React key when multiple columns share the same `id` */
+  key?: string;
   label: string;
   align?: 'left' | 'center' | 'right';
   minWidth?: number;
@@ -47,6 +50,7 @@ interface DataGridProps<T = Record<string, unknown>> {
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
   maxHeight?: string | number;
+  renderMobileCard?: (row: T, rowActions: Action<T>[]) => ReactNode;
 }
 
 // const ROW_HEIGHT = 52; // Approximate height of each row (py: 2 = 32px + content ~20px)
@@ -63,6 +67,7 @@ export function DataGrid<T extends Record<string, unknown>>({
   onRowClick,
   emptyMessage = 'No data available',
   maxHeight,
+  renderMobileCard,
 }: DataGridProps<T>) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -87,36 +92,64 @@ export function DataGrid<T extends Record<string, unknown>>({
 
   const hasActions = actions.length > 0;
 
+  const getColumnKey = (column: Column<T>, index: number) =>
+    column.key ?? `${String(column.id)}-${index}`;
+
+  const headerCellSx = {
+    backgroundColor: alpha(theme.palette.text.primary, 0.04),
+    fontWeight: 600,
+    fontSize: '0.8125rem',
+    color: theme.palette.text.secondary,
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    py: 2,
+    px: isMobile ? 1.5 : 2,
+  };
+
+  const paperSx = {
+    borderRadius: 1,
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow: theme.shadows[2],
+    overflow: maxHeight ? 'auto' : 'hidden',
+    transition: 'all 0.3s ease-in-out',
+    maxHeight: maxHeight,
+  };
+
+  if (isMobile && renderMobileCard) {
+    if (data.length === 0) {
+      return (
+        <Paper sx={{ ...paperSx, py: 8, textAlign: 'center' }}>
+          <Typography variant="body1" color="text.secondary">
+            {emptyMessage}
+          </Typography>
+        </Paper>
+      );
+    }
+
+    return (
+      <Stack spacing={2} sx={maxHeight ? { maxHeight, overflow: 'auto' } : undefined}>
+        {data.map((row, index) => (
+          <Box key={getRowKey(row, index)}>{renderMobileCard(row, actions)}</Box>
+        ))}
+      </Stack>
+    );
+  }
+
   return (
-    <TableContainer
-      component={Paper}
-      sx={{
-        borderRadius: 1,
-        border: `1px solid ${theme.palette.divider}`,
-        boxShadow: theme.shadows[2],
-        overflow: maxHeight ? 'auto' : 'hidden',
-        transition: 'all 0.3s ease-in-out',
-        maxHeight: maxHeight,
-      }}
-    >
-      <Table stickyHeader={stickyHeader} aria-label="data grid table">
+    <TableContainer component={Paper} sx={paperSx}>
+      <Table
+        stickyHeader={stickyHeader}
+        sx={{ tableLayout: 'auto', width: '100%' }}
+        aria-label="data grid table"
+      >
         <TableHead>
           <TableRow>
-            {visibleColumns.map((column) => (
+            {visibleColumns.map((column, columnIndex) => (
               <TableCell
-                key={column.id as string}
+                key={getColumnKey(column, columnIndex)}
                 align={column.align || 'left'}
                 sx={{
                   minWidth: column.minWidth,
-                  backgroundColor: theme.palette.grey[50],
-                  fontWeight: 600,
-                  fontSize: '0.875rem',
-                  color: theme.palette.text.primary,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: `2px solid ${theme.palette.primary.main}`,
-                  py: 2,
-                  px: isMobile ? 1.5 : 2,
+                  ...headerCellSx,
                 }}
               >
                 {column.label}
@@ -127,15 +160,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                 align="center"
                 sx={{
                   minWidth: actions.length * 50,
-                  backgroundColor: theme.palette.grey[50],
-                  fontWeight: 600,
-                  fontSize: '0.875rem',
-                  color: theme.palette.text.primary,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: `2px solid ${theme.palette.primary.main}`,
-                  py: 2,
-                  px: isMobile ? 1.5 : 2,
+                  ...headerCellSx,
                 }}
               >
                 {showActionsLabel ? 'Actions' : ''}
@@ -166,18 +191,17 @@ export function DataGrid<T extends Record<string, unknown>>({
                   transition: 'all 0.2s ease-in-out',
                   '&:hover': {
                     backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                    transform: onRowClick ? 'scale(1.002)' : 'none',
                   },
                   '&:last-child td, &:last-child th': {
                     border: 0,
                   },
                 }}
               >
-                {visibleColumns.map((column) => {
+                {visibleColumns.map((column, columnIndex) => {
                   const value = row[column.id];
                   return (
                     <TableCell
-                      key={column.id as string}
+                      key={getColumnKey(column, columnIndex)}
                       align={column.align || 'left'}
                       sx={{
                         py: 2,
@@ -224,10 +248,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                                 }}
                                 disabled={isDisabled}
                                 sx={{
-                                  transition: 'all 0.2s ease-in-out',
-                                  '&:hover': {
-                                    transform: 'scale(1.1)',
-                                  },
+                                  transition: 'background-color 0.2s ease-in-out',
                                 }}
                               >
                                 {action.icon}

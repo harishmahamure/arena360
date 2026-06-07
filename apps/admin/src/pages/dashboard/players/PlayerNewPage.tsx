@@ -1,5 +1,4 @@
-import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Box, Paper, Typography } from '@mui/material';
+import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -129,21 +128,12 @@ export default function AddNewPlayerPage() {
   };
 
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        p: 4,
-      }}
+    <FormPage
+      title="Add New Player"
+      description="Fill in the details below to create a new player account"
+      backTo="/players"
+      backLabel="Back to players"
     >
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={600} gutterBottom>
-          Add New Player
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Fill in the details below to create a new player account
-        </Typography>
-      </Box>
-
       <FormBuilder<CreatePlayerFormData>
         fields={playerFormFields}
         schema={createPlayerSchema}
@@ -162,6 +152,6 @@ export default function AddNewPlayerPage() {
         buttonAlign="right"
         spacing={3}
       />
-    </Paper>
+    </FormPage>
   );
 }

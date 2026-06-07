@@ -6,6 +6,7 @@ import {
   DialogContentText,
   DialogTitle,
   TextField,
+  Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 
@@ -14,6 +15,7 @@ interface StaffTotpDialogProps {
   title: string;
   description: string;
   confirmLabel?: string;
+  confirmColor?: 'primary' | 'error';
   loading?: boolean;
   onClose: () => void;
   onConfirm: (totp: string) => void | Promise<void>;
@@ -24,6 +26,7 @@ export function StaffTotpDialog({
   title,
   description,
   confirmLabel = 'Confirm',
+  confirmColor = 'primary',
   loading = false,
   onClose,
   onConfirm,
@@ -44,13 +47,20 @@ export function StaffTotpDialog({
 
   return (
     <Dialog open={open} onClose={loading ? undefined : onClose} fullWidth maxWidth="xs">
-      <DialogTitle>{title}</DialogTitle>
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="subtitle1" component="div" fontWeight={600}>
+          {title}
+        </Typography>
+      </DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>{description}</DialogContentText>
         <TextField
           autoFocus
           fullWidth
+          size="small"
           label="Authenticator code"
+          placeholder="6-digit code"
+          helperText="Enter the code from your authenticator app"
           value={totp}
           onChange={(e) => setTotp(e.target.value)}
           inputProps={{ autoComplete: 'one-time-code', inputMode: 'numeric' }}
@@ -62,11 +72,16 @@ export function StaffTotpDialog({
           }}
         />
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button variant="text" onClick={onClose} disabled={loading}>
           Cancel
         </Button>
-        <Button variant="contained" onClick={handleConfirm} disabled={loading || !totp.trim()}>
+        <Button
+          variant="contained"
+          color={confirmColor}
+          onClick={handleConfirm}
+          disabled={loading || !totp.trim()}
+        >
           {confirmLabel}
         </Button>
       </DialogActions>

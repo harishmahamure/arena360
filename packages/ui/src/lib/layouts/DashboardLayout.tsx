@@ -3,7 +3,7 @@
 import { Box, useTheme } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import AppBar, { type AppBarQuickActions } from '../components/AppBar';
+import AppBar, { type AppBarQuickActions, type ShiftBadgeProps } from '../components/AppBar';
 import Sidebar, { type NavItem } from '../components/Sidebar';
 
 const DRAWER_WIDTH = 280;
@@ -11,12 +11,14 @@ const COLLAPSED_WIDTH = 72;
 
 export interface DashboardLayoutProps {
   children: React.ReactNode;
-  navItems?: NavItem[];
+  navItems: NavItem[];
   logo?: React.ReactNode;
   logoText?: string;
   onLogout?: () => void;
   appBarQuickActions?: AppBarQuickActions;
   settingsPath?: string;
+  pageTitle?: string;
+  shiftBadge?: ShiftBadgeProps;
   user?: {
     name: string;
     email: string;
@@ -33,6 +35,8 @@ export default function DashboardLayout({
   onLogout,
   appBarQuickActions,
   settingsPath,
+  pageTitle,
+  shiftBadge,
   user,
 }: DashboardLayoutProps) {
   const theme = useTheme();
@@ -59,7 +63,6 @@ export default function DashboardLayout({
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Sidebar */}
       <Sidebar
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
@@ -72,17 +75,17 @@ export default function DashboardLayout({
         onLogout={onLogout}
       />
 
-      {/* AppBar */}
       <AppBar
         onMenuClick={handleDrawerToggle}
         sidebarCollapsed={collapsed}
         onLogout={onLogout}
         quickActions={appBarQuickActions}
         settingsPath={settingsPath}
+        pageTitle={pageTitle}
+        shiftBadge={shiftBadge}
         user={user ? { name: user.name, email: user.email, avatar: user.avatar } : undefined}
       />
 
-      {/* Main Content */}
       <Box
         component="main"
         sx={{

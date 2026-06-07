@@ -1,6 +1,9 @@
 import { TrendingDown, TrendingUp } from '@mui/icons-material';
 import { Box, Card, CardContent, Chip, Typography } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import type { ReactNode } from 'react';
+
+export type StatTone = 'success' | 'info' | 'warning' | 'error' | 'primary';
 
 interface StatCardProps {
   title: string;
@@ -11,13 +14,26 @@ interface StatCardProps {
     positive: boolean;
   };
   icon: ReactNode;
-  color: string;
+  tone: StatTone;
+  /** Palette shade for icon tint; defaults to `main`. */
+  shade?: 'main' | 'dark' | 'light';
 }
 
 /**
  * Reusable stat card component for displaying dashboard metrics
  */
-export function StatCard({ title, value, subtitle, change, icon, color }: StatCardProps) {
+export function StatCard({
+  title,
+  value,
+  subtitle,
+  change,
+  icon,
+  tone,
+  shade = 'main',
+}: StatCardProps) {
+  const theme = useTheme();
+  const paletteColor = theme.palette[tone][shade];
+
   return (
     <Card className="hover-lift" sx={{ height: '100%' }}>
       <CardContent>
@@ -34,7 +50,8 @@ export function StatCard({ title, value, subtitle, change, icon, color }: StatCa
               width: 48,
               height: 48,
               borderRadius: 2,
-              bgcolor: `${color}15`,
+              bgcolor: alpha(paletteColor, 0.08),
+              color: paletteColor,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

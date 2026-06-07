@@ -8,7 +8,7 @@ import {
   Chip,
   type ChipProps,
   Divider,
-  GridLegacy as Grid,
+  Grid,
   Paper,
   Typography,
 } from '@mui/material';
@@ -161,7 +161,7 @@ export default function ViewPlanTransactionPage() {
             </Typography>
             <Divider sx={{ mb: 2 }} />
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary">
                   Transaction ID
                 </Typography>
@@ -169,7 +169,7 @@ export default function ViewPlanTransactionPage() {
                   {id}
                 </Typography>
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary">
                   Amount
                 </Typography>
@@ -177,13 +177,13 @@ export default function ViewPlanTransactionPage() {
                   {formatCurrency(amount ?? 0, 'INR')}
                 </Typography>
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary">
                   Payment Method
                 </Typography>
                 <Typography variant="body1">{paymentMethod?.toUpperCase() || 'N/A'}</Typography>
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary">
                   Payment Status
                 </Typography>
@@ -198,7 +198,7 @@ export default function ViewPlanTransactionPage() {
                   sx={{ mt: 0.5 }}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary">
                   Transaction Date
                 </Typography>
@@ -219,7 +219,7 @@ export default function ViewPlanTransactionPage() {
               </Typography>
               <Divider sx={{ mb: 2 }} />
               <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="body2" color="text.secondary">
                     Name
                   </Typography>
@@ -239,13 +239,13 @@ export default function ViewPlanTransactionPage() {
               </Typography>
               <Divider sx={{ mb: 2 }} />
               <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="body2" color="text.secondary">
                     Plan Name
                   </Typography>
                   <Typography variant="body1">{planName || 'N/A'}</Typography>
                 </Grid>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="body2" color="text.secondary">
                     Plan Type
                   </Typography>
@@ -253,7 +253,7 @@ export default function ViewPlanTransactionPage() {
                     {planType ? formatPlanType(planType) : 'N/A'}
                   </Typography>
                 </Grid>
-                <Grid item xs={12} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <Typography variant="body2" color="text.secondary">
                     Plan Price
                   </Typography>

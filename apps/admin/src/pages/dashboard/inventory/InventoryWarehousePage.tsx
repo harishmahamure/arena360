@@ -1,4 +1,5 @@
-import { type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import {
   Alert,
   Autocomplete,
@@ -13,7 +14,6 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getVendors } from '../../../services/expenses';
 import {
@@ -85,13 +85,13 @@ export default function InventoryWarehousePage() {
       });
     },
     onSuccess: () => {
-      toast.success(`Received ${piecesPreview} pieces`);
+      toastUtils.success(`Received ${piecesPreview} pieces`);
       queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] });
       setProductId('');
       setBoxQty('1');
       setNotes('');
     },
-    onError: () => toast.error('Failed to receive stock'),
+    onError: () => toastUtils.error('Failed to receive stock'),
   });
 
   const rows: StockRow[] = useMemo(() => {
@@ -126,21 +126,22 @@ export default function InventoryWarehousePage() {
   }
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage
+    <>
+      <ListPage
         title={`Warehouse Stock — ${warehouse.name}`}
         description="Stock levels at the warehouse (pieces)"
         columns={columns}
         data={rows}
         actions={[]}
         isLoading={isLoading}
-        inputValue={search}
-        handleSearch={(e) => setSearch(e.target.value)}
-        handleClearSearch={() => setSearch('')}
+        showSearch
+        searchValue={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        onSearchClear={() => setSearch('')}
       />
 
       {canManage && (
-        <Paper sx={{ p: 3, mt: 3 }}>
+        <Paper sx={{ p: 3, mt: 3, mx: { xs: 2, md: 4 } }}>
           <Typography variant="h6" fontWeight={600} gutterBottom>
             Receive Stock
           </Typography>
@@ -209,6 +210,6 @@ export default function InventoryWarehousePage() {
           </Card>
         </Paper>
       )}
-    </Box>
+    </>
   );
 }

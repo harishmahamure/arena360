@@ -1,12 +1,11 @@
 import type { PaymentStatusValue } from '@gaming-cafe/contracts';
-import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Alert, Paper } from '@mui/material';
+import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
+import { Alert } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
-import { PageHeader } from '../../../components/PageHeader';
 import {
   type CreatePlanTransactionFormData,
   createPlanTransactionDefaultValues,
@@ -210,19 +209,13 @@ export default function AddNewPlanTransactionPage() {
 
   return (
     <ActiveShiftGuard>
-      <Paper
-        elevation={0}
-        sx={{
-          p: 4,
-        }}
+      <FormPage
+        title="Buy plan"
+        description="Assign a plan to a player and record the sale"
+        backTo="/plan-transactions"
+        backLabel="Back to plan sales"
+        breadcrumbs={[{ label: 'Plan sales', to: '/plan-transactions' }, { label: 'Buy plan' }]}
       >
-        <PageHeader
-          title="Buy plan"
-          description="Assign a plan to a player and record the sale"
-          backTo="/plan-transactions"
-          backLabel="Back to plan sales"
-          breadcrumbs={[{ label: 'Plan sales', to: '/plan-transactions' }, { label: 'Buy plan' }]}
-        />
         {preselectedPlayer && (
           <Alert severity="info" sx={{ mb: 2 }}>
             Buying plan for <strong>{preselectedPlayer.username}</strong>
@@ -264,7 +257,7 @@ export default function AddNewPlanTransactionPage() {
           buttonAlign="right"
           spacing={3}
         />
-      </Paper>
+      </FormPage>
     </ActiveShiftGuard>
   );
 }

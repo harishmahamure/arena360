@@ -1,11 +1,12 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Clear, Visibility } from '@mui/icons-material';
-import { Alert, Box, Chip, Pagination, Typography } from '@mui/material';
+import { Alert, Chip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { approveExpense, type Expense, getExpenses } from '../../../services/expenses';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
 
 const statusConfig: Record<string, { label: string; color: 'warning' | 'success' | 'error' }> = {
@@ -38,10 +39,10 @@ export default function ExpensesPage() {
   const handleApprove = async (expense: Expense) => {
     try {
       await approveExpense(expense.id);
-      toast.success('Expense approved');
+      toastUtils.success('Expense approved');
       refetch();
     } catch {
-      toast.error('Failed to approve expense');
+      toastUtils.error('Failed to approve expense');
     }
   };
 
@@ -126,37 +127,29 @@ export default function ExpensesPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
+    <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load expenses
         </Alert>
       )}
-      <ListViewPage<Expense>
+      <ListPage<Expense>
         title="Expenses"
         description="Track and manage business expenses"
         columns={columns}
         data={data?.data ?? []}
         actions={actions}
         isLoading={isLoading}
-        inputValue=""
-        handleSearch={() => {}}
-        handleClearSearch={() => {}}
         showSearch={false}
         onAddClick={can(Permission.ExpensesWrite) ? () => navigate('/expenses/new') : undefined}
         addButtonLabel="Add Expense"
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) =>
+            navigate(buildListUrl('/expenses', value, { status: statusFilter })),
+        }}
       />
-      {data && data.totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={data.totalPages}
-            page={page}
-            onChange={(_, p) =>
-              navigate(`/expenses?page=${p}${statusFilter ? `&status=${statusFilter}` : ''}`)
-            }
-          />
-        </Box>
-      )}
-    </Box>
+    </>
   );
 }

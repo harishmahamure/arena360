@@ -1,5 +1,6 @@
 import type { UserRole } from '@gaming-cafe/contracts';
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Block, CheckCircle, Delete, Edit } from '@mui/icons-material';
 import {
   Avatar,
@@ -11,13 +12,11 @@ import {
   DialogContent,
   DialogTitle,
   debounce,
-  Pagination,
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlayer } from '../../../services/players/delete';
 import { getPlayers, type PlayerResponse } from '../../../services/players/list';
@@ -192,10 +191,10 @@ export default function PlayersPage() {
     async (id: string) => {
       try {
         await deletePlayer(id);
-        toast.success('Player deactivated successfully');
+        toastUtils.success('Player deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to deactivate player');
+        toastUtils.error('Failed to deactivate player');
       }
     },
     [refetch],
@@ -205,10 +204,10 @@ export default function PlayersPage() {
     async (id: string, currentStatus: boolean) => {
       try {
         await updatePlayer(id, { isActive: !currentStatus });
-        toast.success(`Player ${currentStatus ? 'deactivated' : 'activated'} successfully`);
+        toastUtils.success(`Player ${currentStatus ? 'deactivated' : 'activated'} successfully`);
         refetch();
       } catch (_error) {
-        toast.error('Failed to update player status');
+        toastUtils.error('Failed to update player status');
       }
     },
     [refetch],
@@ -250,37 +249,32 @@ export default function PlayersPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<PlayerResponse>
+    <>
+      <ListPage<PlayerResponse>
         title="Players"
         description="Manage your game zone players and admins here."
         data={data?.data || []}
         columns={columns}
         actions={canWrite ? actions : []}
         isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
+        showSearch
+        searchValue={inputValue}
+        onSearchChange={handleSearch}
+        onSearchClear={handleClearSearch}
         onAddClick={canWrite ? handleAddNewPlayer : undefined}
         addButtonLabel="Add Player"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) =>
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) =>
             navigate(
               buildListUrl('/players', value, {
                 role: roleFilter ?? undefined,
                 active: activeFilter ?? undefined,
               }),
-            )
-          }
-        />
-      </Box>
+            ),
+        }}
+      />
 
       <Dialog open={confirmTarget !== null} onClose={() => setConfirmTarget(null)}>
         <DialogTitle>
@@ -312,6 +306,6 @@ export default function PlayersPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

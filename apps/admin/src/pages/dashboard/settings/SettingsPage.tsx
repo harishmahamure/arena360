@@ -1,3 +1,4 @@
+import { toastUtils } from '@gaming-cafe/utils';
 import {
   Box,
   Button,
@@ -6,13 +7,12 @@ import {
   CardHeader,
   CircularProgress,
   Divider,
-  GridLegacy as Grid,
+  Grid,
   TextField,
   Typography,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { toast } from 'react-toastify';
 import { getConfigs, upsertConfig } from '../../../services/config';
 
 interface ConfigGroup {
@@ -90,10 +90,10 @@ export default function SettingsPage() {
     setSaving(key);
     try {
       await upsertConfig(key, parsedValue);
-      toast.success(`"${key}" saved`);
+      toastUtils.success(`"${key}" saved`);
       queryClient.invalidateQueries({ queryKey: ['configs'] });
     } catch {
-      toast.error(`Failed to save "${key}"`);
+      toastUtils.error(`Failed to save "${key}"`);
     } finally {
       setSaving(null);
     }
@@ -118,7 +118,7 @@ export default function SettingsPage() {
 
       <Grid container spacing={3}>
         {CONFIG_GROUPS.map((group) => (
-          <Grid item xs={12} md={6} key={group.category}>
+          <Grid key={group.category} size={{ xs: 12, md: 6 }}>
             <Card variant="outlined">
               <CardHeader title={group.title} />
               <Divider />

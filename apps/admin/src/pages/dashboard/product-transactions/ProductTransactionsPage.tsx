@@ -1,8 +1,8 @@
 import type { PaymentStatusValue } from '@gaming-cafe/contracts';
-import { type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Column, ListPage } from '@gaming-cafe/ui';
 import { formatCurrency, formatTimeAgo } from '@gaming-cafe/utils';
 import { Visibility } from '@mui/icons-material';
-import { Box, Chip, Pagination, Typography } from '@mui/material';
+import { Chip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -135,43 +135,32 @@ export default function TransactionsPage() {
   });
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<Transaction>
-        title="POS sales"
-        description="Product purchases and snack sales at the counter."
-        data={data?.data || []}
-        columns={columns}
-        isLoading={isLoading}
-        inputValue=""
-        handleSearch={() => {}}
-        handleClearSearch={() => {}}
-        showSearch={false}
-        onAddClick={handleAddNewTransaction}
-        actions={[
-          {
-            icon: <Visibility fontSize="small" />,
-            label: 'View',
-            onClick: (row) => navigate(`/product-transactions/${row.id}`),
-          },
-        ]}
-        addButtonLabel="Sell items"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) =>
-            navigate(
-              buildListUrl('/product-transactions', value, {
-                status: statusFilter ?? undefined,
-              }),
-            )
-          }
-        />
-      </Box>
-    </Box>
+    <ListPage<Transaction>
+      title="POS sales"
+      description="Product purchases and snack sales at the counter."
+      data={data?.data || []}
+      columns={columns}
+      isLoading={isLoading}
+      showSearch={false}
+      onAddClick={handleAddNewTransaction}
+      actions={[
+        {
+          icon: <Visibility fontSize="small" />,
+          label: 'View',
+          onClick: (row) => navigate(`/product-transactions/${row.id}`),
+        },
+      ]}
+      addButtonLabel="Sell items"
+      pagination={{
+        page,
+        totalPages: data?.totalPages,
+        onPageChange: (value) =>
+          navigate(
+            buildListUrl('/product-transactions', value, {
+              status: statusFilter ?? undefined,
+            }),
+          ),
+      }}
+    />
   );
 }

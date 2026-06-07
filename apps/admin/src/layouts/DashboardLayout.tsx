@@ -14,7 +14,9 @@ import { useEnrichedSessions } from '../hooks/useEnrichedSessions';
 import { usePermissions } from '../hooks/usePermissions';
 import { getSessions } from '../services/sessions/list';
 import { getActiveShift } from '../services/shifts';
+import { formatDuration, now } from '../utils/date';
 import { filterNavItemsByPermission } from '../utils/filterNavItems';
+import { getRouteTitle } from '../utils/routeTitle';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -112,10 +114,33 @@ export default function DashboardLayout() {
     [can, requireShiftForQuickAction],
   );
 
+  const pageTitle = getRouteTitle(location.pathname);
+
+  const shiftBadge = useMemo(() => {
+    if (!isStaff) return undefined;
+    if (activeShift) {
+      const start = new Date(activeShift.clockIn);
+      const diffMs = now().getTime() - start.getTime();
+      const duration = formatDuration(diffMs / 60000);
+      return {
+        active: true,
+        label: `Shift active • ${duration}`,
+        onClick: () => navigate('/'),
+      };
+    }
+    return {
+      active: false,
+      label: 'No active shift',
+      onClick: () => navigate('/'),
+    };
+  }, [activeShift, isStaff, navigate]);
+
   return (
     <>
       <BaseDashboardLayout
         navItems={filteredNavItems}
+        pageTitle={pageTitle}
+        shiftBadge={shiftBadge}
         logo={
           <Box
             component="img"

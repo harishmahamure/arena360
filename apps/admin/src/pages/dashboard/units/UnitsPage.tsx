@@ -1,13 +1,14 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
-import { Box, Chip, debounce, Pagination } from '@mui/material';
+import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deleteUnit } from '../../../services/units/delete';
 import { getUnits, type UnitResponse } from '../../../services/units/list';
+import { buildListUrl } from '../../../utils/buildListUrl';
 
 export default function UnitsPage() {
   const [inputValue, setInputValue] = useState<string>('');
@@ -98,10 +99,10 @@ export default function UnitsPage() {
     async (id: string) => {
       try {
         await deleteUnit(id);
-        toast.success('Unit deactivated successfully');
+        toastUtils.success('Unit deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to deactivate unit');
+        toastUtils.error('Failed to deactivate unit');
       }
     },
     [refetch],
@@ -121,30 +122,25 @@ export default function UnitsPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<UnitResponse>
-        title="Units"
-        description="Manage your product measurement units here."
-        data={data?.data || []}
-        columns={columns}
-        actions={canWrite ? actions : []}
-        isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
-        onAddClick={canWrite ? handleAddNewUnit : undefined}
-        addButtonLabel="Add Unit"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) => navigate(value === 1 ? `/units` : `/units?page=${value}`)}
-        />
-      </Box>
-    </Box>
+    <ListPage<UnitResponse>
+      title="Units"
+      description="Manage your product measurement units here."
+      data={data?.data || []}
+      columns={columns}
+      actions={canWrite ? actions : []}
+      isLoading={isLoading}
+      showSearch
+      searchValue={inputValue}
+      onSearchChange={handleSearch}
+      onSearchClear={handleClearSearch}
+      onAddClick={canWrite ? handleAddNewUnit : undefined}
+      addButtonLabel="Add Unit"
+      pagination={{
+        page,
+        totalPages: data?.totalPages,
+        onPageChange: (value) =>
+          navigate(buildListUrl('/units', value, { active: isActiveFilter ?? undefined })),
+      }}
+    />
   );
 }

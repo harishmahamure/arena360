@@ -1,4 +1,5 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Cancel, Check } from '@mui/icons-material';
 import {
   Alert,
@@ -9,13 +10,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Pagination,
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   approveDeposit,
@@ -23,6 +22,7 @@ import {
   getCashDeposits,
   rejectDeposit,
 } from '../../../services/cash-deposits';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
 
 const statusConfig: Record<string, { label: string; color: 'warning' | 'success' | 'error' }> = {
@@ -39,8 +39,6 @@ export default function CashDepositsPage() {
   const { can, isAdmin } = usePermissions();
   const [approveTarget, setApproveTarget] = useState<CashDeposit | null>(null);
   const [depositType, setDepositType] = useState<'bank' | 'home'>('bank');
-  const [inputValue, setInputValue] = useState('');
-
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['cash-deposits', page, statusFilter],
     queryFn: () =>
@@ -59,11 +57,11 @@ export default function CashDepositsPage() {
     if (!approveTarget) return;
     try {
       await approveDeposit(approveTarget.id, depositType);
-      toast.success(`Deposit approved for ${depositType}`);
+      toastUtils.success(`Deposit approved for ${depositType}`);
       setApproveTarget(null);
       refetch();
     } catch {
-      toast.error('Failed to approve deposit');
+      toastUtils.error('Failed to approve deposit');
     }
   };
 
@@ -72,10 +70,10 @@ export default function CashDepositsPage() {
     if (!reason) return;
     try {
       await rejectDeposit(deposit.id, reason);
-      toast.success('Deposit rejected');
+      toastUtils.success('Deposit rejected');
       refetch();
     } catch {
-      toast.error('Failed to reject deposit');
+      toastUtils.error('Failed to reject deposit');
     }
   };
 
@@ -148,34 +146,27 @@ export default function CashDepositsPage() {
   }
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
+    <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load cash deposits
         </Alert>
       )}
-      <ListViewPage<CashDeposit>
+      <ListPage<CashDeposit>
         title="Cash Deposits"
         description="Review and approve staff cash deposit withdrawals."
         columns={columns}
         data={data?.data ?? []}
         actions={actions}
         isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={(event) => setInputValue(event.target.value)}
-        handleClearSearch={() => setInputValue('')}
+        showSearch={false}
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) =>
+            navigate(buildListUrl('/cash-deposits', value, { status: statusFilter })),
+        }}
       />
-      {data && data.totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={data.totalPages}
-            page={page}
-            onChange={(_, p) =>
-              navigate(`/cash-deposits?page=${p}${statusFilter ? `&status=${statusFilter}` : ''}`)
-            }
-          />
-        </Box>
-      )}
 
       <Dialog open={Boolean(approveTarget)} onClose={() => setApproveTarget(null)}>
         <DialogTitle>Approve Cash Deposit</DialogTitle>
@@ -205,6 +196,6 @@ export default function CashDepositsPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

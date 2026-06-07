@@ -1,16 +1,14 @@
-import { type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Column, ListPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Edit, Visibility } from '@mui/icons-material';
 import {
   Alert,
-  Box,
   Button,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Pagination,
   TextField,
   Typography,
 } from '@mui/material';
@@ -23,6 +21,7 @@ import {
   reconcileRegister,
   updateOpeningBalance,
 } from '../../../services/cash-registers';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDateTime } from '../../../utils/date';
 
 const statusConfig: Record<string, { label: string; color: 'success' | 'default' | 'info' }> = {
@@ -186,20 +185,17 @@ export default function CashRegistersPage() {
   };
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
+    <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load cash registers
         </Alert>
       )}
-      <ListViewPage<CashRegister>
+      <ListPage<CashRegister>
         title="Cash Registers"
         description="Cash register history and reconciliation"
         columns={columns}
         data={data?.data ?? []}
-        inputValue=""
-        handleSearch={() => {}}
-        handleClearSearch={() => {}}
         showSearch={false}
         actions={[
           {
@@ -231,16 +227,12 @@ export default function CashRegistersPage() {
           },
         ]}
         isLoading={isLoading}
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) => navigate(buildListUrl('/cash-registers', value, {})),
+        }}
       />
-      {data && data.totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={data.totalPages}
-            page={page}
-            onChange={(_, p) => navigate(`/cash-registers?page=${p}`)}
-          />
-        </Box>
-      )}
 
       <Dialog open={reconcileOpen} onClose={() => setReconcileOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Reconcile Cash Register</DialogTitle>
@@ -300,6 +292,6 @@ export default function CashRegistersPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

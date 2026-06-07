@@ -1,21 +1,19 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Clear, LocalShipping } from '@mui/icons-material';
 import {
   Alert,
-  Box,
   Button,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Pagination,
   TextField,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   approveTransferRequest,
@@ -25,6 +23,7 @@ import {
   rejectTransferRequest,
   type StockTransferRequest,
 } from '../../../services/inventory';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
 
 const statusConfig: Record<
@@ -69,32 +68,32 @@ export default function InventoryTransfersPage() {
   const approveMut = useMutation({
     mutationFn: (id: string) => approveTransferRequest(id),
     onSuccess: () => {
-      toast.success('Transfer approved');
+      toastUtils.success('Transfer approved');
       refetch();
     },
-    onError: () => toast.error('Failed to approve'),
+    onError: () => toastUtils.error('Failed to approve'),
   });
 
   const fulfillMut = useMutation({
     mutationFn: (id: string) => fulfillTransferRequest(id),
     onSuccess: () => {
-      toast.success('Stock sent — transfer fulfilled');
+      toastUtils.success('Stock sent — transfer fulfilled');
       queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] });
       refetch();
     },
-    onError: () => toast.error('Failed to fulfill — check warehouse stock'),
+    onError: () => toastUtils.error('Failed to fulfill — check warehouse stock'),
   });
 
   const rejectMut = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       rejectTransferRequest(id, reason),
     onSuccess: () => {
-      toast.success('Transfer rejected');
+      toastUtils.success('Transfer rejected');
       setRejectId(null);
       setRejectReason('');
       refetch();
     },
-    onError: () => toast.error('Failed to reject'),
+    onError: () => toastUtils.error('Failed to reject'),
   });
 
   const columns: Column<StockTransferRequest>[] = [
@@ -163,43 +162,36 @@ export default function InventoryTransfersPage() {
     ) ?? [];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
+    <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load transfers
         </Alert>
       )}
-      <ListViewPage
+      <ListPage
         title="Stock Transfer Requests"
         description="Store requests stock from warehouse; admin approves and sends"
         columns={columns}
         data={filtered}
         actions={actions}
         isLoading={isLoading}
-        inputValue={search}
-        handleSearch={(e) => setSearch(e.target.value)}
-        handleClearSearch={() => setSearch('')}
+        showSearch
+        searchValue={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        onSearchClear={() => setSearch('')}
         onAddClick={
           can(Permission.InventoryTransferRequest)
             ? () => navigate('/inventory/transfers/new')
             : undefined
         }
         addButtonLabel="New Request"
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) =>
+            navigate(buildListUrl('/inventory/transfers', value, { status: statusFilter })),
+        }}
       />
-
-      {data && data.totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={data.totalPages}
-            page={page}
-            onChange={(_, p) =>
-              navigate(
-                `/inventory/transfers?page=${p}${statusFilter ? `&status=${statusFilter}` : ''}`,
-              )
-            }
-          />
-        </Box>
-      )}
 
       <Dialog open={!!rejectId} onClose={() => setRejectId(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Reject transfer request</DialogTitle>
@@ -227,6 +219,6 @@ export default function InventoryTransfersPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

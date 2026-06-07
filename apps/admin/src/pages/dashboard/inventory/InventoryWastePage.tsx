@@ -1,22 +1,20 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Clear } from '@mui/icons-material';
 import {
   Alert,
-  Box,
   Button,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Pagination,
   TextField,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   approveWasteEvent,
@@ -25,6 +23,7 @@ import {
   rejectWasteEvent,
   type StockWasteEvent,
 } from '../../../services/inventory';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
 
 const statusConfig: Record<string, { label: string; color: 'warning' | 'success' | 'error' }> = {
@@ -59,21 +58,21 @@ export default function InventoryWastePage() {
   const approveMut = useMutation({
     mutationFn: (id: string) => approveWasteEvent(id),
     onSuccess: () => {
-      toast.success('Waste approved — stock deducted');
+      toastUtils.success('Waste approved — stock deducted');
       refetch();
     },
-    onError: () => toast.error('Failed to approve waste'),
+    onError: () => toastUtils.error('Failed to approve waste'),
   });
 
   const rejectMut = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => rejectWasteEvent(id, reason),
     onSuccess: () => {
-      toast.success('Waste rejected');
+      toastUtils.success('Waste rejected');
       setRejectId(null);
       setRejectReason('');
       refetch();
     },
-    onError: () => toast.error('Failed to reject'),
+    onError: () => toastUtils.error('Failed to reject'),
   });
 
   const columns: Column<StockWasteEvent>[] = [
@@ -137,39 +136,34 @@ export default function InventoryWastePage() {
     ) ?? [];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
+    <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load waste events
         </Alert>
       )}
-      <ListViewPage
+      <ListPage
         title="Stock Waste"
         description="Spoiled, damaged, or expired stock write-offs"
         columns={columns}
         data={filtered}
         actions={actions}
         isLoading={isLoading}
-        inputValue={search}
-        handleSearch={(e) => setSearch(e.target.value)}
-        handleClearSearch={() => setSearch('')}
+        showSearch
+        searchValue={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        onSearchClear={() => setSearch('')}
         onAddClick={
           can(Permission.InventoryWasteRecord) ? () => navigate('/inventory/waste/new') : undefined
         }
         addButtonLabel="Record waste"
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) =>
+            navigate(buildListUrl('/inventory/waste', value, { status: statusFilter })),
+        }}
       />
-
-      {data && data.totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={data.totalPages}
-            page={page}
-            onChange={(_, p) =>
-              navigate(`/inventory/waste?page=${p}${statusFilter ? `&status=${statusFilter}` : ''}`)
-            }
-          />
-        </Box>
-      )}
 
       <Dialog open={!!rejectId} onClose={() => setRejectId(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Reject waste record</DialogTitle>
@@ -197,6 +191,6 @@ export default function InventoryWastePage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }

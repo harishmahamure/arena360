@@ -21,11 +21,18 @@ import {
 import type { AdminNavItem } from '../utils/filterNavItems';
 
 export const adminNavItems: AdminNavItem[] = [
-  { title: 'Dashboard', path: '/', icon: <Dashboard />, requiredPermission: Permission.StatsRead },
+  {
+    title: 'Dashboard',
+    path: '/',
+    icon: <Dashboard />,
+    section: 'Operations',
+    requiredPermission: Permission.StatsRead,
+  },
   {
     title: 'Sessions',
     path: '/sessions',
     icon: <PlayCircle />,
+    section: 'Operations',
     requiredPermission: Permission.SessionsRead,
     children: [
       { title: 'All Sessions', path: '/sessions' },
@@ -39,26 +46,10 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
-    title: 'Players',
-    path: '/players',
-    icon: <People />,
-    requiredPermission: Permission.PlayersRead,
-    children: [
-      { title: 'All Players', path: '/players' },
-      {
-        title: 'Add Player',
-        path: '/players/new',
-        requiredPermission: Permission.PlayersWrite,
-      },
-      { title: 'Staff', path: '/players?role=staff' },
-      { title: 'Admins', path: '/players?role=admin' },
-      { title: 'Inactive', path: '/players?active=false' },
-    ],
-  },
-  {
     title: 'Plan sales',
     path: '/plan-transactions',
     icon: <Receipt />,
+    section: 'Operations',
     requiredPermission: Permission.PlayerPlansRead,
     children: [
       { title: 'All Transactions', path: '/plan-transactions' },
@@ -73,9 +64,58 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
+    title: 'POS sales',
+    path: '/product-transactions',
+    icon: <Sell />,
+    section: 'Operations',
+    requiredPermission: Permission.TransactionsRead,
+    children: [
+      { title: 'All Sold Items', path: '/product-transactions' },
+      {
+        title: 'Sell New Items',
+        path: '/product-transactions/new',
+        requiredPermission: Permission.TransactionsWrite,
+      },
+      {
+        title: 'Pending Transactions',
+        path: '/product-transactions?status=pending',
+      },
+      {
+        title: 'Completed Transactions',
+        path: '/product-transactions?status=completed',
+      },
+    ],
+  },
+  {
+    title: 'Running tab',
+    path: '/credit',
+    icon: <CreditCard />,
+    section: 'Operations',
+    requiredPermission: Permission.CreditRead,
+  },
+  {
+    title: 'Players',
+    path: '/players',
+    icon: <People />,
+    section: 'Catalog',
+    requiredPermission: Permission.PlayersRead,
+    children: [
+      { title: 'All Players', path: '/players' },
+      {
+        title: 'Add Player',
+        path: '/players/new',
+        requiredPermission: Permission.PlayersWrite,
+      },
+      { title: 'Staff', path: '/players?role=staff' },
+      { title: 'Admins', path: '/players?role=admin' },
+      { title: 'Inactive', path: '/players?active=false' },
+    ],
+  },
+  {
     title: 'Products',
     path: '/products',
     icon: <Inventory />,
+    section: 'Catalog',
     requiredPermission: Permission.ProductsRead,
     children: [
       { title: 'All Products', path: '/products' },
@@ -97,6 +137,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Inventory',
     path: '/inventory/locations',
     icon: <Inventory2 />,
+    section: 'Catalog',
     requiredPermission: Permission.InventoryRead,
     children: [
       {
@@ -124,6 +165,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Games',
     path: '/games',
     icon: <SportsEsports />,
+    section: 'Catalog',
     requiredPermission: Permission.GamesRead,
     children: [
       { title: 'All Games', path: '/games' },
@@ -135,48 +177,10 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
-    title: 'POS sales',
-    path: '/product-transactions',
-    icon: <Sell />,
-    requiredPermission: Permission.TransactionsRead,
-    children: [
-      { title: 'All Sold Items', path: '/product-transactions' },
-      {
-        title: 'Sell New Items',
-        path: '/product-transactions/new',
-        requiredPermission: Permission.TransactionsWrite,
-      },
-      {
-        title: 'Pending Transactions',
-        path: '/product-transactions?status=pending',
-      },
-      {
-        title: 'Completed Transactions',
-        path: '/product-transactions?status=completed',
-      },
-    ],
-  },
-  {
-    title: 'Devices',
-    path: '/devices',
-    icon: <Devices />,
-    requiredPermission: Permission.DevicesRead,
-    children: [
-      { title: 'All Devices', path: '/devices' },
-      {
-        title: 'Add Device',
-        path: '/devices/new',
-        requiredPermission: Permission.DevicesWrite,
-      },
-      { title: 'Operational', path: '/devices?status=operational' },
-      { title: 'Maintenance', path: '/devices?status=under_maintenance' },
-      { title: 'Out of Order', path: '/devices?status=out_of_service' },
-    ],
-  },
-  {
     title: 'Plans',
     path: '/plans',
     icon: <CardMembership />,
+    section: 'Catalog',
     requiredPermission: Permission.PlansRead,
     children: [
       { title: 'All Plans', path: '/plans' },
@@ -196,21 +200,42 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
+    title: 'Devices',
+    path: '/devices',
+    icon: <Devices />,
+    section: 'Catalog',
+    requiredPermission: Permission.DevicesRead,
+    children: [
+      { title: 'All Devices', path: '/devices' },
+      {
+        title: 'Add Device',
+        path: '/devices/new',
+        requiredPermission: Permission.DevicesWrite,
+      },
+      { title: 'Operational', path: '/devices?status=operational' },
+      { title: 'Maintenance', path: '/devices?status=under_maintenance' },
+      { title: 'Out of Order', path: '/devices?status=out_of_service' },
+    ],
+  },
+  {
     title: 'Shifts',
     path: '/shifts',
     icon: <WorkHistory />,
+    section: 'Finance',
     requiredPermission: Permission.ShiftsRead,
   },
   {
     title: 'Cash Registers',
     path: '/cash-registers',
     icon: <PointOfSale />,
+    section: 'Finance',
     requiredPermission: Permission.CashRegistersRead,
   },
   {
     title: 'Cash Deposits',
     path: '/cash-deposits',
     icon: <AccountBalanceWallet />,
+    section: 'Finance',
     requiredPermission: Permission.CashDepositsRead,
     children: [
       { title: 'All Deposits', path: '/cash-deposits' },
@@ -219,15 +244,10 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
-    title: 'Running tab',
-    path: '/credit',
-    icon: <CreditCard />,
-    requiredPermission: Permission.CreditRead,
-  },
-  {
     title: 'Expenses',
     path: '/expenses',
     icon: <MoneyOff />,
+    section: 'Finance',
     requiredPermission: Permission.ExpensesRead,
     children: [
       { title: 'All Expenses', path: '/expenses' },
@@ -244,12 +264,14 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Vendors',
     path: '/vendors',
     icon: <Store />,
+    section: 'Finance',
     requiredPermission: Permission.VendorsRead,
   },
   {
     title: 'Settings',
     path: '/settings',
     icon: <Settings />,
+    section: 'System',
     requiredPermission: Permission.ConfigRead,
   },
 ];

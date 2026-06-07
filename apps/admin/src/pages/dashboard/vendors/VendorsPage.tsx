@@ -1,11 +1,12 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
-import { Alert, Box, Chip, Pagination } from '@mui/material';
+import { Alert, Chip } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deleteVendor, getVendors, type Vendor } from '../../../services/vendors';
+import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
 
 export default function VendorsPage() {
@@ -23,10 +24,10 @@ export default function VendorsPage() {
     if (!confirm(`Delete vendor "${vendor.name}"?`)) return;
     try {
       await deleteVendor(vendor.id);
-      toast.success('Vendor deleted');
+      toastUtils.success('Vendor deleted');
       refetch();
     } catch {
-      toast.error('Failed to delete vendor');
+      toastUtils.error('Failed to delete vendor');
     }
   };
 
@@ -89,35 +90,28 @@ export default function VendorsPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
+    <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load vendors
         </Alert>
       )}
-      <ListViewPage<Vendor>
+      <ListPage<Vendor>
         title="Vendors"
         description="Manage suppliers and vendors"
         columns={columns}
         data={data?.data ?? []}
         actions={actions}
         isLoading={isLoading}
-        inputValue=""
-        handleSearch={() => {}}
-        handleClearSearch={() => {}}
         showSearch={false}
         onAddClick={can(Permission.VendorsWrite) ? () => navigate('/vendors/new') : undefined}
         addButtonLabel="Add Vendor"
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) => navigate(buildListUrl('/vendors', value, {})),
+        }}
       />
-      {data && data.totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={data.totalPages}
-            page={page}
-            onChange={(_, p) => navigate(`/vendors?page=${p}`)}
-          />
-        </Box>
-      )}
-    </Box>
+    </>
   );
 }

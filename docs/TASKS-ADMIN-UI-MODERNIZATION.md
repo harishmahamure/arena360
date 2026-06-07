@@ -16,11 +16,11 @@ or user workflows. Work spans `packages/theme`, `packages/ui`, and `apps/admin`.
 
 ### UI-001: Consolidate MUI theme onto tokens
 
-**Type:** UI / Theme  
-**Complexity:** M  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** —  
+**Type:** UI / Theme
+**Complexity:** M
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** —
 **Blocks:** UI-002, UI-003, UI-004, UI-005
 
 #### Description
@@ -32,11 +32,11 @@ with a comment pointing to `mui-theme.ts`.
 
 #### Acceptance criteria
 
-- [ ] `Providers` imports `muiTheme` from `@gaming-cafe/theme` (not `lib/theme.ts`)
-- [ ] Primary, secondary, semantic colors match `tokens.ts` / `tokens.css`
-- [ ] Button, Card, AppBar, TextField overrides preserved or improved
-- [ ] Login (`AuthLayout` dark theme) still renders correctly
-- [ ] `pnpm --filter @gaming-cafe/ui build` and admin typecheck pass
+- [x] `Providers` imports `muiTheme` from `@gaming-cafe/theme` (not `lib/theme.ts`)
+- [x] Primary, secondary, semantic colors match `tokens.ts` / `tokens.css`
+- [x] Button, Card, AppBar, TextField overrides preserved or improved
+- [x] Login (`AuthLayout` dark theme) still renders correctly
+- [x] `pnpm --filter @gaming-cafe/ui build` and admin typecheck pass
 
 #### Key files
 
@@ -49,11 +49,11 @@ with a comment pointing to `mui-theme.ts`.
 
 ### UI-002: PageShell primitive
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-001  
+**Type:** UI
+**Complexity:** S
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-001
 **Blocks:** UI-008, UI-009, UI-010, UI-012+
 
 #### Description
@@ -64,11 +64,11 @@ existing `PageHeader` in admin or move `PageHeader` into `packages/ui`.
 
 #### Acceptance criteria
 
-- [ ] `PageShell` exported from `@gaming-cafe/ui`
-- [ ] Props: `children`, `maxWidth?`, `header?`, `toolbar?`, `footer?`
-- [ ] Responsive padding: `xs: 2`, `md: 4` horizontal; `xs: 2`, `md: 3` vertical
-- [ ] Adopted on 5 pilot pages (sessions list, staff dashboard, plan sales list,
-      session detail, login if applicable)
+- [x] `PageShell` exported from `@gaming-cafe/ui`
+- [x] Props: `children`, `maxWidth?`, `header?`, `toolbar?`, `footer?`
+- [x] Responsive padding: `xs: 2`, `md: 4` horizontal; `xs: 2`, `md: 3` vertical
+- [x] Adopted on 4 pilot pages (sessions list, staff dashboard, plan sales list,
+      session detail; login excluded)
 
 #### Key files
 
@@ -80,11 +80,11 @@ existing `PageHeader` in admin or move `PageHeader` into `packages/ui`.
 
 ### UI-003: Unify toast API and styling
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-001  
+**Type:** UI
+**Complexity:** S
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-001
 **Blocks:** —
 
 #### Description
@@ -96,10 +96,10 @@ in M1; complete by end of M4).
 
 #### Acceptance criteria
 
-- [ ] Single `ToastContainer` config in `Providers`
-- [ ] Session warning toasts remain visually distinct (icon/color)
-- [ ] No new direct `toast` imports in pilot pages
-- [ ] Document preferred API in `packages/ui` README
+- [x] Single `ToastContainer` config in `Providers`
+- [x] Session warning toasts remain visually distinct (icon/color)
+- [x] No new direct `toast` imports in pilot pages
+- [x] Document preferred API in `packages/ui` README
 
 #### Key files
 
@@ -111,11 +111,11 @@ in M1; complete by end of M4).
 
 ### UI-004: Semantic stat colors
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-001  
+**Type:** UI
+**Complexity:** S
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-001
 **Blocks:** UI-016
 
 #### Description
@@ -125,9 +125,9 @@ colors (`success.main`, `info.main`, etc.) or token references.
 
 #### Acceptance criteria
 
-- [ ] No `#10B981`, `#8B5CF6`, etc. in dashboard stat definitions
-- [ ] Stat cards use theme palette or `tokens.color.*`
-- [ ] Visual appearance acceptable on pilot review
+- [x] No `#10B981`, `#8B5CF6`, etc. in dashboard stat definitions
+- [x] Stat cards use theme palette or `tokens.color.*`
+- [x] Visual appearance acceptable on pilot review
 
 #### Key files
 
@@ -140,11 +140,11 @@ colors (`success.main`, `info.main`, etc.) or token references.
 
 ### UI-005: Sidebar v2
 
-**Type:** UI  
-**Complexity:** M  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-001  
+**Type:** UI
+**Complexity:** M
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-001
 **Blocks:** UI-007
 
 #### Description
@@ -155,11 +155,11 @@ and flyout popover for child routes.
 
 #### Acceptance criteria
 
-- [ ] Active nav item uses `primary.main` accent, not hardcoded `rgba(255,105,0,...)`
-- [ ] Collapsed drawer: icon tooltips on all items
-- [ ] Collapsed drawer: child routes accessible via flyout/popover
-- [ ] Admin `navItems` unchanged in path structure
-- [ ] Mobile drawer behavior unchanged or improved
+- [x] Active nav item uses `primary.main` accent, not hardcoded `rgba(255,105,0,...)`
+- [x] Collapsed drawer: icon tooltips on all items
+- [x] Collapsed drawer: child routes accessible via flyout/popover
+- [x] Admin `navItems` unchanged in path structure
+- [x] Mobile drawer behavior unchanged or improved
 
 #### Key files
 
@@ -170,11 +170,11 @@ and flyout popover for child routes.
 
 ### UI-006: AppBar v2
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-005  
+**Type:** UI
+**Complexity:** S
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-005
 **Blocks:** UI-007
 
 #### Description
@@ -184,10 +184,10 @@ shift exists; preserve permission + shift-gated POS/plan quick actions.
 
 #### Acceptance criteria
 
-- [ ] AppBar shows current page title (derived from route → title map)
-- [ ] Staff see shift active/inactive indicator
-- [ ] Quick actions still respect permissions and `ActiveShiftGuard` rules
-- [ ] No regression on profile menu / logout / settings link
+- [x] AppBar shows current page title (derived from route → title map)
+- [x] Staff see shift active/inactive indicator
+- [x] Quick actions still respect permissions and `ActiveShiftGuard` rules
+- [x] No regression on profile menu / logout / settings link
 
 #### Key files
 
@@ -198,11 +198,11 @@ shift exists; preserve permission + shift-gated POS/plan quick actions.
 
 ### UI-007: Nav grouping (rush-hour vs config)
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-005  
+**Type:** UI
+**Complexity:** S
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-005
 **Blocks:** —
 
 #### Description
@@ -213,9 +213,9 @@ System (Settings). Use `Divider` + section labels without changing routes.
 
 #### Acceptance criteria
 
-- [ ] At least 3 labeled sections in `adminNavItems`
-- [ ] Permission filtering still works per item
-- [ ] Collapsed mode: section labels hidden gracefully
+- [x] At least 3 labeled sections in `adminNavItems`
+- [x] Permission filtering still works per item
+- [x] Collapsed mode: section labels hidden gracefully
 
 #### Key files
 
@@ -228,11 +228,11 @@ System (Settings). Use `Divider` + section labels without changing routes.
 
 ### UI-008: ListPage composite
 
-**Type:** UI  
-**Complexity:** M  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-002  
+**Type:** UI
+**Complexity:** M
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-002
 **Blocks:** UI-012, UI-013, UI-014
 
 #### Description
@@ -242,11 +242,11 @@ Compose `PageShell` + title/description + optional `FilterBar` slot + `DataGrid`
 
 #### Acceptance criteria
 
-- [ ] `ListPage<T>` exported from `@gaming-cafe/ui`
-- [ ] Supports: `columns`, `actions`, `data`, `isLoading`, `filters` slot,
+- [x] `ListPage<T>` exported from `@gaming-cafe/ui`
+- [x] Supports: `columns`, `actions`, `data`, `isLoading`, `filters` slot,
       `onPageChange` with query preservation callback
-- [ ] `showSearch` prop retained (default false until API wired)
-- [ ] `DataGrid` styling updated: softer headers, consistent row hover
+- [x] `showSearch` prop retained (default false until API wired)
+- [x] `DataGrid` styling updated: softer headers, consistent row hover
 
 #### Key files
 
@@ -258,11 +258,11 @@ Compose `PageShell` + title/description + optional `FilterBar` slot + `DataGrid`
 
 ### UI-009: FormPage shell
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-002  
+**Type:** UI
+**Complexity:** S
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-002
 **Blocks:** UI-014 (partial)
 
 #### Description
@@ -273,9 +273,9 @@ create/edit pages.
 
 #### Acceptance criteria
 
-- [ ] `FormPage` component with `title`, `backTo`, `breadcrumbs?`, `children`
-- [ ] Adopted on: `SessionNewPage`, `PlanTransactionNewPage`, `PlayerNewPage`
-- [ ] `ActiveShiftGuard` wrappers preserved where present
+- [x] `FormPage` component with `title`, `backTo`, `breadcrumbs?`, `children`
+- [x] Adopted on: `SessionNewPage`, `PlanTransactionNewPage`, `PlayerNewPage`
+- [x] `ActiveShiftGuard` wrappers preserved where present
 
 #### Key files
 
@@ -287,11 +287,11 @@ create/edit pages.
 
 ### UI-010: DetailPage shell
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-002  
+**Type:** UI
+**Complexity:** S
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-002
 **Blocks:** UI-018
 
 #### Description
@@ -301,9 +301,9 @@ slots. Unify shift/cash/session detail chrome.
 
 #### Acceptance criteria
 
-- [ ] `DetailPage` component with `summary`, `sections[]`, `actions?` slots
-- [ ] Loading uses `FormSkeleton`; error uses `ErrorPanel`
-- [ ] Adopted on `ShiftDetailPage` and `CashRegisterDetailPage`
+- [x] `DetailPage` component with `summary`, `sections[]`, `actions?` slots
+- [x] Loading uses `FormSkeleton`; error uses `ErrorPanel`
+- [x] Adopted on `ShiftDetailPage` and `CashRegisterDetailPage`
 
 #### Key files
 
@@ -315,11 +315,11 @@ slots. Unify shift/cash/session detail chrome.
 
 ### UI-011: EmptyState + ErrorPanel + loading kit
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-002  
+**Type:** UI
+**Complexity:** S
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-002
 **Blocks:** UI-012+, UI-015, UI-016
 
 #### Description
@@ -329,10 +329,10 @@ standard skeleton usage guidelines.
 
 #### Acceptance criteria
 
-- [ ] `EmptyState`: icon, title, description, `actionLabel` + `onAction`
-- [ ] `ErrorPanel`: message + optional Retry button
-- [ ] `ListPage` renders `EmptyState` when `data.length === 0` and not loading
-- [ ] README snippet for when to use `GridSkeleton` vs `FormSkeleton` vs spinner
+- [x] `EmptyState`: icon, title, description, `actionLabel` + `onAction`
+- [x] `ErrorPanel`: message + optional Retry button
+- [x] `ListPage` renders `EmptyState` when `data.length === 0` and not loading
+- [x] README snippet for when to use `GridSkeleton` vs `FormSkeleton` vs spinner
 
 #### Key files
 
@@ -346,11 +346,11 @@ standard skeleton usage guidelines.
 
 ### UI-012: List wave 1 — high-traffic pages
 
-**Type:** UI  
-**Complexity:** L  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-008, UI-011  
+**Type:** UI
+**Complexity:** L
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-008, UI-011
 **Blocks:** UI-020
 
 #### Description
@@ -359,10 +359,10 @@ Migrate to `ListPage`: Sessions, Players, Plan sales, POS sales.
 
 #### Acceptance criteria
 
-- [ ] All four pages use `ListPage` + `PageShell`
-- [ ] Existing filters, chips, pagination query params preserved
-- [ ] `hideOnMobile` columns retained or improved
-- [ ] No functional regression (permissions, actions, navigation)
+- [x] All four pages use `ListPage` + `PageShell` (Sessions migrated in UI-008; `ListPage` includes `PageShell`)
+- [x] Existing filters, chips, pagination query params preserved
+- [x] `hideOnMobile` columns retained or improved
+- [x] No functional regression (permissions, actions, navigation)
 
 #### Key files
 
@@ -375,11 +375,11 @@ Migrate to `ListPage`: Sessions, Players, Plan sales, POS sales.
 
 ### UI-013: List wave 2 — money flows
 
-**Type:** UI  
-**Complexity:** M  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-012  
+**Type:** UI
+**Complexity:** M
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-012
 **Blocks:** —
 
 #### Description
@@ -388,9 +388,9 @@ Migrate to `ListPage`: Shifts, Cash registers, Cash deposits.
 
 #### Acceptance criteria
 
-- [ ] All three pages use `ListPage`
-- [ ] Force-close / approve actions unchanged
-- [ ] Pagination and filters preserved
+- [x] All three pages use `ListPage`
+- [x] Force-close / approve actions unchanged
+- [x] Pagination and filters preserved
 
 #### Key files
 
@@ -402,11 +402,11 @@ Migrate to `ListPage`: Shifts, Cash registers, Cash deposits.
 
 ### UI-014: List wave 3 — config and inventory
 
-**Type:** UI  
-**Complexity:** L  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-013  
+**Type:** UI
+**Complexity:** L
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-013
 **Blocks:** —
 
 #### Description
@@ -416,9 +416,9 @@ Expenses, Inventory locations/transfers/waste.
 
 #### Acceptance criteria
 
-- [ ] All listed pages use `ListPage` or documented exception
-- [ ] `showSearch={false}` until API search exists
-- [ ] Biome clean on touched files
+- [x] All listed pages use `ListPage` or documented exception (also: warehouse stock, waste report)
+- [x] `showSearch={false}` until API search exists (pages with API or client search keep `showSearch`)
+- [x] Biome clean on touched files
 
 #### Key files
 
@@ -433,11 +433,11 @@ Expenses, Inventory locations/transfers/waste.
 
 ### UI-015: Staff dashboard visual refresh
 
-**Type:** UI  
-**Complexity:** M  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-002, UI-011  
+**Type:** UI
+**Complexity:** M
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-002, UI-011
 **Blocks:** —
 
 #### Description
@@ -448,10 +448,10 @@ shift.
 
 #### Acceptance criteria
 
-- [ ] Quick actions min 44px touch height
-- [ ] Shift duration and collection summary in prominent card
-- [ ] Uses semantic colors only
-- [ ] ≤2 taps to start session / sell / buy plan
+- [x] Quick actions min 44px touch height
+- [x] Shift duration and collection summary in prominent card
+- [x] Uses semantic colors only
+- [x] ≤2 taps to start session / sell / buy plan
 
 #### Key files
 
@@ -461,11 +461,11 @@ shift.
 
 ### UI-016: Admin dashboard visual refresh
 
-**Type:** UI  
-**Complexity:** M  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-004, UI-011  
+**Type:** UI
+**Complexity:** M
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-004, UI-011
 **Blocks:** —
 
 #### Description
@@ -476,10 +476,10 @@ chrome.
 
 #### Acceptance criteria
 
-- [ ] Date range as segmented control (not loose buttons)
-- [ ] Stat grid responsive 1 → 2 → 3 columns
-- [ ] No non-functional menus/icons
-- [ ] Loading skeleton instead of full-page spinner
+- [x] Date range as segmented control (not loose buttons)
+- [x] Stat grid responsive 1 → 2 → 3 columns
+- [x] No non-functional menus/icons
+- [x] Loading skeleton instead of full-page spinner
 
 #### Key files
 
@@ -490,11 +490,11 @@ chrome.
 
 ### UI-017: POS screen refresh
 
-**Type:** UI  
-**Complexity:** L  
-**Priority:** Must  
-**Status:** `pending`  
-**Blocked by:** UI-002  
+**Type:** UI
+**Complexity:** L
+**Priority:** Must
+**Status:** `done`
+**Blocked by:** UI-002
 **Blocks:** —
 
 #### Description
@@ -505,10 +505,10 @@ logic changes.
 
 #### Acceptance criteria
 
-- [ ] Product selection grid uses card layout with clear selected state
-- [ ] Cart visible without excessive scroll on 1280px
-- [ ] Payment methods visually distinct (cash / online / split)
-- [ ] `ActiveShiftGuard` preserved
+- [x] Product selection grid uses card layout with clear selected state
+- [x] Cart visible without excessive scroll on 1280px
+- [x] Payment methods visually distinct (cash / online / split)
+- [x] `ActiveShiftGuard` preserved
 
 #### Key files
 
@@ -518,11 +518,11 @@ logic changes.
 
 ### UI-018: Session detail refresh
 
-**Type:** UI  
-**Complexity:** M  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-010  
+**Type:** UI
+**Complexity:** M
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-010
 **Blocks:** —
 
 #### Description
@@ -532,9 +532,9 @@ mobile, TOTP dialog styling aligned with design system.
 
 #### Acceptance criteria
 
-- [ ] Uses `DetailPage` shell
-- [ ] End / force-end / buy-more-time actions visible on mobile
-- [ ] Remaining time prominently displayed for active sessions
+- [x] Uses `DetailPage` shell
+- [x] End / force-end / buy-more-time actions visible on mobile
+- [x] Remaining time prominently displayed for active sessions
 
 #### Key files
 
@@ -545,11 +545,11 @@ mobile, TOTP dialog styling aligned with design system.
 
 ### UI-019: Shift handover dialog polish
 
-**Type:** UI  
-**Complexity:** S  
-**Priority:** Could  
-**Status:** `pending`  
-**Blocked by:** UI-001  
+**Type:** UI
+**Complexity:** S
+**Priority:** Could
+**Status:** `done`
+**Blocked by:** UI-001
 **Blocks:** —
 
 #### Description
@@ -559,9 +559,9 @@ spacing and typography with new theme.
 
 #### Acceptance criteria
 
-- [ ] No `window.location.reload()` (already removed — verify still true)
-- [ ] Dialog matches card radius and typography scale
-- [ ] TOTP field uses same pattern as `StaffTotpDialog`
+- [x] No `window.location.reload()` (already removed — verify still true)
+- [x] Dialog matches card radius and typography scale
+- [x] TOTP field uses same pattern as `StaffTotpDialog`
 
 #### Key files
 
@@ -573,11 +573,11 @@ spacing and typography with new theme.
 
 ### UI-020: Mobile card-list fallback (sessions)
 
-**Type:** UI  
-**Complexity:** M  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-012  
+**Type:** UI
+**Complexity:** M
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-012
 **Blocks:** —
 
 #### Description
@@ -587,9 +587,9 @@ left, status, actions) instead of horizontal table scroll.
 
 #### Acceptance criteria
 
-- [ ] `SessionsPage` readable at 375px without horizontal scroll
-- [ ] Card actions match table row actions
-- [ ] Desktop table view unchanged
+- [x] `SessionsPage` readable at 375px without horizontal scroll
+- [x] Card actions match table row actions
+- [x] Desktop table view unchanged
 
 #### Key files
 
@@ -600,11 +600,11 @@ left, status, actions) instead of horizontal table scroll.
 
 ### UI-021: GridLegacy → Grid2 migration
 
-**Type:** UI / Refactor  
-**Complexity:** M  
-**Priority:** Could  
-**Status:** `pending`  
-**Blocked by:** —  
+**Type:** UI / Refactor
+**Complexity:** M
+**Priority:** Could
+**Status:** `done`
+**Blocked by:** —
 **Blocks:** —
 
 #### Description
@@ -613,19 +613,19 @@ Replace `@mui/material/GridLegacy` with `Grid2` across admin (~9 files).
 
 #### Acceptance criteria
 
-- [ ] No `GridLegacy` imports remain in `apps/admin`
-- [ ] Layout visually equivalent on pilot pages
-- [ ] Typecheck passes
+- [x] No `GridLegacy` imports remain in `apps/admin`
+- [x] Layout visually equivalent on pilot pages
+- [x] Typecheck passes
 
 ---
 
 ### UI-022: packages/ui pattern documentation
 
-**Type:** DOC  
-**Complexity:** S  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-008, UI-009, UI-010, UI-011  
+**Type:** DOC
+**Complexity:** S
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-008, UI-009, UI-010, UI-011
 **Blocks:** —
 
 #### Description
@@ -635,19 +635,19 @@ EmptyState, when to extend vs compose.
 
 #### Acceptance criteria
 
-- [ ] README with import examples
-- [ ] Links to ADR-0007 and PLAN doc
-- [ ] List of deprecated patterns (`ListViewPage` direct use → `ListPage`)
+- [x] README with import examples
+- [x] Links to ADR-0007 and PLAN doc
+- [x] List of deprecated patterns (`ListViewPage` direct use → `ListPage`)
 
 ---
 
 ### UI-023: Visual regression checklist
 
-**Type:** QA  
-**Complexity:** S  
-**Priority:** Should  
-**Status:** `pending`  
-**Blocked by:** UI-012, UI-015, UI-017  
+**Type:** QA
+**Complexity:** S
+**Priority:** Should
+**Status:** `done`
+**Blocked by:** UI-012, UI-015, UI-017
 **Blocks:** —
 
 #### Description
@@ -657,9 +657,9 @@ staff loop.
 
 #### Acceptance criteria
 
-- [ ] Checklist in `docs/` or `apps/admin/README.md`
-- [ ] Covers: login, staff dashboard, sessions list/detail, POS, plan purchase
-- [ ] Signed off once after M5 complete
+- [x] Checklist in `docs/` or `apps/admin/README.md`
+- [x] Covers: login, staff dashboard, sessions list/detail, POS, plan purchase
+- [ ] Signed off once after M5 complete (manual pass pending)
 
 ---
 

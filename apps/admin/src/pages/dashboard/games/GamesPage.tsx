@@ -1,13 +1,14 @@
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
-import { Avatar, Box, Chip, debounce, Pagination } from '@mui/material';
+import { Avatar, Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deleteGame } from '../../../services/game/delete';
 import { type GameResponse, getGames } from '../../../services/game/list';
+import { buildListUrl } from '../../../utils/buildListUrl';
 
 export default function GamesPage() {
   const [inputValue, setInputValue] = useState('');
@@ -53,10 +54,10 @@ export default function GamesPage() {
     async (id: string) => {
       try {
         await deleteGame(id);
-        toast.success('Game removed');
+        toastUtils.success('Game removed');
         refetch();
       } catch {
-        toast.error('Failed to remove game');
+        toastUtils.error('Failed to remove game');
       }
     },
     [refetch],
@@ -112,30 +113,24 @@ export default function GamesPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<GameResponse>
-        title="Games"
-        description="Manage the kiosk game catalog (thumbnails, logos, background videos)."
-        data={data?.data || []}
-        columns={columns}
-        actions={canWrite ? actions : []}
-        isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
-        onAddClick={canWrite ? () => navigate('/games/new') : undefined}
-        addButtonLabel="Add Game"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) => navigate(value === 1 ? '/games' : `/games?page=${value}`)}
-        />
-      </Box>
-    </Box>
+    <ListPage<GameResponse>
+      title="Games"
+      description="Manage the kiosk game catalog (thumbnails, logos, background videos)."
+      data={data?.data || []}
+      columns={columns}
+      actions={canWrite ? actions : []}
+      isLoading={isLoading}
+      showSearch
+      searchValue={inputValue}
+      onSearchChange={handleSearch}
+      onSearchClear={handleClearSearch}
+      onAddClick={canWrite ? () => navigate('/games/new') : undefined}
+      addButtonLabel="Add Game"
+      pagination={{
+        page,
+        totalPages: data?.totalPages,
+        onPageChange: (value) => navigate(buildListUrl('/games', value, {})),
+      }}
+    />
   );
 }

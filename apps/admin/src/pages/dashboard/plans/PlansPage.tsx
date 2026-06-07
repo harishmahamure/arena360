@@ -1,14 +1,15 @@
 import type { PlanTypeValue } from '@gaming-cafe/contracts';
-import { type Action, type Column, ListViewPage } from '@gaming-cafe/ui';
+import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { toastUtils } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
-import { Box, Chip, debounce, Pagination } from '@mui/material';
+import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { deletePlan } from '../../../services/plans/delete';
 import { getPlans, type PlanResponse } from '../../../services/plans/list';
+import { buildListUrl } from '../../../utils/buildListUrl';
 
 export default function PlansPage() {
   const [inputValue, setInputValue] = useState<string>('');
@@ -155,10 +156,10 @@ export default function PlansPage() {
     async (id: string) => {
       try {
         await deletePlan(id);
-        toast.success('Plan deactivated successfully');
+        toastUtils.success('Plan deactivated successfully');
         refetch();
       } catch (_error) {
-        toast.error('Failed to deactivate plan');
+        toastUtils.error('Failed to deactivate plan');
       }
     },
     [refetch],
@@ -178,30 +179,30 @@ export default function PlansPage() {
   ];
 
   return (
-    <Box sx={{ px: 4, py: 2 }}>
-      <ListViewPage<PlanResponse>
-        title="Plans"
-        description="Manage your gaming plans and subscriptions here."
-        data={data?.data || []}
-        columns={columns}
-        actions={canWrite ? actions : []}
-        isLoading={isLoading}
-        inputValue={inputValue}
-        handleSearch={handleSearch}
-        handleClearSearch={handleClearSearch}
-        onAddClick={canWrite ? handleAddNewPlan : undefined}
-        addButtonLabel="Add Plan"
-      />
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-        <Pagination
-          count={data?.totalPages}
-          page={page}
-          shape="rounded"
-          hidePrevButton={page === 1}
-          hideNextButton={page === data?.totalPages}
-          onChange={(_event, value) => navigate(value === 1 ? `/plans` : `/plans?page=${value}`)}
-        />
-      </Box>
-    </Box>
+    <ListPage<PlanResponse>
+      title="Plans"
+      description="Manage your gaming plans and subscriptions here."
+      data={data?.data || []}
+      columns={columns}
+      actions={canWrite ? actions : []}
+      isLoading={isLoading}
+      showSearch
+      searchValue={inputValue}
+      onSearchChange={handleSearch}
+      onSearchClear={handleClearSearch}
+      onAddClick={canWrite ? handleAddNewPlan : undefined}
+      addButtonLabel="Add Plan"
+      pagination={{
+        page,
+        totalPages: data?.totalPages,
+        onPageChange: (value) =>
+          navigate(
+            buildListUrl('/plans', value, {
+              planType,
+              isActive: isActive ?? undefined,
+            }),
+          ),
+      }}
+    />
   );
 }

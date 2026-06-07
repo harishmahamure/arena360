@@ -1,3 +1,4 @@
+import { toastUtils } from '@gaming-cafe/utils';
 import { Delete } from '@mui/icons-material';
 import {
   Alert,
@@ -12,7 +13,6 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import { createTransferRequest, getInventoryLocations } from '../../../services/inventory';
 import { getProducts } from '../../../services/product/list';
 
@@ -80,10 +80,10 @@ export default function InventoryTransferNewPage() {
         })),
       }),
     onSuccess: () => {
-      toast.success('Transfer request submitted');
+      toastUtils.success('Transfer request submitted');
       navigate('/inventory/transfers');
     },
-    onError: () => toast.error('Failed to create request'),
+    onError: () => toastUtils.error('Failed to create request'),
   });
 
   if (!store || !warehouse) {

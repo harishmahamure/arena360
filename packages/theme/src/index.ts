@@ -1,3 +1,12 @@
-export { BRAND_LOGO_URL } from './brand';
-export { colors, darkSurfaces, darkTheme, default as theme } from './lib/theme';
-export { themeClasses } from './lib/theme-classes';
+export { BRAND_LOGO_URL } from './brand.js';
+export { themeClasses } from './lib/theme-classes.js';
+export {
+  colors,
+  darkSurfaces,
+  muiDarkTheme,
+  muiDarkTheme as darkTheme,
+  muiTheme,
+  muiTheme as theme,
+} from './mui-theme.js';
+export type { Tokens } from './tokens.js';
+export { tokens } from './tokens.js';
