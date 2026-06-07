@@ -2,7 +2,7 @@
 
 > Product requirements for the in-cafe Windows kiosk application.
 > Companion to [REQUIREMENTS.md](./REQUIREMENTS.md) (platform-wide).
-> Last updated: 2026-05-30.
+> Last updated: 2026-06-07.
 
 ## Document control
 
@@ -521,7 +521,7 @@ Implementation tracked in [PLANNER-KIOSK.md](PLANNER-KIOSK.md) phase **K10** and
 - Kiosk must survive backend restart without requiring re-registration if device JWT still valid.
 - Active session must not double-start on duplicate login attempts (idempotent session create or reject).
 - **At most one open session per player** across all devices; enforced server-side on login and session create (`US-KAUTH-006`).
-- Clock skew: remaining time display uses **server-authoritative** `remainingMinutes` and session timestamps, not only local clock.
+- Clock skew: remaining time display uses **server-authoritative** `remainingMinutes`; admin and kiosk share `useSessionRemainingMinutes` for display-only interpolation (see [session-time-clock.md](./session-time-clock.md)). Session end and balance deduction always use backend weighted calculation.
 
 ### 6.3 Security
 

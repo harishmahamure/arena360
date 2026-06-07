@@ -11725,6 +11725,7 @@
         "properties": {
           "allowedDays": {},
           "allowedMonths": {},
+          "deductionProfile": {},
           "description": {
             "type": [
               "string",
@@ -11740,6 +11741,12 @@
           "deviceType": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "dynamicDeductionEnabled": {
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -12617,6 +12624,39 @@
             "type": "boolean"
           },
           "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "DeductionProfile": {
+        "type": "object",
+        "required": [
+          "peakWindowStart",
+          "peakWindowEnd",
+          "peakRatio",
+          "lowWindowStart",
+          "lowWindowEnd",
+          "lowRatio"
+        ],
+        "properties": {
+          "lowRatio": {
+            "type": "number",
+            "format": "double"
+          },
+          "lowWindowEnd": {
+            "type": "string"
+          },
+          "lowWindowStart": {
+            "type": "string"
+          },
+          "peakRatio": {
+            "type": "number",
+            "format": "double"
+          },
+          "peakWindowEnd": {
+            "type": "string"
+          },
+          "peakWindowStart": {
             "type": "string"
           }
         }
@@ -14105,11 +14145,25 @@
           "deviceId",
           "startTime",
           "remainingMinutes",
-          "resumed"
+          "resumed",
+          "cafeTimezone"
         ],
         "properties": {
           "balanceId": {
             "type": "string"
+          },
+          "cafeTimezone": {
+            "type": "string"
+          },
+          "deductionProfile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeductionProfile"
+              }
+            ]
           },
           "deviceId": {
             "type": "string"
@@ -14134,6 +14188,13 @@
           },
           "startTime": {
             "type": "string"
+          },
+          "timeCreditsConsumed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
           }
         }
       },
@@ -14751,6 +14812,7 @@
           "validityDays",
           "timeCredits",
           "isActive",
+          "dynamicDeductionEnabled",
           "createdAt",
           "updatedAt"
         ],
@@ -14768,6 +14830,7 @@
             ],
             "format": "uuid"
           },
+          "deductionProfile": {},
           "deletedAt": {
             "type": [
               "string",
@@ -14792,6 +14855,9 @@
               "string",
               "null"
             ]
+          },
+          "dynamicDeductionEnabled": {
+            "type": "boolean"
           },
           "id": {
             "type": "string",
@@ -15245,6 +15311,7 @@
             ],
             "format": "uuid"
           },
+          "deductionProfile": {},
           "deletedAt": {
             "type": [
               "string",
@@ -15344,6 +15411,7 @@
             ],
             "format": "uuid"
           },
+          "deductionProfile": {},
           "deletedAt": {
             "type": [
               "string",
@@ -19453,6 +19521,7 @@
         "properties": {
           "allowedDays": {},
           "allowedMonths": {},
+          "deductionProfile": {},
           "description": {
             "type": [
               "string",
@@ -19468,6 +19537,12 @@
           "deviceType": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "dynamicDeductionEnabled": {
+            "type": [
+              "boolean",
               "null"
             ]
           },

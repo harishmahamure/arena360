@@ -4,6 +4,7 @@ pub mod cash_register;
 pub mod configuration;
 pub mod credit;
 pub mod db_enums;
+pub mod deduction_profile;
 pub mod device;
 pub mod expense;
 pub mod expense_category;

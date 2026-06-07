@@ -1,3 +1,4 @@
+import type { DeductionProfile } from '@gaming-cafe/contracts';
 import { ApiError, isApiError } from '@gaming-cafe/utils';
 import {
   createContext,
@@ -44,6 +45,9 @@ interface KioskSessionResponse {
   startTime: string;
   remainingMinutes: number;
   resumed: boolean;
+  deductionProfile?: DeductionProfile | null;
+  cafeTimezone?: string;
+  timeCreditsConsumed?: number | null;
 }
 
 export interface ActiveSession {
@@ -51,6 +55,21 @@ export interface ActiveSession {
   startTime: string;
   balanceId: string;
   remainingMinutes: number;
+  deductionProfile?: DeductionProfile | null;
+  cafeTimezone?: string;
+  timeCreditsConsumed?: number | null;
+}
+
+function sessionFromResponse(res: KioskSessionResponse): ActiveSession {
+  return {
+    id: res.sessionId,
+    startTime: res.startTime,
+    balanceId: res.balanceId,
+    remainingMinutes: res.remainingMinutes,
+    deductionProfile: res.deductionProfile ?? null,
+    cafeTimezone: res.cafeTimezone,
+    timeCreditsConsumed: res.timeCreditsConsumed ?? null,
+  };
 }
 
 export interface DeviceProvisionInput {
@@ -469,12 +488,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     const http = getHttpClient();
     try {
       const res = await http.post<KioskSessionResponse>('/kiosk/sessions', {});
-      setActiveSession({
-        id: res.sessionId,
-        startTime: res.startTime,
-        balanceId: res.balanceId,
-        remainingMinutes: res.remainingMinutes,
-      });
+      setActiveSession(sessionFromResponse(res));
       prepareSessionSounds();
       setConflictDevice(null);
       setPhase('session');
@@ -550,16 +564,10 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         if (deviceId) connectWs(deviceId);
         return;
       }
-      setActiveSession((prev) =>
-        prev
-          ? { ...prev, remainingMinutes: res.remainingMinutes }
-          : {
-              id: res.sessionId,
-              startTime: res.startTime,
-              balanceId: res.balanceId,
-              remainingMinutes: res.remainingMinutes,
-            },
-      );
+      setActiveSession((prev) => {
+        const next = sessionFromResponse(res);
+        return prev ? { ...prev, ...next, id: prev.id } : next;
+      });
     } catch {
       // Offline: leave the last-known countdown running (offline grace, K6).
       setOnline(false);
@@ -575,19 +583,10 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         {},
       );
       setOnline(true);
-      setActiveSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              remainingMinutes: res.remainingMinutes,
-            }
-          : {
-              id: res.sessionId,
-              startTime: res.startTime,
-              balanceId: res.balanceId,
-              remainingMinutes: res.remainingMinutes,
-            },
-      );
+      setActiveSession((prev) => {
+        const next = sessionFromResponse(res);
+        return prev ? { ...prev, ...next, id: prev.id } : next;
+      });
     } catch (error) {
       if (isApiError(error) && error.statusCode === 404) {
         setActiveSession(null);

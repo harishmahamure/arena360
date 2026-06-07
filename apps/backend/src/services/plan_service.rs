@@ -3,7 +3,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::models::{parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto};
+use crate::models::{
+    parse_deduction_profile, parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto,
+};
 use crate::repositories::{PlanCreateValues, PlanRepository};
 use crate::validation::{optional_device_sub_type, optional_device_type};
 
@@ -62,6 +64,8 @@ impl PlanService {
             .map(parse_time)
             .transpose()?;
         let time_window_end = dto.time_window_end.as_deref().map(parse_time).transpose()?;
+        let (dynamic_deduction_enabled, deduction_profile) =
+            Self::resolve_deduction_fields(&dto.dynamic_deduction_enabled, dto.deduction_profile.as_ref())?;
 
         self.repo
             .create(
@@ -71,6 +75,8 @@ impl PlanService {
                     time_credits,
                     time_window_start,
                     time_window_end,
+                    dynamic_deduction_enabled,
+                    deduction_profile,
                 },
                 actor_id,
             )
@@ -135,6 +141,21 @@ impl PlanService {
             None => None,
         };
 
+        let dynamic_enabled = dto
+            .dynamic_deduction_enabled
+            .unwrap_or(existing.dynamic_deduction_enabled);
+        let profile_value = if dto.dynamic_deduction_enabled == Some(false) {
+            None
+        } else {
+            dto.deduction_profile
+                .as_ref()
+                .or(existing.deduction_profile.as_ref())
+        };
+        let (dynamic_deduction_enabled, deduction_profile) = Self::resolve_deduction_fields(
+            &Some(dynamic_enabled),
+            profile_value,
+        )?;
+
         self.repo
             .update(
                 id,
@@ -143,6 +164,8 @@ impl PlanService {
                 time_window_end,
                 dto.allowed_days.as_ref(),
                 dto.allowed_months.as_ref(),
+                Some(dynamic_deduction_enabled),
+                deduction_profile.as_ref(),
                 actor_id,
             )
             .await
@@ -174,8 +197,35 @@ impl PlanService {
         Self::validate_allowed_days(dto.allowed_days.as_ref())?;
         Self::validate_allowed_months(dto.allowed_months.as_ref())?;
         Self::validate_device_scope(dto.device_type.as_deref(), dto.device_sub_type.as_deref())?;
+        Self::resolve_deduction_fields(
+            &dto.dynamic_deduction_enabled,
+            dto.deduction_profile.as_ref(),
+        )?;
 
         Ok(())
+    }
+
+    fn resolve_deduction_fields(
+        enabled: &Option<bool>,
+        profile: Option<&Value>,
+    ) -> Result<(bool, Option<Value>), AppError> {
+        let enabled = enabled.unwrap_or(false);
+        if !enabled {
+            if profile.is_some() {
+                return Err(AppError::BadRequest(
+                    "deductionProfile must be omitted when dynamicDeductionEnabled is false"
+                        .to_string(),
+                ));
+            }
+            return Ok((false, None));
+        }
+        let Some(value) = profile else {
+            return Err(AppError::BadRequest(
+                "deductionProfile is required when dynamicDeductionEnabled is true".to_string(),
+            ));
+        };
+        parse_deduction_profile(value)?;
+        Ok((true, Some(value.clone())))
     }
 
     fn validate_device_scope(

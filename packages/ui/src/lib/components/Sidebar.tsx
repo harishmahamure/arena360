@@ -128,7 +128,7 @@ export default function Sidebar({
       }
       return [...merged];
     });
-  }, [location.pathname, location.search, navItems]);
+  }, [location.pathname, navItems]);
 
   const handleExpand = (title: string) => {
     setExpandedItems((prev) =>

@@ -15,7 +15,7 @@ use crate::dto::{
 use crate::error::AppError;
 use crate::models::{Device, User};
 use crate::repositories::{SessionRepository, UserRepository};
-use crate::services::session_service::effective_remaining_minutes;
+use crate::services::session_service::effective_remaining_for_session;
 use crate::services::totp_util::verify_totp_code;
 use crate::services::{BalanceService, MailService, OtpRateLimiter};
 
@@ -148,14 +148,23 @@ impl AuthService {
             }
 
             let balance = self.balances.get_raw(session.balance_id).await?;
+            let usage_session = self
+                .session_repo
+                .find_by_id(session.session_id)
+                .await?
+                .ok_or_else(|| {
+                    AppError::NotFound("Open session record missing".to_string())
+                })?;
+            let remaining = effective_remaining_for_session(
+                &balance,
+                &usage_session,
+                &self.settings.cafe_timezone,
+            );
             Some(ActiveSessionDto {
                 id: session.session_id.to_string(),
                 startTime: session.start_time,
                 balanceId: session.balance_id.to_string(),
-                remainingMinutes: effective_remaining_minutes(
-                    balance.remaining_minutes,
-                    session.start_time,
-                ) as f64,
+                remainingMinutes: remaining as f64,
             })
         } else {
             self.balances

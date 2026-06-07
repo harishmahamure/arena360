@@ -94,6 +94,7 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
               kind: balance.kind,
               remainingMinutes: balance.remainingMinutes,
               status: balance.status,
+              deductionProfile: balance.deductionProfile ?? null,
               player: player
                 ? {
                     id: player.id,

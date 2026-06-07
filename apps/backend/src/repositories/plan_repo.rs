@@ -16,6 +16,8 @@ pub struct PlanCreateValues<'a> {
     pub time_credits: i32,
     pub time_window_start: Option<chrono::NaiveTime>,
     pub time_window_end: Option<chrono::NaiveTime>,
+    pub dynamic_deduction_enabled: bool,
+    pub deduction_profile: Option<Value>,
 }
 
 impl PlanRepository {
@@ -31,6 +33,8 @@ impl PlanRepository {
                "timeCredits" as time_credits, "isActive" as is_active,
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+               "dynamicDeductionEnabled" as dynamic_deduction_enabled,
+               "deductionProfile" as deduction_profile,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -70,6 +74,8 @@ impl PlanRepository {
                "timeCredits" as time_credits, "isActive" as is_active,
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+               "dynamicDeductionEnabled" as dynamic_deduction_enabled,
+               "deductionProfile" as deduction_profile,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -156,13 +162,14 @@ impl PlanRepository {
                 "timeWindowStart", "timeWindowEnd", "timeCredits",
                 "isActive", "deviceType", "deviceSubType",
                 "allowedDays", "allowedMonths",
+                "dynamicDeductionEnabled", "deductionProfile",
                 "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4::plans_plantype_enum, $5, $6, $7, $8,
                 COALESCE($9, true), $10::plans_devicetype_enum, $11::plans_devicesubtype_enum,
-                $12, $13,
-                $14, $14, NOW(), NOW()
+                $12, $13, $14, $15,
+                $16, $16, NOW(), NOW()
             )
             RETURNING id, name, description,
                       price::float8 as price, "planType"::text as plan_type,
@@ -171,6 +178,8 @@ impl PlanRepository {
                       "timeCredits" as time_credits, "isActive" as is_active,
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                      "dynamicDeductionEnabled" as dynamic_deduction_enabled,
+                      "deductionProfile" as deduction_profile,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -189,6 +198,8 @@ impl PlanRepository {
         .bind(&dto.device_sub_type)
         .bind(&dto.allowed_days)
         .bind(&dto.allowed_months)
+        .bind(values.dynamic_deduction_enabled)
+        .bind(&values.deduction_profile)
         .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
@@ -204,6 +215,8 @@ impl PlanRepository {
         time_window_end: Option<chrono::NaiveTime>,
         allowed_days: Option<&Value>,
         allowed_months: Option<&Value>,
+        dynamic_deduction_enabled: Option<bool>,
+        deduction_profile: Option<&Value>,
         actor_id: Option<Uuid>,
     ) -> Result<Plan, AppError> {
         let plan = sqlx::query_as::<_, Plan>(
@@ -222,7 +235,9 @@ impl PlanRepository {
                 "deviceSubType" = COALESCE($12::plans_devicesubtype_enum, "deviceSubType"),
                 "allowedDays" = COALESCE($13, "allowedDays"),
                 "allowedMonths" = COALESCE($14, "allowedMonths"),
-                "updatedBy" = COALESCE($15, "updatedBy"),
+                "dynamicDeductionEnabled" = $15,
+                "deductionProfile" = $16,
+                "updatedBy" = COALESCE($17, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, description,
@@ -232,6 +247,8 @@ impl PlanRepository {
                       "timeCredits" as time_credits, "isActive" as is_active,
                       "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                       "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                      "dynamicDeductionEnabled" as dynamic_deduction_enabled,
+                      "deductionProfile" as deduction_profile,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -251,6 +268,8 @@ impl PlanRepository {
         .bind(&dto.device_sub_type)
         .bind(allowed_days)
         .bind(allowed_months)
+        .bind(dynamic_deduction_enabled)
+        .bind(deduction_profile)
         .bind(actor_id)
         .fetch_optional(&self.pool)
         .await?;

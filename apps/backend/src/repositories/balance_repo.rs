@@ -24,6 +24,7 @@ impl BalanceRepository {
                "windowEnd" as window_end, status::text as status,
                "sourcePlanId" as source_plan_id,
                "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+               "deductionProfile" as deduction_profile,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -51,6 +52,7 @@ impl BalanceRepository {
                    b."windowEnd" as window_end, b.status::text as status,
                    b."sourcePlanId" as source_plan_id,
                    b."allowedDays" as allowed_days, b."allowedMonths" as allowed_months,
+                   b."deductionProfile" as deduction_profile,
                    b."createdBy" as created_by, b."updatedBy" as updated_by,
                    b."createdAt" as created_at, b."updatedAt" as updated_at,
                    b."deletedAt" as deleted_at,
@@ -84,6 +86,7 @@ impl BalanceRepository {
                    "windowEnd" as window_end, status::text as status,
                    "sourcePlanId" as source_plan_id,
                    "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at
@@ -123,6 +126,7 @@ impl BalanceRepository {
                    "windowEnd" as window_end, status::text as status,
                    "sourcePlanId" as source_plan_id,
                    "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at
@@ -158,6 +162,7 @@ impl BalanceRepository {
         source_plan_id: Uuid,
         allowed_days: Option<&Value>,
         allowed_months: Option<&Value>,
+        deduction_profile: Option<&Value>,
         actor_id: Option<Uuid>,
     ) -> Result<PlayerPlanBalance, AppError> {
         let balance = sqlx::query_as::<_, PlayerPlanBalance>(
@@ -165,12 +170,12 @@ impl BalanceRepository {
                    "playerId", "deviceType", "deviceSubType", kind,
                    "remainingMinutes", "expiryDate", "windowStart", "windowEnd",
                    status, "sourcePlanId", "allowedDays", "allowedMonths",
-                   "createdBy", "updatedBy"
+                   "deductionProfile", "createdBy", "updatedBy"
                )
                VALUES ($1, $2::plans_devicetype_enum, $3::plans_devicesubtype_enum,
                        $4::plan_kind, $5, $6, $7, $8,
-                       'active'::balance_status, $9, $10, $11,
-                       $12, $12)
+                       'active'::balance_status, $9, $10, $11, $12,
+                       $13, $13)
                RETURNING id, "playerId" as player_id,
                    "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                    kind::text as kind, "remainingMinutes" as remaining_minutes,
@@ -178,6 +183,7 @@ impl BalanceRepository {
                    "windowEnd" as window_end, status::text as status,
                    "sourcePlanId" as source_plan_id,
                    "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at"#,
@@ -193,6 +199,7 @@ impl BalanceRepository {
         .bind(source_plan_id)
         .bind(allowed_days)
         .bind(allowed_months)
+        .bind(deduction_profile)
         .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
@@ -205,6 +212,7 @@ impl BalanceRepository {
         minutes: i32,
         new_expiry: DateTime<Utc>,
         source_plan_id: Uuid,
+        deduction_profile: Option<&Value>,
         actor_id: Option<Uuid>,
         accumulate: bool,
     ) -> Result<PlayerPlanBalance, AppError> {
@@ -218,6 +226,7 @@ impl BalanceRepository {
                    {minutes_sql},
                    "expiryDate" = $3,
                    "sourcePlanId" = $4,
+                   "deductionProfile" = COALESCE($6, "deductionProfile"),
                    status = 'active'::balance_status,
                    "updatedBy" = COALESCE($5, "updatedBy"),
                    "updatedAt" = NOW()
@@ -229,6 +238,7 @@ impl BalanceRepository {
                    "windowEnd" as window_end, status::text as status,
                    "sourcePlanId" as source_plan_id,
                    "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at"#
@@ -239,6 +249,7 @@ impl BalanceRepository {
         .bind(new_expiry)
         .bind(source_plan_id)
         .bind(actor_id)
+        .bind(deduction_profile)
         .fetch_one(&self.pool)
         .await?;
         Ok(balance)
@@ -264,6 +275,7 @@ impl BalanceRepository {
                    "windowEnd" as window_end, status::text as status,
                    "sourcePlanId" as source_plan_id,
                    "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
                    "deletedAt" as deleted_at"#,
@@ -318,6 +330,7 @@ impl BalanceRepository {
                b."windowEnd" as window_end, b.status::text as status,
                b."sourcePlanId" as source_plan_id,
                b."allowedDays" as allowed_days, b."allowedMonths" as allowed_months,
+               b."deductionProfile" as deduction_profile,
                b."createdBy" as created_by, b."updatedBy" as updated_by,
                b."createdAt" as created_at, b."updatedAt" as updated_at,
                b."deletedAt" as deleted_at,

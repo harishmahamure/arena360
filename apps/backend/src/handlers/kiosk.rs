@@ -7,7 +7,8 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
-    created, ok, ApiResult, EndKioskSessionDto, KioskSessionResponseDto, StartKioskSessionDto,
+    created, kiosk_session_response, ok, ApiResult, EndKioskSessionDto, KioskSessionResponseDto,
+    StartKioskSessionDto,
 };
 use crate::error::AppError;
 use crate::middleware::PlayerUser;
@@ -59,15 +60,7 @@ pub async fn start_session(
         .start_for_player(player_id, &device, balance_id)
         .await?;
 
-    created(KioskSessionResponseDto {
-        sessionId: started.session.id.to_string(),
-        balanceId: started.balance_id.to_string(),
-        deviceId: device.id.to_string(),
-        startTime: started.session.start_time.to_rfc3339(),
-        remainingMinutes: started.remaining_minutes as f64,
-        resumed: started.resumed,
-        endTime: None,
-    })
+    created(kiosk_session_response(&started, None))
 }
 
 /// The authenticated player's current open session, or `null` when none.
@@ -88,16 +81,8 @@ pub async fn current_session(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Option<KioskSessionResponseDto>> {
     let player_id = player.player_id()?;
-    let open = state.sessions.open_session_for_player(player_id).await?;
-    ok(open.map(|s| KioskSessionResponseDto {
-        sessionId: s.session_id.to_string(),
-        balanceId: s.balance_id.to_string(),
-        deviceId: s.device_id.to_string(),
-        startTime: s.start_time.to_rfc3339(),
-        remainingMinutes: s.remaining_minutes as f64,
-        resumed: true,
-        endTime: None,
-    }))
+    let open = state.sessions.open_kiosk_session_for_player(player_id).await?;
+    ok(open.map(|s| kiosk_session_response(&s, None)))
 }
 
 /// Heartbeat the authenticated player's current kiosk session. This deducts
@@ -128,15 +113,7 @@ pub async fn heartbeat_session(
         .heartbeat_for_player(id, player_id, device_id)
         .await?;
 
-    ok(KioskSessionResponseDto {
-        sessionId: heartbeat.session.id.to_string(),
-        balanceId: heartbeat.balance_id.to_string(),
-        deviceId: heartbeat.session.device_id.to_string(),
-        startTime: heartbeat.session.start_time.to_rfc3339(),
-        remainingMinutes: heartbeat.remaining_minutes as f64,
-        resumed: true,
-        endTime: None,
-    })
+    ok(kiosk_session_response(&heartbeat, None))
 }
 
 /// End the player's own session. The session's balance must belong to the
@@ -180,10 +157,18 @@ pub async fn end_session(
     // Idempotent end (D18): a replayed offline end-intent for an
     // already-closed session is a no-op, never a second deduction.
     if session.end_time.is_some() {
-        let remaining = match session.balance_id {
-            Some(balance_id) => state.balances.get_raw(balance_id).await?.remaining_minutes,
-            None => 0,
-        };
+        let (remaining, deduction_profile, time_credits_consumed) =
+            match session.balance_id {
+                Some(balance_id) => {
+                    let balance = state.balances.get_raw(balance_id).await?;
+                    (
+                        balance.remaining_minutes,
+                        balance.deduction_profile.clone(),
+                        session.time_credits_consumed.map(|v| v as f64),
+                    )
+                }
+                None => (0, None, None),
+            };
         return ok(KioskSessionResponseDto {
             sessionId: session.id.to_string(),
             balanceId: session
@@ -195,6 +180,14 @@ pub async fn end_session(
             remainingMinutes: remaining as f64,
             resumed: false,
             endTime: session.end_time.map(|t| t.to_rfc3339()),
+            deductionProfile: deduction_profile.and_then(|value| {
+                serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(
+                    value,
+                )
+                .ok()
+            }),
+            cafeTimezone: state.settings.cafe_timezone.clone(),
+            timeCreditsConsumed: time_credits_consumed,
         });
     }
 
@@ -212,9 +205,16 @@ pub async fn end_session(
         )
         .await?;
 
-    let remaining = match ended.balance_id {
-        Some(balance_id) => state.balances.get_raw(balance_id).await?.remaining_minutes,
-        None => 0,
+    let (remaining, deduction_profile, time_credits_consumed) = match ended.balance_id {
+        Some(balance_id) => {
+            let balance = state.balances.get_raw(balance_id).await?;
+            (
+                balance.remaining_minutes,
+                balance.deduction_profile.clone(),
+                ended.time_credits_consumed.map(|v| v as f64),
+            )
+        }
+        None => (0, None, None),
     };
 
     ok(KioskSessionResponseDto {
@@ -225,5 +225,11 @@ pub async fn end_session(
         remainingMinutes: remaining as f64,
         resumed: false,
         endTime: ended.end_time.map(|t| t.to_rfc3339()),
+        deductionProfile: deduction_profile.and_then(|value| {
+            serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value)
+                .ok()
+        }),
+        cafeTimezone: state.settings.cafe_timezone.clone(),
+        timeCreditsConsumed: time_credits_consumed,
     })
 }

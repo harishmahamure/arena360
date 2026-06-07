@@ -1,4 +1,4 @@
-import type { PlanTypeValue } from '@gaming-cafe/contracts';
+import type { DeductionProfile, PlanTypeValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
 import { Box, Paper, Typography } from '@mui/material';
 import { useState } from 'react';
@@ -13,7 +13,25 @@ import {
   planTypeOptions,
   WEEKDAY_OPTIONS,
 } from '../../../../src/containers/plans/schemas/plan.schema';
+import { DeductionPreview } from '../../../containers/plans/DeductionPreview';
 import { addPlan, type CreatePlanPayload } from '../../../services/plans/add';
+
+function normalizeTime(value?: string): string | undefined {
+  if (!value) return undefined;
+  return value.length === 5 ? `${value}:00` : value;
+}
+
+function buildDeductionProfile(data: CreatePlanFormData): DeductionProfile | undefined {
+  if (!data.dynamicDeductionEnabled) return undefined;
+  return {
+    peakWindowStart: normalizeTime(data.peakWindowStart) ?? '',
+    peakWindowEnd: normalizeTime(data.peakWindowEnd) ?? '',
+    peakRatio: data.peakRatio ?? 1.5,
+    lowWindowStart: normalizeTime(data.lowWindowStart) ?? '',
+    lowWindowEnd: normalizeTime(data.lowWindowEnd) ?? '',
+    lowRatio: data.lowRatio ?? 0.8,
+  };
+}
 
 export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
   {
@@ -127,6 +145,82 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
     gridCols: 12,
     helperText: 'Toggle to make plan available for purchase',
   },
+  {
+    name: 'dynamicDeductionEnabled',
+    label: 'Dynamic deduction enabled',
+    type: 'switch',
+    gridCols: 12,
+    helperText: 'Wallet minutes burn faster in peak hours and slower in low hours',
+  },
+  {
+    name: 'peakWindowStart',
+    label: 'Peak window start',
+    type: 'text',
+    placeholder: '18:00:00',
+    gridCols: 3,
+    visible: (values) => Boolean(values.dynamicDeductionEnabled),
+  },
+  {
+    name: 'peakWindowEnd',
+    label: 'Peak window end',
+    type: 'text',
+    placeholder: '23:00:00',
+    gridCols: 3,
+    visible: (values) => Boolean(values.dynamicDeductionEnabled),
+  },
+  {
+    name: 'peakRatio',
+    label: 'Peak ratio (>1)',
+    type: 'number',
+    gridCols: 3,
+    min: 1.01,
+    visible: (values) => Boolean(values.dynamicDeductionEnabled),
+    helperText: 'Wallet minutes consumed per wall minute',
+  },
+  {
+    name: 'lowWindowStart',
+    label: 'Low window start',
+    type: 'text',
+    placeholder: '07:00:00',
+    gridCols: 3,
+    visible: (values) => Boolean(values.dynamicDeductionEnabled),
+  },
+  {
+    name: 'lowWindowEnd',
+    label: 'Low window end',
+    type: 'text',
+    placeholder: '11:00:00',
+    gridCols: 3,
+    visible: (values) => Boolean(values.dynamicDeductionEnabled),
+  },
+  {
+    name: 'lowRatio',
+    label: 'Low ratio (<1)',
+    type: 'number',
+    gridCols: 3,
+    min: 0.01,
+    max: 0.99,
+    visible: (values) => Boolean(values.dynamicDeductionEnabled),
+  },
+  {
+    name: 'deductionPreviewNote',
+    label: 'Deduction calculator',
+    type: 'custom',
+    gridCols: 12,
+    visible: (values) => Boolean(values.dynamicDeductionEnabled),
+    render: ({ form }) => (
+      <DeductionPreview
+        timeCredits={Number(form.getValues('timeCredits')) || 0}
+        dynamicDeductionEnabled={form.getValues('dynamicDeductionEnabled')}
+        peakWindowStart={form.getValues('peakWindowStart')}
+        peakWindowEnd={form.getValues('peakWindowEnd')}
+        peakRatio={Number(form.getValues('peakRatio'))}
+        lowWindowStart={form.getValues('lowWindowStart')}
+        lowWindowEnd={form.getValues('lowWindowEnd')}
+        lowRatio={Number(form.getValues('lowRatio'))}
+      />
+    ),
+  },
 ];
 
 export default function AddNewPlanPage() {
@@ -163,6 +257,9 @@ export default function AddNewPlanPage() {
       if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
       if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
       if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
+      payload.dynamicDeductionEnabled = data.dynamicDeductionEnabled ?? false;
+      const deductionProfile = buildDeductionProfile(data);
+      if (deductionProfile) payload.deductionProfile = deductionProfile;
 
       await addPlan(payload);
 

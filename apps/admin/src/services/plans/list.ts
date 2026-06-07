@@ -1,4 +1,4 @@
-import { PlanType, type PlanTypeValue } from '@gaming-cafe/contracts';
+import { type DeductionProfile, PlanType, type PlanTypeValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
 export type { PlanTypeValue };
@@ -19,6 +19,8 @@ export interface PlanResponse {
   deviceType?: string;
   allowedDays?: string[];
   allowedMonths?: number[];
+  dynamicDeductionEnabled?: boolean;
+  deductionProfile?: DeductionProfile | null;
   createdAt: string;
   updatedAt: string;
 }

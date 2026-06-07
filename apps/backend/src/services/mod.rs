@@ -4,6 +4,7 @@ pub mod cash_deposit_service;
 pub mod cash_register_service;
 pub mod config_service;
 pub mod credit_service;
+pub mod deduction_profile;
 pub mod device_service;
 pub mod event_service;
 pub mod expense_category_service;

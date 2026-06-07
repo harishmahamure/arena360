@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::models::deduction_profile::DeductionProfile;
 use crate::models::Device;
+use crate::services::session_service::KioskSessionStart;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -78,6 +80,33 @@ pub struct KioskSessionResponseDto {
     /// Set when the session has been closed (auto, voluntary, force, offline_reconcile).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endTime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deductionProfile: Option<DeductionProfile>,
+    pub cafeTimezone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeCreditsConsumed: Option<f64>,
+}
+
+pub fn kiosk_session_response(
+    started: &KioskSessionStart,
+    end_time: Option<String>,
+) -> KioskSessionResponseDto {
+    let deduction_profile = started
+        .deduction_profile
+        .as_ref()
+        .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok());
+    KioskSessionResponseDto {
+        sessionId: started.session.id.to_string(),
+        balanceId: started.balance_id.to_string(),
+        deviceId: started.session.device_id.to_string(),
+        startTime: started.session.start_time.to_rfc3339(),
+        remainingMinutes: started.remaining_minutes as f64,
+        resumed: started.resumed,
+        endTime: end_time,
+        deductionProfile: deduction_profile,
+        cafeTimezone: started.cafe_timezone.clone(),
+        timeCreditsConsumed: Some(started.time_credits_consumed),
+    }
 }
 
 #[allow(non_snake_case)]

@@ -4,7 +4,7 @@
  * stitch_kiosk_home_screen/arena360_kiosk/DESIGN.md: deep-navy glassmorphism
  * with a vivid orange (#ff6900) call-to-action accent and Hanken Grotesk type.
  */
-/** biome-ignore-all lint/style/noDescendingSpecificity: <explanation> */
+/** biome-ignore-all lint/style/noDescendingSpecificity: kiosk page styles intentionally override base rules */
 
 :root {
   --a360-viewport-height: 100vh;

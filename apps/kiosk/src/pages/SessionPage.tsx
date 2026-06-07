@@ -1,3 +1,4 @@
+import { useSessionRemainingMinutes } from '@gaming-cafe/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { HomeView } from '../components/session/HomeView';
 import { LibraryView } from '../components/session/LibraryView';
@@ -7,7 +8,6 @@ import { SettingsView } from '../components/session/SettingsView';
 import { useTrackedProcesses } from '../components/session/useTrackedProcesses';
 import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
-import { useLocalRemainingMinutes } from '../hooks/useLocalRemainingMinutes';
 import { useSessionPoller } from '../hooks/useSessionPoller';
 import { OFFLINE_GRACE_MS } from '../lib/config';
 import { playRemainingTimeSound } from '../lib/sessionSounds';
@@ -115,7 +115,11 @@ export function SessionPage() {
   }, [activeSession, startSession]);
 
   const serverRemaining = activeSession?.remainingMinutes;
-  const localRemaining = useLocalRemainingMinutes(serverRemaining);
+  const localRemaining = useSessionRemainingMinutes(
+    serverRemaining,
+    activeSession?.deductionProfile,
+    activeSession?.cafeTimezone,
+  );
   const activeSessionId = activeSession?.id;
   useSessionPoller(
     localRemaining ?? serverRemaining,
@@ -213,6 +217,8 @@ export function SessionPage() {
       <SessionNav
         playerName={playerName}
         remainingMinutes={localRemaining ?? serverRemaining}
+        deductionProfile={activeSession?.deductionProfile}
+        cafeTimezone={activeSession?.cafeTimezone}
         deviceName={deviceName}
         activeView={view}
         onNavigate={setView}

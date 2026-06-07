@@ -95,6 +95,7 @@ pub async fn build_state() -> Arc<AppState> {
             balances.clone(),
             events.clone(),
             outbox.clone(),
+            settings.cafe_timezone.clone(),
         ),
         shifts: {
             let cash_reg = Arc::new(CashRegisterService::new(pool.clone()));

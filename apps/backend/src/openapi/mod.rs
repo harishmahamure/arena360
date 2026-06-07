@@ -227,6 +227,7 @@ impl Modify for SecurityAddon {
             crate::dto::DeviceRegisterResponseDto,
             crate::dto::StartKioskSessionDto,
             crate::dto::KioskSessionResponseDto,
+            crate::models::deduction_profile::DeductionProfile,
             crate::dto::EndKioskSessionDto,
             VerifyOtpDto,
             RegisterDto,

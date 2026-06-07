@@ -1,3 +1,5 @@
+import { type DeductionProfile, deductionPeriodLabelForNow } from '@gaming-cafe/contracts';
+import { formatRemainingClock } from '@gaming-cafe/utils';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { KIOSK_LOGO_URL } from '../../lib/config';
@@ -12,6 +14,8 @@ interface SessionNavProps {
   deviceName?: string | null;
   /** Authoritative remaining minutes from the active session, if any. */
   remainingMinutes?: number;
+  deductionProfile?: DeductionProfile | null;
+  cafeTimezone?: string;
   activeView: SessionView;
   onNavigate: (view: SessionView) => void;
   onEndSession: () => void;
@@ -36,21 +40,6 @@ function readVolume(): number {
   }
 }
 
-function minutesToSeconds(minutes?: number): number | null {
-  if (typeof minutes !== 'number') return null;
-  return Math.max(0, Math.round(minutes * 60));
-}
-
-function formatRemaining(totalSeconds: number | null): string {
-  if (totalSeconds === null) return '--:--';
-  const total = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 /**
  * Arena360 in-session top navigation: brand, Home/Games/Settings tabs, the
  * remaining-time pill, a UI volume control and a profile menu with End session.
@@ -60,6 +49,8 @@ export function SessionNav({
   playerName,
   deviceName,
   remainingMinutes,
+  deductionProfile,
+  cafeTimezone,
   activeView,
   onNavigate,
   onEndSession,
@@ -69,11 +60,7 @@ export function SessionNav({
 }: SessionNavProps) {
   const [open, setOpen] = useState<'audio' | 'profile' | null>(null);
   const [volume, setVolume] = useState<number>(() => readVolume());
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(() =>
-    minutesToSeconds(remainingMinutes),
-  );
   const barRef = useRef<HTMLDivElement | null>(null);
-  const hasRemainingTime = remainingSeconds !== null;
 
   useEffect(() => {
     let active = true;
@@ -98,18 +85,6 @@ export function SessionNav({
   }, [volume]);
 
   useEffect(() => {
-    setRemainingSeconds(minutesToSeconds(remainingMinutes));
-  }, [remainingMinutes]);
-
-  useEffect(() => {
-    if (!hasRemainingTime) return;
-    const id = window.setInterval(() => {
-      setRemainingSeconds((current) => (current === null ? null : Math.max(0, current - 1)));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [hasRemainingTime]);
-
-  useEffect(() => {
     if (!open) return;
     const onPointer = (e: PointerEvent) => {
       if (barRef.current && !barRef.current.contains(e.target as Node)) setOpen(null);
@@ -125,7 +100,13 @@ export function SessionNav({
     };
   }, [open]);
 
-  const remainingLabel = formatRemaining(remainingSeconds);
+  const remainingLabel = formatRemainingClock(remainingMinutes);
+  const deductionPeriod =
+    deductionProfile && cafeTimezone
+      ? deductionPeriodLabelForNow(deductionProfile, cafeTimezone)
+      : null;
+  const deductionHint =
+    deductionPeriod === 'peak' ? 'Peak pricing' : deductionPeriod === 'low' ? 'Off-peak' : null;
 
   async function changeVolume(next: number) {
     const clamped = Math.min(100, Math.max(0, next));
@@ -172,9 +153,10 @@ export function SessionNav({
 
       <div className="a360-nav-right">
         <div className="a360-time-group">
-          <div className="a360-time-pill">
+          <div className="a360-time-pill" title={deductionHint ?? undefined}>
             <span className="material-symbols-outlined is-filled">timer</span>
             <span>{remainingLabel}</span>
+            {deductionHint ? <span className="a360-time-hint">{deductionHint}</span> : null}
           </div>
           {onRefreshTime ? (
             <button

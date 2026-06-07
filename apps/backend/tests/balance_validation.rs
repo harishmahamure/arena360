@@ -43,6 +43,7 @@ fn make_balance_scoped(
         source_plan_id: Some(Uuid::new_v4()),
         allowed_days: None,
         allowed_months: None,
+        deduction_profile: None,
         created_by: None,
         updated_by: None,
         created_at: Utc::now(),

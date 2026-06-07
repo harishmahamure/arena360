@@ -1,6 +1,6 @@
 import type { PaymentStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { Box, Paper, Typography } from '@mui/material';
+import { Alert, Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -209,6 +209,16 @@ export default function AddNewPlanTransactionPage() {
         paymentMethod={formValues.paymentMethod}
         purchaseAmount={Number(purchaseAmount)}
       />
+
+      {selectedPlan?.dynamicDeductionEnabled && selectedPlan.deductionProfile ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {selectedPlan.timeCredits ?? 0} wallet min — burns faster{' '}
+          {selectedPlan.deductionProfile.peakWindowStart}–
+          {selectedPlan.deductionProfile.peakWindowEnd}, slower{' '}
+          {selectedPlan.deductionProfile.lowWindowStart}–
+          {selectedPlan.deductionProfile.lowWindowEnd}
+        </Alert>
+      ) : null}
 
       <FormBuilder<CreatePlanTransactionFormData>
         fields={formFields}

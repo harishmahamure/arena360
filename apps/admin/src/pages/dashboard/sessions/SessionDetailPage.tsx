@@ -20,6 +20,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import {
   type EndSessionFormData,
   endSessionSchema,
@@ -61,6 +62,7 @@ export default function ViewSessionPage() {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     refetchOnReconnect: true,
+    refetchInterval: (query) => (query.state.data?.endTime ? false : 30_000),
   });
 
   const { data: balanceRecord } = useQuery({
@@ -328,13 +330,20 @@ export default function ViewSessionPage() {
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="body2" color="text.secondary">
-                    Remaining Minutes
+                    {isActive ? 'Time Remaining' : 'Remaining Minutes'}
                   </Typography>
-                  <Typography variant="body1">
-                    {balance.remainingMinutes != null
-                      ? `${balance.remainingMinutes} minutes`
-                      : 'N/A'}
-                  </Typography>
+                  {isActive && balance.remainingMinutes != null ? (
+                    <SessionRemainingClock
+                      remainingMinutes={balance.remainingMinutes}
+                      deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
+                    />
+                  ) : (
+                    <Typography variant="body1">
+                      {balance.remainingMinutes != null
+                        ? `${balance.remainingMinutes} minutes`
+                        : 'N/A'}
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="body2" color="text.secondary">

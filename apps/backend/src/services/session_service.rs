@@ -1,15 +1,20 @@
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AppError;
+use crate::models::deduction_profile::DeductionProfile;
 use crate::models::{
-    CreateSessionDto, Device, EndSessionDto, SessionFilterDto, UpdateDeviceStatusDto, UsageSession,
-    UsageSessionResponse, SESSION_END_REASONS,
+    CreateSessionDto, Device, EndSessionDto, PlayerPlanBalance, SessionFilterDto,
+    UpdateDeviceStatusDto, UsageSession, UsageSessionResponse, SESSION_END_REASONS,
 };
 use crate::realtime::OutboxService;
 use crate::repositories::SessionRepository;
+use crate::services::deduction_profile::{
+    wall_minutes_between, weighted_minutes_between,
+};
 use crate::services::{BalanceService, DeviceService, EventService};
 
 /// Result of starting (or resuming) a kiosk session for a player.
@@ -18,6 +23,9 @@ pub struct KioskSessionStart {
     pub balance_id: Uuid,
     pub remaining_minutes: i32,
     pub resumed: bool,
+    pub deduction_profile: Option<Value>,
+    pub time_credits_consumed: f64,
+    pub cafe_timezone: String,
 }
 
 pub struct SessionService {
@@ -26,22 +34,50 @@ pub struct SessionService {
     balances: Arc<BalanceService>,
     events: EventService,
     outbox: OutboxService,
-}
-
-fn elapsed_minutes_since(start_time: DateTime<Utc>) -> i32 {
-    elapsed_minutes_between(start_time, Utc::now())
+    cafe_timezone: String,
 }
 
 fn elapsed_minutes_between(start_time: DateTime<Utc>, end_time: DateTime<Utc>) -> i32 {
-    let duration_ms = end_time
-        .signed_duration_since(start_time)
-        .num_milliseconds();
-    (((duration_ms as f64) / (1000.0 * 60.0)).ceil() as i32).max(0)
+    wall_minutes_between(start_time, end_time).ceil() as i32
 }
 
-/// Remaining play time for an open session: balance minutes minus elapsed usage.
+fn parse_balance_profile(balance: &PlayerPlanBalance) -> Option<DeductionProfile> {
+    let value = balance.deduction_profile.as_ref()?;
+    serde_json::from_value(value.clone()).ok()
+}
+
+fn weighted_consumption(
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    profile: Option<&DeductionProfile>,
+    cafe_tz: &str,
+) -> f64 {
+    match profile {
+        Some(p) => weighted_minutes_between(start, end, p, cafe_tz),
+        None => wall_minutes_between(start, end),
+    }
+}
+
+fn charged_wallet_minutes(session: &UsageSession) -> i32 {
+    session.time_credits_consumed.unwrap_or(0).max(0)
+}
+
+/// Project wallet minutes left for an open session (poll/login display; does not deduct).
+pub fn effective_remaining_for_session(
+    balance: &PlayerPlanBalance,
+    session: &UsageSession,
+    cafe_tz: &str,
+) -> i32 {
+    let profile = parse_balance_profile(balance);
+    let total = weighted_consumption(session.start_time, Utc::now(), profile.as_ref(), cafe_tz);
+    let owed = (total.ceil() as i32 - charged_wallet_minutes(session)).max(0);
+    (balance.remaining_minutes - owed).max(0)
+}
+
+/// Remaining play time for an open session without dynamic profile (legacy tests).
 pub fn effective_remaining_minutes(balance_remaining: i32, start_time: DateTime<Utc>) -> i32 {
-    (balance_remaining - elapsed_minutes_since(start_time)).max(0)
+    let elapsed = wall_minutes_between(start_time, Utc::now()).ceil() as i32;
+    (balance_remaining - elapsed).max(0)
 }
 
 impl SessionService {
@@ -51,6 +87,7 @@ impl SessionService {
         balances: Arc<BalanceService>,
         events: EventService,
         outbox: OutboxService,
+        cafe_timezone: String,
     ) -> Self {
         Self {
             repo: SessionRepository::new(pool),
@@ -58,7 +95,98 @@ impl SessionService {
             balances,
             events,
             outbox,
+            cafe_timezone,
         }
+    }
+
+    fn kiosk_session_start(
+        &self,
+        session: UsageSession,
+        balance: &PlayerPlanBalance,
+        balance_id: Uuid,
+        remaining_minutes: i32,
+        resumed: bool,
+    ) -> KioskSessionStart {
+        KioskSessionStart {
+            time_credits_consumed: charged_wallet_minutes(&session) as f64,
+            deduction_profile: balance.deduction_profile.clone(),
+            cafe_timezone: self.cafe_timezone.clone(),
+            session,
+            balance_id,
+            remaining_minutes,
+            resumed,
+        }
+    }
+
+    async fn charge_session_delta(
+        &self,
+        session: &UsageSession,
+        balance: &PlayerPlanBalance,
+        end: DateTime<Utc>,
+    ) -> Result<(i32, PlayerPlanBalance), AppError> {
+        let profile = parse_balance_profile(balance);
+        let total = weighted_consumption(
+            session.start_time,
+            end,
+            profile.as_ref(),
+            &self.cafe_timezone,
+        )
+        .ceil() as i32;
+        let charged = charged_wallet_minutes(session);
+        let delta = (total - charged).max(0);
+        if delta == 0 {
+            return Ok((total, balance.clone()));
+        }
+        let balance_id = session
+            .balance_id
+            .ok_or_else(|| AppError::BadRequest("Session has no linked balance".to_string()))?;
+        let updated = self
+            .balances
+            .deduct_minutes(balance_id, delta, Some(session.id))
+            .await?;
+        self.repo
+            .update_time_credits_consumed(session.id, total)
+            .await?;
+        Ok((total, updated))
+    }
+
+    async fn publish_balance_updated(
+        &self,
+        player_id: Uuid,
+        device_id: Uuid,
+        session_id: Uuid,
+        balance: &PlayerPlanBalance,
+    ) {
+        let payload = serde_json::json!({
+            "balanceId": balance.id.to_string(),
+            "remainingMinutes": balance.remaining_minutes,
+            "playerId": player_id.to_string(),
+            "sessionId": session_id.to_string(),
+        });
+        let device_channel = format!("device:{device_id}");
+        let user_channel = format!("user:{player_id}");
+        let _ = self
+            .outbox
+            .publish(
+                &device_channel,
+                "balance.updated",
+                payload.clone(),
+                None,
+                None,
+                false,
+            )
+            .await;
+        let _ = self
+            .outbox
+            .publish(
+                &user_channel,
+                "balance.updated",
+                payload,
+                None,
+                Some(player_id),
+                false,
+            )
+            .await;
     }
 
     pub async fn list(
@@ -195,15 +323,14 @@ impl SessionService {
                 .await?
                 .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
             let balance = self.balances.get_raw(open.balance_id).await?;
-            return Ok(KioskSessionStart {
+            let remaining = effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
+            return Ok(self.kiosk_session_start(
                 session,
-                balance_id: open.balance_id,
-                remaining_minutes: effective_remaining_minutes(
-                    balance.remaining_minutes,
-                    open.start_time,
-                ),
-                resumed: true,
-            });
+                &balance,
+                open.balance_id,
+                remaining,
+                true,
+            ));
         }
 
         let balance = match balance_id {
@@ -241,12 +368,41 @@ impl SessionService {
             )
             .await?;
 
-        Ok(KioskSessionStart {
+        Ok(self.kiosk_session_start(
             session,
-            balance_id: balance.id,
-            remaining_minutes: balance.remaining_minutes,
-            resumed: false,
-        })
+            &balance,
+            balance.id,
+            balance.remaining_minutes,
+            false,
+        ))
+    }
+
+    /// Kiosk poll payload with deduction profile for HUD time-speeding.
+    pub async fn open_kiosk_session_for_player(
+        &self,
+        player_id: Uuid,
+    ) -> Result<Option<KioskSessionStart>, AppError> {
+        let Some(open) = self.repo.find_open_session_for_player(player_id).await? else {
+            return Ok(None);
+        };
+        let session = self
+            .repo
+            .find_by_id(open.session_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
+        let balance = self.balances.get_raw(open.balance_id).await?;
+        let remaining = effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
+        if remaining <= 0 {
+            self.auto_end_expired(open.session_id).await?;
+            return Ok(None);
+        }
+        Ok(Some(self.kiosk_session_start(
+            session,
+            &balance,
+            open.balance_id,
+            remaining,
+            true,
+        )))
     }
 
     /// The player's current open session (if any), with fresh remaining
@@ -259,10 +415,13 @@ impl SessionService {
             return Ok(None);
         };
         let balance = self.balances.get_raw(open.balance_id).await?;
-        open.remaining_minutes = effective_remaining_minutes(
-            balance.remaining_minutes,
-            open.start_time,
-        );
+        let session = self
+            .repo
+            .find_by_id(open.session_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
+        open.remaining_minutes =
+            effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
         if open.remaining_minutes <= 0 {
             self.auto_end_expired(open.session_id).await?;
             return Ok(None);
@@ -325,24 +484,43 @@ impl SessionService {
             ));
         }
 
-        // Calculate effective remaining minutes without deducting from the
-        // balance. Actual deduction happens only when the session is stopped
-        // via the end API.
-        let elapsed_minutes = elapsed_minutes_since(session.start_time);
-        let effective_remaining = (balance.remaining_minutes - elapsed_minutes).max(0);
+        let (_, updated_balance) = self
+            .charge_session_delta(&session, &balance, Utc::now())
+            .await?;
+        let session = self
+            .repo
+            .find_by_id(session_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Session with ID {session_id} not found")))?;
+        let remaining = updated_balance.remaining_minutes;
 
-        if effective_remaining <= 0 {
+        if remaining <= 0 {
             self.auto_end_expired(session_id).await?;
         }
 
-        Ok(KioskSessionStart {
+        self.publish_balance_updated(
+            player_id,
+            device_id,
+            session_id,
+            &updated_balance,
+        )
+        .await;
+
+        Ok(self.kiosk_session_start(
             session,
+            &updated_balance,
             balance_id,
-            remaining_minutes: effective_remaining,
-            resumed: true,
-        })
+            remaining,
+            true,
+        ))
     }
 
+    /// Close a session and charge the final wallet delta from server time.
+    ///
+    /// For `auto`, staff `force`, kiosk `voluntary`, and staff PATCH end, callers
+    /// must leave `time_credits_consumed` unset so weighted minutes are computed
+    /// via `charge_session_delta`. Only `offline_reconcile` may supply a client
+    /// total after connectivity loss.
     pub async fn end(
         &self,
         id: Uuid,
@@ -373,33 +551,37 @@ impl SessionService {
             AppError::BadRequest("Session has no linked balance (legacy session)".to_string())
         })?;
 
-        let time_used = dto.time_credits_consumed.unwrap_or(duration_minutes).max(0);
+        let raw_session = self
+            .repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))?;
+        let balance = self.balances.get_raw(balance_id).await?;
+
+        let (time_used, final_balance) = if dto.time_credits_consumed.is_some() {
+            let time_used = dto.time_credits_consumed.unwrap_or(0).max(0);
+            let updated_balance = if time_used > 0 {
+                self.balances
+                    .deduct_minutes(balance_id, time_used, Some(id))
+                    .await?
+            } else {
+                balance
+            };
+            (time_used, updated_balance)
+        } else {
+            let (total, updated_balance) = self
+                .charge_session_delta(&raw_session, &balance, end_time)
+                .await?;
+            (total, updated_balance)
+        };
 
         let updated = self
             .repo
             .end(id, end_time, duration_minutes, Some(time_used), actor_id)
             .await?;
 
-        let mut remaining_minutes = 0;
-        let mut player_id = None;
-        if time_used > 0 {
-            match self
-                .balances
-                .deduct_minutes(balance_id, time_used, Some(updated.id))
-                .await
-            {
-                Ok(balance) => {
-                    remaining_minutes = balance.remaining_minutes;
-                    player_id = Some(balance.player_id);
-                }
-                Err(error) => {
-                    tracing::warn!("Failed to deduct minutes from balance: {error}");
-                }
-            }
-        } else if let Ok(balance) = self.balances.get_raw(balance_id).await {
-            remaining_minutes = balance.remaining_minutes;
-            player_id = Some(balance.player_id);
-        }
+        let remaining_minutes = final_balance.remaining_minutes;
+        let player_id = Some(final_balance.player_id);
 
         let _ = self
             .devices
@@ -465,6 +647,59 @@ impl SessionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effective_remaining_for_session_uses_weighted_consumption() {
+        let start = Utc::now() - chrono::Duration::minutes(30);
+        let balance = PlayerPlanBalance {
+            id: Uuid::new_v4(),
+            player_id: Uuid::new_v4(),
+            device_type: None,
+            device_sub_type: None,
+            kind: "time".to_string(),
+            remaining_minutes: 300,
+            expiry_date: Utc::now() + chrono::Duration::days(30),
+            window_start: None,
+            window_end: None,
+            status: "active".to_string(),
+            source_plan_id: None,
+            allowed_days: None,
+            allowed_months: None,
+            deduction_profile: Some(serde_json::json!({
+                "peakWindowStart": "18:00:00",
+                "peakWindowEnd": "23:00:00",
+                "peakRatio": 1.5,
+                "lowWindowStart": "07:00:00",
+                "lowWindowEnd": "11:00:00",
+                "lowRatio": 0.8
+            })),
+            created_by: None,
+            updated_by: None,
+            created_at: start,
+            updated_at: start,
+            deleted_at: None,
+        };
+        let session = UsageSession {
+            id: Uuid::new_v4(),
+            balance_id: Some(balance.id),
+            device_id: Uuid::new_v4(),
+            shift_id: None,
+            start_time: start,
+            end_time: None,
+            duration_minutes: None,
+            time_credits_consumed: Some(0),
+            created_by: None,
+            updated_by: None,
+            created_at: start,
+            updated_at: start,
+            deleted_at: None,
+        };
+        let remaining = effective_remaining_for_session(&balance, &session, "Asia/Kolkata");
+        assert!(
+            remaining < 300,
+            "open session should project less wallet time after 30 wall minutes, got {remaining}"
+        );
+    }
 
     #[test]
     fn effective_remaining_subtracts_elapsed_minutes() {

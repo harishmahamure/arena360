@@ -9,6 +9,7 @@ import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
 import { useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
+import { useEnrichedSessions } from '../hooks/useEnrichedSessions';
 import { usePermissions } from '../hooks/usePermissions';
 import { getSessions } from '../services/sessions/list';
 import { filterNavItemsByPermission } from '../utils/filterNavItems';
@@ -24,30 +25,26 @@ export default function DashboardLayout() {
       getSessions({
         isActive: 1,
       }),
-    refetchInterval: 60000, // Refetch every 60 seconds to update active sessions
+    refetchInterval: 30_000,
   });
 
+  const enrichedSessions = useEnrichedSessions(data?.data);
+
   const countDownData = useMemo<CountdownConfig[]>(() => {
-    if (!data?.data || isLoading) return [];
+    if (!enrichedSessions.length || isLoading) return [];
 
-    return data.data
-      .filter((session) => session.balance?.remainingMinutes != null)
-      .map((session) => {
-        const remainingMinutes = session.balance?.remainingMinutes ?? 0;
-        const startTime = new Date(session.startTime).getTime();
-        const expectedEndTime = startTime + remainingMinutes * 60 * 1000;
-        const remainingTime = (expectedEndTime - Date.now()) / 1000;
-
-        return {
-          id: session.id,
-          remainingTime,
-          sessionDetails: {
-            playerName: session.balance?.player?.username ?? 'Unknown',
-            deviceName: session.device?.name ?? 'Unknown',
-          },
-        };
-      });
-  }, [data?.data, isLoading]);
+    return enrichedSessions
+      .filter((session) => session.balance?.remainingMinutes != null && !session.endTime)
+      .map((session) => ({
+        id: session.id,
+        remainingMinutes: session.balance?.remainingMinutes ?? 0,
+        deductionProfile: session.balance?.deductionProfile,
+        sessionDetails: {
+          playerName: session.balance?.player?.username ?? 'Unknown',
+          deviceName: session.device?.name ?? 'Unknown',
+        },
+      }));
+  }, [enrichedSessions, isLoading]);
 
   useMultipleCountdowns(countDownData);
 
@@ -65,8 +62,10 @@ export default function DashboardLayout() {
   }, [navigate]);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname, location.search]);
+    if (outletKey) {
+      window.scrollTo(0, 0);
+    }
+  }, [outletKey]);
 
   return (
     <>

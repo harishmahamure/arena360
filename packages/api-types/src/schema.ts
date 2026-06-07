@@ -2050,9 +2050,11 @@ export interface components {
         CreatePlanDto: {
             allowedDays?: unknown;
             allowedMonths?: unknown;
+            deductionProfile?: unknown;
             description?: string | null;
             deviceSubType?: string | null;
             deviceType?: string | null;
+            dynamicDeductionEnabled?: boolean | null;
             isActive?: boolean | null;
             name: string;
             planType: string;
@@ -2292,6 +2294,16 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        DeductionProfile: {
+            /** Format: double */
+            lowRatio: number;
+            lowWindowEnd: string;
+            lowWindowStart: string;
+            /** Format: double */
+            peakRatio: number;
+            peakWindowEnd: string;
+            peakWindowStart: string;
         };
         Device: {
             /** Format: date-time */
@@ -2716,6 +2728,8 @@ export interface components {
         };
         KioskSessionResponseDto: {
             balanceId: string;
+            cafeTimezone: string;
+            deductionProfile?: null | components["schemas"]["DeductionProfile"];
             deviceId: string;
             /** @description Set when the session has been closed (auto, voluntary, force, offline_reconcile). */
             endTime?: string | null;
@@ -2725,6 +2739,8 @@ export interface components {
             resumed: boolean;
             sessionId: string;
             startTime: string;
+            /** Format: double */
+            timeCreditsConsumed?: number | null;
         };
         LegacyHealthResponse: {
             details: unknown;
@@ -2927,11 +2943,13 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             createdBy?: string | null;
+            deductionProfile?: unknown;
             /** Format: date-time */
             deletedAt?: string | null;
             description?: string | null;
             deviceSubType?: string | null;
             deviceType?: string | null;
+            dynamicDeductionEnabled: boolean;
             /** Format: uuid */
             id: string;
             isActive: boolean;
@@ -3063,6 +3081,7 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             createdBy?: string | null;
+            deductionProfile?: unknown;
             /** Format: date-time */
             deletedAt?: string | null;
             deviceSubType?: string | null;
@@ -3093,6 +3112,7 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             createdBy?: string | null;
+            deductionProfile?: unknown;
             /** Format: date-time */
             deletedAt?: string | null;
             deviceSubType?: string | null;
@@ -4249,9 +4269,11 @@ export interface components {
         UpdatePlanDto: {
             allowedDays?: unknown;
             allowedMonths?: unknown;
+            deductionProfile?: unknown;
             description?: string | null;
             deviceSubType?: string | null;
             deviceType?: string | null;
+            dynamicDeductionEnabled?: boolean | null;
             isActive?: boolean | null;
             name?: string | null;
             planType?: string | null;

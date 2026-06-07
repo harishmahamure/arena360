@@ -1,4 +1,8 @@
-import { PlayerPlanStatus, type PlayerPlanStatusValue } from '@gaming-cafe/contracts';
+import {
+  type DeductionProfile,
+  PlayerPlanStatus,
+  type PlayerPlanStatusValue,
+} from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
 export { PlayerPlanStatus };
@@ -20,6 +24,7 @@ export interface PlayerPlanResponse {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+  deductionProfile?: DeductionProfile | null;
   player?: {
     id: string;
     username: string;

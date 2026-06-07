@@ -14,6 +14,11 @@ import { getPlanById } from '../../../services/plans/getById';
 import { updatePlan } from '../../../services/plans/update';
 import { planFormFields } from './PlanNewPage';
 
+function normalizeTime(value?: string): string | undefined {
+  if (!value) return undefined;
+  return value.length === 5 ? `${value}:00` : value;
+}
+
 export default function EditPlanPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -64,6 +69,17 @@ export default function EditPlanPage() {
       if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
       if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
       if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
+      payload.dynamicDeductionEnabled = data.dynamicDeductionEnabled ?? false;
+      if (data.dynamicDeductionEnabled) {
+        payload.deductionProfile = {
+          peakWindowStart: normalizeTime(data.peakWindowStart) ?? '',
+          peakWindowEnd: normalizeTime(data.peakWindowEnd) ?? '',
+          peakRatio: data.peakRatio ?? 1.5,
+          lowWindowStart: normalizeTime(data.lowWindowStart) ?? '',
+          lowWindowEnd: normalizeTime(data.lowWindowEnd) ?? '',
+          lowRatio: data.lowRatio ?? 0.8,
+        };
+      }
 
       await updatePlan(id as string, payload);
       setSuccess('Plan updated successfully!');
@@ -126,6 +142,13 @@ export default function EditPlanPage() {
           deviceType: (plan?.deviceType ?? undefined) as CreatePlanFormData['deviceType'],
           allowedDays: plan?.allowedDays ?? undefined,
           allowedMonths: plan?.allowedMonths ?? undefined,
+          dynamicDeductionEnabled: plan?.dynamicDeductionEnabled ?? false,
+          peakWindowStart: plan?.deductionProfile?.peakWindowStart,
+          peakWindowEnd: plan?.deductionProfile?.peakWindowEnd,
+          peakRatio: plan?.deductionProfile?.peakRatio ?? 1.5,
+          lowWindowStart: plan?.deductionProfile?.lowWindowStart,
+          lowWindowEnd: plan?.deductionProfile?.lowWindowEnd,
+          lowRatio: plan?.deductionProfile?.lowRatio ?? 0.8,
         }}
         mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}

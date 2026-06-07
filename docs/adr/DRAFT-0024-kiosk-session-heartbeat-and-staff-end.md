@@ -48,6 +48,11 @@ and deducts only the delta that has not already been charged.
 purchase, poll, or session end operation. UI countdowns may tick locally between
 server updates, but server responses are authoritative.
 
+Admin and kiosk share one display hook (`useSessionRemainingMinutes` in
+`@gaming-cafe/utils`). See [session-time-clock.md](../session-time-clock.md).
+Frontends must **not** end sessions when the local clock reaches zero; only the
+backend (auto-end after heartbeat) or explicit user/staff actions close sessions.
+
 ### Deduction model
 
 Use `usage_sessions.timeCreditsConsumed` as the total minutes already charged
@@ -64,13 +69,16 @@ On heartbeat:
 6. Return `KioskSessionResponseDto` with balance-backed `remainingMinutes`.
 7. Publish `balance.updated` to the active device/player channels.
 
-On final session end:
+On final session end (voluntary, auto, force, staff PATCH):
 
-1. Compute final elapsed minutes.
-2. Deduct only `max(finalElapsedMinutes - timeCreditsConsumed, 0)`.
-3. Persist `durationMinutes` as final elapsed duration.
-4. Persist/return the final total `timeCreditsConsumed`.
+1. Compute weighted wallet minutes from server `end_time` via
+   `charge_session_delta` (see DRAFT-0033 when dynamic deduction is enabled).
+2. Deduct only the delta not yet charged (`total − timeCreditsConsumed`).
+3. Persist `durationMinutes` as wall-clock elapsed duration.
+4. Persist/return the final total `timeCreditsConsumed` (wallet minutes).
 5. Publish `session.ended` with final `remainingMinutes`.
+
+Clients must omit `timeCreditsConsumed` on end except `offline_reconcile`.
 
 This prevents double deduction when a session has already been charged by
 heartbeat ticks.

@@ -1,3 +1,4 @@
+import type { DeductionProfile } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 import type { PlanResponse, PlanTypeValue } from './list';
 
@@ -15,6 +16,8 @@ export interface CreatePlanPayload {
   deviceSubType?: string;
   allowedDays?: string[];
   allowedMonths?: number[];
+  dynamicDeductionEnabled?: boolean;
+  deductionProfile?: DeductionProfile;
 }
 
 export const addPlan = async (payload: CreatePlanPayload) => {

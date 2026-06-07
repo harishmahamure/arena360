@@ -53,7 +53,7 @@ function writeJsonVersion(path, version) {
   const src = readFileSync(path, 'utf8');
   // Replace only the top-level "version" field so Biome formatting is preserved
   // (JSON.stringify would re-expand short arrays and fail the pre-commit hook).
-  const next = src.replace(/^  "version": "\d+\.\d+\.\d+",$/m, `  "version": "${version}",`);
+  const next = src.replace(/^ {2}"version": "\d+\.\d+\.\d+",$/m, `  "version": "${version}",`);
   if (next === src) {
     throw new Error(`No top-level "version" field replaced in ${path}`);
   }

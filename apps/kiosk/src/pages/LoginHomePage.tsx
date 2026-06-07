@@ -177,7 +177,7 @@ export function LoginHomePage() {
 
         <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
 
-        {/** biome-ignore lint/a11y/useAriaPropsSupportedByRole: <explanation> */}
+        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: version line exposes build label to screen readers */}
         <p className="a360-login-version" aria-label={`App version ${KIOSK_APP_VERSION}`}>
           v{KIOSK_APP_VERSION}
         </p>

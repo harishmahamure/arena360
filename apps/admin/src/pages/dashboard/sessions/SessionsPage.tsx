@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import { useSelector } from '../../../hooks/store';
 import { useEnrichedSessions } from '../../../hooks/useEnrichedSessions';
 import { getSessions, type SessionResponse } from '../../../services/sessions/list';
@@ -21,71 +22,6 @@ const formatDuration = (minutes?: number) => {
   const mins = minutes % 60;
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 };
-
-const CountDownComponent = memo(
-  ({
-    remainingTime,
-    handleTimeExpired,
-  }: {
-    remainingTime: number;
-    handleTimeExpired?: () => void;
-  }) => {
-    const [timeLeft, setTimeLeft] = useState(Math.floor(remainingTime / 1000));
-    const hasExpiredCallbackFired = useRef(false);
-
-    useEffect(() => {
-      hasExpiredCallbackFired.current = false;
-    }, []);
-
-    useEffect(() => {
-      if (timeLeft <= 0) return;
-
-      const interval = setInterval(() => {
-        setTimeLeft((prev) => {
-          const newValue = prev - 1;
-
-          if (newValue <= 20 && !hasExpiredCallbackFired.current && handleTimeExpired) {
-            hasExpiredCallbackFired.current = true;
-            handleTimeExpired();
-          }
-
-          if (newValue <= 0) {
-            clearInterval(interval);
-            return 0;
-          }
-
-          return newValue;
-        });
-      }, 1000);
-
-      return () => clearInterval(interval);
-    }, [timeLeft, handleTimeExpired]);
-
-    if (timeLeft <= 0) {
-      return (
-        <div>
-          <Typography variant="body2" color="error">
-            Expired
-          </Typography>
-        </div>
-      );
-    }
-
-    const hours = Math.floor(timeLeft / 3600);
-    const minutes = Math.floor((timeLeft % 3600) / 60);
-    const seconds = timeLeft % 60;
-
-    return (
-      <div>
-        <Typography variant="body2">
-          {hours > 0
-            ? `${hours} hours ${minutes} min ${seconds} sec`
-            : `${minutes} min ${seconds} sec`}
-        </Typography>
-      </div>
-    );
-  },
-);
 
 const CountTimeComponent = memo(({ startedAt }: { startedAt: string }) => {
   const [timeElapsed, setTimeElapsed] = useState(0);
@@ -124,13 +60,16 @@ export default function SessionsPage() {
   const page = Number(searchParams.get('page')) || 1;
   const activeFilter = searchParams.get('active') || undefined;
 
+  const showActiveSessions = activeFilter === 'true';
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['sessions', debouncedSearch, page, activeFilter],
     queryFn: () =>
       getSessions({
         page: page,
-        isActive: activeFilter === 'true' ? 1 : 0,
+        isActive: showActiveSessions ? 1 : 0,
       }),
+    refetchInterval: showActiveSessions ? 30_000 : false,
   });
 
   const enrichedSessions = useEnrichedSessions(data?.data);
@@ -161,7 +100,7 @@ export default function SessionsPage() {
             ? window.prompt('Enter your staff TOTP code to end this session')?.trim()
             : undefined;
         if (currentUserRole === 'staff' && !staffTotp) return;
-        await endSession(id, { staffTotp });
+        await endSession(id, { staffTotp, reason: 'force' });
         toast.success('Session ended successfully');
         // Refetch the data
         refetch();
@@ -231,8 +170,6 @@ export default function SessionsPage() {
           const session = enrichedSessions.find((session) => session.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
-          const remainingMinutes = session?.balance?.remainingMinutes ?? 0;
-
           if (!session?.balance || !startTime) {
             if (endTime) {
               return formatTimeAgo(endTime);
@@ -240,22 +177,14 @@ export default function SessionsPage() {
             return 'N/A';
           }
 
-          const expectedEndTime = new Date(
-            new Date(startTime || '').getTime() + remainingMinutes * 60 * 1000,
-          );
-
-          const remainingTime = expectedEndTime.getTime() - Date.now();
-
           if (endTime) {
             return formatTimeAgo(endTime || 'N/A');
           }
-          if (remainingTime <= 0) {
-            return 'Expired';
-          }
+
           return (
-            <CountDownComponent
-              remainingTime={remainingTime}
-              handleTimeExpired={() => handleEndSession(id)}
+            <SessionRemainingClock
+              remainingMinutes={session.balance.remainingMinutes}
+              deductionProfile={session.balance.deductionProfile}
             />
           );
         },
@@ -281,7 +210,7 @@ export default function SessionsPage() {
         ),
       },
     ],
-    [enrichedSessions, handleEndSession],
+    [enrichedSessions],
   );
 
   const handleIncreaseSessionTime = useCallback(() => {

@@ -63,7 +63,7 @@ describe('resolveLaunch', () => {
     const legacy: LaunchEntry = {
       ...valorantEntry,
       launchVia: {
-        executablePath: valorantEntry.launchVia!.executablePath,
+        executablePath: valorantEntry.launchVia?.executablePath ?? '',
         arguments: '--launch-product=valorant --launch-patchline=live',
       },
     };

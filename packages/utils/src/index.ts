@@ -21,5 +21,7 @@ export * from './lib/forms';
 export * from './lib/helpers';
 // Logger
 export * from './lib/logger';
+// Session clock (shared admin + kiosk countdown)
+export * from './lib/session-clock';
 // Validators
 export * from './lib/validators';

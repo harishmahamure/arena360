@@ -1,3 +1,4 @@
+import type { DeductionProfile } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
 export interface SessionPlayerSummary {
@@ -20,6 +21,7 @@ export interface SessionBalanceSummary {
   kind: string;
   remainingMinutes: number;
   status: string;
+  deductionProfile?: DeductionProfile | null;
   player?: SessionPlayerSummary | null;
   plan?: SessionPlanSummary | null;
 }

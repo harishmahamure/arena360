@@ -80,6 +80,11 @@ impl BalanceService {
         let kind = plan_kind_from_plan(&plan);
         let now = Utc::now();
         let fresh_expiry = now + Duration::days(plan.validity_days as i64);
+        let deduction_snapshot = if plan.dynamic_deduction_enabled {
+            plan.deduction_profile.as_ref()
+        } else {
+            None
+        };
 
         let existing = self
             .repo
@@ -111,6 +116,7 @@ impl BalanceService {
                         plan.time_credits,
                         new_expiry,
                         plan.id,
+                        deduction_snapshot,
                         actor_id,
                         carry_forward,
                     )
@@ -151,6 +157,7 @@ impl BalanceService {
                         plan.id,
                         plan.allowed_days.as_ref(),
                         plan.allowed_months.as_ref(),
+                        deduction_snapshot,
                         actor_id,
                     )
                     .await?;
