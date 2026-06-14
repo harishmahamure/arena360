@@ -267,6 +267,64 @@ impl DeviceRepository {
         Ok(exists.0)
     }
 
+    /// Match on serial including soft-deleted rows (DB unique constraint spans all rows).
+    pub async fn find_by_serial_number(
+        &self,
+        serial: &str,
+    ) -> Result<Option<Device>, AppError> {
+        let query = format!(
+            r#"{} WHERE "serialNumber" IS NOT NULL AND LOWER(TRIM("serialNumber")) = LOWER(TRIM($1)) LIMIT 1"#,
+            Self::SELECT
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(serial)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(device)
+    }
+
+    /// Re-register an existing row (factory reset / re-provision) without violating
+    /// unique constraints on name or serial.
+    pub async fn reprovision(
+        &self,
+        id: Uuid,
+        dto: &ProvisionDeviceDto,
+        fingerprint_json: &str,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
+        let query = format!(
+            r#"
+            UPDATE devices SET
+                name = $2,
+                "serialNumber" = $3,
+                "deviceType" = COALESCE($4::devices_devicetype_enum, "deviceType"),
+                "deviceSubType" = COALESCE($5::devices_devicesubtype_enum, "deviceSubType"),
+                location = $6,
+                status = 'available'::devices_status_enum,
+                "registeredKiosk" = $7,
+                "registrationStatus" = 'registered'::devices_registrationstatus_enum,
+                "deletedAt" = NULL,
+                "updatedBy" = $8,
+                "updatedAt" = NOW()
+            WHERE id = $1
+            {}
+            "#,
+            Self::RETURNING
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(id)
+            .bind(&dto.name)
+            .bind(&dto.serialNumber)
+            .bind(&dto.deviceType)
+            .bind(&dto.deviceSubType)
+            .bind(&dto.location)
+            .bind(fingerprint_json)
+            .bind(actor_id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(device)
+    }
+
     /// Persist a refreshed fingerprint snapshot (single-component drift, ADR-0017).
     pub async fn update_fingerprint(
         &self,

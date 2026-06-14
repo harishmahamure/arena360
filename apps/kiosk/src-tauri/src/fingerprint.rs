@@ -29,7 +29,7 @@ pub fn collect_fingerprint() -> Result<FingerprintPayload, String> {
     {
         Ok(FingerprintPayload {
             mac: dev_mac(),
-            serial: "DEV-SERIAL".to_string(),
+            serial: dev_serial(),
             bios_uuid: dev_uuid(),
             platform: std::env::consts::OS.to_string(),
             collected_at: now_iso8601(),
@@ -88,6 +88,31 @@ fn normalize(value: &str, fallback: &str) -> String {
 #[cfg(not(target_os = "windows"))]
 fn dev_mac() -> String {
     "AA:BB:CC:DD:EE:FF".to_string()
+}
+
+/// Stable per-install serial for macOS/Linux dev builds (avoids clashing on `DEV-SERIAL`).
+#[cfg(not(target_os = "windows"))]
+fn dev_serial() -> String {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    if let Some(home) = std::env::var_os("HOME") {
+        let path = PathBuf::from(home).join(".gaming-cafe-kiosk-dev-install-id");
+        if let Ok(existing) = fs::read_to_string(&path) {
+            let trimmed = existing.trim();
+            if !trimmed.is_empty() {
+                return format!("DEV-{trimmed}");
+            }
+        }
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let id = format!("{:x}-{}", nanos, std::process::id());
+        let _ = fs::write(&path, &id);
+        return format!("DEV-{id}");
+    }
+    "DEV-UNKNOWN".to_string()
 }
 
 fn dev_uuid() -> String {

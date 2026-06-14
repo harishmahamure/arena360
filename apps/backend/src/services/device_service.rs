@@ -64,7 +64,7 @@ impl DeviceService {
     }
 
     /// Admin-authorized provisioning (DRAFT-0023): the admin is already
-    /// authenticated; create a registered device with its fingerprint snapshot.
+    /// authenticated; create or re-register a device with its fingerprint snapshot.
     pub async fn provision(
         &self,
         mut dto: ProvisionDeviceDto,
@@ -76,6 +76,22 @@ impl DeviceService {
         dto.deviceType = Some(require_device_type(dto.deviceType)?);
         dto.deviceSubType = Some(require_device_sub_type(dto.deviceSubType)?);
 
+        let fingerprint_json = serde_json::to_string(&dto.fingerprint)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        if let Some(serial) = dto
+            .serialNumber
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            if let Some(existing) = self.repo.find_by_serial_number(serial).await? {
+                return self
+                    .reprovision_existing(existing, &dto, &fingerprint_json, actor_id)
+                    .await;
+            }
+        }
+
         if self.repo.name_exists(&dto.name, None).await? {
             return Err(AppError::Conflict(format!(
                 "Device with name '{}' already exists",
@@ -83,17 +99,67 @@ impl DeviceService {
             )));
         }
 
-        let fingerprint_json = serde_json::to_string(&dto.fingerprint)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        match self
+            .repo
+            .provision(&dto, &fingerprint_json, actor_id)
+            .await
+        {
+            Ok(device) => {
+                self.events
+                    .publish_device_status(&device.id.to_string(), &device.status);
+                self.publish_device_ws(&device).await;
+                Ok(device)
+            }
+            Err(AppError::Database(e)) => Err(map_device_unique_violation(e)),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn reprovision_existing(
+        &self,
+        existing: Device,
+        dto: &ProvisionDeviceDto,
+        fingerprint_json: &str,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
+        if !self.fingerprint_compatible(&existing, &dto.fingerprint)? {
+            return Err(AppError::Conflict(format!(
+                "Serial number is already registered to device '{}'. \
+                 Delete that device in admin or factory-reset the original kiosk before reusing this hardware.",
+                existing.name
+            )));
+        }
+
+        if self.repo.name_exists(&dto.name, Some(existing.id)).await? {
+            return Err(AppError::Conflict(format!(
+                "Device with name '{}' already exists",
+                dto.name
+            )));
+        }
 
         let device = self
             .repo
-            .provision(&dto, &fingerprint_json, actor_id)
+            .reprovision(existing.id, dto, fingerprint_json, actor_id)
             .await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;
         Ok(device)
+    }
+
+    fn fingerprint_compatible(
+        &self,
+        existing: &Device,
+        presented: &DeviceFingerprintDto,
+    ) -> Result<bool, AppError> {
+        let Some(stored_json) = existing.registered_kiosk.as_deref() else {
+            return Ok(true);
+        };
+        let stored: DeviceFingerprintDto = match serde_json::from_str(stored_json) {
+            Ok(value) => value,
+            Err(_) => return Ok(true),
+        };
+        Ok(fingerprint_drift_count(&stored, presented) <= 1)
     }
 
     pub async fn update(
@@ -258,6 +324,13 @@ mod fingerprint_tests {
         let b = fp("CC:DD", "SN2", "UUID1");
         assert_eq!(fingerprint_drift_count(&a, &b), 2);
     }
+
+    #[test]
+    fn fingerprint_compatible_allows_single_drift() {
+        let stored = fp("AA:BB", "SN1", "UUID1");
+        let presented = fp("AA:BB", "SN2", "UUID1");
+        assert_eq!(fingerprint_drift_count(&stored, &presented), 1);
+    }
 }
 
 fn prepare_create_dto(mut dto: CreateDeviceDto) -> Result<CreateDeviceDto, AppError> {
@@ -271,4 +344,29 @@ fn prepare_update_dto(mut dto: UpdateDeviceDto) -> Result<UpdateDeviceDto, AppEr
     dto.device_sub_type = optional_device_sub_type(dto.device_sub_type)?;
     dto.status = optional_device_status(dto.status)?;
     Ok(dto)
+}
+
+fn map_device_unique_violation(err: sqlx::Error) -> AppError {
+    if let sqlx::Error::Database(db) = &err {
+        if db.code().as_deref() == Some("23505") {
+            let detail = db.message().to_lowercase();
+            if detail.contains("serialnumber") || detail.contains("serial") {
+                return AppError::Conflict(
+                    "A device with this serial number is already registered. \
+                     Use a different station, delete the old device in admin, or re-provision the same hardware."
+                        .to_string(),
+                );
+            }
+            if detail.contains("name") {
+                return AppError::Conflict(
+                    "A device with this name already exists. Choose a different station name."
+                        .to_string(),
+                );
+            }
+            return AppError::Conflict(
+                "A device with these details already exists.".to_string(),
+            );
+        }
+    }
+    AppError::Database(err)
 }
