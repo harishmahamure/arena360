@@ -1,27 +1,20 @@
 import { FormPage } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GameForm } from '../../../containers/games/GameForm';
 import { addGame, type GamePayload } from '../../../services/game/add';
 
 export default function GameNewPage() {
   const navigate = useNavigate();
-  const { loading, run } = useAsyncAction();
-  const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
 
   function handleSubmit(payload: GamePayload) {
     void run(async () => {
-      setError(undefined);
-      setSuccess(undefined);
-      try {
-        await addGame(payload);
-        setSuccess('Game created successfully!');
-        setTimeout(() => navigate('/games'), 1200);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create game');
-      }
+      await addGame(payload);
+      setTimeout(() => navigate('/games'), 1200);
     });
   }
 
@@ -36,8 +29,10 @@ export default function GameNewPage() {
       <GameForm
         submitLabel="Create Game"
         loading={loading}
-        error={error}
-        success={success}
+        submitSuccess={succeeded}
+        submitSuccessLabel="Game created"
+        submitError={failed}
+        submitErrorLabel={errorMessage ?? 'Failed to create game'}
         onSubmit={handleSubmit}
         onCancel={() => navigate('/games')}
       />

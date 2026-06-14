@@ -69,9 +69,11 @@ const basePlayerFormFields: FieldConfig<CreatePlayerFormData>[] = [
 export default function AddNewPlayerPage() {
   const navigate = useNavigate();
   const { isAdmin } = usePermissions();
-  const { loading, run } = useAsyncAction();
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
   const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
 
   const playerFormFields = useMemo<FieldConfig<CreatePlayerFormData>[]>(() => {
     if (!isAdmin) {
@@ -93,31 +95,25 @@ export default function AddNewPlayerPage() {
 
   const handleSubmit = async (data: CreatePlayerFormData) => {
     setError(undefined);
-    setSuccess(undefined);
 
     if (!data.username || !data.password || !data.phoneNumber) {
       setError('Username, phone number, and password are required');
       return;
     }
 
-    await run(async () => {
-      try {
-        await addPlayer({
-          username: data.username,
-          password: data.password,
-          phoneNumber: data.phoneNumber,
-          firstName: data.firstName || undefined,
-          lastName: data.lastName || undefined,
-          role: isAdmin ? data.role : 'player',
-        });
+    void run(async () => {
+      await addPlayer({
+        username: data.username,
+        password: data.password,
+        phoneNumber: data.phoneNumber,
+        firstName: data.firstName || undefined,
+        lastName: data.lastName || undefined,
+        role: isAdmin ? data.role : 'player',
+      });
 
-        setSuccess('Player created successfully!');
-        setTimeout(() => {
-          navigate('/players');
-        }, 1500);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create player');
-      }
+      setTimeout(() => {
+        navigate('/players');
+      }, 1500);
     });
   };
 
@@ -140,8 +136,11 @@ export default function AddNewPlayerPage() {
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={loading}
+        submitSuccess={succeeded}
+        submitSuccessLabel="Player created"
+        submitError={failed}
+        submitErrorLabel={errorMessage ?? 'Failed to create player'}
         error={error}
-        success={success}
         showCancel
         showReset
         submitLabel="Create Player"

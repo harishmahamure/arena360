@@ -1,6 +1,7 @@
 import { useAsyncAction } from '@gaming-cafe/utils';
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
+import { AsyncActionButton } from '../components/AsyncActionButton';
 import { useKiosk } from '../context/KioskProvider';
 import { KIOSK_LOGO_URL } from '../lib/config';
 
@@ -14,7 +15,9 @@ export function SetupPage() {
   const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [busy, setBusy] = useState(false);
-  const { loading: setupActionLoading, run: runSetupAction } = useAsyncAction();
+  const lockAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
+  const factoryResetAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
+  const setupActionLoading = lockAction.loading || factoryResetAction.loading;
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -69,22 +72,32 @@ export function SetupPage() {
           </p>
           <AllowListEditor />
           <div className="setup-actions">
-            <button
-              type="button"
+            <AsyncActionButton
               className="secondary"
-              disabled={setupActionLoading}
-              onClick={() => void runSetupAction(() => exitSetup())}
+              loading={lockAction.loading}
+              success={lockAction.succeeded}
+              successLabel="Station locked"
+              error={lockAction.failed}
+              errorLabel={lockAction.errorMessage ?? 'Could not lock station'}
+              loadingLabel="Locking…"
+              disabled={lockAction.disabled || factoryResetAction.loading}
+              onClick={() => void lockAction.run(() => exitSetup())}
             >
-              {setupActionLoading ? 'Locking…' : 'Done — re-lock'}
-            </button>
-            <button
-              type="button"
+              Done — re-lock
+            </AsyncActionButton>
+            <AsyncActionButton
               className="link danger"
-              disabled={setupActionLoading}
-              onClick={() => void runSetupAction(() => factoryReset())}
+              loading={factoryResetAction.loading}
+              success={factoryResetAction.succeeded}
+              successLabel="Reset complete"
+              error={factoryResetAction.failed}
+              errorLabel={factoryResetAction.errorMessage ?? 'Factory reset failed'}
+              loadingLabel="Resetting…"
+              disabled={factoryResetAction.disabled || lockAction.loading}
+              onClick={() => void factoryResetAction.run(() => factoryReset())}
             >
               Factory reset
-            </button>
+            </AsyncActionButton>
           </div>
         </section>
       </div>
@@ -130,7 +143,7 @@ export function SetupPage() {
                 type="button"
                 className="secondary"
                 disabled={busy || setupActionLoading}
-                onClick={() => void runSetupAction(() => exitSetup())}
+                onClick={() => void lockAction.run(() => exitSetup())}
               >
                 Cancel
               </button>

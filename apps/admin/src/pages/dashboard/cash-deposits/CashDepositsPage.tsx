@@ -39,7 +39,15 @@ export default function CashDepositsPage() {
   const { can, isAdmin } = usePermissions();
   const [approveTarget, setApproveTarget] = useState<CashDeposit | null>(null);
   const [depositType, setDepositType] = useState<'bank' | 'home'>('bank');
-  const { loading: actionLoading, run } = useAsyncAction();
+  const {
+    loading: actionLoading,
+    succeeded,
+    failed,
+    errorMessage,
+    disabled: actionDisabled,
+    run,
+    reset,
+  } = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['cash-deposits', page, statusFilter],
     queryFn: () =>
@@ -54,16 +62,22 @@ export default function CashDepositsPage() {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
+  const closeApproveDialog = () => {
+    setApproveTarget(null);
+    reset();
+  };
+
   const handleApprove = () => {
     if (!approveTarget) return;
     void run(async () => {
       try {
         await approveDeposit(approveTarget.id, depositType);
         toastUtils.success(`Deposit approved for ${depositType}`);
-        setApproveTarget(null);
+        setTimeout(() => closeApproveDialog(), 800);
         refetch();
       } catch {
         toastUtils.error('Failed to approve deposit');
+        throw new Error('Failed to approve deposit');
       }
     });
   };
@@ -173,7 +187,7 @@ export default function CashDepositsPage() {
         }}
       />
 
-      <Dialog open={Boolean(approveTarget)} onClose={() => !actionLoading && setApproveTarget(null)}>
+      <Dialog open={Boolean(approveTarget)} onClose={() => !actionLoading && closeApproveDialog()}>
         <DialogTitle>Approve Cash Deposit</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
@@ -195,10 +209,19 @@ export default function CashDepositsPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setApproveTarget(null)} disabled={actionLoading}>
+          <Button onClick={closeApproveDialog} disabled={actionLoading}>
             Cancel
           </Button>
-          <FormButton variant="contained" onClick={handleApprove} loading={actionLoading}>
+          <FormButton
+            variant="contained"
+            onClick={handleApprove}
+            loading={actionLoading}
+            success={succeeded}
+            successLabel="Approved"
+            error={failed}
+            errorLabel={errorMessage ?? 'Failed to approve deposit'}
+            disabled={actionDisabled}
+          >
             Approve
           </FormButton>
         </DialogActions>

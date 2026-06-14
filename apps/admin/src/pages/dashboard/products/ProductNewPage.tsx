@@ -136,41 +136,37 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
 
 export default function AddNewProductPage() {
   const navigate = useNavigate();
-  const { loading, run } = useAsyncAction();
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
   const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
   const productFormFields = useProductFormFields();
 
   const handleSubmit = async (data: CreateProductFormData) => {
     setError(undefined);
-    setSuccess(undefined);
     if (!data.name || data.price == null || !data.category) {
       setError('Name, day price, and category are required');
       return;
     }
     const { name, price, category } = data;
-    await run(async () => {
-      try {
-        await addProduct({
-          name,
-          description: data.description || '',
-          price,
-          dayPrice: price,
-          nightPrice: data.nightPrice ?? price,
-          purchasePricePerBox: data.purchasePricePerBox ?? undefined,
-          unitsPerPurchaseUnit: data.unitsPerPurchaseUnit ?? 1,
-          unitId: data.unitId || undefined,
-          purchaseUnitId: data.purchaseUnitId || undefined,
-          category: category as ProductCategory,
-          sku: data.sku || '',
-          stockQuantity: data.stockQuantity || 0,
-          isActive: data.isActive ?? true,
-        });
-        setSuccess('Product created successfully!');
-        setTimeout(() => navigate('/products'), 1500);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create product');
-      }
+    void run(async () => {
+      await addProduct({
+        name,
+        description: data.description || '',
+        price,
+        dayPrice: price,
+        nightPrice: data.nightPrice ?? price,
+        purchasePricePerBox: data.purchasePricePerBox ?? undefined,
+        unitsPerPurchaseUnit: data.unitsPerPurchaseUnit ?? 1,
+        unitId: data.unitId || undefined,
+        purchaseUnitId: data.purchaseUnitId || undefined,
+        category: category as ProductCategory,
+        sku: data.sku || '',
+        stockQuantity: data.stockQuantity || 0,
+        isActive: data.isActive ?? true,
+      });
+      setTimeout(() => navigate('/products'), 1500);
     });
   };
 
@@ -190,8 +186,11 @@ export default function AddNewProductPage() {
         onSubmit={handleSubmit}
         onCancel={() => navigate('/products')}
         loading={loading}
+        submitSuccess={succeeded}
+        submitSuccessLabel="Product created"
+        submitError={failed}
+        submitErrorLabel={errorMessage ?? 'Failed to create product'}
         error={error}
-        success={success}
         showCancel
         showReset
         submitLabel="Create Product"

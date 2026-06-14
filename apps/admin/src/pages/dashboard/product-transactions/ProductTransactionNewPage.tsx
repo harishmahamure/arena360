@@ -1,3 +1,5 @@
+import { FormButton } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import {
   Add as AddIcon,
   ShoppingCart as CartIcon,
@@ -5,8 +7,6 @@ import {
   Remove as RemoveIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { FormButton } from '@gaming-cafe/ui';
-import { useAsyncAction } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -165,8 +165,15 @@ function PosProductCard({
 export default function CreateProductTransactionPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
-  const { loading: submitting, run } = useAsyncAction();
+  const {
+    loading: submitting,
+    succeeded,
+    failed,
+    errorMessage,
+    disabled: submitDisabled,
+    run,
+    clearError,
+  } = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
 
   const [selectedPlayer, setSelectedPlayer] = useState<PosPlayer | null>(null);
   const [productSearch, setProductSearch] = useState('');
@@ -191,6 +198,21 @@ export default function CreateProductTransactionPage() {
       setSaleLocationId(storeLocations[0]?.id ?? '');
     }
   }, [storeLocations, saleLocationId]);
+
+  const checkoutErrorClearKey = [
+    selectedPlayer?.id,
+    cart.length,
+    cart.map((item) => `${item.id}:${item.quantity}`).join(','),
+    paymentMethod,
+    cashAmount,
+    onlineAmount,
+    saleLocationId,
+  ].join('|');
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: clear API error when checkout inputs change after failure
+  useEffect(() => {
+    if (failed) clearError();
+  }, [checkoutErrorClearKey, failed, clearError]);
 
   const { data: storeStockData } = useQuery({
     queryKey: ['pos-store-stock', saleLocationId],
@@ -294,7 +316,6 @@ export default function CreateProductTransactionPage() {
 
   const handleSubmit = () => {
     setError(undefined);
-    setSuccess(undefined);
 
     if (!selectedPlayer) {
       setError('Please select a player');
@@ -353,16 +374,15 @@ export default function CreateProductTransactionPage() {
           })),
         });
 
-        if (response.paymentStatus === PaymentStatus.COMPLETED) {
-          setSuccess('Transaction created successfully!');
-          setTimeout(() => {
-            navigate('/product-transactions');
-          }, 1500);
-        } else {
-          setError('Transaction was created but payment is not completed.');
+        if (response.paymentStatus !== PaymentStatus.COMPLETED) {
+          throw new Error('Payment not completed');
         }
+
+        setTimeout(() => {
+          navigate('/product-transactions');
+        }, 1500);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to create transaction');
+        throw err instanceof Error ? err : new Error('Failed to create transaction');
       }
     });
   };
@@ -383,21 +403,12 @@ export default function CreateProductTransactionPage() {
           {error}
         </Alert>
       )}
-      {success && (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          {success}
-        </Alert>
-      )}
     </>
   );
 
   const catalog = (
     <>
-      <PosPlayerPicker
-        value={selectedPlayer}
-        onChange={setSelectedPlayer}
-        disabled={submitting}
-      />
+      <PosPlayerPicker value={selectedPlayer} onChange={setSelectedPlayer} disabled={submitting} />
 
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
         Products
@@ -612,7 +623,11 @@ export default function CreateProductTransactionPage() {
               fullWidth
               onClick={handleSubmit}
               loading={submitting}
-              disabled={!selectedPlayer || cart.length === 0 || creditBlocked}
+              success={succeeded}
+              successLabel="Sale complete"
+              error={failed}
+              errorLabel={errorMessage ?? 'Failed to create transaction'}
+              disabled={!selectedPlayer || cart.length === 0 || creditBlocked || submitDisabled}
               sx={{ minHeight: 44 }}
             >
               Complete sale

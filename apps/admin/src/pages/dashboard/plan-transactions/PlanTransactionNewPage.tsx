@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
+import { PlanDeductionSummary } from '../../../containers/plans/PlanDeductionSummary';
 import {
   CounterSaleLayout,
   PlanSaleCard,
@@ -29,7 +30,6 @@ import {
   PosPlayerPicker,
   PosSplitAmountFields,
 } from '../../../containers/sales';
-import { PlanDeductionSummary } from '../../../containers/plans/PlanDeductionSummary';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -46,9 +46,16 @@ export default function AddNewPlanTransactionPage() {
   const [searchParams] = useSearchParams();
   const preselectedPlayerId = searchParams.get('playerId') ?? undefined;
 
-  const { loading: submitting, run } = useAsyncAction();
+  const {
+    loading: submitting,
+    succeeded,
+    failed,
+    errorMessage,
+    disabled: submitDisabled,
+    run,
+    clearError,
+  } = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
   const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
 
   const [selectedPlayer, setSelectedPlayer] = useState<PosPlayer | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PlanResponse | null>(null);
@@ -69,6 +76,19 @@ export default function AddNewPlanTransactionPage() {
       setSelectedPlayer({ id: preselectedPlayer.id, username: preselectedPlayer.username });
     }
   }, [preselectedPlayer]);
+
+  const checkoutErrorClearKey = [
+    selectedPlayer?.id,
+    selectedPlan?.id,
+    paymentMethod,
+    cashAmount,
+    onlineAmount,
+  ].join('|');
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: clear API error when checkout inputs change after failure
+  useEffect(() => {
+    if (failed) clearError();
+  }, [checkoutErrorClearKey, failed, clearError]);
 
   const { data: plansData, isLoading: plansLoading } = useQuery({
     queryKey: ['pos-plans', planSearch],
@@ -100,7 +120,6 @@ export default function AddNewPlanTransactionPage() {
 
   const handleSubmit = () => {
     setError(undefined);
-    setSuccess(undefined);
 
     if (!selectedPlayer) {
       setError('Please select a player');
@@ -147,12 +166,11 @@ export default function AddNewPlanTransactionPage() {
           paymentStatus: payload.paymentStatus as PaymentStatusValue,
         });
 
-        setSuccess('Transaction created successfully!');
         setTimeout(() => {
           navigate('/plan-transactions');
         }, 1500);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to create transaction');
+        throw err instanceof Error ? err : new Error('Failed to create transaction');
       }
     });
   };
@@ -171,11 +189,6 @@ export default function AddNewPlanTransactionPage() {
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(undefined)}>
           {error}
-        </Alert>
-      )}
-      {success && (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          {success}
         </Alert>
       )}
     </>
@@ -327,7 +340,11 @@ export default function AddNewPlanTransactionPage() {
               fullWidth
               onClick={handleSubmit}
               loading={submitting}
-              disabled={!selectedPlayer || !selectedPlan || creditBlocked}
+              success={succeeded}
+              successLabel="Sale complete"
+              error={failed}
+              errorLabel={errorMessage ?? 'Failed to create transaction'}
+              disabled={!selectedPlayer || !selectedPlan || creditBlocked || submitDisabled}
               sx={{ minHeight: 44 }}
             >
               Complete sale

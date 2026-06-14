@@ -13,7 +13,17 @@ import { getVendors, type Vendor } from '../../../services/vendors';
 export default function ExpenseNewPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | undefined>();
-  const { loading, run } = useAsyncAction();
+  const {
+    loading,
+    succeeded,
+    failed,
+    errorMessage,
+    disabled: actionDisabled,
+    run,
+  } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
 
@@ -41,19 +51,15 @@ export default function ExpenseNewPage() {
     }
 
     void run(async () => {
-      try {
-        await createExpense({
-          categoryId,
-          vendorId: vendorId || undefined,
-          amount: Number(amount),
-          paymentMethod,
-          expenseDate: new Date(expenseDate).toISOString(),
-          description: description || undefined,
-        });
-        navigate('/expenses');
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to create expense');
-      }
+      await createExpense({
+        categoryId,
+        vendorId: vendorId || undefined,
+        amount: Number(amount),
+        paymentMethod,
+        expenseDate: new Date(expenseDate).toISOString(),
+        description: description || undefined,
+      });
+      navigate('/expenses');
     });
   };
 
@@ -150,7 +156,17 @@ export default function ExpenseNewPage() {
         />
 
         <Stack direction="row" spacing={2}>
-          <FormButton variant="contained" onClick={handleSubmit} loading={loading} fullWidth>
+          <FormButton
+            variant="contained"
+            onClick={handleSubmit}
+            loading={loading}
+            success={succeeded}
+            successLabel="Expense created"
+            error={failed}
+            errorLabel={errorMessage ?? 'Failed to create expense'}
+            disabled={actionDisabled}
+            fullWidth
+          >
             Create Expense
           </FormButton>
           <Button

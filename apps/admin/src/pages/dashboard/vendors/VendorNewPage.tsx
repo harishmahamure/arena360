@@ -17,7 +17,17 @@ import { createVendor } from '../../../services/vendors';
 export default function VendorNewPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | undefined>();
-  const { loading, run } = useAsyncAction();
+  const {
+    loading,
+    succeeded,
+    failed,
+    errorMessage,
+    disabled: actionDisabled,
+    run,
+  } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
 
   const [name, setName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
@@ -35,20 +45,16 @@ export default function VendorNewPage() {
     }
 
     void run(async () => {
-      try {
-        await createVendor({
-          name: name.trim(),
-          contactPerson: contactPerson || undefined,
-          phone: phone || undefined,
-          email: email || undefined,
-          address: address || undefined,
-          gstNumber: gstNumber || undefined,
-          isActive,
-        });
-        navigate('/vendors');
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to create vendor');
-      }
+      await createVendor({
+        name: name.trim(),
+        contactPerson: contactPerson || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        address: address || undefined,
+        gstNumber: gstNumber || undefined,
+        isActive,
+      });
+      navigate('/vendors');
     });
   };
 
@@ -125,7 +131,17 @@ export default function VendorNewPage() {
         </Box>
 
         <Stack direction="row" spacing={2}>
-          <FormButton variant="contained" onClick={handleSubmit} loading={loading} fullWidth>
+          <FormButton
+            variant="contained"
+            onClick={handleSubmit}
+            loading={loading}
+            success={succeeded}
+            successLabel="Vendor created"
+            error={failed}
+            errorLabel={errorMessage ?? 'Failed to create vendor'}
+            disabled={actionDisabled}
+            fullWidth
+          >
             Create Vendor
           </FormButton>
           <Button

@@ -69,7 +69,15 @@ export default function PlayersPage() {
     username: string;
     action: 'deactivate' | 'delete';
   } | null>(null);
-  const { loading: actionLoading, run } = useAsyncAction();
+  const {
+    loading: actionLoading,
+    succeeded,
+    failed,
+    errorMessage,
+    disabled: actionDisabled,
+    run,
+    reset,
+  } = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
   const roleFilter = searchParams.get('role') as UserRole | null;
@@ -269,7 +277,15 @@ export default function PlayersPage() {
         }}
       />
 
-      <Dialog open={confirmTarget !== null} onClose={() => !actionLoading && setConfirmTarget(null)}>
+      <Dialog
+        open={confirmTarget !== null}
+        onClose={() => {
+          if (!actionLoading) {
+            setConfirmTarget(null);
+            reset();
+          }
+        }}
+      >
         <DialogTitle>
           {confirmTarget?.action === 'delete' ? 'Deactivate player?' : 'Deactivate account?'}
         </DialogTitle>
@@ -281,34 +297,47 @@ export default function PlayersPage() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmTarget(null)} disabled={actionLoading}>
+          <Button
+            onClick={() => {
+              setConfirmTarget(null);
+              reset();
+            }}
+            disabled={actionLoading}
+          >
             Cancel
           </Button>
           <FormButton
             color="error"
             variant="contained"
             loading={actionLoading}
+            success={succeeded}
+            successLabel="Deactivated"
+            error={failed}
+            errorLabel={errorMessage ?? 'Failed to deactivate player'}
+            disabled={actionDisabled}
             onClick={() => {
               if (!confirmTarget) return;
               void run(async () => {
-                if (confirmTarget.action === 'delete') {
-                  try {
+                try {
+                  if (confirmTarget.action === 'delete') {
                     await deletePlayer(confirmTarget.id);
-                    toastUtils.success('Player deactivated successfully');
-                    refetch();
-                  } catch {
-                    toastUtils.error('Failed to deactivate player');
-                  }
-                } else {
-                  try {
+                  } else {
                     await updatePlayer(confirmTarget.id, { isActive: false });
-                    toastUtils.success('Player deactivated successfully');
-                    refetch();
-                  } catch {
-                    toastUtils.error('Failed to update player status');
                   }
+                  toastUtils.success('Player deactivated successfully');
+                  refetch();
+                  setTimeout(() => {
+                    setConfirmTarget(null);
+                    reset();
+                  }, 800);
+                } catch {
+                  toastUtils.error(
+                    confirmTarget.action === 'delete'
+                      ? 'Failed to deactivate player'
+                      : 'Failed to update player status',
+                  );
+                  throw new Error('deactivate failed');
                 }
-                setConfirmTarget(null);
               });
             }}
           >

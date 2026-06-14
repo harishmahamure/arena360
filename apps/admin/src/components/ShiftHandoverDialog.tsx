@@ -64,7 +64,10 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
-  const { loading, run } = useAsyncAction();
+  const { loading, succeeded, failed, errorMessage, disabled, run, reset } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
   const [expectedClosing, setExpectedClosing] = useState(0);
   const [closingBalance, setClosingBalance] = useState('');
   const [closingDenominations, setClosingDenominations] = useState<Record<string, number>>({});
@@ -114,6 +117,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
     setValidatorUsername('');
     setValidatorPassword('');
     setValidatorTotp('');
+    reset();
   };
 
   const handleClose = () => {
@@ -222,6 +226,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
             ? error.message
             : `Shift ${mode === 'close' ? 'close' : 'handover'} failed`;
         toastUtils.error(message);
+        throw error instanceof Error ? error : new Error(message);
       }
     });
   };
@@ -449,8 +454,13 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
           <FormButton
             variant="contained"
             onClick={completeHandover}
+            loading={loading}
+            success={succeeded}
+            successLabel={mode === 'handover' ? 'Handover complete' : 'Shift closed'}
+            error={failed}
+            errorLabel={errorMessage ?? 'Request failed'}
             disabled={
-              loading ||
+              disabled ||
               (mode === 'handover' &&
                 (!validatorUsername || !validatorPassword || validatorTotp.length !== 6))
             }

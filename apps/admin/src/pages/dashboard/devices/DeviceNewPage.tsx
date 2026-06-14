@@ -97,7 +97,10 @@ const NEXT_STEPS = [
 
 export default function AddNewDevicePage() {
   const navigate = useNavigate();
-  const { loading, run } = useAsyncAction();
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
   const [error, setError] = useState<string | undefined>();
   const [createdDevice, setCreatedDevice] = useState<DeviceResponse | null>(null);
 
@@ -109,22 +112,18 @@ export default function AddNewDevicePage() {
       return;
     }
 
-    await run(async () => {
-      try {
-        const device = await addDevice({
-          name: data.name,
-          deviceType: data.deviceType,
-          deviceSubType: data.deviceSubType,
-          serialNumber: data.serialNumber || undefined,
-          localIpAddress: data.localIpAddress || undefined,
-          location: data.location || undefined,
-          status: (data.status as DeviceStatusValue) || DeviceStatus.OPERATIONAL,
-        });
+    void run(async () => {
+      const device = await addDevice({
+        name: data.name,
+        deviceType: data.deviceType,
+        deviceSubType: data.deviceSubType,
+        serialNumber: data.serialNumber || undefined,
+        localIpAddress: data.localIpAddress || undefined,
+        location: data.location || undefined,
+        status: (data.status as DeviceStatusValue) || DeviceStatus.OPERATIONAL,
+      });
 
-        setCreatedDevice(device);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create device');
-      }
+      setCreatedDevice(device);
     });
   };
 
@@ -157,6 +156,10 @@ export default function AddNewDevicePage() {
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={loading}
+        submitSuccess={succeeded}
+        submitSuccessLabel="Device created"
+        submitError={failed}
+        submitErrorLabel={errorMessage ?? 'Failed to create device'}
         error={error}
         showCancel
         showReset

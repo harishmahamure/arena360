@@ -1,6 +1,6 @@
-import { useSessionRemainingMinutes } from '@gaming-cafe/utils';
-import { useAsyncAction } from '@gaming-cafe/utils';
+import { useAsyncAction, useSessionRemainingMinutes } from '@gaming-cafe/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AsyncActionButton } from '../components/AsyncActionButton';
 import { HomeView } from '../components/session/HomeView';
 import { LibraryView } from '../components/session/LibraryView';
 import { RunningAppsBar } from '../components/session/RunningAppsBar';
@@ -40,7 +40,15 @@ export function SessionPage() {
   const [view, setView] = useState<SessionView>('home');
   const [libraryQuery, setLibraryQuery] = useState('');
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const { loading: endingSession, run: runEndSession } = useAsyncAction();
+  const {
+    loading: endingSession,
+    succeeded: endSucceeded,
+    failed: endFailed,
+    errorMessage: endErrorMessage,
+    disabled: endDisabled,
+    run: runEndSession,
+    reset: resetEndSession,
+  } = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
   const [refreshing, setRefreshing] = useState(false);
   const [graceLeft, setGraceLeft] = useState(0);
   const [offlineLeft, setOfflineLeft] = useState<number | null>(null);
@@ -264,10 +272,15 @@ export function SessionPage() {
           <div className="confirm-end glass-card" role="alertdialog" aria-modal="true">
             <p>End your session now? Unsaved game progress may be lost.</p>
             <div className="confirm-end-actions">
-              <button
-                type="button"
+              <AsyncActionButton
                 className="danger"
-                disabled={endingSession}
+                loading={endingSession}
+                success={endSucceeded}
+                successLabel="Session ended"
+                error={endFailed}
+                errorLabel={endErrorMessage ?? 'Could not end session'}
+                loadingLabel="Ending…"
+                disabled={endDisabled}
                 onClick={() => {
                   void runEndSession(async () => {
                     await endSession('voluntary');
@@ -275,13 +288,16 @@ export function SessionPage() {
                   });
                 }}
               >
-                {endingSession ? 'Ending…' : 'Yes, end session'}
-              </button>
+                Yes, end session
+              </AsyncActionButton>
               <button
                 type="button"
                 className="secondary"
-                disabled={endingSession}
-                onClick={() => setConfirmEnd(false)}
+                disabled={endingSession || endSucceeded}
+                onClick={() => {
+                  setConfirmEnd(false);
+                  resetEndSession();
+                }}
               >
                 Keep playing
               </button>

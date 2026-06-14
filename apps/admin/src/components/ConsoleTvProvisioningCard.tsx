@@ -1,13 +1,7 @@
-import TvIcon from '@mui/icons-material/Tv';
 import { FormButton } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
-import {
-  Alert,
-  Box,
-  Paper,
-  Typography,
-} from '@mui/material';
-import { useState } from 'react';
+import TvIcon from '@mui/icons-material/Tv';
+import { Alert, Box, Paper, Typography } from '@mui/material';
 import QRCode from 'react-qr-code';
 import { createSsoToken } from '../services/auth/createSsoToken';
 
@@ -22,21 +16,16 @@ export function ConsoleTvProvisioningCard({
   deviceName,
   registrationStatus,
 }: ConsoleTvProvisioningCardProps) {
-  const { loading, run } = useAsyncAction();
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
 
   const isRegistered = registrationStatus === 'registered';
 
   const handleSendLogin = () => {
     void run(async () => {
-      setError(null);
-      try {
-        await createSsoToken({ purpose: 'tv_provision', deviceId });
-        setSent(true);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to send TV login');
-      }
+      await createSsoToken({ purpose: 'tv_provision', deviceId });
     });
   };
 
@@ -73,17 +62,20 @@ export function ConsoleTvProvisioningCard({
           <QRCode value={deviceId} size={120} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 220 }}>
-          <FormButton variant="contained" onClick={handleSendLogin} loading={loading}>
+          <FormButton
+            variant="contained"
+            onClick={handleSendLogin}
+            loading={loading}
+            success={succeeded}
+            successLabel="Login sent"
+            error={failed}
+            errorLabel={errorMessage ?? 'Failed to send TV login'}
+          >
             Send TV login
           </FormButton>
-          {sent && (
+          {succeeded && (
             <Alert severity="success" sx={{ mt: 2 }}>
               Token sent to station via WebSocket. The TV should advance automatically.
-            </Alert>
-          )}
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
             </Alert>
           )}
         </Box>

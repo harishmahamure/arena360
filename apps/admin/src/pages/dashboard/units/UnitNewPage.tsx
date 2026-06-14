@@ -59,35 +59,31 @@ export const unitFormFields: FieldConfig<CreateUnitFormData>[] = [
 
 export default function AddNewUnitPage() {
   const navigate = useNavigate();
-  const { loading, run } = useAsyncAction();
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
   const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
 
   const handleSubmit = async (data: CreateUnitFormData) => {
     setError(undefined);
-    setSuccess(undefined);
     if (!data.name || !data.abbreviation) {
       setError('Name and abbreviation are required');
       return;
     }
     const { name, abbreviation } = data;
-    await run(async () => {
-      try {
-        await addUnit({
-          name,
-          abbreviation,
-          type: data.type as UnitType,
-          description: data.description || '',
-          isActive: data.isActive,
-        });
+    void run(async () => {
+      await addUnit({
+        name,
+        abbreviation,
+        type: data.type as UnitType,
+        description: data.description || '',
+        isActive: data.isActive,
+      });
 
-        setSuccess('Unit created successfully!');
-        setTimeout(() => {
-          navigate('/units');
-        }, 1500);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create unit');
-      }
+      setTimeout(() => {
+        navigate('/units');
+      }, 1500);
     });
   };
 
@@ -111,8 +107,11 @@ export default function AddNewUnitPage() {
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={loading}
+        submitSuccess={succeeded}
+        submitSuccessLabel="Unit created"
+        submitError={failed}
+        submitErrorLabel={errorMessage ?? 'Failed to create unit'}
         error={error}
-        success={success}
         showCancel
         showReset
         submitLabel="Create Unit"

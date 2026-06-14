@@ -136,6 +136,69 @@ button.danger {
   color: #fca5a5;
 }
 
+button.async-action-success {
+  background: var(--gz-color-success, #22c55e);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition:
+    background-color 250ms ease,
+    color 250ms ease,
+    opacity 200ms ease;
+}
+
+button.async-action-error {
+  background: var(--gz-color-error, #ef4444);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition:
+    background-color 250ms ease,
+    color 250ms ease,
+    opacity 200ms ease;
+}
+
+button.async-action-loading {
+  opacity: 0.85;
+  transition: opacity 200ms ease;
+}
+
+.async-action-check,
+.async-action-error-icon {
+  font-weight: 700;
+}
+
+@keyframes async-action-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+button.async-action-shake {
+  animation: async-action-shake 300ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.async-action-shake {
+    animation: none;
+  }
+}
+
 .error {
   color: #fca5a5;
   margin: 0;

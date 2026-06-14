@@ -176,6 +176,14 @@ export interface FormBuilderProps<T extends FieldValues = FieldValues> {
   resetLabel?: string;
   /** If true, shows loading state on submit */
   loading?: boolean;
+  /** If true, shows success checkmark on submit button */
+  submitSuccess?: boolean;
+  /** Label on submit button when `submitSuccess` is true */
+  submitSuccessLabel?: string;
+  /** If true, shows error state on submit button */
+  submitError?: boolean;
+  /** Label on submit button when `submitError` is true */
+  submitErrorLabel?: string;
   /** If true, shows cancel button */
   showCancel?: boolean;
   /** If true, shows reset button */
@@ -567,6 +575,10 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   cancelLabel = 'Cancel',
   resetLabel = 'Reset',
   loading = false,
+  submitSuccess = false,
+  submitSuccessLabel,
+  submitError = false,
+  submitErrorLabel,
   showCancel = false,
   showReset = false,
   requireDirty = true,
@@ -614,10 +626,10 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   // Check if submit should be disabled
   const isSubmitDisabled = useMemo(() => {
     if (isViewMode) return true;
-    if (loading || isSubmitting) return true;
+    if (loading || isSubmitting || submitSuccess) return true;
     if (isEditMode && requireDirty && !isDirty) return true;
     return false;
-  }, [isViewMode, loading, isSubmitting, isEditMode, requireDirty, isDirty]);
+  }, [isViewMode, loading, isSubmitting, submitSuccess, isEditMode, requireDirty, isDirty]);
 
   // Handle form submission
   const handleFormSubmit = useCallback(
@@ -786,6 +798,10 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
             variant="contained"
             color="primary"
             loading={loading || isSubmitting}
+            success={submitSuccess}
+            successLabel={submitSuccessLabel}
+            error={submitError}
+            errorLabel={submitErrorLabel}
             disabled={isSubmitDisabled}
           >
             {computedSubmitLabel}

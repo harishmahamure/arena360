@@ -1,7 +1,6 @@
 import { useAsyncAction } from '@gaming-cafe/utils';
 import { Box, CircularProgress, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GameForm } from '../../../containers/games/GameForm';
 import type { GamePayload } from '../../../services/game/add';
@@ -11,9 +10,10 @@ import { updateGame } from '../../../services/game/update';
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { loading, run } = useAsyncAction();
-  const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['game', id],
@@ -24,15 +24,8 @@ export default function GameDetailPage() {
   function handleSubmit(payload: GamePayload) {
     if (!id) return;
     void run(async () => {
-      setError(undefined);
-      setSuccess(undefined);
-      try {
-        await updateGame(id, payload);
-        setSuccess('Game updated successfully!');
-        setTimeout(() => navigate('/games'), 1200);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update game');
-      }
+      await updateGame(id, payload);
+      setTimeout(() => navigate('/games'), 1200);
     });
   }
 
@@ -58,8 +51,10 @@ export default function GameDetailPage() {
         initial={data}
         submitLabel="Save Changes"
         loading={loading}
-        error={error}
-        success={success}
+        submitSuccess={succeeded}
+        submitSuccessLabel="Game saved"
+        submitError={failed}
+        submitErrorLabel={errorMessage ?? 'Failed to update game'}
         onSubmit={handleSubmit}
         onCancel={() => navigate('/games')}
       />

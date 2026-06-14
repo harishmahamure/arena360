@@ -225,13 +225,14 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
 
 export default function AddNewPlanPage() {
   const navigate = useNavigate();
-  const { loading, run } = useAsyncAction();
+  const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
+    throttleMs: 1000,
+    lockOnSuccess: true,
+  });
   const [error, setError] = useState<string | undefined>();
-  const [success, setSuccess] = useState<string | undefined>();
 
   const handleSubmit = async (data: CreatePlanFormData) => {
     setError(undefined);
-    setSuccess(undefined);
 
     if (!data.name || !data.price || !data.planType) {
       setError('Name, price, and plan type are required');
@@ -240,37 +241,32 @@ export default function AddNewPlanPage() {
 
     const { name, price, planType } = data;
 
-    await run(async () => {
-      try {
-        const payload: CreatePlanPayload = {
-          name,
-          description: data.description || '',
-          price,
-          planType: planType as PlanTypeValue,
-          validityDays: data.validityDays || 7,
-          timeCredits: data.timeCredits,
-          isActive: data.isActive ?? true,
-          deviceType: data.deviceType || undefined,
-          deviceSubType: data.deviceSubType || undefined,
-        };
+    void run(async () => {
+      const payload: CreatePlanPayload = {
+        name,
+        description: data.description || '',
+        price,
+        planType: planType as PlanTypeValue,
+        validityDays: data.validityDays || 7,
+        timeCredits: data.timeCredits,
+        isActive: data.isActive ?? true,
+        deviceType: data.deviceType || undefined,
+        deviceSubType: data.deviceSubType || undefined,
+      };
 
-        if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
-        if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
-        if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
-        if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
-        payload.dynamicDeductionEnabled = data.dynamicDeductionEnabled ?? false;
-        const deductionProfile = buildDeductionProfile(data);
-        if (deductionProfile) payload.deductionProfile = deductionProfile;
+      if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
+      if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
+      if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
+      if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
+      payload.dynamicDeductionEnabled = data.dynamicDeductionEnabled ?? false;
+      const deductionProfile = buildDeductionProfile(data);
+      if (deductionProfile) payload.deductionProfile = deductionProfile;
 
-        await addPlan(payload);
+      await addPlan(payload);
 
-        setSuccess('Plan created successfully!');
-        setTimeout(() => {
-          navigate('/plans');
-        }, 1500);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create plan');
-      }
+      setTimeout(() => {
+        navigate('/plans');
+      }, 1500);
     });
   };
 
@@ -294,8 +290,11 @@ export default function AddNewPlanPage() {
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={loading}
+        submitSuccess={succeeded}
+        submitSuccessLabel="Plan created"
+        submitError={failed}
+        submitErrorLabel={errorMessage ?? 'Failed to create plan'}
         error={error}
-        success={success}
         showCancel
         showReset
         submitLabel="Create Plan"

@@ -1,13 +1,5 @@
-import {
-  Alert,
-  Box,
-  Button,
-  FormControlLabel,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { FormButton } from '@gaming-cafe/ui';
+import { Alert, Box, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
 import { AssetUploadField } from '../../components/AssetUploadField';
 import type { GamePayload } from '../../services/game/add';
@@ -17,6 +9,10 @@ interface GameFormProps {
   initial?: GameResponse;
   submitLabel: string;
   loading?: boolean;
+  submitSuccess?: boolean;
+  submitSuccessLabel?: string;
+  submitError?: boolean;
+  submitErrorLabel?: string;
   error?: string;
   success?: string;
   onSubmit: (payload: GamePayload) => void;
@@ -27,6 +23,10 @@ export function GameForm({
   initial,
   submitLabel,
   loading,
+  submitSuccess,
+  submitSuccessLabel,
+  submitError,
+  submitErrorLabel,
   error,
   success,
   onSubmit,
@@ -147,12 +147,21 @@ export function GameForm({
       </Stack>
 
       <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mt: 4 }}>
-        <Button variant="outlined" onClick={onCancel} disabled={loading}>
+        <FormButton variant="outlined" onClick={onCancel} disabled={loading || submitSuccess}>
           Cancel
-        </Button>
-        <Button type="submit" variant="contained" disabled={loading}>
-          {loading ? 'Saving…' : submitLabel}
-        </Button>
+        </FormButton>
+        <FormButton
+          type="submit"
+          variant="contained"
+          loading={loading}
+          success={submitSuccess}
+          successLabel={submitSuccessLabel}
+          error={submitError}
+          errorLabel={submitErrorLabel}
+          disabled={loading || submitSuccess}
+        >
+          {submitLabel}
+        </FormButton>
       </Stack>
     </Box>
   );
