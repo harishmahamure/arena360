@@ -84,7 +84,10 @@ jobs:
           fi
           cat > apps/kiosk/src-tauri/tauri.updater.conf.json <<EOF
           {
-            "bundle": { "createUpdaterArtifacts": true },
+            "bundle": {
+              "createUpdaterArtifacts": true,
+              "targets": ["nsis"]
+            },
             "plugins": {
               "updater": {
                 "pubkey": "${PUBKEY}",

@@ -31,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "publisher": "Arena360",
     "category": "Game",
     "shortDescription": "Locked-down Arena360 Station Management Application",

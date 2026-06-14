@@ -70,10 +70,11 @@ GitHub job):
 pnpm --filter @gaming-cafe/kiosk tauri:build
 ```
 
-This produces both bundles under `apps/kiosk/src-tauri/target/release/bundle/`:
+This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bundle/nsis/`:
 
-- **NSIS** (`nsis/*-setup.exe`) — recommended; per-machine install (`installMode: perMachine`).
-- **MSI** (`msi/*.msi`) — for Group Policy / SCCM fleet deployment.
+- **NSIS** (`nsis/*-setup.exe`) — per-machine install (`installMode: perMachine`), includes `arena360-watchdog.exe` sidecar.
+
+MSI is not built: WiX bundling fails when `externalBin` sidecars are configured ([tauri#14681](https://github.com/tauri-apps/tauri/issues/14681)). For SCCM/Intune, deploy the NSIS installer silently (`/S`) instead.
 
 ### WebView2 runtime (Windows 10)
 
