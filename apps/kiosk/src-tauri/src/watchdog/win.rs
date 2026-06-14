@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+use sysinfo::{ProcessesToUpdate, ProcessRefreshKind, RefreshKind, System};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::System::Threading::{
@@ -78,7 +78,7 @@ pub fn is_kiosk_running_in_dir(install_dir: &Path, kiosk_exe: &Path) -> bool {
     let mut system = System::new_with_specifics(
         RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
     );
-    system.refresh_processes();
+    system.refresh_processes(ProcessesToUpdate::All, true);
 
     system.processes().values().any(|process| {
         process.exe().is_some_and(|exe| {
