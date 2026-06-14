@@ -11,23 +11,21 @@ use uuid::Uuid;
 use crate::config::Settings;
 use crate::dto::{
     ActiveSessionDto, AuthResponseDto, CreateSsoTokenDto, CreateSsoTokenResponseDto,
-    DevicePairingResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse, RateLimitClaims,
-    RedeemSsoTokenDto, StaffLoginDto, VerifyOtpDto,
+    DevicePairingResponseDto, JwtUserClaims, LoginDto, RateLimitClaims, RedeemSsoTokenDto,
+    StaffLoginDto,
 };
 use crate::error::AppError;
 use crate::models::{Device, User};
 use crate::repositories::{SessionRepository, SsoRepository, UserRepository};
 use crate::services::session_service::effective_remaining_for_session;
 use crate::services::totp_util::verify_totp_code;
-use crate::services::{BalanceService, MailService, OtpRateLimiter};
+use crate::services::BalanceService;
 
 pub struct AuthService {
     user_repo: UserRepository,
     session_repo: SessionRepository,
     sso_repo: SsoRepository,
     balances: Arc<BalanceService>,
-    mail_service: MailService,
-    otp_limiter: OtpRateLimiter,
     settings: Arc<Settings>,
 }
 
@@ -38,33 +36,14 @@ impl AuthService {
             session_repo: SessionRepository::new(pool.clone()),
             sso_repo: SsoRepository::new(pool),
             balances,
-            mail_service: MailService::new(settings.as_ref()),
-            otp_limiter: OtpRateLimiter::new(),
             settings,
         }
     }
 
-    pub async fn login_admin(&self, dto: LoginDto) -> Result<OtpPendingResponse, AppError> {
-        let user = self
-            .user_repo
-            .find_by_username_with_password(&dto.username)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
-
-        if user.role.as_deref() != Some("admin") {
-            return Err(AppError::Unauthorized("User is not an admin".to_string()));
-        }
-
-        self.verify_password(&dto.password, user.password_hash.as_deref())?;
-        self.ensure_active(&user)?;
-        self.otp_limiter.check_and_record(&dto.username)?;
-
-        let session_otp_id = self.send_admin_otp(&user).await?;
-
-        Ok(OtpPendingResponse {
-            message: "OTP generated successfully".to_string(),
-            transactionId: session_otp_id,
-        })
+    pub async fn login_admin(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
+        let user = self.authenticate_admin(&dto.username, &dto.password).await?;
+        Self::verify_totp_if_enabled(&user, dto.totp.as_deref())?;
+        self.issue_auth_response(&user)
     }
 
     pub async fn login_staff(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
@@ -76,25 +55,7 @@ impl AuthService {
             }
         };
 
-        if user.totp_enabled {
-            let totp_code = match dto.totp {
-                Some(code) if !code.is_empty() => code,
-                _ => {
-                    tracing::error!("TOTP code is required but not provided or empty");
-                    return Err(AppError::BadRequest("TOTP code is required".to_string()));
-                }
-            };
-
-            let secret = user.totp_secret.as_deref().ok_or_else(|| {
-                tracing::error!("User does not have TOTP configured");
-                AppError::BadRequest("User does not have TOTP configured".to_string())
-            })?;
-
-            if !verify_totp_code(secret, &totp_code, &user.username)? {
-                tracing::error!("Invalid TOTP code");
-                return Err(AppError::Unauthorized("Invalid TOTP code".to_string()));
-            }
-        }
+        Self::verify_totp_if_enabled(&user, dto.totp.as_deref())?;
 
         let token = self.generate_access_token(&user)?;
         Ok(AuthResponseDto {
@@ -477,51 +438,51 @@ impl AuthService {
         })
     }
 
-    pub async fn verify_otp(&self, dto: VerifyOtpDto) -> Result<AuthResponseDto, AppError> {
+    pub async fn authenticate_admin(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<User, AppError> {
         let user = self
             .user_repo
-            .find_by_session_otp_id(&dto.sessionOtpId)
+            .find_by_username_with_password(username)
             .await?
             .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
 
-        if user.session_otp.as_deref() != Some(dto.otp.as_str()) {
-            return Err(AppError::Unauthorized("Invalid OTP".to_string()));
+        if user.role.as_deref() != Some("admin") {
+            return Err(AppError::Unauthorized("User is not an admin".to_string()));
         }
 
-        let token = self.generate_access_token(&user)?;
-        Ok(AuthResponseDto {
-            accessToken: token,
-            user: user.to_auth_user(),
-            shiftId: None,
-            activeSession: None,
-        })
+        self.verify_password(password, user.password_hash.as_deref())?;
+        self.ensure_active(&user)?;
+
+        Ok(user)
     }
 
-    async fn send_admin_otp(&self, user: &User) -> Result<String, AppError> {
-        let otp_num = (Uuid::new_v4().as_u128() % 900_000) + 100_000;
-        let otp = format!("{otp_num:06}");
-        let session_otp_id = Uuid::new_v4().to_string();
-        self.user_repo
-            .update_session_otp(user.id, &session_otp_id, &otp)
-            .await?;
+    fn verify_totp_if_enabled(user: &User, totp: Option<&str>) -> Result<(), AppError> {
+        if !user.totp_enabled {
+            return Ok(());
+        }
 
-        let email = user
-            .email
-            .clone()
-            .unwrap_or_else(|| "hmahamure10@gmail.com".to_string());
-        let name = format!(
-            "{} {}",
-            user.first_name
-                .clone()
-                .unwrap_or_else(|| "Admin".to_string()),
-            user.last_name.clone().unwrap_or_default()
-        );
+        let totp_code = match totp {
+            Some(code) if !code.is_empty() => code,
+            _ => {
+                tracing::error!("TOTP code is required but not provided or empty");
+                return Err(AppError::BadRequest("TOTP code is required".to_string()));
+            }
+        };
 
-        self.mail_service
-            .send_otp_email(&email, name.trim(), &otp)
-            .await?;
+        let secret = user.totp_secret.as_deref().ok_or_else(|| {
+            tracing::error!("User does not have TOTP configured");
+            AppError::BadRequest("User does not have TOTP configured".to_string())
+        })?;
 
-        Ok(session_otp_id)
+        if !verify_totp_code(secret, totp_code, &user.username)? {
+            tracing::error!("Invalid TOTP code");
+            return Err(AppError::Unauthorized("Invalid TOTP code".to_string()));
+        }
+
+        Ok(())
     }
 
     fn verify_password(&self, password: &str, hash: Option<&str>) -> Result<(), AppError> {
@@ -619,5 +580,84 @@ fn parse_duration(value: &str) -> Duration {
         Duration::hours(hours)
     } else {
         Duration::days(7)
+    }
+}
+
+#[cfg(test)]
+mod admin_totp_tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    use crate::services::totp_util::generate_totp_setup;
+
+    fn test_user(username: &str, totp_enabled: bool, totp_secret: Option<String>) -> User {
+        let now = Utc::now();
+        User {
+            id: Uuid::new_v4(),
+            email: None,
+            username: username.to_string(),
+            password_hash: None,
+            is_active: true,
+            first_name: None,
+            last_name: None,
+            phone_number: None,
+            role: Some("admin".to_string()),
+            credit_limit: 0.0,
+            session_otp_id: None,
+            session_otp: None,
+            totp_secret,
+            totp_enabled,
+            created_by: None,
+            updated_by: None,
+            created_at: now,
+            updated_at: now,
+            deleted_at: None,
+        }
+    }
+
+    #[test]
+    fn verify_totp_if_enabled_skips_when_disabled() {
+        let user = test_user("admin1", false, None);
+        AuthService::verify_totp_if_enabled(&user, None).expect("password-only admin");
+    }
+
+    #[test]
+    fn verify_totp_if_enabled_requires_code_when_enabled() {
+        let user = test_user("admin1", true, Some("JBSWY3DPEHPK3PXP".to_string()));
+        let err = AuthService::verify_totp_if_enabled(&user, None).unwrap_err();
+        assert!(matches!(err, AppError::BadRequest(ref msg) if msg == "TOTP code is required"));
+    }
+
+    #[test]
+    fn verify_totp_if_enabled_rejects_invalid_code() {
+        let (secret, _) = generate_totp_setup("admin").expect("setup");
+        let user = test_user("admin", true, Some(secret));
+        let err = AuthService::verify_totp_if_enabled(&user, Some("000000")).unwrap_err();
+        assert!(matches!(err, AppError::Unauthorized(ref msg) if msg == "Invalid TOTP code"));
+    }
+
+    #[test]
+    fn verify_totp_if_enabled_accepts_valid_code() {
+        use totp_rs::{Algorithm, Secret, TOTP};
+
+        let (secret, _) = generate_totp_setup("admin").expect("setup");
+        let user = test_user("admin", true, Some(secret.clone()));
+
+        let totp = TOTP::new(
+            Algorithm::SHA1,
+            6,
+            1,
+            30,
+            Secret::Encoded(secret)
+                .to_bytes()
+                .expect("secret bytes"),
+            Some("GameZone".to_string()),
+            "admin".to_string(),
+        )
+        .expect("totp");
+        let code = totp.generate_current().expect("current code");
+
+        AuthService::verify_totp_if_enabled(&user, Some(&code)).expect("valid admin totp");
     }
 }

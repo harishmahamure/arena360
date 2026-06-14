@@ -454,24 +454,20 @@ ZeptoMail, verify OTP, issue JWT.
 - Tower middleware extracting `Authorization: Bearer <token>` header.
 - Validate with `jsonwebtoken` crate using `JWT_SECRET` (HS256).
 - Claims struct: `{ sub: uuid, role: string, iat, exp }`.
-- OTP flow: generate 6-digit code, store in DB with expiry (5 min),
-  send via ZeptoMail API (reqwest HTTP client), verify on submit.
-- Rate limit: 5 OTP requests per email per 15 minutes.
+- OTP flow: admin login uses optional TOTP (same as staff); email OTP removed.
+- Rate limit: (email OTP rate limit removed with mail OTP flow).
 
 **Acceptance criteria** (checklist):
 
 - [x] JWT claims match NestJS `JwtUserClaims` shape (`userId`, `roles`, `tenantId`, etc.).
-- [x] OTP request via ZeptoMail (`POST /auth/login/admin`).
-- [x] OTP verify issues JWT (`POST /auth/verify-otp`).
+- [x] Admin login via `POST /auth/login/admin` (password; TOTP when enabled).
 - [x] bcrypt password verification (compatible with existing user hashes).
-- [x] OTP rate limiting enforced (429 after 5 requests/15min/username).
 
 **Evidence**:
 
 - Handlers: `src/handlers/auth.rs`; service: `src/services/auth_service.rs`.
 - Full claims in `src/middleware/auth.rs` (`JwtUserClaims`).
-- Routes wired in `src/app.rs`: `/auth/login/admin`, `/auth/verify-otp`, `/auth/register`.
-- OTP rate limiter: `src/services/otp_rate_limiter.rs` (5 req / 15 min).
+- Routes wired in `src/app.rs`: `/auth/login/admin`, `/auth/register`.
 - Smoke script: `_new/scripts/smoke-p2.sh` (requires `SMOKE_ADMIN_USERNAME/PASSWORD`).
 - `cargo build` + `cargo clippy -- -D warnings` pass (2026-05-27).
 

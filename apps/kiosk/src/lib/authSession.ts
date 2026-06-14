@@ -15,11 +15,7 @@ const TOKEN_AUTH_MESSAGES = new Set([
 ]);
 
 /** Endpoints where 401 means bad user input, not a stale stored token. */
-const CREDENTIAL_ENTRY_PATHS = [
-  '/auth/login/admin',
-  '/auth/login/staff',
-  '/auth/verify-otp',
-];
+const CREDENTIAL_ENTRY_PATHS = ['/auth/login/admin', '/auth/login/staff'];
 
 const PLAYER_TOKEN_MESSAGES = new Set([
   'X-Player-Token required for player routes',

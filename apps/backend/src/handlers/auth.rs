@@ -5,23 +5,23 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{
     created, ok, ApiResult, AuthResponseDto, CreateSsoTokenDto, CreateSsoTokenResponseDto,
-    DevicePairingDto, DevicePairingResponseDto, LoginDto, OtpPendingResponse, PlayerLoginDto,
-    RedeemSsoTokenDto, RegisterDto, RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
+    DevicePairingDto, DevicePairingResponseDto, LoginDto, PlayerLoginDto, RedeemSsoTokenDto,
+    RegisterDto, RegisterResponseDto, StaffLoginDto,
 };
 use crate::validation::{is_playstation_device_type, require_playstation_device_type};
 use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, DeviceUser};
 use crate::models::ClockInDto;
 use crate::openapi::responses::{
-    AuthResponseEnvelope, ErrorEnvelope, OtpPendingEnvelope, RegisterResponseEnvelope,
+    AuthResponseEnvelope, ErrorEnvelope, RegisterResponseEnvelope,
 };
 
 #[utoipa::path(
     post,
     path = "/auth/login/admin",
-    request_body = LoginDto,
+    request_body = StaffLoginDto,
     responses(
-        (status = 200, description = "OTP sent", body = OtpPendingEnvelope),
+        (status = 200, description = "Authenticated", body = AuthResponseEnvelope),
         (status = 400, description = "Bad request", body = ErrorEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
         (status = 500, description = "Internal server error", body = ErrorEnvelope),
@@ -30,8 +30,8 @@ use crate::openapi::responses::{
 )]
 pub async fn login_admin(
     State(state): State<Arc<AppState>>,
-    Json(dto): Json<LoginDto>,
-) -> ApiResult<OtpPendingResponse> {
+    Json(dto): Json<StaffLoginDto>,
+) -> ApiResult<AuthResponseDto> {
     let result = state.auth.login_admin(dto).await?;
     ok(result)
 }
@@ -85,26 +85,6 @@ pub async fn login_staff(
         .await;
 
     result.shiftId = Some(shift.id.to_string());
-    ok(result)
-}
-
-#[utoipa::path(
-    post,
-    path = "/auth/verify-otp",
-    request_body = VerifyOtpDto,
-    responses(
-        (status = 200, description = "Authenticated", body = AuthResponseEnvelope),
-        (status = 400, description = "Bad request", body = ErrorEnvelope),
-        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
-        (status = 500, description = "Internal server error", body = ErrorEnvelope),
-    ),
-    tag = "auth"
-)]
-pub async fn verify_otp(
-    State(state): State<Arc<AppState>>,
-    Json(dto): Json<VerifyOtpDto>,
-) -> ApiResult<AuthResponseDto> {
-    let result = state.auth.verify_otp(dto).await?;
     ok(result)
 }
 

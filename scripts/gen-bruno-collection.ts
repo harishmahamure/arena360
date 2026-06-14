@@ -59,11 +59,10 @@ const BRUNO_FOLDER_NAMES: Record<string, string> = {
   auth: 'authentication',
 };
 
-const AUTH_OPERATION_ORDER = ['login_admin', 'verify_otp', 'register'] as const;
+const AUTH_OPERATION_ORDER = ['login_admin', 'register'] as const;
 
 const OPERATION_DISPLAY_NAMES: Record<string, string> = {
   login_admin: 'Login Admin',
-  verify_otp: 'Verify OTP',
   register: 'Register User',
 };
 
@@ -210,18 +209,7 @@ function buildQueryBlock(params: OpenAPIParameter[]): string | undefined {
 function authTests(operationId: string): string | undefined {
   if (operationId === 'login_admin') {
     return `tests {
-  test("should save sessionOtpId from login response", function() {
-    const body = res.getBody();
-    const txnId = body?.data?.transactionId;
-    if (txnId) {
-      bru.setEnvVar("sessionOtpId", txnId);
-    }
-  });
-}`;
-  }
-  if (operationId === 'verify_otp') {
-    return `tests {
-  test("should save accessToken from auth response", function() {
+  test("should save accessToken from admin login response", function() {
     const body = res.getBody();
     const token = body?.data?.accessToken;
     if (token) {
@@ -341,10 +329,9 @@ vars:pre-request {
     `vars {
   baseUrl: ${baseUrl}
   accessToken:
-  sessionOtpId:
   username: admin
   password: your-password
-  otp: 123456
+  totp:
 }
 `,
   );
@@ -367,9 +354,8 @@ pnpm gen:bruno
 ## Auth flow
 
 1. Select **Local** environment
-2. Run **authentication → Login Admin** (saves \`sessionOtpId\`)
-3. Run **authentication → Verify OTP** (saves \`accessToken\`)
-4. Secured routes inherit Bearer auth from collection settings
+2. Run **authentication → Login Admin** (saves \`accessToken\`)
+3. Secured routes inherit Bearer auth from collection settings
 
 Edit credentials in **environments/Local.bru**.
 `,
@@ -437,12 +423,8 @@ Edit credentials in **environments/Local.bru**.
       if (operationId === 'login_admin' && bodyText) {
         bodyText = bodyText
           .replace('"username": "string"', '"username": "{{username}}"')
-          .replace('"password": "string"', '"password": "{{password}}"');
-      }
-      if (operationId === 'verify_otp' && bodyText) {
-        bodyText = bodyText
-          .replace('"otp": "string"', '"otp": "{{otp}}"')
-          .replace('"sessionOtpId": "string"', '"sessionOtpId": "{{sessionOtpId}}"');
+          .replace('"password": "string"', '"password": "{{password}}"')
+          .replace('"totp": "string"', '"totp": "{{totp}}"');
       }
 
       const bru = buildBruRequest({

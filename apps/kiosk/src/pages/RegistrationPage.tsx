@@ -1,24 +1,23 @@
 import { deviceSubTypeOptions, deviceTypeOptions } from '@gaming-cafe/contracts';
+import { ApiError } from '@gaming-cafe/utils';
 import { useEffect, useState } from 'react';
 import { useKiosk } from '../context/KioskProvider';
 import { collectFingerprint, type FingerprintPayload } from '../lib/tauriCommands';
 
-type Step = 'credentials' | 'otp' | 'device';
+type Step = 'credentials' | 'totp' | 'device';
 
 /**
  * First-time provisioning (DRAFT-0023): an administrator signs in on the device
- * (username/password → OTP); the admin session then names and registers this PC.
- * No registration code is involved.
+ * (username/password, plus TOTP when enabled); the admin session then names and
+ * registers this PC. No registration code is involved.
  */
 export function RegistrationPage() {
-  const { requestAdminOtp, verifyRegistrationOtp, provisionDevice, adminAuthenticated, error } =
-    useKiosk();
+  const { adminLogin, provisionDevice, adminAuthenticated, error } = useKiosk();
 
   const [step, setStep] = useState<Step>('credentials');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
-  const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
+  const [totp, setTotp] = useState('');
 
   const [name, setName] = useState('');
   const [deviceType, setDeviceType] = useState<string>(deviceTypeOptions[0]?.value ?? 'PC');
@@ -39,22 +38,22 @@ export function RegistrationPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      const transactionId = await requestAdminOtp(username, password);
-      setSessionOtpId(transactionId);
-      setStep('otp');
-    } catch {
-      // surfaced via context error
+      await adminLogin(username, password);
+      setStep('device');
+    } catch (err) {
+      if (err instanceof ApiError && err.message === 'TOTP code is required') {
+        setStep('totp');
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function onOtp(e: React.FormEvent) {
+  async function onTotp(e: React.FormEvent) {
     e.preventDefault();
-    if (!sessionOtpId) return;
     setBusy(true);
     try {
-      await verifyRegistrationOtp(otp.trim(), sessionOtpId);
+      await adminLogin(username, password, totp.trim());
       setStep('device');
     } catch {
       // surfaced via context error
@@ -107,24 +106,24 @@ export function RegistrationPage() {
           </label>
           {error ? <p className="error">{error}</p> : null}
           <button type="submit" disabled={busy}>
-            {busy ? 'Sending code…' : 'Continue'}
+            {busy ? 'Signing in…' : 'Continue'}
           </button>
         </form>
       </section>
     );
   }
 
-  if (step === 'otp') {
+  if (step === 'totp') {
     return (
       <section className="panel">
-        <h1>Enter verification code</h1>
-        <p>Enter the one-time code for {username}.</p>
-        <form onSubmit={onOtp}>
+        <h1>Enter authenticator code</h1>
+        <p>Enter the TOTP code from your authenticator app for {username}.</p>
+        <form onSubmit={onTotp}>
           <label>
-            One-time code
+            Authenticator code
             <input
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              value={totp}
+              onChange={(e) => setTotp(e.target.value.replace(/\s+/g, '').slice(0, 6))}
               inputMode="numeric"
               autoComplete="one-time-code"
               required

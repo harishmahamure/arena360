@@ -24,11 +24,7 @@ import { enqueueEndIntent, loadEndIntents, removeEndIntent } from '../lib/offlin
 import { formatPlayerLoginError } from '../lib/planErrors';
 import { KioskRealtimeClient } from '../lib/realtime';
 import { prepareSessionSounds } from '../lib/sessionSounds';
-import {
-  clearAllTokens,
-  killTrackedProcesses,
-  setLockdownState,
-} from '../lib/tauriCommands';
+import { clearAllTokens, killTrackedProcesses, setLockdownState } from '../lib/tauriCommands';
 
 export type AppPhase =
   | 'loading'
@@ -101,21 +97,19 @@ interface KioskContextValue {
   loginNotice: string | null;
   clearLoginNotice: () => void;
   refresh: () => Promise<void>;
-  /** First-time provisioning: verify admin OTP, capturing the admin token. */
-  verifyRegistrationOtp: (otp: string, sessionOtpId: string) => Promise<void>;
   /** First-time provisioning: register this device using the captured admin token. */
   provisionDevice: (input: DeviceProvisionInput) => Promise<void>;
-  /** True once an admin OTP has been verified during registration. */
+  /** True once an admin has signed in during registration. */
   adminAuthenticated: boolean;
   enterSetup: () => Promise<void>;
   exitSetup: () => Promise<void>;
+  /** Admin sign-in (optional TOTP). Stores token; optionally relaxes lockdown for setup. */
   adminLogin: (
     username: string,
     password: string,
-    otp: string,
-    sessionOtpId: string,
+    totp?: string,
+    options?: { relaxLockdown?: boolean },
   ) => Promise<void>;
-  requestAdminOtp: (username: string, password: string) => Promise<string>;
   playerLogin: (username: string, password: string) => Promise<void>;
   playerLogout: () => Promise<void>;
   /** Start (or resume) the kiosk session for the signed-in player. */
@@ -175,9 +169,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const maintenance = deviceStatus === 'under_maintenance' || deviceStatus === 'out_of_service';
 
   const realtimeRef = useMemo(() => ({ current: new KioskRealtimeClient() }), []);
-  const cleanupSessionRef = useRef<
-    ((opts?: { staffEnded?: boolean }) => Promise<void>) | null
-  >(null);
+  const cleanupSessionRef = useRef<((opts?: { staffEnded?: boolean }) => Promise<void>) | null>(
+    null,
+  );
 
   useEffect(() => {
     deviceIdRef.current = deviceId;
@@ -407,20 +401,32 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     return () => unlisten?.();
   }, []);
 
-  const verifyRegistrationOtp = useCallback(async (otp: string, sessionOtpId: string) => {
-    setError(null);
-    try {
-      const http = getHttpClient();
-      const res = await http.post<{ accessToken: string }>('/auth/verify-otp', {
-        otp,
-        sessionOtpId,
-      });
-      setAdminToken(res.accessToken);
-    } catch (e) {
-      setError(toErrorMessage(e, 'Invalid or expired OTP'));
-      throw e;
-    }
-  }, []);
+  const adminLogin = useCallback(
+    async (
+      username: string,
+      password: string,
+      totp?: string,
+      options?: { relaxLockdown?: boolean },
+    ) => {
+      setError(null);
+      try {
+        const http = getHttpClient();
+        const res = await http.post<{ accessToken: string }>('/auth/login/admin', {
+          username,
+          password,
+          totp,
+        });
+        setAdminToken(res.accessToken);
+        if (options?.relaxLockdown) {
+          await setLockdownState('SetupRelaxed');
+        }
+      } catch (e) {
+        setError(toErrorMessage(e, 'Admin sign-in failed'));
+        throw e;
+      }
+    },
+    [],
+  );
 
   const provisionDevice = useCallback(
     async (input: DeviceProvisionInput) => {
@@ -494,37 +500,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [phase, enterSetup]);
-
-  const requestAdminOtp = useCallback(async (username: string, password: string) => {
-    setError(null);
-    try {
-      const http = getHttpClient();
-      const res = await http.post<{ transactionId: string }>('/auth/login/admin', {
-        username,
-        password,
-      });
-      return res.transactionId;
-    } catch (e) {
-      setError(toErrorMessage(e, 'Could not start admin login'));
-      throw e;
-    }
-  }, []);
-
-  const adminLogin = useCallback(
-    async (_username: string, _password: string, otp: string, sessionOtpId: string) => {
-      setError(null);
-      try {
-        const http = getHttpClient();
-        await http.post('/auth/verify-otp', { otp, sessionOtpId });
-        // Admin authenticated: now relax lockdown for setup work (ADR-0020).
-        await setLockdownState('SetupRelaxed');
-      } catch (e) {
-        setError(toErrorMessage(e, 'Invalid or expired OTP'));
-        throw e;
-      }
-    },
-    [],
-  );
 
   const playerLogin = useCallback(
     async (username: string, password: string) => {
@@ -667,13 +642,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     loginNotice,
     clearLoginNotice,
     refresh,
-    verifyRegistrationOtp,
     provisionDevice,
     adminAuthenticated: adminToken !== null,
     enterSetup,
     exitSetup,
     adminLogin,
-    requestAdminOtp,
     playerLogin,
     playerLogout,
     startSession,

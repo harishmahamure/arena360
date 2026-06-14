@@ -1,7 +1,7 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::dto::auth_dto::{AuthResponseDto, OtpPendingResponse, RegisterResponseDto};
+use crate::dto::auth_dto::{AuthResponseDto, RegisterResponseDto};
 pub use crate::models::{
     AssignPlanDto, CreateDeviceDto, CreatePlanDto, CreateProductDto, CreateSessionDto,
     CreateTransactionDto, CreateUnitDto, Device, DeviceFilterDto, EndSessionDto, Plan,
@@ -71,7 +71,6 @@ macro_rules! pagination_envelope {
 
 success_envelope!(HealthEnvelope, crate::handlers::health::HealthData);
 success_envelope!(LiveHealthEnvelope, crate::handlers::health::LiveHealthData);
-success_envelope!(OtpPendingEnvelope, OtpPendingResponse);
 success_envelope!(AuthResponseEnvelope, AuthResponseDto);
 success_envelope!(RegisterResponseEnvelope, RegisterResponseDto);
 success_envelope!(DashboardStatsEnvelope, DashboardStatsDto);

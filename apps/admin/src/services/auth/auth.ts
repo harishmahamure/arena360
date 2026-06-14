@@ -1,11 +1,12 @@
 import { http, toastUtils } from '@gaming-cafe/utils';
-import type { LoginResponseData, VerifyOtpResponseData } from './types';
+import type { VerifyOtpResponseData } from './types';
 
-export const loginAPI = async (username: string, password: string) => {
+export const loginAPI = async (username: string, password: string, totp?: string) => {
   try {
-    return await http.post<LoginResponseData>('/auth/login/admin', {
+    return await http.post<VerifyOtpResponseData>('/auth/login/admin', {
       username,
       password,
+      totp,
     });
   } catch (error: unknown) {
     toastUtils.error('Login failed. Please check your credentials.', {
@@ -23,11 +24,4 @@ export const loginStaffAPI = async (username: string, password: string, totp?: s
     totp,
   });
   return response;
-};
-
-export const verifyOtpAPI = async (transactionId: string, otp: string) => {
-  return http.post<VerifyOtpResponseData>('/auth/verify-otp', {
-    sessionOtpId: transactionId,
-    otp,
-  });
 };

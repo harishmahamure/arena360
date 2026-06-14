@@ -11,7 +11,7 @@ describe('authSession', () => {
   it('ignores credential-entry 401s', () => {
     expect(
       resolveAuthExpiredAction(
-        { url: '/auth/verify-otp', message: 'Invalid or expired token' },
+        { url: '/auth/login/admin', message: 'Invalid or expired token' },
         { phase: 'register', hasPlayerToken: false },
       ),
     ).toBeNull();

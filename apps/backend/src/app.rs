@@ -150,7 +150,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/login/staff", post(handlers::auth::login_staff))
         .route("/auth/login/player", post(handlers::auth::login_player))
         .route("/auth/register", post(handlers::auth::register))
-        .route("/auth/verify-otp", post(handlers::auth::verify_otp))
         .route("/auth/sso/tokens", post(handlers::auth::create_sso_token))
         .route("/auth/sso/redeem", post(handlers::auth::redeem_sso_token))
         .route("/auth/device-pairing", post(handlers::auth::device_pairing))

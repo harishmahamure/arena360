@@ -17,8 +17,8 @@ registration. There is no separate code to copy between two screens.
 ## Decision
 
 1. **Admin login authorizes registration.** On a device with no device token, the
-   kiosk shows an admin login (username/password → OTP, reusing
-   `/auth/login/admin` + `/auth/verify-otp`). The returned admin access token is
+   kiosk shows an admin login (username/password, plus TOTP when enabled on the
+   account, via `POST /auth/login/admin`). The returned admin access token is
    held in memory for the next step only.
 2. **New endpoint** `POST /devices/provision` (admin JWT required):
    body `{ fingerprint, name, deviceType, deviceSubType, location, serialNumber? }`.
@@ -34,7 +34,7 @@ registration. There is no separate code to copy between two screens.
 
 ### Positive
 - One coherent on-device install flow; no code transcription between screens.
-- Registration is gated by real admin credentials + OTP.
+- Registration is gated by real admin credentials (and TOTP when enabled).
 
 ### Negative
 - A privileged admin must be physically present to provision a device.

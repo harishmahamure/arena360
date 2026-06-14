@@ -77,20 +77,6 @@ pub struct DevicePairingResponseDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct VerifyOtpDto {
-    pub otp: String,
-    pub sessionOtpId: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
-pub struct OtpPendingResponse {
-    pub message: String,
-    pub transactionId: String,
-}
-
-#[allow(non_snake_case)]
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ActiveSessionDto {
     pub id: String,

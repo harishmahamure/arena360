@@ -37,7 +37,7 @@ ADMIN_USER="${SMOKE_ADMIN_USERNAME:-}"
 ADMIN_PASS="${SMOKE_ADMIN_PASSWORD:-}"
 
 if [[ -z "$ADMIN_USER" || -z "$ADMIN_PASS" ]]; then
-  fail "Set SMOKE_ADMIN_USERNAME and SMOKE_ADMIN_PASSWORD for OTP login smoke test"
+  fail "Set SMOKE_ADMIN_USERNAME and SMOKE_ADMIN_PASSWORD for admin login smoke test"
 fi
 
 if [[ "$START_SERVER" == "1" ]]; then
@@ -52,7 +52,7 @@ if [[ "$START_SERVER" == "1" ]]; then
   done
 fi
 
-log "1/10 GET /health/live"
+log "1/8 GET /health/live"
 HEALTH=$(curl -sf "$BASE_URL/health/live")
 echo "$HEALTH" | jq -e '.success == true and .data.status == "ok"' >/dev/null \
   || fail "health/live envelope unexpected: $HEALTH"
@@ -61,36 +61,12 @@ if [[ "$DB_STATUS" != "up" ]]; then
   fail "database not up (got: ${DB_STATUS:-missing})"
 fi
 
-log "2/10 POST /auth/login/admin (first OTP request)"
-LOGIN1=$(curl -sf -X POST "$BASE_URL/auth/login/admin" \
+log "2/8 POST /auth/login/admin"
+LOGIN=$(curl -sf -X POST "$BASE_URL/auth/login/admin" \
   -H 'Content-Type: application/json' \
   -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}")
-TXN_ID=$(echo "$LOGIN1" | jq -r '.data.transactionId // empty')
-[[ -n "$TXN_ID" ]] || fail "login did not return transactionId: $LOGIN1"
-
-log "3/10 Fetch OTP from database"
-if ! command -v psql >/dev/null 2>&1; then
-  fail "psql required to read OTP from users table (or set SMOKE_OTP manually)"
-fi
-DB_URL="${DATABASE_URL:-}"
-if [[ -z "$DB_URL" ]]; then
-  DB_HOST="${DB_HOST:-localhost}"
-  DB_PORT="${DB_PORT:-5432}"
-  DB_USERNAME="${DB_USERNAME:-postgres}"
-  DB_PASSWORD="${DB_PASSWORD:-postgres}"
-  DB_DATABASE="${DB_DATABASE:-gamezone_dev}"
-  DB_URL="postgres://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_DATABASE}"
-fi
-OTP=$(psql "$DB_URL" -t -A -c \
-  "SELECT \"sessionOtp\" FROM users WHERE \"sessionOtpId\" = '$TXN_ID' LIMIT 1;" | tr -d '[:space:]')
-[[ -n "$OTP" ]] || fail "could not read OTP for sessionOtpId=$TXN_ID"
-
-log "4/10 POST /auth/verify-otp"
-VERIFY=$(curl -sf -X POST "$BASE_URL/auth/verify-otp" \
-  -H 'Content-Type: application/json' \
-  -d "{\"sessionOtpId\":\"$TXN_ID\",\"otp\":\"$OTP\"}")
-TOKEN=$(echo "$VERIFY" | jq -r '.data.accessToken // empty')
-[[ -n "$TOKEN" ]] || fail "verify-otp did not return accessToken: $VERIFY"
+TOKEN=$(echo "$LOGIN" | jq -r '.data.accessToken // empty')
+[[ -n "$TOKEN" ]] || fail "login/admin did not return accessToken: $LOGIN"
 AUTH_HEADER="Authorization: Bearer $TOKEN"
 
 auth_get() {
@@ -107,34 +83,31 @@ auth_post_json() {
     -d "$body"
 }
 
-log "5/10 Authenticated reads: stats, devices, games, plans, player-plans"
+log "3/8 Authenticated reads: stats, devices, games, plans, player-plans"
 for path in /stats/dashboard /devices /games /plans /player-plans; do
   RESP=$(auth_get "$path")
   echo "$RESP" | jq -e '.success == true' >/dev/null \
     || fail "GET $path failed envelope: $RESP"
 done
 
-log "6/10 OTP rate limit (expect 429 on 6th request within window)"
-RATE_BLOCKED=0
-for i in $(seq 1 6); do
-  CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/auth/login/admin" \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}")
-  if [[ "$CODE" == "429" ]]; then
-    RATE_BLOCKED=1
-    break
-  elif [[ "$CODE" != "200" && "$CODE" != "201" ]]; then
-    fail "unexpected status on login attempt $i: HTTP $CODE"
-  fi
-done
-[[ "$RATE_BLOCKED" -eq 1 ]] || fail "expected HTTP 429 after repeated OTP requests"
-
-log "7/10 SSE endpoint accepts auth"
+log "4/8 SSE endpoint accepts auth"
 SSE_CODE=$(curl -s -o /dev/null -w '%{http_code}' -N --max-time 2 \
   "$BASE_URL/sse?topics=session,device" -H "$AUTH_HEADER" || true)
 [[ "$SSE_CODE" == "200" ]] || fail "SSE endpoint expected 200, got $SSE_CODE"
 
-log "8/10 POST /player-plans (assign plan to player)"
+log "5/8 POST /player-plans (assign plan to player)"
+if ! command -v psql >/dev/null 2>&1; then
+  fail "psql required for player-plans smoke steps (or set SMOKE_PLAN_ID and SMOKE_PLAYER_ID)"
+fi
+DB_URL="${DATABASE_URL:-}"
+if [[ -z "$DB_URL" ]]; then
+  DB_HOST="${DB_HOST:-localhost}"
+  DB_PORT="${DB_PORT:-5432}"
+  DB_USERNAME="${DB_USERNAME:-postgres}"
+  DB_PASSWORD="${DB_PASSWORD:-postgres}"
+  DB_DATABASE="${DB_DATABASE:-gamezone_dev}"
+  DB_URL="postgres://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_DATABASE}"
+fi
 PLAN_ID="${SMOKE_PLAN_ID:-$(psql "$DB_URL" -t -A -c \
   "SELECT id FROM plans WHERE \"isActive\" = true AND \"deletedAt\" IS NULL ORDER BY \"createdAt\" DESC LIMIT 1;" | tr -d '[:space:]')}"
 PLAYER_ID="${SMOKE_PLAYER_ID:-$(psql "$DB_URL" -t -A -c \
@@ -148,12 +121,12 @@ echo "$ASSIGN" | jq -e '.success == true and (.data.id | length) > 0' >/dev/null
   || fail "POST /player-plans failed envelope: $ASSIGN"
 PP_ID=$(echo "$ASSIGN" | jq -r '.data.id')
 
-log "9/10 POST /player-plans/{id}/validate"
+log "6/8 POST /player-plans/{id}/validate"
 VALIDATE=$(auth_post_json "/player-plans/$PP_ID/validate" "{}")
 echo "$VALIDATE" | jq -e '.success == true and .data.valid == true' >/dev/null \
   || fail "POST /player-plans/$PP_ID/validate failed: $VALIDATE"
 
-log "10/10 GET /player-plans/{id}"
+log "7/8 GET /player-plans/{id}"
 GET_PP=$(auth_get "/player-plans/$PP_ID")
 echo "$GET_PP" | jq -e '.success == true and .data.id == "'"$PP_ID"'"' >/dev/null \
   || fail "GET /player-plans/$PP_ID failed: $GET_PP"

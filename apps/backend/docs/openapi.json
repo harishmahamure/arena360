@@ -91,7 +91,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LoginDto"
+                "$ref": "#/components/schemas/StaffLoginDto"
               }
             }
           },
@@ -99,11 +99,11 @@
         },
         "responses": {
           "200": {
-            "description": "OTP sent",
+            "description": "Authenticated",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OtpPendingEnvelope"
+                  "$ref": "#/components/schemas/AuthResponseEnvelope"
                 }
               }
             }
@@ -477,66 +477,6 @@
             "bearer_auth": []
           }
         ]
-      }
-    },
-    "/auth/verify-otp": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "operationId": "verify_otp",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyOtpDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Authenticated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponseEnvelope"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/cash-deposits": {
@@ -14832,46 +14772,6 @@
           }
         }
       },
-      "OtpPendingEnvelope": {
-        "type": "object",
-        "required": [
-          "success",
-          "statusCode",
-          "timestamp",
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/OtpPendingResponse"
-          },
-          "statusCode": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "success": {
-            "type": "boolean"
-          },
-          "timestamp": {
-            "type": "string"
-          }
-        }
-      },
-      "OtpPendingResponse": {
-        "type": "object",
-        "required": [
-          "message",
-          "transactionId"
-        ],
-        "properties": {
-          "message": {
-            "type": "string"
-          },
-          "transactionId": {
-            "type": "string"
-          }
-        }
-      },
       "OutstandingTxnRow": {
         "type": "object",
         "required": [
@@ -21090,21 +20990,6 @@
           }
         }
       },
-      "VerifyOtpDto": {
-        "type": "object",
-        "required": [
-          "otp",
-          "sessionOtpId"
-        ],
-        "properties": {
-          "otp": {
-            "type": "string"
-          },
-          "sessionOtpId": {
-            "type": "string"
-          }
-        }
-      },
       "VerifyTotpSetupDto": {
         "type": "object",
         "required": [
@@ -21187,7 +21072,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "JWT obtained from POST /auth/verify-otp"
+        "description": "JWT obtained from POST /auth/login/admin or POST /auth/login/staff"
       }
     }
   },

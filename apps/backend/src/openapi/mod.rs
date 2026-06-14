@@ -4,7 +4,7 @@ use utoipa::{Modify, OpenApi};
 use crate::dto::auth_dto::{
     ActiveSessionDto, AuthResponseDto, AuthUserDto, ChangePasswordDto, CreateSsoTokenDto,
     CreateSsoTokenResponseDto, DevicePairingDto, DevicePairingResponseDto, LoginDto, RedeemSsoTokenDto,
-    RegisterDto, RegisterResponseDto, VerifyOtpDto,
+    RegisterDto, RegisterResponseDto,
 };
 use crate::dto::{EndTvSessionDto, TvSessionResponseDto};
 use crate::handlers;
@@ -58,7 +58,7 @@ impl Modify for SecurityAddon {
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
                     .bearer_format("JWT")
-                    .description(Some("JWT obtained from POST /auth/verify-otp".to_string()))
+                    .description(Some("JWT obtained from POST /auth/login/admin or POST /auth/login/staff".to_string()))
                     .build(),
             ),
         );
@@ -82,7 +82,6 @@ impl Modify for SecurityAddon {
         handlers::auth::login_admin,
         handlers::auth::login_staff,
         handlers::auth::login_player,
-        handlers::auth::verify_otp,
         handlers::auth::create_sso_token,
         handlers::auth::redeem_sso_token,
         handlers::auth::device_pairing,
@@ -235,11 +234,9 @@ impl Modify for SecurityAddon {
             crate::dto::StartKioskSessionDto,
             crate::dto::KioskSessionResponseDto,
             crate::models::deduction_profile::DeductionProfile,
-            crate::dto::EndKioskSessionDto,
-            VerifyOtpDto,
+            crate::dto::            EndKioskSessionDto,
             RegisterDto,
             ChangePasswordDto,
-            OtpPendingEnvelope,
             AuthResponseDto,
             AuthUserDto,
             ActiveSessionDto,

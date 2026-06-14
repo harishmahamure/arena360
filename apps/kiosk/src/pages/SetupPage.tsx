@@ -1,4 +1,4 @@
-import { useAsyncAction } from '@gaming-cafe/utils';
+import { ApiError, useAsyncAction } from '@gaming-cafe/utils';
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
 import { AsyncActionButton } from '../components/AsyncActionButton';
@@ -7,12 +7,14 @@ import { KIOSK_LOGO_URL } from '../lib/config';
 
 const SETUP_IDLE_MS = 15 * 60 * 1000;
 
+type SetupLoginStep = 'credentials' | 'totp';
+
 export function SetupPage() {
-  const { requestAdminOtp, adminLogin, exitSetup, factoryReset, error } = useKiosk();
+  const { adminLogin, exitSetup, factoryReset, error } = useKiosk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
-  const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
+  const [totp, setTotp] = useState('');
+  const [loginStep, setLoginStep] = useState<SetupLoginStep>('credentials');
   const [authenticated, setAuthenticated] = useState(false);
   const [busy, setBusy] = useState(false);
   const lockAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
@@ -35,25 +37,26 @@ export function SetupPage() {
     };
   }, [authenticated, exitSetup]);
 
-  async function requestOtp(e: React.FormEvent) {
+  async function submitCredentials(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
-      const id = await requestAdminOtp(username, password);
-      setSessionOtpId(id);
-    } catch {
-      // context error
+      await adminLogin(username, password, undefined, { relaxLockdown: true });
+      setAuthenticated(true);
+    } catch (err) {
+      if (err instanceof ApiError && err.message === 'TOTP code is required') {
+        setLoginStep('totp');
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function verifyOtp(e: React.FormEvent) {
+  async function submitTotp(e: React.FormEvent) {
     e.preventDefault();
-    if (!sessionOtpId) return;
     setBusy(true);
     try {
-      await adminLogin(username, password, otp, sessionOtpId);
+      await adminLogin(username, password, totp.trim(), { relaxLockdown: true });
       setAuthenticated(true);
     } catch {
       // context error
@@ -119,8 +122,8 @@ export function SetupPage() {
           </p>
         </header>
 
-        {!sessionOtpId ? (
-          <form className="setup-login-form" onSubmit={requestOtp}>
+        {loginStep === 'credentials' ? (
+          <form className="setup-login-form" onSubmit={submitCredentials}>
             <label>
               Admin username
               <input value={username} onChange={(e) => setUsername(e.target.value)} required />
@@ -137,7 +140,7 @@ export function SetupPage() {
             {error ? <p className="error">{error}</p> : null}
             <div className="setup-login-actions">
               <button type="submit" disabled={busy}>
-                {busy ? 'Sending…' : 'Send OTP'}
+                {busy ? 'Signing in…' : 'Sign in'}
               </button>
               <button
                 type="button"
@@ -150,12 +153,12 @@ export function SetupPage() {
             </div>
           </form>
         ) : (
-          <form className="setup-login-form" onSubmit={verifyOtp}>
+          <form className="setup-login-form" onSubmit={submitTotp}>
             <label>
-              OTP code
+              Authenticator code
               <input
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
+                value={totp}
+                onChange={(e) => setTotp(e.target.value.replace(/\s+/g, '').slice(0, 6))}
                 required
                 autoComplete="one-time-code"
               />
@@ -169,8 +172,8 @@ export function SetupPage() {
                 type="button"
                 className="secondary"
                 onClick={() => {
-                  setSessionOtpId(null);
-                  setOtp('');
+                  setLoginStep('credentials');
+                  setTotp('');
                 }}
               >
                 Back

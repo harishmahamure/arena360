@@ -116,22 +116,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/verify-otp": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["verify_otp"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/cash-deposits": {
         parameters: {
             query?: never;
@@ -2914,17 +2898,6 @@ export interface components {
             /** Format: uuid */
             shiftId: string;
         };
-        OtpPendingEnvelope: {
-            data: components["schemas"]["OtpPendingResponse"];
-            /** Format: int32 */
-            statusCode: number;
-            success: boolean;
-            timestamp: string;
-        };
-        OtpPendingResponse: {
-            message: string;
-            transactionId: string;
-        };
         OutstandingTxnRow: {
             /** Format: double */
             amount: number;
@@ -4679,10 +4652,6 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
-        VerifyOtpDto: {
-            otp: string;
-            sessionOtpId: string;
-        };
         VerifyTotpSetupDto: {
             code: string;
         };
@@ -4783,17 +4752,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoginDto"];
+                "application/json": components["schemas"]["StaffLoginDto"];
             };
         };
         responses: {
-            /** @description OTP sent */
+            /** @description Authenticated */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OtpPendingEnvelope"];
+                    "application/json": components["schemas"]["AuthResponseEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -5087,57 +5056,6 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    verify_otp: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifyOtpDto"];
-            };
-        };
-        responses: {
-            /** @description Authenticated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponseEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
                 headers: {
                     [name: string]: unknown;
                 };

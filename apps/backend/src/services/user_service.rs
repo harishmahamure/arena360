@@ -136,9 +136,9 @@ impl UserService {
         user_id: Uuid,
     ) -> Result<crate::models::TotpSetupResponseDto, AppError> {
         let user = self.get_by_id(user_id).await?;
-        if user.role.as_deref() != Some("staff") {
+        if user.role.as_deref() != Some("staff") && user.role.as_deref() != Some("admin") {
             return Err(AppError::BadRequest(
-                "TOTP can only be configured for staff users".to_string(),
+                "TOTP can only be configured for admin or staff users".to_string(),
             ));
         }
 

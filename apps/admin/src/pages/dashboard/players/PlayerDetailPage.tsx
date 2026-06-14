@@ -335,14 +335,16 @@ export default function EditPlayerPage() {
         </Box>
       )}
 
-      {isAdmin && playerData?.role === 'staff' && (
+      {isAdmin && (playerData?.role === 'staff' || playerData?.role === 'admin') && (
         <Box sx={{ mt: 4 }}>
           <Divider sx={{ mb: 3 }} />
           <Typography variant="h6" fontWeight={600} gutterBottom>
-            Staff TOTP Setup
+            {playerData?.role === 'admin' ? 'Admin TOTP Setup' : 'Staff TOTP Setup'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Configure authenticator TOTP for shift handover validation.
+            {playerData?.role === 'admin'
+              ? 'Configure authenticator TOTP for admin panel and kiosk sign-in.'
+              : 'Configure authenticator TOTP for shift handover validation.'}
           </Typography>
           <Typography variant="body2" sx={{ mb: 2 }}>
             Status: {totpEnabled ? 'Enabled' : 'Not enabled'}
