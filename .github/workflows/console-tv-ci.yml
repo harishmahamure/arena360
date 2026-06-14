@@ -12,6 +12,10 @@ on:
       - '.github/workflows/console-tv-ci.yml'
   workflow_dispatch:
 
+env:
+  VITE_API_URL: https://api.arena360.cloud
+  VITE_API_URL_WS: wss://api.arena360.cloud/realtime
+
 jobs:
   android:
     name: Test & debug build
@@ -35,6 +39,9 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Run unit tests and assemble debug
+        env:
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+          VITE_API_URL_WS: ${{ env.VITE_API_URL_WS }}
         run: |
           chmod +x gradlew
           ./gradlew testDebugUnitTest assembleDebug --stacktrace

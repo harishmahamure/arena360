@@ -20,6 +20,8 @@ permissions:
 
 env:
   KEYSTORE_PATH: apps/console-tv/release/console-tv.jks
+  VITE_API_URL: https://api.arena360.cloud
+  VITE_API_URL_WS: wss://api.arena360.cloud/realtime
 
 jobs:
   release:
@@ -65,6 +67,8 @@ jobs:
 
       - name: Build signed release artifacts
         env:
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+          VITE_API_URL_WS: ${{ env.VITE_API_URL_WS }}
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/apps/console-tv/release/console-tv.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -93,5 +97,7 @@ jobs:
             echo "## Console TV Android release"
             echo ""
             echo "- Tag: \`${{ inputs.tag }}\`"
+            echo "- API URL: \`${{ env.VITE_API_URL }}\`"
+            echo "- WebSocket URL: \`${{ env.VITE_API_URL_WS }}\`"
             echo "- Artifacts: signed AAB + APK in GitHub Release"
           } >> "$GITHUB_STEP_SUMMARY"

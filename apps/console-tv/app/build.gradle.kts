@@ -13,18 +13,33 @@ fun loadEnvFile(file: File): Map<String, String> {
         .filter { it.isNotBlank() && !it.startsWith("#") && it.contains("=") }
         .associate { line ->
             val (key, value) = line.split("=", limit = 2)
-            key.trim() to value.trim()
+            key.trim() to value.trim().substringBefore(" #").trim()
         }
 }
 
+/** Process env overrides files; within each tier, keys are tried in list order. */
+fun resolveFirst(keys: List<String>, vararg files: Map<String, String>): String? {
+    for (key in keys) {
+        System.getenv(key)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    }
+    for (file in files) {
+        for (key in keys) {
+            file[key]?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
+    }
+    return null
+}
+
 val envLocal = loadEnvFile(rootProject.file(".env.local"))
+val envFile = loadEnvFile(rootProject.file(".env"))
+val envMaps = arrayOf(envLocal, envFile)
+
 val apiBaseUrl =
-    envLocal["VITE_API_URL"]
-        ?: envLocal["API_BASE_URL"]
+    resolveFirst(listOf("VITE_API_URL", "API_BASE_URL"), *envMaps)
         ?: "http://10.0.2.2:3000"
+
 val gatewayUrl =
-    envLocal["VITE_GATEWAY_URL"]
-        ?: envLocal["GATEWAY_URL"]
+    resolveFirst(listOf("VITE_GATEWAY_URL", "VITE_API_URL_WS", "GATEWAY_URL"), *envMaps)
         ?: run {
             val api = apiBaseUrl.trimEnd('/')
             val wsProtocol = if (api.startsWith("https")) "wss" else "ws"

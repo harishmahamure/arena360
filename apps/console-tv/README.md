@@ -30,6 +30,14 @@ Copy environment template for API URLs (emulator default uses `10.0.2.2`):
 cp .env.example .env.local
 ```
 
+| Variable | Purpose | Local example |
+|----------|---------|---------------|
+| `VITE_API_URL` | REST API base URL | `http://10.0.2.2:3000` (emulator) or `http://localhost:3001` (physical device + adb reverse) |
+| `VITE_API_URL_WS` | WebSocket gateway URL | `ws://10.0.2.2:3000/realtime` |
+| `VITE_GATEWAY_URL` | Alias for `VITE_API_URL_WS` | Same as above |
+
+Gradle reads **environment variables first**, then `.env.local`, then `.env`. CI/release workflows hardcode production URLs in `console-tv-ci.yml` and `console-tv-release.yml`.
+
 ## Debug build (unsigned)
 
 ```bash
