@@ -12,13 +12,13 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  type SxProps,
+  type Theme,
   Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import type { Theme } from '@mui/material/styles';
 import { alpha, useTheme } from '@mui/material/styles';
-import type { SxProps } from '@mui/system';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
