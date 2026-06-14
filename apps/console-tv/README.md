@@ -2,6 +2,8 @@
 
 Kotlin Android TV agent for PlayStation stations (`PS5`, `PS4`). See [REQUIREMENTS-CONSOLE-TV.md](../../docs/REQUIREMENTS-CONSOLE-TV.md) and [DRAFT-0037](../../docs/adr/DRAFT-0037-console-tv-kiosk-style-provisioning.md).
 
+**IT deployment runbook:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md) (sideload, production API URL, auto-start on boot, lockdown, provisioning, smoke tests).
+
 ## Registration
 
 Provisioning matches the PC kiosk flow (see [DRAFT-0023](../../docs/adr/DRAFT-0023-admin-authorized-device-registration.md)):

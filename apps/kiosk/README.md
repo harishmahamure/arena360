@@ -2,6 +2,8 @@
 
 Windows Tauri 2 + React 19 in-cafe kiosk. See [REQUIREMENTS-KIOSK.md](../../docs/REQUIREMENTS-KIOSK.md) and [PLANNER-KIOSK.md](../../docs/PLANNER-KIOSK.md).
 
+**IT deployment runbook:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md) (fleet checklist, lockdown, auto-start, provisioning).
+
 ## Environment
 
 Copy the example env file and point it at your backend (default Axum port is `3000` locally):
@@ -107,6 +109,7 @@ For a hardened station, also apply at the OS level:
 
 **Full roadmap:** [docs/KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)
 (Assigned Access, shell replacement, boot auto-start, auto-restart on close, fleet rollout).
+**IT entry point:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md).
 
 ### Code signing (release)
 

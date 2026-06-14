@@ -1,5 +1,8 @@
 # Windows kiosk deployment — startup, lockdown, and auto-restart
 
+> Part of station deployment — see also [STATION-DEPLOYMENT-GUIDE.md](STATION-DEPLOYMENT-GUIDE.md)
+> for the IT fleet checklist covering PC and Android TV stations.
+>
 > Operator + engineering guide for running Arena360 kiosk as a true station shell on
 > Windows 10/11. Complements [ADR-0020](adr/0020-kiosk-windows-lockdown.md) (in-app
 > lockdown) and [apps/kiosk/README.md](../apps/kiosk/README.md) (installer / updates).

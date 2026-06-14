@@ -120,6 +120,11 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    lint {
+        // AGP/lifecycle lint crash on Kotlin 2.0 + StateFlow (NonNullableMutableLiveDataDetector)
+        disable += "NullSafeMutableLiveData"
+    }
+
     signingConfigs {
         val signing = releaseSigning
         if (signing != null) {
