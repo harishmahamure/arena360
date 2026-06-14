@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { LockdownOverlay } from '../components/LockdownOverlay';
 import { KioskProvider, useKiosk } from '../context/KioskProvider';
+import { useKioskShellGuard } from '../lib/useKioskShellGuard';
 import { AlreadyInSessionPage } from '../pages/AlreadyInSessionPage';
 import { LoginHomePage } from '../pages/LoginHomePage';
 import { RegistrationPage } from '../pages/RegistrationPage';
@@ -13,6 +14,7 @@ import './arena360.css';
 function KioskShell() {
   const { phase } = useKiosk();
   const locked = phase !== 'setup' && phase !== 'loading';
+  useKioskShellGuard(locked);
 
   // Auto-update manager (ADR-0028): only check while idle at the login screen,
   // never during an active session. Loaded lazily so the Tauri updater plugin

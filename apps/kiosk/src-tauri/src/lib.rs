@@ -76,6 +76,7 @@ pub fn run() {
             process::focus_kiosk,
             process::get_tracked_processes,
             process::kill_tracked_processes,
+            process::close_tracked_apps,
             process::clear_tracked_processes,
             boost::set_game_boost_config,
             boost::get_game_boost_config,

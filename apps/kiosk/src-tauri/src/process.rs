@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -36,6 +37,10 @@ struct WatchEntry {
 static TRACKED: Mutex<Vec<WatchEntry>> = Mutex::new(Vec::new());
 static MONITOR_RUNNING: Mutex<bool> = Mutex::new(false);
 static LAST_ALLOWED_HWND: Mutex<Option<isize>> = Mutex::new(None);
+static CLEANUP_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+const MONITOR_INTERVAL_SECS: u64 = 2;
+const CLEANUP_SETTLE_MS: u64 = 250;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -233,6 +238,7 @@ const SESSION_KEEP_EXE: &[&str] = &[
     "registry",
     "smss.exe",
     "conhost.exe",
+    "msedgewebview2.exe",
 ];
 
 pub fn is_session_keep_process(name: &str, kiosk_exe_name: Option<&str>) -> bool {
@@ -243,12 +249,32 @@ pub fn is_session_keep_process(name: &str, kiosk_exe_name: Option<&str>) -> bool
     if SESSION_KEEP_EXE.iter().any(|keep| *keep == lower) {
         return true;
     }
+    if lower.starts_with("arena360-watchdog") {
+        return true;
+    }
     if let Some(kiosk) = kiosk_exe_name {
         if lower == kiosk.to_lowercase() {
             return true;
         }
     }
     false
+}
+
+fn kiosk_install_dir() -> Option<String> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+        .map(|d| normalize_path(&d))
+}
+
+fn stop_monitor_thread() {
+    if let Ok(mut running) = MONITOR_RUNNING.lock() {
+        *running = false;
+    }
+}
+
+fn cleanup_in_progress() -> bool {
+    CLEANUP_IN_PROGRESS.load(Ordering::SeqCst)
 }
 
 fn kill_pid(pid: u32) {
@@ -900,6 +926,7 @@ fn terminate_user_session_apps() -> u32 {
     unsafe {
         let _ = ProcessIdToSessionId(GetCurrentProcessId(), &mut session_id);
     }
+    let install_dir = kiosk_install_dir();
 
     let mut killed = 0u32;
     for pass in 0..3 {
@@ -923,6 +950,13 @@ fn terminate_user_session_apps() -> u32 {
             if is_session_keep_process(&name, kiosk_exe.as_deref()) {
                 continue;
             }
+            if let Some(ref dir) = install_dir {
+                if process.exe().is_some_and(|exe| {
+                    normalize_path(&exe.to_string_lossy()).starts_with(dir)
+                }) {
+                    continue;
+                }
+            }
             targets.push(pid_u32);
         }
         if targets.is_empty() {
@@ -945,6 +979,9 @@ fn terminate_user_session_apps() -> u32 {
 }
 
 fn session_end_cleanup(app: &AppHandle) -> KillResult {
+    CLEANUP_IN_PROGRESS.store(true, Ordering::SeqCst);
+    stop_monitor_thread();
+
     let entries: Vec<WatchEntry> = TRACKED
         .lock()
         .map(|t| t.clone())
@@ -953,6 +990,7 @@ fn session_end_cleanup(app: &AppHandle) -> KillResult {
     if !entries.is_empty() {
         kill_process_trees(&entries);
     }
+    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     killed += terminate_user_session_apps();
     if let Ok(mut tracked) = TRACKED.lock() {
         tracked.clear();
@@ -961,7 +999,38 @@ fn session_end_cleanup(app: &AppHandle) -> KillResult {
         *guard = None;
     }
     crate::boost::restore_game_boost();
+    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     restore_kiosk_window(app);
+    CLEANUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+    KillResult {
+        killed,
+        restored: true,
+    }
+}
+
+fn close_tracked_apps_cleanup(app: &AppHandle) -> KillResult {
+    CLEANUP_IN_PROGRESS.store(true, Ordering::SeqCst);
+    stop_monitor_thread();
+
+    let entries: Vec<WatchEntry> = TRACKED
+        .lock()
+        .map(|t| t.clone())
+        .unwrap_or_default();
+    let killed = all_tree_pids(&entries).len() as u32;
+    if !entries.is_empty() {
+        kill_process_trees(&entries);
+    }
+    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
+    if let Ok(mut tracked) = TRACKED.lock() {
+        tracked.clear();
+    }
+    if let Ok(mut guard) = LAST_ALLOWED_HWND.lock() {
+        *guard = None;
+    }
+    crate::boost::restore_game_boost();
+    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
+    show_kiosk_foreground(app);
+    CLEANUP_IN_PROGRESS.store(false, Ordering::SeqCst);
     KillResult {
         killed,
         restored: true,
@@ -983,6 +1052,24 @@ pub fn recover_minimized_kiosk(app: &AppHandle) {
     }
 }
 
+#[cfg(windows)]
+fn refresh_pids_for_monitor(system: &mut System, tracked: &[WatchEntry]) {
+    let mut pids: Vec<Pid> = tracked
+        .iter()
+        .flat_map(|entry| {
+            std::iter::once(entry.root_pid).chain(entry.descendant_pids.iter().copied())
+        })
+        .map(Pid::from_u32)
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    if pids.is_empty() {
+        refresh_system_processes(system);
+        return;
+    }
+    system.refresh_processes(ProcessesToUpdate::Some(&pids), true);
+}
+
 fn start_monitor_if_needed(app: AppHandle) {
     let mut running = MONITOR_RUNNING.lock().expect("monitor lock");
     if *running {
@@ -991,33 +1078,45 @@ fn start_monitor_if_needed(app: AppHandle) {
     *running = true;
     drop(running);
 
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(1));
-        let is_empty = {
-            let mut tracked = TRACKED.lock().expect("tracked lock");
-            #[cfg(windows)]
-            {
-                let mut system = System::new();
-                refresh_system_processes(&mut system);
-                for entry in tracked.iter_mut() {
-                    refresh_watch_entry(entry, &system);
-                    refresh_entry_window_handle(entry);
+    thread::spawn(move || {
+        #[cfg(windows)]
+        let mut system = System::new();
+        loop {
+            thread::sleep(Duration::from_secs(MONITOR_INTERVAL_SECS));
+            if cleanup_in_progress() {
+                continue;
+            }
+            let is_empty = {
+                let mut tracked = TRACKED.lock().expect("tracked lock");
+                #[cfg(windows)]
+                {
+                    refresh_pids_for_monitor(&mut system, &tracked);
+                    for entry in tracked.iter_mut() {
+                        refresh_watch_entry(entry, &system);
+                        refresh_entry_window_handle(entry);
+                    }
+                    tracked.retain(|entry| entry_has_live_process(entry, &system));
                 }
-                tracked.retain(|entry| entry_has_live_process(entry, &system));
+                #[cfg(not(windows))]
+                {
+                    tracked.retain(|entry| entry_has_live_process(entry));
+                }
+                tracked.is_empty()
+            };
+            if is_empty {
+                if cleanup_in_progress() {
+                    if let Ok(mut running) = MONITOR_RUNNING.lock() {
+                        *running = false;
+                    }
+                    break;
+                }
+                crate::boost::restore_game_boost();
+                restore_kiosk_window(&app);
+                if let Ok(mut running) = MONITOR_RUNNING.lock() {
+                    *running = false;
+                }
+                break;
             }
-            #[cfg(not(windows))]
-            {
-                tracked.retain(|entry| entry_has_live_process(entry));
-            }
-            tracked.is_empty()
-        };
-        if is_empty {
-            crate::boost::restore_game_boost();
-            restore_kiosk_window(&app);
-            if let Ok(mut running) = MONITOR_RUNNING.lock() {
-                *running = false;
-            }
-            break;
         }
     });
 }
@@ -1075,6 +1174,11 @@ pub fn get_tracked_processes() -> Result<Vec<TrackedProcess>, String> {
 #[tauri::command]
 pub fn kill_tracked_processes(app: AppHandle) -> Result<KillResult, String> {
     Ok(session_end_cleanup(&app))
+}
+
+#[tauri::command]
+pub fn close_tracked_apps(app: AppHandle) -> Result<KillResult, String> {
+    Ok(close_tracked_apps_cleanup(&app))
 }
 
 #[tauri::command]
@@ -1149,6 +1253,8 @@ mod tests {
             "Arena360 Kiosk.exe",
             Some("Arena360 Kiosk.exe")
         ));
+        assert!(is_session_keep_process("msedgewebview2.exe", Some("Arena360 Kiosk.exe")));
+        assert!(is_session_keep_process("arena360-watchdog.exe", Some("Arena360 Kiosk.exe")));
         assert!(!is_session_keep_process("discord.exe", Some("Arena360 Kiosk.exe")));
     }
 

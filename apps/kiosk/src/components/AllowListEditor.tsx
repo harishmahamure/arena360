@@ -16,9 +16,13 @@ import {
   mergeScanCandidates,
   normalizeLaunchArguments,
   removeLaunchEntry,
+  saveLaunchEntries,
   tokenizeArguments,
   updateLaunchEntry,
 } from '../lib/allowList';
+import type { GalleryItem } from '../lib/gallery';
+import { refreshGallery } from '../lib/gallery';
+import { applyGalleryMediaToEntries } from '../lib/galleryMatch';
 import {
   applyGameBoostSettings,
   loadGameBoostSettings,
@@ -66,8 +70,31 @@ export function AllowListEditor() {
   const [gameBoostAggressive, setGameBoostAggressive] = useState(
     () => loadGameBoostSettings().aggressive,
   );
+  const galleryItemsRef = useRef<GalleryItem[] | null>(null);
 
   const selected = entries.find((e) => e.id === selectedId) ?? null;
+
+  const matchGalleryForAllowList = useCallback(async (forceGallery = false): Promise<number> => {
+    if (forceGallery) galleryItemsRef.current = null;
+    const cached = galleryItemsRef.current;
+    let items = cached;
+    if (!items) {
+      try {
+        items = await refreshGallery();
+        galleryItemsRef.current = items;
+      } catch {
+        return 0;
+      }
+    }
+    if (items.length === 0) return 0;
+    const current = loadLaunchEntries();
+    const { entries: next, matched } = applyGalleryMediaToEntries(current, items);
+    if (matched > 0) {
+      saveLaunchEntries(next);
+      setEntries(next);
+    }
+    return matched;
+  }, []);
 
   useEffect(() => {
     void syncGameBoostToNative();
@@ -102,11 +129,14 @@ export function AllowListEditor() {
     try {
       const found = await scanInstalledSoftware();
       setCandidates(found);
+      galleryItemsRef.current = null;
       const { added, updated, launchersAdded } = mergeScanCandidates(found);
-      setEntries(loadLaunchEntries());
+      const mediaMatched = await matchGalleryForAllowList(true);
+      if (mediaMatched === 0) setEntries(loadLaunchEntries());
       const parts: string[] = [];
       if (added > 0) parts.push(`Auto-imported ${added} apps (${launchersAdded} launchers)`);
       if (updated > 0) parts.push(`${updated} updated`);
+      if (mediaMatched > 0) parts.push(`Matched gallery media for ${mediaMatched}`);
       if (parts.length > 0) {
         setStatus(parts.join('. '));
       } else if (found.some((c) => c.present && isTrustedScanSource(c.source))) {
@@ -117,7 +147,7 @@ export function AllowListEditor() {
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [matchGalleryForAllowList]);
 
   const initialScanDone = useRef(false);
   useEffect(() => {
@@ -138,6 +168,7 @@ export function AllowListEditor() {
       (e) => e.executablePath.toLowerCase() === c.executablePath.toLowerCase(),
     );
     if (added) setSelectedId(added.id);
+    void matchGalleryForAllowList();
   }
 
   function addManual(e: React.FormEvent) {

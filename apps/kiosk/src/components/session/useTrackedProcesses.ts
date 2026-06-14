@@ -3,8 +3,8 @@ import type { LaunchEntry } from '../../lib/allowList';
 import { loadLaunchEntries } from '../../lib/allowList';
 import { installedEntries } from '../../lib/launch';
 import {
+  closeTrackedApps,
   getTrackedProcesses,
-  killTrackedProcesses,
   type TrackedProcess,
 } from '../../lib/tauriCommands';
 
@@ -110,7 +110,7 @@ export function useTrackedProcesses({ enabled, onError }: UseTrackedProcessesOpt
     if (closing || processes.length === 0) return;
     setClosing(true);
     try {
-      await killTrackedProcesses();
+      await closeTrackedApps();
       setProcesses([]);
     } catch (e) {
       onError?.(e instanceof Error ? e.message : 'Could not close the running app');

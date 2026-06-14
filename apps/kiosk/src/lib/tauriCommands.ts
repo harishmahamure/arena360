@@ -182,6 +182,10 @@ export async function killTrackedProcesses(): Promise<{ killed: number; restored
   return invoke('kill_tracked_processes');
 }
 
+export async function closeTrackedApps(): Promise<{ killed: number; restored: boolean }> {
+  return invoke('close_tracked_apps');
+}
+
 export async function clearTrackedProcesses(): Promise<void> {
   await invoke('clear_tracked_processes');
 }

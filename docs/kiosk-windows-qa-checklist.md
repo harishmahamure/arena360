@@ -28,6 +28,9 @@ Run on a **Windows 10/11** station with Riot Client / Valorant (or Steam) instal
 | 6 | Admin **force-end** while player is in-game | **Immediate** cleanup + login (no 5 min overlay) | |
 | 7 | Login screen after force-end | Optional notice: “Your session was ended by staff.” | |
 | 8 | WS `session.ended` while in game (force-end or auto-end from another path) | Cleanup runs even without poll | |
+| 8a | Launch game → **Close app** from running-apps bar | Kiosk stays running; session HUD remains; can launch again | |
+| 8b | End session / logout with game running | Games closed; **login screen with video or gradient**; kiosk process still running | |
+| 8c | Fresh install with CDN blocked | Login shows bundled `/launch.webm` loop or gradient (not blank) | |
 
 ## Session clock & auto-end (Part 4)
 

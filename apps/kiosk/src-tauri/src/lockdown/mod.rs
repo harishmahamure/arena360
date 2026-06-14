@@ -42,6 +42,7 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
 
     match state {
         LockdownState::Locked => {
+            window.set_closable(false).map_err(|e| e.to_string())?;
             window.set_minimizable(false).map_err(|e| e.to_string())?;
             window.set_maximizable(false).map_err(|e| e.to_string())?;
             if crate::process::has_tracked_processes() {
@@ -57,6 +58,7 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
             foreground::stop_foreground_guard();
             keyboard::remove_hook();
             shell::restore_shell_chrome();
+            window.set_closable(true).map_err(|e| e.to_string())?;
             window.set_minimizable(true).map_err(|e| e.to_string())?;
             window.set_maximizable(true).map_err(|e| e.to_string())?;
             window.set_always_on_top(false).map_err(|e| e.to_string())?;

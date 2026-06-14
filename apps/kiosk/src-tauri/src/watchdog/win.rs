@@ -142,11 +142,15 @@ pub fn watchdog_main_loop(watchdog_exe: PathBuf) -> Result<(), String> {
 
     loop {
         let now = SystemTime::now();
-        let paused = super::is_paused(now).unwrap_or(false);
-        if !paused
-            && !is_kiosk_running_in_dir(&install_dir, &kiosk_exe)
-            && !is_instance_mutex_held()
-        {
+        if super::is_paused(now).unwrap_or(false) {
+            std::thread::sleep(Duration::from_secs(super::POLL_INTERVAL_SECS));
+            continue;
+        }
+        if is_instance_mutex_held() {
+            std::thread::sleep(Duration::from_secs(super::POLL_INTERVAL_SECS));
+            continue;
+        }
+        if !is_kiosk_running_in_dir(&install_dir, &kiosk_exe) {
             let _ = spawn_kiosk(&kiosk_exe);
         }
 

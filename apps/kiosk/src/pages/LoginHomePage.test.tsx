@@ -7,6 +7,13 @@ import { LoginHomePage } from './LoginHomePage';
 const playerLogin = vi.fn();
 const clearLoginNotice = vi.fn();
 const clearError = vi.fn();
+
+const { lockWorkstation, restartStation, shutdownStation } = vi.hoisted(() => ({
+  lockWorkstation: vi.fn(),
+  restartStation: vi.fn(),
+  shutdownStation: vi.fn(),
+}));
+
 let loginNotice: string | null = null;
 let error: string | null = null;
 
@@ -27,6 +34,17 @@ vi.mock('../context/KioskProvider', () => ({
   }),
 }));
 
+vi.mock('../lib/tauriCommands', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/tauriCommands')>();
+  return {
+    ...actual,
+    cachedAssetSrc: vi.fn(async (url: string) => url),
+    lockWorkstation,
+    restartStation,
+    shutdownStation,
+  };
+});
+
 describe('LoginHomePage', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -36,14 +54,24 @@ describe('LoginHomePage', () => {
     vi.useRealTimers();
   });
 
-  it('renders the sign-in form', () => {
+  it('renders the sign-in form and station controls', () => {
     render(<LoginHomePage />);
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/app version/i)).toHaveTextContent(/^v\d/);
-    expect(screen.queryByRole('button', { name: /^lock$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^restart$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^shutdown$/i })).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/station status/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^lock$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^restart$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^shutdown$/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/station controls/i)).toBeInTheDocument();
+  });
+
+  it('requires confirmation before restart', async () => {
+    render(<LoginHomePage />);
+    fireEvent.click(screen.getByRole('button', { name: /^restart$/i }));
+    expect(screen.getByText(/restart this pc now/i)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /yes, restart/i }));
+    });
+    expect(restartStation).toHaveBeenCalledTimes(1);
   });
 
   it('locks the form after too many failures', () => {

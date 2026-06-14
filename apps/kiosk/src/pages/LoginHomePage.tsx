@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
 import { SESSION_EXPIRED_DISMISS_MS, SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
-import { KIOSK_APP_VERSION, KIOSK_LOGO_URL, LOGIN_BACKGROUND_VIDEO_URL } from '../lib/config';
+import {
+  BUNDLED_LOGIN_BACKGROUND_VIDEO,
+  KIOSK_APP_VERSION,
+  KIOSK_LOGO_URL,
+  LOGIN_BACKGROUND_VIDEO_URL,
+} from '../lib/config';
 import {
   clearFailures,
   getLockout,
@@ -13,12 +19,6 @@ import { cachedAssetSrc } from '../lib/tauriCommands';
 function formatRetry(retryAt: number): string {
   const mins = Math.max(1, Math.ceil((retryAt - Date.now()) / 60000));
   return `${mins} minute${mins === 1 ? '' : 's'}`;
-}
-
-function stationStatusLabel(online: boolean, maintenance: boolean): string {
-  if (maintenance) return 'Maintenance';
-  if (!online) return 'Offline';
-  return 'Online';
 }
 
 /**
@@ -45,7 +45,10 @@ export function LoginHomePage() {
   const [busy, setBusy] = useState(false);
   const [lockout, setLockout] = useState(() => getLockout());
   const [staffLockCleared, setStaffLockCleared] = useState(false);
-  const [videoSrc, setVideoSrc] = useState(LOGIN_BACKGROUND_VIDEO_URL);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const videoFallbackIndex = useRef(0);
+
+  const videoFallbacks = useRef<string[]>([]);
 
   useEffect(() => {
     if (!lockout.locked) return;
@@ -74,13 +77,32 @@ export function LoginHomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    void cachedAssetSrc(LOGIN_BACKGROUND_VIDEO_URL).then((src) => {
-      if (!cancelled) setVideoSrc(src);
-    });
+    void (async () => {
+      const cached = await cachedAssetSrc(LOGIN_BACKGROUND_VIDEO_URL);
+      const sources = [cached, BUNDLED_LOGIN_BACKGROUND_VIDEO].filter(
+        (src, index, all) => src && all.indexOf(src) === index,
+      );
+      videoFallbacks.current = sources;
+      videoFallbackIndex.current = 0;
+      if (!cancelled && sources[0]) {
+        setVideoSrc(sources[0]);
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  function onVideoError() {
+    const sources = videoFallbacks.current;
+    const next = videoFallbackIndex.current + 1;
+    if (next < sources.length) {
+      videoFallbackIndex.current = next;
+      setVideoSrc(sources[next] ?? null);
+      return;
+    }
+    setVideoSrc(null);
+  }
 
   const blocked = maintenance || !online || lockout.locked;
 
@@ -116,6 +138,7 @@ export function LoginHomePage() {
             playsInline
             preload="auto"
             onLoadedData={(e) => tryAutoplay(e.currentTarget)}
+            onError={onVideoError}
           />
         </div>
       ) : null}
@@ -231,14 +254,7 @@ export function LoginHomePage() {
           </button>
         </form>
 
-        <section className="station-status-line" aria-label="Station status">
-          <span className="station-status-line-name">{deviceName ?? 'Station'}</span>
-          <span
-            className={`station-status station-status-${stationStatusLabel(online, maintenance).toLowerCase()}`}
-          >
-            {stationStatusLabel(online, maintenance)}
-          </span>
-        </section>
+        <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
 
         {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: version line exposes build label to screen readers */}
         <p className="a360-login-version" aria-label={`App version ${KIOSK_APP_VERSION}`}>
