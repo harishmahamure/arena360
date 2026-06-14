@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
 import { KIOSK_APP_VERSION, KIOSK_LOGO_URL, LOGIN_BACKGROUND_VIDEO_URL } from '../lib/config';
-import { clearFailures, getLockout, recordFailure } from '../lib/loginLockout';
+import { clearFailures, getLockout, recordFailure, resetLoginLockoutByStaff } from '../lib/loginLockout';
 import { cachedAssetSrc } from '../lib/tauriCommands';
 
 function formatRetry(retryAt: number): string {
@@ -14,7 +14,8 @@ function formatRetry(retryAt: number): string {
  * Arena360 cinematic logged-out home: looped background video with radial scrim,
  * centered glass sign-in card, and station controls. All auth logic (lockout,
  * maintenance/offline gating, player login) is preserved. Setup is reached via
- * Ctrl+Shift+A (handled globally in KioskProvider).
+ * Ctrl+Shift+A (handled globally in KioskProvider). Staff can clear login lockout
+ * with Ctrl+Shift+B on this screen.
  */
 export function LoginHomePage() {
   const { playerLogin, error, online, maintenance, deviceName, loginNotice, clearLoginNotice } =
@@ -24,6 +25,7 @@ export function LoginHomePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lockout, setLockout] = useState(() => getLockout());
+  const [staffLockCleared, setStaffLockCleared] = useState(false);
   const [videoSrc, setVideoSrc] = useState(LOGIN_BACKGROUND_VIDEO_URL);
 
   useEffect(() => {
@@ -31,6 +33,19 @@ export function LoginHomePage() {
     const id = setInterval(() => setLockout(getLockout()), 10000);
     return () => clearInterval(id);
   }, [lockout.locked]);
+
+  // Staff-only: clear client login lockout (same hidden shortcut pattern as Ctrl+Shift+A setup).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+        e.preventDefault();
+        setLockout(resetLoginLockoutByStaff());
+        setStaffLockCleared(true);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,7 +175,12 @@ export function LoginHomePage() {
             </div>
           </div>
 
-          {lockout.locked ? (
+          {staffLockCleared && !lockout.locked ? (
+            <div className="maintenance-banner" role="status">
+              <p className="error-headline">Sign-in lock cleared</p>
+              <p className="error-detail">The player can try again now.</p>
+            </div>
+          ) : lockout.locked ? (
             <div className="gz-auth-error" role="alert">
               <p className="error-headline">Too many attempts</p>
               <p className="error-detail">

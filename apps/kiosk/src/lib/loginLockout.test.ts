@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clearFailures, getLockout, MAX_FAILURES, recordFailure } from './loginLockout';
+import { clearFailures, getLockout, MAX_FAILURES, recordFailure, resetLoginLockoutByStaff } from './loginLockout';
 
 describe('loginLockout', () => {
   beforeEach(() => {
@@ -31,6 +31,13 @@ describe('loginLockout', () => {
     recordFailure();
     clearFailures();
     expect(getLockout().remainingAttempts).toBe(MAX_FAILURES);
+  });
+
+  it('resetLoginLockoutByStaff unlocks immediately', () => {
+    for (let i = 0; i < MAX_FAILURES; i++) recordFailure();
+    const state = resetLoginLockoutByStaff();
+    expect(state.locked).toBe(false);
+    expect(getLockout().locked).toBe(false);
   });
 
   it('drops failures older than the window', () => {

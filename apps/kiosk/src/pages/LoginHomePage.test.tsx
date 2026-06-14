@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_FAILURES } from '../lib/loginLockout';
 import { LoginHomePage } from './LoginHomePage';
@@ -40,6 +40,21 @@ describe('LoginHomePage', () => {
     render(<LoginHomePage />);
     expect(screen.getByText(/too many attempts/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeDisabled();
+  });
+
+  it('staff Ctrl+Shift+B clears login lockout', async () => {
+    const failures = Array.from({ length: MAX_FAILURES }, () => Date.now());
+    localStorage.setItem('gaming-cafe.kiosk.login_failures', JSON.stringify(failures));
+    render(<LoginHomePage />);
+    expect(screen.getByText(/too many attempts/i)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.keyDown(window, { ctrlKey: true, shiftKey: true, key: 'B' });
+    });
+
+    expect(screen.queryByText(/too many attempts/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/sign-in lock cleared/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign in/i })).not.toBeDisabled();
   });
 
   it('shows staff force-end notice when present', () => {

@@ -57,3 +57,9 @@ export function recordFailure(now: number = Date.now()): LockoutState {
 export function clearFailures(): void {
   write([]);
 }
+
+/** Staff reset via Ctrl+Shift+B on the login screen. */
+export function resetLoginLockoutByStaff(): LockoutState {
+  clearFailures();
+  return getLockout();
+}
