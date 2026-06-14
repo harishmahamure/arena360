@@ -1,4 +1,5 @@
 import { useSessionRemainingMinutes } from '@gaming-cafe/utils';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { HomeView } from '../components/session/HomeView';
 import { LibraryView } from '../components/session/LibraryView';
@@ -39,6 +40,7 @@ export function SessionPage() {
   const [view, setView] = useState<SessionView>('home');
   const [libraryQuery, setLibraryQuery] = useState('');
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const { loading: endingSession, run: runEndSession } = useAsyncAction();
   const [refreshing, setRefreshing] = useState(false);
   const [graceLeft, setGraceLeft] = useState(0);
   const [offlineLeft, setOfflineLeft] = useState<number | null>(null);
@@ -262,10 +264,25 @@ export function SessionPage() {
           <div className="confirm-end glass-card" role="alertdialog" aria-modal="true">
             <p>End your session now? Unsaved game progress may be lost.</p>
             <div className="confirm-end-actions">
-              <button type="button" className="danger" onClick={() => void endSession('voluntary')}>
-                Yes, end session
+              <button
+                type="button"
+                className="danger"
+                disabled={endingSession}
+                onClick={() => {
+                  void runEndSession(async () => {
+                    await endSession('voluntary');
+                    setConfirmEnd(false);
+                  });
+                }}
+              >
+                {endingSession ? 'Ending…' : 'Yes, end session'}
               </button>
-              <button type="button" className="secondary" onClick={() => setConfirmEnd(false)}>
+              <button
+                type="button"
+                className="secondary"
+                disabled={endingSession}
+                onClick={() => setConfirmEnd(false)}
+              >
                 Keep playing
               </button>
             </div>

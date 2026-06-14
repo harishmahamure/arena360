@@ -1,9 +1,9 @@
 import TvIcon from '@mui/icons-material/Tv';
+import { FormButton } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
-  Button,
-  CircularProgress,
   Paper,
   Typography,
 } from '@mui/material';
@@ -22,23 +22,22 @@ export function ConsoleTvProvisioningCard({
   deviceName,
   registrationStatus,
 }: ConsoleTvProvisioningCardProps) {
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isRegistered = registrationStatus === 'registered';
 
-  const handleSendLogin = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await createSsoToken({ purpose: 'tv_provision', deviceId });
-      setSent(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send TV login');
-    } finally {
-      setLoading(false);
-    }
+  const handleSendLogin = () => {
+    void run(async () => {
+      setError(null);
+      try {
+        await createSsoToken({ purpose: 'tv_provision', deviceId });
+        setSent(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to send TV login');
+      }
+    });
   };
 
   if (isRegistered) {
@@ -74,14 +73,9 @@ export function ConsoleTvProvisioningCard({
           <QRCode value={deviceId} size={120} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 220 }}>
-          <Button
-            variant="contained"
-            onClick={handleSendLogin}
-            disabled={loading}
-            startIcon={loading ? <CircularProgress size={18} color="inherit" /> : undefined}
-          >
+          <FormButton variant="contained" onClick={handleSendLogin} loading={loading}>
             Send TV login
-          </Button>
+          </FormButton>
           {sent && (
             <Alert severity="success" sx={{ mt: 2 }}>
               Token sent to station via WebSocket. The TV should advance automatically.

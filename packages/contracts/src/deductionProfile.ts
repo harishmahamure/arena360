@@ -115,3 +115,65 @@ export function deductionPeriodLabelForNow(
 ): ReturnType<typeof deductionPeriodLabel> {
   return deductionPeriodLabel(currentDeductionRatio(profile, timeZone, now));
 }
+
+export type DeductionPlayPeriod = 'peak' | 'low' | 'normal';
+
+export interface DeductionPlayRow {
+  period: DeductionPlayPeriod;
+  label: string;
+  timeRange: string;
+  ratio: number;
+  walletMinutes: number;
+  wallPlayMinutes: number;
+}
+
+/** Formats `HH:mm` or `HH:mm:ss` as 12-hour local time (e.g. `23:00:00` → `11 PM`). */
+export function formatDeductionTime(value: string): string {
+  const totalMinutes = parseTimeToMinutes(value);
+  const hours24 = Math.floor(totalMinutes / 60) % 24;
+  const minutes = totalMinutes % 60;
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const minutePart = minutes === 0 ? '' : `:${minutes.toString().padStart(2, '0')}`;
+  return `${hours12}${minutePart} ${period}`;
+}
+
+/** Human-readable window label (e.g. `11 PM – 6 AM`). */
+export function formatDeductionTimeRange(start: string, end: string): string {
+  return `${formatDeductionTime(start)} – ${formatDeductionTime(end)}`;
+}
+
+/** Playable wall-clock minutes per deduction period for a wallet balance. */
+export function buildDeductionPlayBreakdown(
+  walletMinutes: number,
+  profile: DeductionProfile,
+): DeductionPlayRow[] {
+  const credits = walletMinutes > 0 ? walletMinutes : 0;
+
+  return [
+    {
+      period: 'low',
+      label: 'Low hours',
+      timeRange: formatDeductionTimeRange(profile.lowWindowStart, profile.lowWindowEnd),
+      ratio: profile.lowRatio,
+      walletMinutes: credits,
+      wallPlayMinutes: credits > 0 ? maxWallMinutes(credits, profile.lowRatio) : 0,
+    },
+    {
+      period: 'normal',
+      label: 'Normal hours',
+      timeRange: 'All other hours',
+      ratio: 1,
+      walletMinutes: credits,
+      wallPlayMinutes: credits,
+    },
+    {
+      period: 'peak',
+      label: 'Peak hours',
+      timeRange: formatDeductionTimeRange(profile.peakWindowStart, profile.peakWindowEnd),
+      ratio: profile.peakRatio,
+      walletMinutes: credits,
+      wallPlayMinutes: credits > 0 ? maxWallMinutes(credits, profile.peakRatio) : 0,
+    },
+  ];
+}

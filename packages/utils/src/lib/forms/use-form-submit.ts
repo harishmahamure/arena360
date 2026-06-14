@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { FieldValues, Path, UseFormReturn } from 'react-hook-form';
 import { isApiError } from '../../http';
 
@@ -28,10 +28,13 @@ export const useFormSubmit = <TFieldValues extends FieldValues>(
 ): UseFormSubmitReturn<TFieldValues> => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
 
   const handleSubmit = useCallback(
     (submitFn: (data: TFieldValues) => Promise<unknown>) => {
       return async (data: TFieldValues) => {
+        if (inFlightRef.current) return;
+        inFlightRef.current = true;
         setIsSubmitting(true);
         setSubmitError(null);
 
@@ -91,6 +94,7 @@ export const useFormSubmit = <TFieldValues extends FieldValues>(
             });
           }
         } finally {
+          inFlightRef.current = false;
           setIsSubmitting(false);
         }
       };
@@ -100,6 +104,7 @@ export const useFormSubmit = <TFieldValues extends FieldValues>(
 
   const reset = useCallback(() => {
     setSubmitError(null);
+    inFlightRef.current = false;
     setIsSubmitting(false);
   }, []);
 

@@ -1,5 +1,5 @@
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
 import { Alert, Chip } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -14,21 +14,24 @@ export default function VendorsPage() {
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
   const { can } = usePermissions();
+  const { loading: actionLoading, run } = useAsyncAction();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['vendors', page],
     queryFn: () => getVendors({ page, limit: 20 }),
   });
 
-  const handleDelete = async (vendor: Vendor) => {
+  const handleDelete = (vendor: Vendor) => {
     if (!confirm(`Delete vendor "${vendor.name}"?`)) return;
-    try {
-      await deleteVendor(vendor.id);
-      toastUtils.success('Vendor deleted');
-      refetch();
-    } catch {
-      toastUtils.error('Failed to delete vendor');
-    }
+    void run(async () => {
+      try {
+        await deleteVendor(vendor.id);
+        toastUtils.success('Vendor deleted');
+        refetch();
+      } catch {
+        toastUtils.error('Failed to delete vendor');
+      }
+    });
   };
 
   const columns: Column<Vendor>[] = [
@@ -84,6 +87,7 @@ export default function VendorsPage() {
             icon: <Delete fontSize="small" />,
             color: 'error' as const,
             onClick: (row: Vendor) => handleDelete(row),
+            disabled: () => actionLoading,
           },
         ]
       : []),

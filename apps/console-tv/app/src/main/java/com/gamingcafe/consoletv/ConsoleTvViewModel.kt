@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 enum class AppPhase {
     LOADING,
@@ -57,6 +58,7 @@ data class ConsoleTvUiState(
     val activeSession: ActiveSessionUi? = null,
     val cecDegraded: Boolean = false,
     val staffToken: String? = null,
+    val isBusy: Boolean = false,
 )
 
 class ConsoleTvViewModel(application: Application) : AndroidViewModel(application) {
@@ -73,6 +75,27 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
     private var clock: SessionClockTicker? = null
     private var tickJob: Job? = null
     private val playedReminders = mutableSetOf<Int>()
+    private val actionInFlight = AtomicBoolean(false)
+
+    private fun setBusy(busy: Boolean) {
+        _uiState.value = _uiState.value.copy(isBusy = busy)
+    }
+
+    private inline fun runIfIdle(block: () -> Unit) {
+        if (!actionInFlight.compareAndSet(false, true)) return
+        setBusy(true)
+        try {
+            block()
+        } catch (_: Exception) {
+            actionInFlight.set(false)
+            setBusy(false)
+        }
+    }
+
+    private fun clearBusy() {
+        actionInFlight.set(false)
+        setBusy(false)
+    }
 
     init {
         bootstrap()
@@ -146,18 +169,22 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
             _uiState.value = _uiState.value.copy(statusMessage = "Device ID required")
             return
         }
-        viewModelScope.launch {
-            try {
-                val pairing = api.devicePairing(deviceId)
-                connectPairingWs(pairing.accessToken, "device:$deviceId")
-                _uiState.value =
-                    _uiState.value.copy(
-                        registerStep = 1,
-                        statusMessage = "Waiting for admin to send TV login…",
-                    )
-            } catch (error: Exception) {
-                _uiState.value =
-                    _uiState.value.copy(statusMessage = "Pairing failed: ${error.message}")
+        runIfIdle {
+            viewModelScope.launch {
+                try {
+                    val pairing = api.devicePairing(deviceId)
+                    connectPairingWs(pairing.accessToken, "device:$deviceId")
+                    _uiState.value =
+                        _uiState.value.copy(
+                            registerStep = 1,
+                            statusMessage = "Waiting for admin to send TV login…",
+                        )
+                } catch (error: Exception) {
+                    _uiState.value =
+                        _uiState.value.copy(statusMessage = "Pairing failed: ${error.message}")
+                } finally {
+                    clearBusy()
+                }
             }
         }
     }
@@ -165,49 +192,57 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
     fun provisionDevice() {
         val staffToken = _uiState.value.staffToken ?: return
         val form = _uiState.value.registerForm
-        viewModelScope.launch {
-            try {
-                val fingerprint =
-                    DeviceFingerprint(
-                        mac = "android-tv",
-                        serial = Build.SERIAL.ifBlank { UUID.randomUUID().toString() },
-                        biosUuid = UUID.randomUUID().toString(),
-                        platform = "AndroidTV",
-                        collectedAt = Instant.now().toString(),
-                    )
-                val response =
-                    api.provision(
-                        staffToken,
-                        ProvisionRequest(
-                            fingerprint = fingerprint,
-                            name = form.name,
-                            deviceType = form.deviceType,
-                            deviceSubType = form.deviceSubType,
-                            location = form.location.ifBlank { null },
-                            serialNumber = fingerprint.serial,
-                        ),
-                    )
-                tokenStore.deviceToken = response.accessToken
-                tokenStore.deviceId = response.device.id
-                tokenStore.deviceName = response.device.name
-                tokenStore.deviceType = response.device.deviceType
-                _uiState.value = _uiState.value.copy(staffToken = null)
-                enterKioskOrSession(response.accessToken)
-            } catch (error: Exception) {
-                _uiState.value =
-                    _uiState.value.copy(statusMessage = "Provision failed: ${error.message}")
+        runIfIdle {
+            viewModelScope.launch {
+                try {
+                    val fingerprint =
+                        DeviceFingerprint(
+                            mac = "android-tv",
+                            serial = Build.SERIAL.ifBlank { UUID.randomUUID().toString() },
+                            biosUuid = UUID.randomUUID().toString(),
+                            platform = "AndroidTV",
+                            collectedAt = Instant.now().toString(),
+                        )
+                    val response =
+                        api.provision(
+                            staffToken,
+                            ProvisionRequest(
+                                fingerprint = fingerprint,
+                                name = form.name,
+                                deviceType = form.deviceType,
+                                deviceSubType = form.deviceSubType,
+                                location = form.location.ifBlank { null },
+                                serialNumber = fingerprint.serial,
+                            ),
+                        )
+                    tokenStore.deviceToken = response.accessToken
+                    tokenStore.deviceId = response.device.id
+                    tokenStore.deviceName = response.device.name
+                    tokenStore.deviceType = response.device.deviceType
+                    _uiState.value = _uiState.value.copy(staffToken = null)
+                    enterKioskOrSession(response.accessToken)
+                } catch (error: Exception) {
+                    _uiState.value =
+                        _uiState.value.copy(statusMessage = "Provision failed: ${error.message}")
+                } finally {
+                    clearBusy()
+                }
             }
         }
     }
 
     fun handleDeepLinkSsoToken(token: String) {
-        viewModelScope.launch {
-            try {
-                val auth = api.redeemSsoToken(token)
-                onStaffAuthenticated(auth.accessToken)
-            } catch (error: Exception) {
-                _uiState.value =
-                    _uiState.value.copy(statusMessage = "SSO redeem failed: ${error.message}")
+        runIfIdle {
+            viewModelScope.launch {
+                try {
+                    val auth = api.redeemSsoToken(token)
+                    onStaffAuthenticated(auth.accessToken)
+                } catch (error: Exception) {
+                    _uiState.value =
+                        _uiState.value.copy(statusMessage = "SSO redeem failed: ${error.message}")
+                } finally {
+                    clearBusy()
+                }
             }
         }
     }

@@ -55,6 +55,7 @@ export function AllowListEditor() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ScanCandidate[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [launchingId, setLaunchingId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [manualName, setManualName] = useState('');
   const [manualPath, setManualPath] = useState('');
@@ -178,6 +179,8 @@ export function AllowListEditor() {
   }
 
   async function testLaunch(entry: LaunchEntry) {
+    if (launchingId) return;
+    setLaunchingId(entry.id);
     setStatus(null);
     try {
       const { launchEntry } = await import('../lib/launch');
@@ -185,6 +188,8 @@ export function AllowListEditor() {
       setStatus(`Launched ${entry.name}`);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : `Could not launch ${entry.name}`);
+    } finally {
+      setLaunchingId(null);
     }
   }
 
@@ -377,14 +382,15 @@ export function AllowListEditor() {
                   type="button"
                   className="secondary"
                   disabled={
-                    selected.launchVia
+                    launchingId !== null ||
+                    (selected.launchVia
                       ? !selected.launchVia.executablePath.trim() ||
                         !(normalizeLaunchArguments(selected.launchVia.arguments)?.length ?? 0)
-                      : false
+                      : false)
                   }
                   onClick={() => void testLaunch(selected)}
                 >
-                  Test launch
+                  {launchingId === selected.id ? 'Launching…' : 'Test launch'}
                 </button>
               </div>
             </header>

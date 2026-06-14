@@ -1,4 +1,5 @@
-import { FormPage } from '@gaming-cafe/ui';
+import { FormButton, FormPage } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { Alert, Button, MenuItem, Stack, TextField } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +13,7 @@ import { getVendors, type Vendor } from '../../../services/vendors';
 export default function ExpenseNewPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | undefined>();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
 
@@ -28,7 +29,7 @@ export default function ExpenseNewPage() {
     getVendors({ limit: 100 }).then((res) => setVendors(res.data));
   }, []);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     setError(undefined);
     if (!categoryId) {
       setError('Please select a category');
@@ -39,22 +40,21 @@ export default function ExpenseNewPage() {
       return;
     }
 
-    setLoading(true);
-    try {
-      await createExpense({
-        categoryId,
-        vendorId: vendorId || undefined,
-        amount: Number(amount),
-        paymentMethod,
-        expenseDate: new Date(expenseDate).toISOString(),
-        description: description || undefined,
-      });
-      navigate('/expenses');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create expense');
-    } finally {
-      setLoading(false);
-    }
+    void run(async () => {
+      try {
+        await createExpense({
+          categoryId,
+          vendorId: vendorId || undefined,
+          amount: Number(amount),
+          paymentMethod,
+          expenseDate: new Date(expenseDate).toISOString(),
+          description: description || undefined,
+        });
+        navigate('/expenses');
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to create expense');
+      }
+    });
   };
 
   return (
@@ -150,9 +150,9 @@ export default function ExpenseNewPage() {
         />
 
         <Stack direction="row" spacing={2}>
-          <Button variant="contained" onClick={handleSubmit} disabled={loading} fullWidth>
-            {loading ? 'Creating...' : 'Create Expense'}
-          </Button>
+          <FormButton variant="contained" onClick={handleSubmit} loading={loading} fullWidth>
+            Create Expense
+          </FormButton>
           <Button
             variant="outlined"
             onClick={() => navigate('/expenses')}

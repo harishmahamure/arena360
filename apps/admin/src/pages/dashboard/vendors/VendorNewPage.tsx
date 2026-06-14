@@ -1,4 +1,5 @@
-import { FormPage } from '@gaming-cafe/ui';
+import { FormButton, FormPage } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -16,7 +17,7 @@ import { createVendor } from '../../../services/vendors';
 export default function VendorNewPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | undefined>();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
 
   const [name, setName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
@@ -26,30 +27,29 @@ export default function VendorNewPage() {
   const [gstNumber, setGstNumber] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     setError(undefined);
     if (!name.trim()) {
       setError('Name is required');
       return;
     }
 
-    setLoading(true);
-    try {
-      await createVendor({
-        name: name.trim(),
-        contactPerson: contactPerson || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
-        address: address || undefined,
-        gstNumber: gstNumber || undefined,
-        isActive,
-      });
-      navigate('/vendors');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create vendor');
-    } finally {
-      setLoading(false);
-    }
+    void run(async () => {
+      try {
+        await createVendor({
+          name: name.trim(),
+          contactPerson: contactPerson || undefined,
+          phone: phone || undefined,
+          email: email || undefined,
+          address: address || undefined,
+          gstNumber: gstNumber || undefined,
+          isActive,
+        });
+        navigate('/vendors');
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to create vendor');
+      }
+    });
   };
 
   return (
@@ -125,9 +125,9 @@ export default function VendorNewPage() {
         </Box>
 
         <Stack direction="row" spacing={2}>
-          <Button variant="contained" onClick={handleSubmit} disabled={loading} fullWidth>
-            {loading ? 'Creating...' : 'Create Vendor'}
-          </Button>
+          <FormButton variant="contained" onClick={handleSubmit} loading={loading} fullWidth>
+            Create Vendor
+          </FormButton>
           <Button
             variant="outlined"
             onClick={() => navigate('/vendors')}

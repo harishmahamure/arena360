@@ -1,6 +1,6 @@
 import { permissionsForRole } from '@gaming-cafe/contracts';
 import { FormButton, FormTextField } from '@gaming-cafe/ui';
-import { local, toastUtils } from '@gaming-cafe/utils';
+import { local, toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -64,7 +64,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [expectedClosing, setExpectedClosing] = useState(0);
   const [closingBalance, setClosingBalance] = useState('');
   const [closingDenominations, setClosingDenominations] = useState<Record<string, number>>({});
@@ -154,77 +154,76 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
     </Grid>
   );
 
-  const completeHandover = async () => {
-    setLoading(true);
-    try {
-      const depositInput =
-        includeDeposit && depositAmount > 0
-          ? {
-              amount: depositAmount,
-              denominations: depositDenominations,
-              notes: depositNotes || undefined,
-            }
-          : undefined;
+  const completeHandover = () => {
+    void run(async () => {
+      try {
+        const depositInput =
+          includeDeposit && depositAmount > 0
+            ? {
+                amount: depositAmount,
+                denominations: depositDenominations,
+                notes: depositNotes || undefined,
+              }
+            : undefined;
 
-      if (mode === 'close') {
-        await closeShift({
-          closingBalance: closingAmount,
-          closingDenominations:
-            Object.keys(closingDenominations).length > 0 ? closingDenominations : undefined,
-          notes: notes || undefined,
-          deposit: depositInput,
-        });
+        if (mode === 'close') {
+          await closeShift({
+            closingBalance: closingAmount,
+            closingDenominations:
+              Object.keys(closingDenominations).length > 0 ? closingDenominations : undefined,
+            notes: notes || undefined,
+            deposit: depositInput,
+          });
 
-        local.remove('accessToken');
-        dispatch({ type: 'Reset' });
-        toastUtils.success('Shift closed successfully');
-        handleClose();
-        navigate('/login');
-      } else {
-        const response = await handoverShift({
-          closingBalance: closingAmount,
-          closingDenominations:
-            Object.keys(closingDenominations).length > 0 ? closingDenominations : undefined,
-          notes: notes || undefined,
-          validatorUsername,
-          validatorPassword,
-          validatorTotp,
-          deposit: depositInput,
-        });
+          local.remove('accessToken');
+          dispatch({ type: 'Reset' });
+          toastUtils.success('Shift closed successfully');
+          handleClose();
+          navigate('/login');
+        } else {
+          const response = await handoverShift({
+            closingBalance: closingAmount,
+            closingDenominations:
+              Object.keys(closingDenominations).length > 0 ? closingDenominations : undefined,
+            notes: notes || undefined,
+            validatorUsername,
+            validatorPassword,
+            validatorTotp,
+            deposit: depositInput,
+          });
 
-        local.set('accessToken', response.newAccessToken);
-        dispatch({
-          type: 'SetAuthDetail',
-          payload: {
-            id: response.newUser.id,
-            email: response.newUser.email ?? '',
-            username: response.newUser.username,
-            firstName: response.newUser.firstName ?? '',
-            lastName: response.newUser.lastName ?? '',
-            role: response.newUser.role,
-            isActive: response.newUser.isActive,
-          },
-        });
+          local.set('accessToken', response.newAccessToken);
+          dispatch({
+            type: 'SetAuthDetail',
+            payload: {
+              id: response.newUser.id,
+              email: response.newUser.email ?? '',
+              username: response.newUser.username,
+              firstName: response.newUser.firstName ?? '',
+              lastName: response.newUser.lastName ?? '',
+              role: response.newUser.role,
+              isActive: response.newUser.isActive,
+            },
+          });
 
-        toastUtils.success('Shift handover completed');
-        handleClose();
-        void queryClient.invalidateQueries({ queryKey: ['activeShift'] });
-        void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
-        void queryClient.invalidateQueries({ queryKey: ['shifts'] });
-        void queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
-        const permissions = permissionsForRole(response.newUser.role);
-        const can = (permission: Permission) => permissions.includes(permission);
-        navigate(getDefaultHomePath(can));
+          toastUtils.success('Shift handover completed');
+          handleClose();
+          void queryClient.invalidateQueries({ queryKey: ['activeShift'] });
+          void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
+          void queryClient.invalidateQueries({ queryKey: ['shifts'] });
+          void queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
+          const permissions = permissionsForRole(response.newUser.role);
+          const can = (permission: Permission) => permissions.includes(permission);
+          navigate(getDefaultHomePath(can));
+        }
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : `Shift ${mode === 'close' ? 'close' : 'handover'} failed`;
+        toastUtils.error(message);
       }
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : `Shift ${mode === 'close' ? 'close' : 'handover'} failed`;
-      toastUtils.error(message);
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   return (

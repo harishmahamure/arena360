@@ -5,6 +5,8 @@ import {
   Remove as RemoveIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
+import { FormButton } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -84,11 +86,13 @@ function PosProductCard({
   cartQuantity,
   nightActive,
   onAdd,
+  disabled = false,
 }: {
   product: Product;
   cartQuantity: number;
   nightActive: boolean;
   onAdd: (product: Product) => void;
+  disabled?: boolean;
 }) {
   const inCart = cartQuantity > 0;
   const outOfStock = product.stockQuantity <= 0;
@@ -98,8 +102,8 @@ function PosProductCard({
       variant="outlined"
       sx={{
         height: '100%',
-        opacity: outOfStock ? 0.5 : 1,
-        pointerEvents: outOfStock ? 'none' : 'auto',
+        opacity: outOfStock || disabled ? 0.5 : 1,
+        pointerEvents: outOfStock || disabled ? 'none' : 'auto',
         borderColor: inCart ? 'primary.main' : 'divider',
         borderWidth: inCart ? 2 : 1,
         bgcolor: inCart ? 'action.selected' : 'background.paper',
@@ -162,7 +166,7 @@ export default function CreateProductTransactionPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
-  const [loading, setLoading] = useState(false);
+  const { loading: submitting, run } = useAsyncAction();
 
   const [selectedPlayer, setSelectedPlayer] = useState<PosPlayer | null>(null);
   const [productSearch, setProductSearch] = useState('');
@@ -288,7 +292,7 @@ export default function CreateProductTransactionPage() {
     return total > s.available + 0.001;
   }, [isCredit, creditDetail, total]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     setError(undefined);
     setSuccess(undefined);
 
@@ -317,52 +321,50 @@ export default function CreateProductTransactionPage() {
       return;
     }
 
-    setLoading(true);
+    void run(async () => {
+      try {
+        const response = await addTransaction({
+          playerId: selectedPlayer.id,
+          saleLocationId,
+          transactionType: TransactionType.PRODUCT_PURCHASE,
+          amount: total,
+          paymentStatus:
+            paymentMethod === PaymentMethodValues.CREDIT
+              ? PaymentStatus.CREDIT
+              : PaymentStatus.COMPLETED,
+          paymentMethod: paymentMethod as PaymentMethodType,
+          cashAmount:
+            paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+              ? parseFloat(cashAmount)
+              : paymentMethod === PaymentMethodValues.CASH
+                ? total
+                : undefined,
+          onlineAmount:
+            paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+              ? parseFloat(onlineAmount)
+              : paymentMethod === PaymentMethodValues.ONLINE
+                ? total
+                : undefined,
+          notes: notes || undefined,
+          lineItems: cart.map((item) => ({
+            productId: item.id,
+            quantity: item.quantity,
+            unitPrice: item.effectivePrice,
+          })),
+        });
 
-    try {
-      const response = await addTransaction({
-        playerId: selectedPlayer.id,
-        saleLocationId,
-        transactionType: TransactionType.PRODUCT_PURCHASE,
-        amount: total,
-        paymentStatus:
-          paymentMethod === PaymentMethodValues.CREDIT
-            ? PaymentStatus.CREDIT
-            : PaymentStatus.COMPLETED,
-        paymentMethod: paymentMethod as PaymentMethodType,
-        cashAmount:
-          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
-            ? parseFloat(cashAmount)
-            : paymentMethod === PaymentMethodValues.CASH
-              ? total
-              : undefined,
-        onlineAmount:
-          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
-            ? parseFloat(onlineAmount)
-            : paymentMethod === PaymentMethodValues.ONLINE
-              ? total
-              : undefined,
-        notes: notes || undefined,
-        lineItems: cart.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity,
-          unitPrice: item.effectivePrice,
-        })),
-      });
-
-      if (response.paymentStatus === PaymentStatus.COMPLETED) {
-        setSuccess('Transaction created successfully!');
-        setTimeout(() => {
-          navigate('/product-transactions');
-        }, 1500);
-      } else {
-        setError('Transaction was created but payment is not completed.');
+        if (response.paymentStatus === PaymentStatus.COMPLETED) {
+          setSuccess('Transaction created successfully!');
+          setTimeout(() => {
+            navigate('/product-transactions');
+          }, 1500);
+        } else {
+          setError('Transaction was created but payment is not completed.');
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to create transaction');
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create transaction');
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const handleCancel = () => {
@@ -391,7 +393,11 @@ export default function CreateProductTransactionPage() {
 
   const catalog = (
     <>
-      <PosPlayerPicker value={selectedPlayer} onChange={setSelectedPlayer} />
+      <PosPlayerPicker
+        value={selectedPlayer}
+        onChange={setSelectedPlayer}
+        disabled={submitting}
+      />
 
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
         Products
@@ -402,6 +408,7 @@ export default function CreateProductTransactionPage() {
         onChange={(e) => setProductSearch(e.target.value)}
         fullWidth
         size="small"
+        disabled={submitting}
         sx={{ mb: 2 }}
         helperText="Filter the product grid by name"
         InputProps={{
@@ -430,6 +437,7 @@ export default function CreateProductTransactionPage() {
                 cartQuantity={cartQtyByProduct.get(product.id) ?? 0}
                 nightActive={nightActive}
                 onAdd={addToCart}
+                disabled={submitting}
               />
             </Grid>
           ))}
@@ -493,7 +501,12 @@ export default function CreateProductTransactionPage() {
                         ₹{item.effectivePrice.toFixed(2)} each
                       </Typography>
                     </Box>
-                    <IconButton size="small" onClick={() => removeFromCart(item.id)} color="error">
+                    <IconButton
+                      size="small"
+                      onClick={() => removeFromCart(item.id)}
+                      color="error"
+                      disabled={submitting}
+                    >
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Box>
@@ -508,6 +521,7 @@ export default function CreateProductTransactionPage() {
                       <IconButton
                         size="small"
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        disabled={submitting}
                       >
                         <RemoveIcon fontSize="small" />
                       </IconButton>
@@ -520,12 +534,13 @@ export default function CreateProductTransactionPage() {
                         type="number"
                         sx={{ width: 60, mx: 1 }}
                         size="small"
+                        disabled={submitting}
                         inputProps={{ min: 1, max: item.stockQuantity }}
                       />
                       <IconButton
                         size="small"
                         onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        disabled={item.quantity >= item.stockQuantity}
+                        disabled={submitting || item.quantity >= item.stockQuantity}
                       >
                         <AddIcon fontSize="small" />
                       </IconButton>
@@ -556,7 +571,11 @@ export default function CreateProductTransactionPage() {
             Payment
           </Typography>
 
-          <PosPaymentTiles value={paymentMethod} onChange={setPaymentMethod} />
+          <PosPaymentTiles
+            value={paymentMethod}
+            onChange={setPaymentMethod}
+            disabled={submitting}
+          />
 
           <CreditEligibilityAlert
             playerId={selectedPlayer?.id}
@@ -580,28 +599,30 @@ export default function CreateProductTransactionPage() {
             fullWidth
             multiline
             rows={2}
+            disabled={submitting}
             placeholder="Add any notes about this transaction..."
             helperText="Optional staff note stored on the transaction (max 500 chars)"
             sx={{ mb: 3 }}
           />
 
           <Stack spacing={2}>
-            <Button
+            <FormButton
               variant="contained"
               size="large"
               fullWidth
               onClick={handleSubmit}
-              disabled={loading || !selectedPlayer || cart.length === 0 || creditBlocked}
+              loading={submitting}
+              disabled={!selectedPlayer || cart.length === 0 || creditBlocked}
               sx={{ minHeight: 44 }}
             >
-              {loading ? 'Processing...' : 'Complete sale'}
-            </Button>
+              Complete sale
+            </FormButton>
             <Button
               variant="outlined"
               size="large"
               fullWidth
               onClick={handleCancel}
-              disabled={loading}
+              disabled={submitting}
               sx={{ minHeight: 44 }}
             >
               Cancel

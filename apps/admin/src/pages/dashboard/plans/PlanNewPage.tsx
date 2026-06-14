@@ -1,5 +1,6 @@
 import type { DeductionProfile, PlanTypeValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -224,53 +225,53 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = [
 
 export default function AddNewPlanPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
 
   const handleSubmit = async (data: CreatePlanFormData) => {
-    setLoading(true);
     setError(undefined);
     setSuccess(undefined);
 
     if (!data.name || !data.price || !data.planType) {
       setError('Name, price, and plan type are required');
-      setLoading(false);
       return;
     }
 
-    try {
-      const payload: CreatePlanPayload = {
-        name: data.name,
-        description: data.description || '',
-        price: data.price,
-        planType: data.planType as PlanTypeValue,
-        validityDays: data.validityDays || 7,
-        timeCredits: data.timeCredits,
-        isActive: data.isActive ?? true,
-        deviceType: data.deviceType || undefined,
-        deviceSubType: data.deviceSubType || undefined,
-      };
+    const { name, price, planType } = data;
 
-      if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
-      if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
-      if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
-      if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
-      payload.dynamicDeductionEnabled = data.dynamicDeductionEnabled ?? false;
-      const deductionProfile = buildDeductionProfile(data);
-      if (deductionProfile) payload.deductionProfile = deductionProfile;
+    await run(async () => {
+      try {
+        const payload: CreatePlanPayload = {
+          name,
+          description: data.description || '',
+          price,
+          planType: planType as PlanTypeValue,
+          validityDays: data.validityDays || 7,
+          timeCredits: data.timeCredits,
+          isActive: data.isActive ?? true,
+          deviceType: data.deviceType || undefined,
+          deviceSubType: data.deviceSubType || undefined,
+        };
 
-      await addPlan(payload);
+        if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
+        if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
+        if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
+        if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
+        payload.dynamicDeductionEnabled = data.dynamicDeductionEnabled ?? false;
+        const deductionProfile = buildDeductionProfile(data);
+        if (deductionProfile) payload.deductionProfile = deductionProfile;
 
-      setSuccess('Plan created successfully!');
-      setTimeout(() => {
-        navigate('/plans');
-      }, 1500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create plan');
-    } finally {
-      setLoading(false);
-    }
+        await addPlan(payload);
+
+        setSuccess('Plan created successfully!');
+        setTimeout(() => {
+          navigate('/plans');
+        }, 1500);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create plan');
+      }
+    });
   };
 
   const handleCancel = () => {

@@ -5,9 +5,10 @@ export interface PlanSaleCardProps {
   plan: PlanResponse;
   selected: boolean;
   onSelect: (plan: PlanResponse) => void;
+  disabled?: boolean;
 }
 
-export function PlanSaleCard({ plan, selected, onSelect }: PlanSaleCardProps) {
+export function PlanSaleCard({ plan, selected, onSelect, disabled = false }: PlanSaleCardProps) {
   return (
     <Card
       variant="outlined"
@@ -19,6 +20,7 @@ export function PlanSaleCard({ plan, selected, onSelect }: PlanSaleCardProps) {
       }}
     >
       <CardActionArea
+        disabled={disabled}
         onClick={() => onSelect(plan)}
         sx={{ minHeight: 44, height: '100%', alignItems: 'stretch' }}
       >

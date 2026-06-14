@@ -1,4 +1,5 @@
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -68,7 +69,7 @@ const basePlayerFormFields: FieldConfig<CreatePlayerFormData>[] = [
 export default function AddNewPlayerPage() {
   const navigate = useNavigate();
   const { isAdmin } = usePermissions();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
 
@@ -91,36 +92,33 @@ export default function AddNewPlayerPage() {
   }, [isAdmin]);
 
   const handleSubmit = async (data: CreatePlayerFormData) => {
-    setLoading(true);
     setError(undefined);
     setSuccess(undefined);
 
     if (!data.username || !data.password || !data.phoneNumber) {
       setError('Username, phone number, and password are required');
-      setLoading(false);
       return;
     }
 
-    try {
-      await addPlayer({
-        username: data.username,
-        password: data.password,
-        phoneNumber: data.phoneNumber,
-        firstName: data.firstName || undefined,
-        lastName: data.lastName || undefined,
-        role: isAdmin ? data.role : 'player',
-      });
+    await run(async () => {
+      try {
+        await addPlayer({
+          username: data.username,
+          password: data.password,
+          phoneNumber: data.phoneNumber,
+          firstName: data.firstName || undefined,
+          lastName: data.lastName || undefined,
+          role: isAdmin ? data.role : 'player',
+        });
 
-      setSuccess('Player created successfully!');
-
-      setTimeout(() => {
-        navigate('/players');
-      }, 1500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create player');
-    } finally {
-      setLoading(false);
-    }
+        setSuccess('Player created successfully!');
+        setTimeout(() => {
+          navigate('/players');
+        }, 1500);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create player');
+      }
+    });
   };
 
   const handleCancel = () => {

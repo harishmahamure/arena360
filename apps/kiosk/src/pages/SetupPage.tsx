@@ -1,3 +1,4 @@
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
 import { useKiosk } from '../context/KioskProvider';
@@ -13,6 +14,7 @@ export function SetupPage() {
   const [sessionOtpId, setSessionOtpId] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { loading: setupActionLoading, run: runSetupAction } = useAsyncAction();
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -67,10 +69,20 @@ export function SetupPage() {
           </p>
           <AllowListEditor />
           <div className="setup-actions">
-            <button type="button" className="secondary" onClick={() => void exitSetup()}>
-              Done — re-lock
+            <button
+              type="button"
+              className="secondary"
+              disabled={setupActionLoading}
+              onClick={() => void runSetupAction(() => exitSetup())}
+            >
+              {setupActionLoading ? 'Locking…' : 'Done — re-lock'}
             </button>
-            <button type="button" className="link danger" onClick={() => void factoryReset()}>
+            <button
+              type="button"
+              className="link danger"
+              disabled={setupActionLoading}
+              onClick={() => void runSetupAction(() => factoryReset())}
+            >
               Factory reset
             </button>
           </div>
@@ -114,7 +126,12 @@ export function SetupPage() {
               <button type="submit" disabled={busy}>
                 {busy ? 'Sending…' : 'Send OTP'}
               </button>
-              <button type="button" className="secondary" onClick={() => void exitSetup()}>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || setupActionLoading}
+                onClick={() => void runSetupAction(() => exitSetup())}
+              >
                 Cancel
               </button>
             </div>

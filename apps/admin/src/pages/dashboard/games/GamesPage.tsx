@@ -1,5 +1,5 @@
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
 import { Avatar, Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -19,6 +19,8 @@ export default function GamesPage() {
   const navigate = useNavigate();
   const { can } = usePermissions();
   const canWrite = can(Permission.GamesWrite);
+
+  const { loading: actionLoading, run } = useAsyncAction();
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -51,16 +53,18 @@ export default function GamesPage() {
   }, [debouncedSetSearch]);
 
   const handleDelete = useCallback(
-    async (id: string) => {
-      try {
-        await deleteGame(id);
-        toastUtils.success('Game removed');
-        refetch();
-      } catch {
-        toastUtils.error('Failed to remove game');
-      }
+    (id: string) => {
+      void run(async () => {
+        try {
+          await deleteGame(id);
+          toastUtils.success('Game removed');
+          refetch();
+        } catch {
+          toastUtils.error('Failed to remove game');
+        }
+      });
     },
-    [refetch],
+    [refetch, run],
   );
 
   const columns: Column<GameResponse>[] = [
@@ -109,6 +113,7 @@ export default function GamesPage() {
       icon: <Delete color="error" />,
       label: 'Remove Game',
       onClick: (row) => handleDelete(row.id),
+      disabled: () => actionLoading,
     },
   ];
 

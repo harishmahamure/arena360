@@ -1,6 +1,6 @@
 import type { UserRole } from '@gaming-cafe/contracts';
-import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { type Action, type Column, FormButton, ListPage } from '@gaming-cafe/ui';
+import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Block, CheckCircle, Delete, Edit } from '@mui/icons-material';
 import {
   Avatar,
@@ -69,6 +69,7 @@ export default function PlayersPage() {
     username: string;
     action: 'deactivate' | 'delete';
   } | null>(null);
+  const { loading: actionLoading, run } = useAsyncAction();
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page')) || 1;
   const roleFilter = searchParams.get('role') as UserRole | null;
@@ -187,30 +188,19 @@ export default function PlayersPage() {
     },
   ];
 
-  const handleDeactivatePlayer = useCallback(
-    async (id: string) => {
-      try {
-        await deletePlayer(id);
-        toastUtils.success('Player deactivated successfully');
-        refetch();
-      } catch (_error) {
-        toastUtils.error('Failed to deactivate player');
-      }
-    },
-    [refetch],
-  );
-
   const handleToggleActive = useCallback(
-    async (id: string, currentStatus: boolean) => {
-      try {
-        await updatePlayer(id, { isActive: !currentStatus });
-        toastUtils.success(`Player ${currentStatus ? 'deactivated' : 'activated'} successfully`);
-        refetch();
-      } catch (_error) {
-        toastUtils.error('Failed to update player status');
-      }
+    (id: string, currentStatus: boolean) => {
+      void run(async () => {
+        try {
+          await updatePlayer(id, { isActive: !currentStatus });
+          toastUtils.success(`Player ${currentStatus ? 'deactivated' : 'activated'} successfully`);
+          refetch();
+        } catch (_error) {
+          toastUtils.error('Failed to update player status');
+        }
+      });
     },
-    [refetch],
+    [refetch, run],
   );
 
   const actions: Action<PlayerResponse>[] = [
@@ -224,6 +214,7 @@ export default function PlayersPage() {
       label: 'Activate',
       onClick: (row) => handleToggleActive(row.id, row.isActive),
       show: (row) => !row.isActive,
+      disabled: () => actionLoading,
     },
     {
       icon: <Block color="warning" />,
@@ -235,6 +226,7 @@ export default function PlayersPage() {
           action: 'deactivate',
         }),
       show: (row) => row.isActive,
+      disabled: () => actionLoading,
     },
     {
       icon: <Delete color="error" />,
@@ -245,6 +237,7 @@ export default function PlayersPage() {
           username: row.username,
           action: 'delete',
         }),
+      disabled: () => actionLoading,
     },
   ];
 
@@ -276,7 +269,7 @@ export default function PlayersPage() {
         }}
       />
 
-      <Dialog open={confirmTarget !== null} onClose={() => setConfirmTarget(null)}>
+      <Dialog open={confirmTarget !== null} onClose={() => !actionLoading && setConfirmTarget(null)}>
         <DialogTitle>
           {confirmTarget?.action === 'delete' ? 'Deactivate player?' : 'Deactivate account?'}
         </DialogTitle>
@@ -288,22 +281,39 @@ export default function PlayersPage() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmTarget(null)}>Cancel</Button>
-          <Button
+          <Button onClick={() => setConfirmTarget(null)} disabled={actionLoading}>
+            Cancel
+          </Button>
+          <FormButton
             color="error"
             variant="contained"
-            onClick={async () => {
+            loading={actionLoading}
+            onClick={() => {
               if (!confirmTarget) return;
-              if (confirmTarget.action === 'delete') {
-                await handleDeactivatePlayer(confirmTarget.id);
-              } else {
-                await handleToggleActive(confirmTarget.id, true);
-              }
-              setConfirmTarget(null);
+              void run(async () => {
+                if (confirmTarget.action === 'delete') {
+                  try {
+                    await deletePlayer(confirmTarget.id);
+                    toastUtils.success('Player deactivated successfully');
+                    refetch();
+                  } catch {
+                    toastUtils.error('Failed to deactivate player');
+                  }
+                } else {
+                  try {
+                    await updatePlayer(confirmTarget.id, { isActive: false });
+                    toastUtils.success('Player deactivated successfully');
+                    refetch();
+                  } catch {
+                    toastUtils.error('Failed to update player status');
+                  }
+                }
+                setConfirmTarget(null);
+              });
             }}
           >
             Deactivate
-          </Button>
+          </FormButton>
         </DialogActions>
       </Dialog>
     </>

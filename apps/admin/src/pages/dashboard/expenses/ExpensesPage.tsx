@@ -1,5 +1,5 @@
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Clear, Visibility } from '@mui/icons-material';
 import { Alert, Chip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ export default function ExpensesPage() {
   const page = Number(searchParams.get('page') || '1');
   const statusFilter = searchParams.get('status') || undefined;
   const { can } = usePermissions();
+  const { loading: actionLoading, run } = useAsyncAction();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['expenses', page, statusFilter],
@@ -36,14 +37,16 @@ export default function ExpensesPage() {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
-  const handleApprove = async (expense: Expense) => {
-    try {
-      await approveExpense(expense.id);
-      toastUtils.success('Expense approved');
-      refetch();
-    } catch {
-      toastUtils.error('Failed to approve expense');
-    }
+  const handleApprove = (expense: Expense) => {
+    void run(async () => {
+      try {
+        await approveExpense(expense.id);
+        toastUtils.success('Expense approved');
+        refetch();
+      } catch {
+        toastUtils.error('Failed to approve expense');
+      }
+    });
   };
 
   const handleReject = (expense: Expense) => {
@@ -113,14 +116,14 @@ export default function ExpensesPage() {
             icon: <CheckCircleOutline fontSize="small" />,
             color: 'success' as const,
             onClick: (row: Expense) => handleApprove(row),
-            disabled: (row: Expense) => row.approvalStatus !== 'pending',
+            disabled: (row: Expense) => row.approvalStatus !== 'pending' || actionLoading,
           },
           {
             label: 'Reject',
             icon: <Clear fontSize="small" />,
             color: 'error' as const,
             onClick: (row: Expense) => handleReject(row),
-            disabled: (row: Expense) => row.approvalStatus !== 'pending',
+            disabled: (row: Expense) => row.approvalStatus !== 'pending' || actionLoading,
           },
         ]
       : []),

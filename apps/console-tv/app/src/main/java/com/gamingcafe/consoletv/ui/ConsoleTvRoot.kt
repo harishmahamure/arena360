@@ -37,6 +37,7 @@ fun ConsoleTvRoot(
                     onRegisterFieldChange = viewModel::updateRegisterField,
                     onBeginPairing = viewModel::beginRegisterPairing,
                     onProvision = viewModel::provisionDevice,
+                    isBusy = state.isBusy,
                 )
             }
             AppPhase.SESSION -> {

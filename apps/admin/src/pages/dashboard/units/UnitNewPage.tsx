@@ -1,4 +1,5 @@
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -58,39 +59,36 @@ export const unitFormFields: FieldConfig<CreateUnitFormData>[] = [
 
 export default function AddNewUnitPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
 
   const handleSubmit = async (data: CreateUnitFormData) => {
-    setLoading(true);
     setError(undefined);
     setSuccess(undefined);
     if (!data.name || !data.abbreviation) {
       setError('Name and abbreviation are required');
-      setLoading(false);
       return;
     }
-    try {
-      await addUnit({
-        name: data.name,
-        abbreviation: data.abbreviation,
-        type: data.type as UnitType,
-        description: data.description || '',
-        isActive: data.isActive,
-      });
+    const { name, abbreviation } = data;
+    await run(async () => {
+      try {
+        await addUnit({
+          name,
+          abbreviation,
+          type: data.type as UnitType,
+          description: data.description || '',
+          isActive: data.isActive,
+        });
 
-      setSuccess('Unit created successfully!');
-
-      // Navigate back to units list after a short delay
-      setTimeout(() => {
-        navigate('/units');
-      }, 1500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create unit');
-    } finally {
-      setLoading(false);
-    }
+        setSuccess('Unit created successfully!');
+        setTimeout(() => {
+          navigate('/units');
+        }, 1500);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create unit');
+      }
+    });
   };
 
   const handleCancel = () => {

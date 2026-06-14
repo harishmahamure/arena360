@@ -117,14 +117,16 @@ export default function InventoryWastePage() {
             icon: <CheckCircleOutline fontSize="small" />,
             color: 'success' as const,
             onClick: (row: StockWasteEvent) => approveMut.mutate(row.id),
-            disabled: (row: StockWasteEvent) => row.status !== 'pending',
+            disabled: (row: StockWasteEvent) =>
+              row.status !== 'pending' || approveMut.isPending || rejectMut.isPending,
           },
           {
             label: 'Reject',
             icon: <Clear fontSize="small" />,
             color: 'error' as const,
             onClick: (row: StockWasteEvent) => setRejectId(row.id),
-            disabled: (row: StockWasteEvent) => row.status !== 'pending',
+            disabled: (row: StockWasteEvent) =>
+              row.status !== 'pending' || approveMut.isPending || rejectMut.isPending,
           },
         ]
       : []),

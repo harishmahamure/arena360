@@ -1,4 +1,5 @@
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -135,43 +136,42 @@ function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
 
 export default function AddNewProductPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const productFormFields = useProductFormFields();
 
   const handleSubmit = async (data: CreateProductFormData) => {
-    setLoading(true);
     setError(undefined);
     setSuccess(undefined);
     if (!data.name || data.price == null || !data.category) {
       setError('Name, day price, and category are required');
-      setLoading(false);
       return;
     }
-    try {
-      await addProduct({
-        name: data.name,
-        description: data.description || '',
-        price: data.price,
-        dayPrice: data.price,
-        nightPrice: data.nightPrice ?? data.price,
-        purchasePricePerBox: data.purchasePricePerBox ?? undefined,
-        unitsPerPurchaseUnit: data.unitsPerPurchaseUnit ?? 1,
-        unitId: data.unitId || undefined,
-        purchaseUnitId: data.purchaseUnitId || undefined,
-        category: data.category as ProductCategory,
-        sku: data.sku || '',
-        stockQuantity: data.stockQuantity || 0,
-        isActive: data.isActive ?? true,
-      });
-      setSuccess('Product created successfully!');
-      setTimeout(() => navigate('/products'), 1500);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create product');
-    } finally {
-      setLoading(false);
-    }
+    const { name, price, category } = data;
+    await run(async () => {
+      try {
+        await addProduct({
+          name,
+          description: data.description || '',
+          price,
+          dayPrice: price,
+          nightPrice: data.nightPrice ?? price,
+          purchasePricePerBox: data.purchasePricePerBox ?? undefined,
+          unitsPerPurchaseUnit: data.unitsPerPurchaseUnit ?? 1,
+          unitId: data.unitId || undefined,
+          purchaseUnitId: data.purchaseUnitId || undefined,
+          category: category as ProductCategory,
+          sku: data.sku || '',
+          stockQuantity: data.stockQuantity || 0,
+          isActive: data.isActive ?? true,
+        });
+        setSuccess('Product created successfully!');
+        setTimeout(() => navigate('/products'), 1500);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create product');
+      }
+    });
   };
 
   return (

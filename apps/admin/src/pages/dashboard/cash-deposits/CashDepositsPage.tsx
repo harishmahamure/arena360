@@ -1,5 +1,5 @@
-import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { type Action, type Column, FormButton, ListPage } from '@gaming-cafe/ui';
+import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Cancel, Check } from '@mui/icons-material';
 import {
   Alert,
@@ -39,6 +39,7 @@ export default function CashDepositsPage() {
   const { can, isAdmin } = usePermissions();
   const [approveTarget, setApproveTarget] = useState<CashDeposit | null>(null);
   const [depositType, setDepositType] = useState<'bank' | 'home'>('bank');
+  const { loading: actionLoading, run } = useAsyncAction();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['cash-deposits', page, statusFilter],
     queryFn: () =>
@@ -53,28 +54,32 @@ export default function CashDepositsPage() {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
-  const handleApprove = async () => {
+  const handleApprove = () => {
     if (!approveTarget) return;
-    try {
-      await approveDeposit(approveTarget.id, depositType);
-      toastUtils.success(`Deposit approved for ${depositType}`);
-      setApproveTarget(null);
-      refetch();
-    } catch {
-      toastUtils.error('Failed to approve deposit');
-    }
+    void run(async () => {
+      try {
+        await approveDeposit(approveTarget.id, depositType);
+        toastUtils.success(`Deposit approved for ${depositType}`);
+        setApproveTarget(null);
+        refetch();
+      } catch {
+        toastUtils.error('Failed to approve deposit');
+      }
+    });
   };
 
-  const handleReject = async (deposit: CashDeposit) => {
+  const handleReject = (deposit: CashDeposit) => {
     const reason = prompt('Rejection reason:');
     if (!reason) return;
-    try {
-      await rejectDeposit(deposit.id, reason);
-      toastUtils.success('Deposit rejected');
-      refetch();
-    } catch {
-      toastUtils.error('Failed to reject deposit');
-    }
+    void run(async () => {
+      try {
+        await rejectDeposit(deposit.id, reason);
+        toastUtils.success('Deposit rejected');
+        refetch();
+      } catch {
+        toastUtils.error('Failed to reject deposit');
+      }
+    });
   };
 
   const columns: Column<CashDeposit>[] = [
@@ -126,13 +131,13 @@ export default function CashDepositsPage() {
             setDepositType('bank');
             setApproveTarget(row);
           },
-          disabled: (row) => row.status !== 'pending',
+          disabled: (row) => row.status !== 'pending' || actionLoading,
         },
         {
           label: 'Reject',
           icon: <Cancel />,
           onClick: (row) => handleReject(row),
-          disabled: (row) => row.status !== 'pending',
+          disabled: (row) => row.status !== 'pending' || actionLoading,
         },
       ]
     : [];
@@ -168,7 +173,7 @@ export default function CashDepositsPage() {
         }}
       />
 
-      <Dialog open={Boolean(approveTarget)} onClose={() => setApproveTarget(null)}>
+      <Dialog open={Boolean(approveTarget)} onClose={() => !actionLoading && setApproveTarget(null)}>
         <DialogTitle>Approve Cash Deposit</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
@@ -190,10 +195,12 @@ export default function CashDepositsPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setApproveTarget(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleApprove}>
-            Approve
+          <Button onClick={() => setApproveTarget(null)} disabled={actionLoading}>
+            Cancel
           </Button>
+          <FormButton variant="contained" onClick={handleApprove} loading={actionLoading}>
+            Approve
+          </FormButton>
         </DialogActions>
       </Dialog>
     </>

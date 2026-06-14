@@ -1,5 +1,5 @@
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { formatCurrency, toastUtils } from '@gaming-cafe/utils';
+import { formatCurrency, toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
 import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ export default function ProductsPage() {
   const navigate = useNavigate();
   const { can } = usePermissions();
   const canWrite = can(Permission.ProductsWrite);
+  const { loading: actionLoading, run } = useAsyncAction();
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -105,16 +106,18 @@ export default function ProductsPage() {
   ];
 
   const handleDeactivateProduct = useCallback(
-    async (id: string) => {
-      try {
-        await deleteProduct(id);
-        toastUtils.success('Product deactivated successfully');
-        refetch();
-      } catch (_error) {
-        toastUtils.error('Failed to deactivate product');
-      }
+    (id: string) => {
+      void run(async () => {
+        try {
+          await deleteProduct(id);
+          toastUtils.success('Product deactivated successfully');
+          refetch();
+        } catch (_error) {
+          toastUtils.error('Failed to deactivate product');
+        }
+      });
     },
-    [refetch],
+    [refetch, run],
   );
 
   const actions: Action<ProductResponse>[] = [
@@ -127,6 +130,7 @@ export default function ProductsPage() {
       icon: <Delete color="error" />,
       label: 'Deactivate Product',
       onClick: (row) => handleDeactivateProduct(row.id),
+      disabled: () => actionLoading,
     },
   ];
 

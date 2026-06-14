@@ -134,21 +134,24 @@ export default function InventoryTransfersPage() {
             icon: <CheckCircleOutline fontSize="small" />,
             color: 'success' as const,
             onClick: (row: StockTransferRequest) => approveMut.mutate(row.id),
-            disabled: (row: StockTransferRequest) => row.status !== 'pending',
+            disabled: (row: StockTransferRequest) =>
+              row.status !== 'pending' || approveMut.isPending || fulfillMut.isPending,
           },
           {
             label: 'Send stock',
             icon: <LocalShipping fontSize="small" />,
             color: 'primary' as const,
             onClick: (row: StockTransferRequest) => fulfillMut.mutate(row.id),
-            disabled: (row: StockTransferRequest) => row.status !== 'approved',
+            disabled: (row: StockTransferRequest) =>
+              row.status !== 'approved' || approveMut.isPending || fulfillMut.isPending,
           },
           {
             label: 'Reject',
             icon: <Clear fontSize="small" />,
             color: 'error' as const,
             onClick: (row: StockTransferRequest) => setRejectId(row.id),
-            disabled: (row: StockTransferRequest) => row.status !== 'pending',
+            disabled: (row: StockTransferRequest) =>
+              row.status !== 'pending' || approveMut.isPending || fulfillMut.isPending,
           },
         ]
       : []),

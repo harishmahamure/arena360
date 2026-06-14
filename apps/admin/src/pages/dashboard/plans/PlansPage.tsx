@@ -1,6 +1,6 @@
 import type { PlanTypeValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
 import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ export default function PlansPage() {
   const navigate = useNavigate();
   const { can } = usePermissions();
   const canWrite = can(Permission.PlansWrite);
+  const { loading: actionLoading, run } = useAsyncAction();
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -153,16 +154,18 @@ export default function PlansPage() {
   ];
 
   const handleDeactivatePlan = useCallback(
-    async (id: string) => {
-      try {
-        await deletePlan(id);
-        toastUtils.success('Plan deactivated successfully');
-        refetch();
-      } catch (_error) {
-        toastUtils.error('Failed to deactivate plan');
-      }
+    (id: string) => {
+      void run(async () => {
+        try {
+          await deletePlan(id);
+          toastUtils.success('Plan deactivated successfully');
+          refetch();
+        } catch (_error) {
+          toastUtils.error('Failed to deactivate plan');
+        }
+      });
     },
-    [refetch],
+    [refetch, run],
   );
 
   const actions: Action<PlanResponse>[] = [
@@ -175,6 +178,7 @@ export default function PlansPage() {
       icon: <Delete color="error" />,
       label: 'Deactivate Plan',
       onClick: (row) => handleDeactivatePlan(row.id),
+      disabled: () => actionLoading,
     },
   ];
 

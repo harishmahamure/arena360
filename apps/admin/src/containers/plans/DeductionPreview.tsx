@@ -1,6 +1,6 @@
 import {
+  buildDeductionPlayBreakdown,
   type DeductionProfile,
-  maxWallMinutes,
   validateDeductionProfile,
   windowsOverlap,
 } from '@gaming-cafe/contracts';
@@ -48,24 +48,7 @@ export function DeductionPreview(props: DeductionPreviewProps) {
   const validationError = validateDeductionProfile(profile);
   const overlap = !validationError && windowsOverlap(profile);
   const credits = props.timeCredits > 0 ? props.timeCredits : 0;
-
-  const rows = [
-    {
-      period: 'Low hours',
-      ratio: profile.lowRatio,
-      wall: credits > 0 ? maxWallMinutes(credits, profile.lowRatio) : 0,
-    },
-    {
-      period: 'Normal hours',
-      ratio: 1,
-      wall: credits,
-    },
-    {
-      period: 'Peak hours',
-      ratio: profile.peakRatio,
-      wall: credits > 0 ? maxWallMinutes(credits, profile.peakRatio) : 0,
-    },
-  ];
+  const rows = buildDeductionPlayBreakdown(credits, profile);
 
   return (
     <Box sx={{ mt: 1 }}>
@@ -90,6 +73,7 @@ export function DeductionPreview(props: DeductionPreviewProps) {
         <TableHead>
           <TableRow>
             <TableCell>Period</TableCell>
+            <TableCell>Time window</TableCell>
             <TableCell>Ratio</TableCell>
             <TableCell>Max play (single window)</TableCell>
           </TableRow>
@@ -97,10 +81,13 @@ export function DeductionPreview(props: DeductionPreviewProps) {
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.period}>
-              <TableCell>{row.period}</TableCell>
+              <TableCell>{row.label}</TableCell>
+              <TableCell>{row.timeRange}</TableCell>
               <TableCell>{row.ratio}×</TableCell>
               <TableCell>
-                {credits > 0 ? `${credits} ÷ ${row.ratio} = ${row.wall.toFixed(1)} min` : '—'}
+                {credits > 0
+                  ? `${credits} ÷ ${row.ratio} = ${row.wallPlayMinutes.toFixed(1)} min`
+                  : '—'}
               </TableCell>
             </TableRow>
           ))}

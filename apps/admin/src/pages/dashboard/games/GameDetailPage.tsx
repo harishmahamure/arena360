@@ -1,3 +1,4 @@
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { Box, CircularProgress, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -10,7 +11,7 @@ import { updateGame } from '../../../services/game/update';
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
 
@@ -20,20 +21,19 @@ export default function GameDetailPage() {
     enabled: Boolean(id),
   });
 
-  async function handleSubmit(payload: GamePayload) {
+  function handleSubmit(payload: GamePayload) {
     if (!id) return;
-    setLoading(true);
-    setError(undefined);
-    setSuccess(undefined);
-    try {
-      await updateGame(id, payload);
-      setSuccess('Game updated successfully!');
-      setTimeout(() => navigate('/games'), 1200);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update game');
-    } finally {
-      setLoading(false);
-    }
+    void run(async () => {
+      setError(undefined);
+      setSuccess(undefined);
+      try {
+        await updateGame(id, payload);
+        setSuccess('Game updated successfully!');
+        setTimeout(() => navigate('/games'), 1200);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update game');
+      }
+    });
   }
 
   if (isLoading || !data) {

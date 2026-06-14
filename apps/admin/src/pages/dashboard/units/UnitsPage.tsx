@@ -1,5 +1,5 @@
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Delete, Edit } from '@mui/icons-material';
 import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ export default function UnitsPage() {
   const navigate = useNavigate();
   const { can } = usePermissions();
   const canWrite = can(Permission.UnitsWrite);
+  const { loading: actionLoading, run } = useAsyncAction();
 
   const debouncedSetSearch = useRef(
     debounce((query: string) => setDebouncedSearch(query), 500),
@@ -96,16 +97,18 @@ export default function UnitsPage() {
   ];
 
   const handleDeactivateUnit = useCallback(
-    async (id: string) => {
-      try {
-        await deleteUnit(id);
-        toastUtils.success('Unit deactivated successfully');
-        refetch();
-      } catch (_error) {
-        toastUtils.error('Failed to deactivate unit');
-      }
+    (id: string) => {
+      void run(async () => {
+        try {
+          await deleteUnit(id);
+          toastUtils.success('Unit deactivated successfully');
+          refetch();
+        } catch (_error) {
+          toastUtils.error('Failed to deactivate unit');
+        }
+      });
     },
-    [refetch],
+    [refetch, run],
   );
 
   const actions: Action<UnitResponse>[] = [
@@ -118,6 +121,7 @@ export default function UnitsPage() {
       icon: <Delete color="error" />,
       label: 'Deactivate Unit',
       onClick: (row) => handleDeactivateUnit(row.id),
+      disabled: () => actionLoading,
     },
   ];
 

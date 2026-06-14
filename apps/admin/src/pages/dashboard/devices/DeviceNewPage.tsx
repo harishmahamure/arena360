@@ -1,5 +1,6 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import {
   Button,
   Dialog,
@@ -96,37 +97,35 @@ const NEXT_STEPS = [
 
 export default function AddNewDevicePage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const { loading, run } = useAsyncAction();
   const [error, setError] = useState<string | undefined>();
   const [createdDevice, setCreatedDevice] = useState<DeviceResponse | null>(null);
 
   const handleSubmit = async (data: CreateDeviceFormData) => {
-    setLoading(true);
     setError(undefined);
 
     if (!data.name || !data.deviceType || !data.deviceSubType) {
       setError('Device name, type, and sub type are required');
-      setLoading(false);
       return;
     }
 
-    try {
-      const device = await addDevice({
-        name: data.name,
-        deviceType: data.deviceType,
-        deviceSubType: data.deviceSubType,
-        serialNumber: data.serialNumber || undefined,
-        localIpAddress: data.localIpAddress || undefined,
-        location: data.location || undefined,
-        status: (data.status as DeviceStatusValue) || DeviceStatus.OPERATIONAL,
-      });
+    await run(async () => {
+      try {
+        const device = await addDevice({
+          name: data.name,
+          deviceType: data.deviceType,
+          deviceSubType: data.deviceSubType,
+          serialNumber: data.serialNumber || undefined,
+          localIpAddress: data.localIpAddress || undefined,
+          location: data.location || undefined,
+          status: (data.status as DeviceStatusValue) || DeviceStatus.OPERATIONAL,
+        });
 
-      setCreatedDevice(device);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create device');
-    } finally {
-      setLoading(false);
-    }
+        setCreatedDevice(device);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create device');
+      }
+    });
   };
 
   const handleCancel = () => {

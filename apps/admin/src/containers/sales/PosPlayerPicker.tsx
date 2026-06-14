@@ -11,12 +11,14 @@ export interface PosPlayerPickerProps {
   value: PosPlayer | null;
   onChange: (player: PosPlayer | null) => void;
   helperText?: string;
+  disabled?: boolean;
 }
 
 export function PosPlayerPicker({
   value,
   onChange,
   helperText = 'Player account to charge; required before checkout',
+  disabled = false,
 }: PosPlayerPickerProps) {
   const [playerOptions, setPlayerOptions] = useState<PosPlayer[]>([]);
   const [playerInputValue, setPlayerInputValue] = useState('');
@@ -69,6 +71,7 @@ export function PosPlayerPicker({
           inputValue={playerInputValue}
           onInputChange={(_, newValue) => setPlayerInputValue(newValue)}
           loading={playerLoading}
+          disabled={disabled}
           renderInput={(params) => (
             <TextField
               {...params}

@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { registerAuthSessionHandlers } from '../lib/authSession';
@@ -523,29 +524,38 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const endSessionInFlightRef = useRef(false);
+  const factoryResetInFlightRef = useRef(false);
+
   const endSession = useCallback(
     async (reason = 'voluntary') => {
-      const sessionId = activeSession?.id;
-      if (sessionId) {
-        try {
-          await getHttpClient().patch(`/kiosk/sessions/${sessionId}/end`, { reason });
-        } catch {
-          // Offline at end time: queue an idempotent replay for reconnect (D18).
-          enqueueEndIntent(sessionId, reason === 'voluntary' ? 'offline_reconcile' : reason);
-        }
-      }
+      if (endSessionInFlightRef.current) return;
+      endSessionInFlightRef.current = true;
       try {
-        await killTrackedProcesses();
-        await clearTrackedProcesses();
-      } catch {
-        // Process cleanup is best-effort off-Windows / when nothing tracked.
+        const sessionId = activeSession?.id;
+        if (sessionId) {
+          try {
+            await getHttpClient().patch(`/kiosk/sessions/${sessionId}/end`, { reason });
+          } catch {
+            // Offline at end time: queue an idempotent replay for reconnect (D18).
+            enqueueEndIntent(sessionId, reason === 'voluntary' ? 'offline_reconcile' : reason);
+          }
+        }
+        try {
+          await killTrackedProcesses();
+          await clearTrackedProcesses();
+        } catch {
+          // Process cleanup is best-effort off-Windows / when nothing tracked.
+        }
+        setActiveSession(null);
+        setForceEndGraceEndsAt(null);
+        await clearPlayerSession();
+        setPlayerName(null);
+        setPhase('login');
+        if (deviceId) connectWs(deviceId);
+      } finally {
+        endSessionInFlightRef.current = false;
       }
-      setActiveSession(null);
-      setForceEndGraceEndsAt(null);
-      await clearPlayerSession();
-      setPlayerName(null);
-      setPhase('login');
-      if (deviceId) connectWs(deviceId);
     },
     [activeSession, connectWs, deviceId],
   );
@@ -614,15 +624,21 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   }, [online, flushEndIntents]);
 
   const factoryReset = useCallback(async () => {
-    await clearAllTokens();
-    tokenCache.device = undefined;
-    tokenCache.player = undefined;
-    realtimeRef.current.disconnect();
-    setDeviceId(null);
-    setDeviceName(null);
-    storeDeviceName(null);
-    setPhase('register');
-    await setLockdownState('Locked');
+    if (factoryResetInFlightRef.current) return;
+    factoryResetInFlightRef.current = true;
+    try {
+      await clearAllTokens();
+      tokenCache.device = undefined;
+      tokenCache.player = undefined;
+      realtimeRef.current.disconnect();
+      setDeviceId(null);
+      setDeviceName(null);
+      storeDeviceName(null);
+      setPhase('register');
+      await setLockdownState('Locked');
+    } finally {
+      factoryResetInFlightRef.current = false;
+    }
   }, [realtimeRef]);
 
   const value: KioskContextValue = {

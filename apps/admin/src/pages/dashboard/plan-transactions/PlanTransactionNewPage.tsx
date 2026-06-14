@@ -1,4 +1,6 @@
 import type { PaymentStatusValue } from '@gaming-cafe/contracts';
+import { FormButton } from '@gaming-cafe/ui';
+import { useAsyncAction } from '@gaming-cafe/utils';
 import { Search as SearchIcon } from '@mui/icons-material';
 import {
   Alert,
@@ -27,6 +29,7 @@ import {
   PosPlayerPicker,
   PosSplitAmountFields,
 } from '../../../containers/sales';
+import { PlanDeductionSummary } from '../../../containers/plans/PlanDeductionSummary';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -43,7 +46,7 @@ export default function AddNewPlanTransactionPage() {
   const [searchParams] = useSearchParams();
   const preselectedPlayerId = searchParams.get('playerId') ?? undefined;
 
-  const [loading, setLoading] = useState(false);
+  const { loading: submitting, run } = useAsyncAction();
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
 
@@ -95,7 +98,7 @@ export default function AddNewPlanTransactionPage() {
     return purchaseAmount > s.available + 0.001;
   }, [isCredit, creditDetail, purchaseAmount]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     setError(undefined);
     setSuccess(undefined);
 
@@ -119,9 +122,7 @@ export default function AddNewPlanTransactionPage() {
       return;
     }
 
-    setLoading(true);
-
-    try {
+    void run(async () => {
       const payload = {
         playerId: selectedPlayer.id,
         transactionType: TransactionType.PLAN_PURCHASE,
@@ -140,20 +141,20 @@ export default function AddNewPlanTransactionPage() {
             : undefined,
       };
 
-      await addTransaction({
-        ...payload,
-        paymentStatus: payload.paymentStatus as PaymentStatusValue,
-      });
+      try {
+        await addTransaction({
+          ...payload,
+          paymentStatus: payload.paymentStatus as PaymentStatusValue,
+        });
 
-      setSuccess('Transaction created successfully!');
-      setTimeout(() => {
-        navigate('/plan-transactions');
-      }, 1500);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to create transaction');
-    } finally {
-      setLoading(false);
-    }
+        setSuccess('Transaction created successfully!');
+        setTimeout(() => {
+          navigate('/plan-transactions');
+        }, 1500);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to create transaction');
+      }
+    });
   };
 
   const handleCancel = () => {
@@ -182,7 +183,7 @@ export default function AddNewPlanTransactionPage() {
 
   const catalog = (
     <>
-      <PosPlayerPicker value={selectedPlayer} onChange={setSelectedPlayer} />
+      <PosPlayerPicker value={selectedPlayer} onChange={setSelectedPlayer} disabled={submitting} />
 
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
         Plans
@@ -193,6 +194,7 @@ export default function AddNewPlanTransactionPage() {
         onChange={(e) => setPlanSearch(e.target.value)}
         fullWidth
         size="small"
+        disabled={submitting}
         sx={{ mb: 2 }}
         helperText="Filter active plans by name or type"
         InputProps={{
@@ -220,6 +222,7 @@ export default function AddNewPlanTransactionPage() {
                 plan={plan}
                 selected={selectedPlan?.id === plan.id}
                 onSelect={setSelectedPlan}
+                disabled={submitting}
               />
             </Grid>
           ))}
@@ -250,7 +253,7 @@ export default function AddNewPlanTransactionPage() {
               </Typography>
               {selectedPlan.timeCredits != null && (
                 <Typography variant="body2" sx={{ mt: 1 }}>
-                  {selectedPlan.timeCredits} wallet minutes
+                  {selectedPlan.timeCredits} wallet minutes credited
                 </Typography>
               )}
               <Typography variant="body2" color="text.secondary">
@@ -258,13 +261,10 @@ export default function AddNewPlanTransactionPage() {
               </Typography>
 
               {selectedPlan.dynamicDeductionEnabled && selectedPlan.deductionProfile && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  {selectedPlan.timeCredits ?? 0} wallet min — burns faster{' '}
-                  {selectedPlan.deductionProfile.peakWindowStart}–
-                  {selectedPlan.deductionProfile.peakWindowEnd}, slower{' '}
-                  {selectedPlan.deductionProfile.lowWindowStart}–
-                  {selectedPlan.deductionProfile.lowWindowEnd}
-                </Alert>
+                <PlanDeductionSummary
+                  timeCredits={selectedPlan.timeCredits ?? 0}
+                  deductionProfile={selectedPlan.deductionProfile}
+                />
               )}
 
               <Divider sx={{ my: 2 }} />
@@ -286,7 +286,11 @@ export default function AddNewPlanTransactionPage() {
             Payment
           </Typography>
 
-          <PosPaymentTiles value={paymentMethod} onChange={setPaymentMethod} />
+          <PosPaymentTiles
+            value={paymentMethod}
+            onChange={setPaymentMethod}
+            disabled={submitting}
+          />
 
           <CreditEligibilityAlert
             playerId={selectedPlayer?.id}
@@ -310,28 +314,30 @@ export default function AddNewPlanTransactionPage() {
             fullWidth
             multiline
             rows={2}
+            disabled={submitting}
             placeholder="Add any notes about this transaction..."
             helperText="Optional staff note stored on the transaction (max 500 chars)"
             sx={{ mb: 3 }}
           />
 
           <Stack spacing={2}>
-            <Button
+            <FormButton
               variant="contained"
               size="large"
               fullWidth
               onClick={handleSubmit}
-              disabled={loading || !selectedPlayer || !selectedPlan || creditBlocked}
+              loading={submitting}
+              disabled={!selectedPlayer || !selectedPlan || creditBlocked}
               sx={{ minHeight: 44 }}
             >
-              {loading ? 'Processing...' : 'Complete sale'}
-            </Button>
+              Complete sale
+            </FormButton>
             <Button
               variant="outlined"
               size="large"
               fullWidth
               onClick={handleCancel}
-              disabled={loading}
+              disabled={submitting}
               sx={{ minHeight: 44 }}
             >
               Cancel
