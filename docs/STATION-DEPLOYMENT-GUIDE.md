@@ -1,9 +1,10 @@
 # Station deployment guide (IT)
 
 > IT runbook for deploying and hardening Arena360 **PC gaming stations** (Windows kiosk)
-> and **PlayStation stations** (Android TV Console TV). For Windows shell strategies,
-> watchdog design, and GPO detail, see
-> [KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md).
+> and **PlayStation stations** (Android TV Console TV). For deep dives, see
+> [KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md) (PC shell, watchdog, GPO) and
+> [CONSOLE-TV-ANDROID-DEPLOYMENT.md](CONSOLE-TV-ANDROID-DEPLOYMENT.md) (Android TV auto-start,
+> lockdown limits, fleet rollout).
 
 ## Overview
 
@@ -90,25 +91,17 @@ replacement, Run key) are in
 - [ ] **Dedicated local user:** Create `ArenaKiosk` (or venue-specific name) with **no**
   administrator rights.
 - [ ] **Install kiosk:** Download latest NSIS `perMachine` installer from GitHub Release
-  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). Default path:
-  `C:\Program Files\Arena360\kiosk\Arena360 Kiosk.exe`.
+  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). The installer ships
+  `arena360-watchdog.exe` and registers an **Arena360 Watchdog** scheduled task at logon
+  (skip with silent flag `/NOAUTOSTART`). Run the installer logged in as `ArenaKiosk` when
+  possible so the task applies to the kiosk user.
 - [ ] **Shell strategy:** Choose one (recommend **Option A — Assigned Access** on
   Windows Pro/Enterprise). See
   [KIOSK-WINDOWS-DEPLOYMENT.md § Layer 1](KIOSK-WINDOWS-DEPLOYMENT.md#layer-1--os-kiosk-shell-operator--it).
 - [ ] **Auto-logon:** Enable auto-logon for the kiosk user (Sysinternals Autologon or
   unattend XML). Never store passwords in git.
-- [ ] **Start on logon:** Create a Scheduled Task (run as kiosk user):
-  - Trigger: **At log on**
-  - Action: Start `Arena360 Kiosk.exe`
-  - Settings: restart every 1 minute on failure
-- [ ] **Optional faster recovery:** Add a second task every 5 minutes:
-
-  ```powershell
-  $name = "Arena360 Kiosk"
-  if (-not (Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-    Start-Process "C:\Program Files\Arena360\kiosk\Arena360 Kiosk.exe"
-  }
-  ```
+- [ ] **Verify watchdog:** After install, confirm `schtasks /Query /TN "Arena360 Watchdog"`
+  and that `%ProgramFiles%\Arena360\kiosk\arena360-watchdog.exe` exists (exact path may vary).
 
 - [ ] **GPO hardening (recommended):** `DisableTaskMgr`, `DisableLockWorkstation`,
   `DisableChangePassword`.
@@ -141,14 +134,10 @@ Arena360 PC lockdown has two layers. **Both** are required for a hardened public
 
 ### What is not automated yet
 
-These require manual IT setup today (K10 engineering roadmap):
-
-- Boot auto-start checkbox in the NSIS installer
-- Watchdog sidecar for sub-5 s relaunch after crash/kill
 - Fleet script `scripts/windows/configure-station.ps1` (not in repo yet)
+- Assigned Access / auto-logon automation (IT manual)
 
-See [PLANNER-KIOSK.md — K10](PLANNER-KIOSK.md) and
-[KIOSK-WINDOWS-DEPLOYMENT.md § Manual setup now](KIOSK-WINDOWS-DEPLOYMENT.md#manual-setup-now-before-k10-ships).
+Manual Scheduled Task fallback: [KIOSK-WINDOWS-DEPLOYMENT.md § Manual setup now](KIOSK-WINDOWS-DEPLOYMENT.md#manual-setup-now-fallback).
 
 ### Production API URL (PC)
 
@@ -162,7 +151,8 @@ running `pnpm --filter @gaming-cafe/kiosk tauri:build`.
 ## 3. PlayStation Android TV stations
 
 Console TV is sideloaded today (GitHub Release APK). Play Store distribution is not
-configured.
+configured. For OEM auto-start options, watchdog roadmap, and operator procedures, see
+[CONSOLE-TV-ANDROID-DEPLOYMENT.md](CONSOLE-TV-ANDROID-DEPLOYMENT.md).
 
 ### Fleet checklist
 
@@ -309,7 +299,7 @@ To re-register: clear app data or uninstall/reinstall (see Sideload install).
 | Symptom | PC kiosk | Console TV |
 |---------|----------|------------|
 | Cannot reach backend | Verify `VITE_API_URL` in build/CI; check firewall and DNS | Rebuild APK with correct `VITE_API_URL` in `.env.local` |
-| App not starting on boot | Verify Scheduled Task / Assigned Access / shell replacement | Check TV OEM auto-start setting; confirm app not force-stopped |
+| App not starting on boot | Verify `Arena360 Watchdog` scheduled task; re-run installer as kiosk user | Check TV OEM auto-start setting; confirm app not force-stopped |
 | Stuck on registration | Confirm admin credentials and TOTP; check backend logs | Same; ensure device type is PS4/PS5 only |
 | Need to re-provision | Setup → Factory reset, or clear tokens via setup | Settings → Apps → Clear data, or `adb uninstall` |
 | Player cannot sign in | Check login lockout; staff **Ctrl+Shift+B** on login screen | N/A — no player login on TV |
@@ -324,6 +314,7 @@ To re-register: clear app data or uninstall/reinstall (see Sideload install).
 | Document | Purpose |
 |----------|---------|
 | [KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md) | Windows shell strategies, watchdog design, GPO, manual auto-restart |
+| [CONSOLE-TV-ANDROID-DEPLOYMENT.md](CONSOLE-TV-ANDROID-DEPLOYMENT.md) | Android TV auto-start, lockdown limits, boot receiver roadmap |
 | [kiosk-windows-qa-checklist.md](kiosk-windows-qa-checklist.md) | PC kiosk post-deploy QA |
 | [apps/kiosk/README.md](../apps/kiosk/README.md) | Kiosk dev, packaging, env vars, staff shortcuts |
 | [apps/console-tv/README.md](../apps/console-tv/README.md) | Console TV dev, build, Fastlane, adb |
@@ -341,5 +332,5 @@ To re-register: clear app data or uninstall/reinstall (see Sideload install).
 
 - Google Play Store distribution for Console TV (`supply` not configured)
 - Android Device Owner / MDM kiosk mode (no app support)
-- Automated `configure-station.ps1` and watchdog binary (K10)
+- Automated `configure-station.ps1` (K10 fleet script — still pending)
 - App-level boot receiver for Console TV

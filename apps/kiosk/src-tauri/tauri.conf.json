@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm turbo run build --filter=@gaming-cafe/kiosk",
+    "beforeBuildCommand": "pnpm turbo run build --filter=@gaming-cafe/kiosk && node scripts/prepare-watchdog-sidecar.mjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -49,7 +49,8 @@
         "type": "embedBootstrapper"
       },
       "nsis": {
-        "installMode": "perMachine"
+        "installMode": "perMachine",
+        "installerHooks": "./windows/hooks.nsh"
       }
     }
   },

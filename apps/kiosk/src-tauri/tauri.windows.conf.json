@@ -1,0 +1,5 @@
+{
+  "bundle": {
+    "externalBin": ["arena360-watchdog"]
+  }
+}

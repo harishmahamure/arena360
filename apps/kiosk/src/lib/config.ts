@@ -50,6 +50,13 @@ function numberFromEnv(key: string, fallback: number): number {
  */
 export const OFFLINE_GRACE_MS = numberFromEnv('VITE_OFFLINE_GRACE_MINUTES', 5) * 60_000;
 
+/**
+ * When WebSocket is disconnected during an active session, poll
+ * `GET /kiosk/sessions/current` on this interval as a fallback for remote ends.
+ * Configurable via `VITE_SESSION_RECONCILE_MINUTES`; defaults to 5 minutes.
+ */
+export const SESSION_RECONCILE_MS = numberFromEnv('VITE_SESSION_RECONCILE_MINUTES', 5) * 60_000;
+
 export function realtimeUrl(): string {
   const apiUrl = API_BASE_URL;
   const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';

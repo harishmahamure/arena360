@@ -1,7 +1,9 @@
 # Windows kiosk deployment — startup, lockdown, and auto-restart
 
 > Part of station deployment — see also [STATION-DEPLOYMENT-GUIDE.md](STATION-DEPLOYMENT-GUIDE.md)
-> for the IT fleet checklist covering PC and Android TV stations.
+> for the IT fleet checklist covering PC and Android TV stations, and
+> [CONSOLE-TV-ANDROID-DEPLOYMENT.md](CONSOLE-TV-ANDROID-DEPLOYMENT.md) for the parallel
+> PlayStation Android TV guide.
 >
 > Operator + engineering guide for running Arena360 kiosk as a true station shell on
 > Windows 10/11. Complements [ADR-0020](adr/0020-kiosk-windows-lockdown.md) (in-app
@@ -16,12 +18,13 @@
 | Setup escape (`Ctrl+Shift+A` → admin login) | **Shipped** | `SetupRelaxed` allows close and non-allow-listed launches |
 | Windows installer (NSIS `perMachine`) | **Shipped** | [ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md) |
 | Idle auto-update | **Shipped** | Only on login/attract screen, no active session |
-| Boot auto-start | **Manual only** | README mentions policy; no installer hook yet |
-| Auto-reopen after crash/kill | **Not implemented** | Task tracked in [PLANNER-KIOSK.md](PLANNER-KIOSK.md) K10 |
+| Boot auto-start (watchdog) | **Shipped** | NSIS registers `Arena360 Watchdog` scheduled task at logon (skip with `/NOAUTOSTART`) |
+| Auto-reopen after crash/kill | **Shipped** | `arena360-watchdog.exe` sidecar polls every 2 s and relaunches kiosk |
 
-**Gap:** A player or Windows can still end the process (Task Manager from CAD, power loss,
-`SetupRelaxed` close, or `restart_station` from setup). Nothing relaunches the shell until
-K10.
+**Gap (remaining):** OS shell hardening (Assigned Access / GPO) is still IT manual.
+`SetupRelaxed` close and **Exit to desktop (15 min)** write a pause file so the watchdog
+does not relaunch until the TTL expires. Power restart/shutdown and auto-update handoff
+also pause the watchdog briefly.
 
 ---
 
@@ -112,12 +115,49 @@ where available.
 
 ---
 
-## Layer 2 — Auto-restart when the app closes (K10 engineering)
+## Layer 2 — Auto-restart when the app closes (K10 — shipped)
 
-In-app close prevention only applies while `Locked`. Implement an **external watchdog**
-so crashes and kills still recover.
+In-app close prevention only applies while `Locked`. The **watchdog sidecar** recovers
+from crashes and kills.
 
-### Recommended: lightweight watchdog sidecar (K10.2)
+### Shipped: `arena360-watchdog.exe` (K10.2)
+
+Installed next to the kiosk binary by NSIS (`bundle.externalBin`):
+
+| Component | Role |
+|-----------|------|
+| `Arena360 Station Management.exe` | Main Tauri app |
+| `arena360-watchdog.exe` | Sidecar; no UI; polls every 2 s |
+
+**Installer behavior** ([apps/kiosk/src-tauri/windows/hooks.nsh](../apps/kiosk/src-tauri/windows/hooks.nsh)):
+
+1. Registers scheduled task **`Arena360 Watchdog`** at **logon** for the installing user
+   (run the installer logged in as `ArenaKiosk` when possible).
+2. Silent opt-out: pass **`/NOAUTOSTART`** to the NSIS installer.
+3. Uninstall removes the task and `%ProgramData%\Arena360\watchdog.pause`.
+
+**Watchdog loop:**
+
+1. If `%ProgramData%\Arena360\watchdog.pause` is valid → do not relaunch.
+2. If kiosk process missing and `Global\Arena360KioskInstance` mutex not held → spawn kiosk.
+3. Debounce spawns by 3 s to avoid tight crash loops.
+
+**Pause file** (JSON):
+
+```json
+{"until":"2026-06-15T12:00:00Z","reason":"setup"}
+```
+
+Written automatically when:
+
+- Lockdown enters `SetupRelaxed` (15 min, `reason: setup`)
+- Operator clicks **Exit to desktop (15 min)** in setup (`reason: maintenance`)
+- Auto-update relaunch (30 s, `reason: update`)
+- Restart/shutdown from setup (`reason: power`)
+
+Cleared when lockdown returns to `Locked`.
+
+### Original design notes (still valid)
 
 Ship a second small binary next to the kiosk (same NSIS install):
 
@@ -173,7 +213,7 @@ sub-5 s recovery.
 | 3 | IT | Create `ArenaKiosk` user, auto-logon, Assigned Access or shell |
 | 4 | Operator | First boot → `Ctrl+Shift+A` → register device, allow-list |
 | 5 | IT | GPO export for `DisableTaskMgr`, firewall, Windows Update window |
-| 6 | Engineering (K10) | Installer toggles: `[x] Start on logon` `[x] Install watchdog` |
+| 6 | Engineering (K10) | Installer registers watchdog task; optional `/NOAUTOSTART` |
 
 **SCCM / Intune:** Deploy MSI/NSIS silently (`/S`), then run bundled
 `scripts/windows/configure-station.ps1` (K10.1) with parameters for shell mode.
@@ -185,8 +225,8 @@ sub-5 s recovery.
 | Task ID | Title | Priority | Delivers |
 |---------|-------|----------|----------|
 | `kiosk-deploy-guide` | Operator deployment guide + GPO checklist | Should | This doc + README link; PowerShell samples |
-| `kiosk-startup-task` | NSIS optional “Run at logon” registry / task | Should | Installer checkbox, default on |
-| `kiosk-watchdog` | Watchdog sidecar + pause file + mutex | Should | Sub-5 s relaunch; setup-aware pause |
+| `kiosk-startup-task` | NSIS watchdog scheduled task at logon | Should | **Done** — `hooks.nsh`; `/NOAUTOSTART` opt-out |
+| `kiosk-watchdog` | Watchdog sidecar + pause file + mutex | Should | **Done** — `arena360-watchdog.exe` |
 | `kiosk-installer-fleet` | Silent install + `configure-station.ps1` | Could | SCCM/Intune one-liner |
 | `kiosk-deploy-adr` | DRAFT ADR only if Windows Service chosen | Conditional | Per [20-adr-discipline](../.cursor/rules/20-adr-discipline.mdc) |
 
@@ -198,9 +238,11 @@ as ADR-0028). Draft ADR if adding a privileged Windows Service or shell-wide pol
 
 ---
 
-## Manual setup now (before K10 ships)
+## Manual setup now (fallback)
 
-Use this on a single station today:
+Use this only when the NSIS installer cannot register the watchdog task (e.g. silent
+deploy without logon task permissions). Fresh installs from GitHub Releases register the
+task automatically unless `/NOAUTOSTART` is passed.
 
 1. Install kiosk from the latest GitHub Release.
 2. Create `ArenaKiosk` user; enable auto-logon.

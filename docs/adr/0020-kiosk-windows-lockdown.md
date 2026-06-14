@@ -7,6 +7,16 @@
 **Implements (deferred portion of)**: [ADR-0002](0002-kiosk-tauri-canonical.md)
 **Depends on**: [ADR-0019](0019-kiosk-device-allow-list.md) (`launch_allowed` validation)
 
+## Amendment 2026-06-15: watchdog pause IPC (K10)
+
+- **`SetupRelaxed`** writes `%ProgramData%\Arena360\watchdog.pause` (15 min) so the
+  external `arena360-watchdog.exe` sidecar does not relaunch during setup or
+  **Exit to desktop (15 min)**.
+- **`Locked`** clears the pause file. Auto-update and restart/shutdown set short pauses
+  before exit.
+- Tauri commands: `set_watchdog_pause`, `clear_watchdog_pause`, `prepare_update_relaunch`.
+- Kiosk acquires `Global\Arena360KioskInstance` mutex for single-instance coordination.
+
 ## Amendment 2026-06-14: session cleanup, z-order, and force-end
 
 - **Window mode (`Locked`)**: Fullscreen borderless without `HWND_TOPMOST`; re-assert

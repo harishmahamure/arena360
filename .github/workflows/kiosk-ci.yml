@@ -70,6 +70,13 @@ jobs:
           echo "VITE_OFFLINE_GRACE_MINUTES: $env:VITE_OFFLINE_GRACE_MINUTES"
           pnpm --filter @gaming-cafe/kiosk tauri:build
 
+      - name: Verify watchdog sidecar in bundle
+        run: |
+          Get-ChildItem -Recurse apps/kiosk/src-tauri/target/release/bundle -Filter "arena360-watchdog*" | ForEach-Object { $_.FullName }
+          if (-not (Get-ChildItem -Recurse apps/kiosk/src-tauri/target/release/bundle -Filter "arena360-watchdog*")) {
+            throw "arena360-watchdog sidecar not found in release bundle"
+          }
+
       # Publish the installers so they can be downloaded from the workflow
       # run's "Artifacts" section. The NSIS installer (.exe) is the
       # recommended kiosk distributable (perMachine install).

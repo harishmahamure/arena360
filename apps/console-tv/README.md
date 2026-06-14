@@ -2,7 +2,7 @@
 
 Kotlin Android TV agent for PlayStation stations (`PS5`, `PS4`). See [REQUIREMENTS-CONSOLE-TV.md](../../docs/REQUIREMENTS-CONSOLE-TV.md) and [DRAFT-0037](../../docs/adr/DRAFT-0037-console-tv-kiosk-style-provisioning.md).
 
-**IT deployment runbook:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md) (sideload, production API URL, auto-start on boot, lockdown, provisioning, smoke tests).
+**IT deployment:** [docs/CONSOLE-TV-ANDROID-DEPLOYMENT.md](../../docs/CONSOLE-TV-ANDROID-DEPLOYMENT.md) (startup, lockdown, auto-restart, fleet rollout) and [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md) (fleet checklist and smoke tests).
 
 ## Registration
 

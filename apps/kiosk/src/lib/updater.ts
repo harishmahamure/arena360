@@ -1,5 +1,6 @@
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
+import { prepareUpdateRelaunch } from './tauriCommands';
 
 /**
  * Tauri auto-update manager (ADR-0028).
@@ -21,6 +22,7 @@ export async function checkForUpdateWhenIdle(): Promise<void> {
     const update = await check();
     if (!update) return;
     await update.downloadAndInstall();
+    await prepareUpdateRelaunch();
     await relaunch();
   } catch (err) {
     // Offline, not-yet-configured, or running outside Tauri (browser dev): all

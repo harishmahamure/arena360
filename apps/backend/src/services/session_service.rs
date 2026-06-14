@@ -11,6 +11,9 @@ use crate::models::{
     UpdateDeviceStatusDto, UsageSession, UsageSessionResponse, SESSION_END_REASONS,
 };
 use crate::realtime::OutboxService;
+
+/// Device-channel `session.ended` must be durable so kiosks replay missed force-ends on reconnect.
+const DEVICE_SESSION_ENDED_DURABLE: bool = true;
 use crate::repositories::SessionRepository;
 use crate::services::deduction_profile::{
     wall_minutes_between, weighted_minutes_between,
@@ -662,7 +665,14 @@ impl SessionService {
             .await;
         let _ = self
             .outbox
-            .publish(&device_channel, "session.ended", payload, None, None, false)
+            .publish(
+                &device_channel,
+                "session.ended",
+                payload,
+                None,
+                None,
+                DEVICE_SESSION_ENDED_DURABLE,
+            )
             .await;
         if let Some(player_id) = player_id {
             let user_channel = format!("user:{player_id}");
@@ -819,6 +829,11 @@ impl SessionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_session_ended_events_are_durable() {
+        assert!(super::DEVICE_SESSION_ENDED_DURABLE);
+    }
 
     #[test]
     fn with_cafe_timezone_sets_response_field() {

@@ -13,6 +13,7 @@ import {
 import { SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
 import { registerAuthSessionHandlers } from '../lib/authSession';
 import { applyBalanceUpdated } from '../lib/balanceUpdated';
+import { SESSION_RECONCILE_MS } from '../lib/config';
 import {
   clearPlayerSession,
   getHttpClient,
@@ -24,6 +25,13 @@ import {
 import { enqueueEndIntent, loadEndIntents, removeEndIntent } from '../lib/offlineQueue';
 import { formatPlayerLoginError } from '../lib/planErrors';
 import { KioskRealtimeClient } from '../lib/realtime';
+import {
+  isRemoteSessionEndEvent,
+  type SessionEndPayload,
+  shouldEndSessionForRemoteEvent,
+  shouldRunWsFailPoll,
+  staffEndedFromPayload,
+} from '../lib/remoteSessionEnd';
 import { prepareSessionSounds } from '../lib/sessionSounds';
 import { clearAllTokens, killTrackedProcesses, setLockdownState } from '../lib/tauriCommands';
 
@@ -205,15 +213,17 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   const phaseRef = useRef<AppPhase>('loading');
+  const activeSessionRef = useRef<ActiveSession | null>(null);
+  const cleanupInFlightRef = useRef(false);
   // Short-lived admin token captured during first-time provisioning (in memory only).
   const [adminToken, setAdminToken] = useState<string | null>(null);
 
   const maintenance = deviceStatus === 'under_maintenance' || deviceStatus === 'out_of_service';
 
   const realtimeRef = useMemo(() => ({ current: new KioskRealtimeClient() }), []);
-  const cleanupSessionRef = useRef<((opts?: { staffEnded?: boolean }) => Promise<void>) | null>(
-    null,
-  );
+  const handleRemoteSessionEndRef = useRef<
+    ((opts?: { staffEnded?: boolean }) => Promise<void>) | null
+  >(null);
 
   useEffect(() => {
     deviceIdRef.current = deviceId;
@@ -222,6 +232,10 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
 
   useEffect(() => {
     const syncOnline = () => setOnline(navigator.onLine);
@@ -237,37 +251,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const connectWs = useCallback(
     (id: string, playerId?: string) => {
       const rt = realtimeRef.current;
+      const channels = [`device:${id}`];
+      if (playerId) channels.push(`user:${playerId}`);
+      rt.resetSubscriptions(channels);
       rt.disconnect();
-      rt.subscribe([`device:${id}`]);
-      if (playerId) rt.subscribe([`user:${playerId}`]);
-      rt.onAny((frame) => {
-        if (frame.event_type) setLastEvent(frame.event_type);
-        if (frame.event_type === 'session.ended') {
-          const payload = frame.payload as { reason?: string } | undefined;
-          void cleanupSessionRef.current?.({
-            staffEnded: payload?.reason === 'force',
-          });
-        }
-        if (frame.event_type === 'device.status_changed') {
-          const payload = frame.payload as { status?: string } | undefined;
-          if (typeof payload?.status === 'string') {
-            setDeviceStatus(payload.status);
-            // If the station goes into maintenance while idle/login, kick back to idle.
-            if (payload.status === 'under_maintenance' || payload.status === 'out_of_service') {
-              setPhase((prev) => (prev === 'login' ? 'login' : prev));
-            }
-          }
-        }
-        if (frame.event_type === 'balance.updated') {
-          setActiveSession((prev) => {
-            const updated = applyBalanceUpdated(prev, frame.payload);
-            return updated ?? prev;
-          });
-        }
-      });
       rt.connect();
-      const interval = setInterval(() => setWsConnected(rt.connected), 500);
-      return () => clearInterval(interval);
     },
     [realtimeRef],
   );
@@ -310,25 +298,84 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     [connectWs],
   );
 
-  const reconcileSessionOnce = useCallback(async () => {
-    if (phaseRef.current !== 'session' || !tokenCache.player) return;
-    try {
-      const res = await getHttpClient().get<KioskSessionResponse | null>('/kiosk/sessions/current');
-      setOnline(true);
-      await flushEndIntents();
-      if (!res) {
-        await cleanupSessionAndReturnToLogin();
-        return;
+  const handleRemoteSessionEnd = useCallback(
+    async (opts?: { staffEnded?: boolean }) => {
+      if (cleanupInFlightRef.current) return;
+      cleanupInFlightRef.current = true;
+      try {
+        await cleanupSessionAndReturnToLogin(opts);
+      } finally {
+        cleanupInFlightRef.current = false;
       }
-      setActiveSession(sessionFromResponse(res));
-    } catch {
-      setOnline(false);
-    }
-  }, [cleanupSessionAndReturnToLogin, flushEndIntents]);
+    },
+    [cleanupSessionAndReturnToLogin],
+  );
+
+  const reconcileSessionOnce = useCallback(
+    async (opts?: { staffEndedOnRemoteEnd?: boolean }) => {
+      if (phaseRef.current !== 'session' || !tokenCache.player) return;
+      try {
+        const res = await getHttpClient().get<KioskSessionResponse | null>(
+          '/kiosk/sessions/current',
+        );
+        setOnline(true);
+        await flushEndIntents();
+        if (!res) {
+          await handleRemoteSessionEnd({ staffEnded: opts?.staffEndedOnRemoteEnd ?? false });
+          return;
+        }
+        setActiveSession(sessionFromResponse(res));
+      } catch {
+        setOnline(false);
+      }
+    },
+    [flushEndIntents, handleRemoteSessionEnd],
+  );
 
   useEffect(() => {
-    cleanupSessionRef.current = cleanupSessionAndReturnToLogin;
-  }, [cleanupSessionAndReturnToLogin]);
+    handleRemoteSessionEndRef.current = handleRemoteSessionEnd;
+  }, [handleRemoteSessionEnd]);
+
+  useEffect(() => {
+    const rt = realtimeRef.current;
+    return rt.onAny((frame) => {
+      if (frame.event_type) setLastEvent(frame.event_type);
+
+      if (isRemoteSessionEndEvent(frame.event_type ?? '')) {
+        const payload = frame.payload as SessionEndPayload | undefined;
+        if (!shouldEndSessionForRemoteEvent(activeSessionRef.current?.id, payload)) {
+          return;
+        }
+        void handleRemoteSessionEndRef.current?.({
+          staffEnded: staffEndedFromPayload(frame.event_type ?? '', payload),
+        });
+        return;
+      }
+
+      if (frame.event_type === 'device.status_changed') {
+        const payload = frame.payload as { status?: string } | undefined;
+        if (typeof payload?.status === 'string') {
+          setDeviceStatus(payload.status);
+          if (payload.status === 'under_maintenance' || payload.status === 'out_of_service') {
+            setPhase((prev) => (prev === 'login' ? 'login' : prev));
+          }
+        }
+      }
+
+      if (frame.event_type === 'balance.updated') {
+        setActiveSession((prev) => {
+          const updated = applyBalanceUpdated(prev, frame.payload);
+          return updated ?? prev;
+        });
+      }
+    });
+  }, [realtimeRef]);
+
+  useEffect(() => {
+    const rt = realtimeRef.current;
+    const interval = setInterval(() => setWsConnected(rt.connected), 500);
+    return () => clearInterval(interval);
+  }, [realtimeRef]);
 
   useEffect(() => {
     const rt = realtimeRef.current;
@@ -353,6 +400,17 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', onResume);
     };
   }, [reconcileSessionOnce]);
+
+  // Poll for remote session ends only while WebSocket is disconnected (5 min default).
+  useEffect(() => {
+    if (!shouldRunWsFailPoll(phase, wsConnected, Boolean(tokenCache.player))) {
+      return;
+    }
+    const id = setInterval(() => {
+      void reconcileSessionOnce({ staffEndedOnRemoteEnd: true });
+    }, SESSION_RECONCILE_MS);
+    return () => clearInterval(id);
+  }, [phase, wsConnected, reconcileSessionOnce]);
 
   const handlePlayerAuthExpired = useCallback(async () => {
     await cleanupSessionAndReturnToLogin();

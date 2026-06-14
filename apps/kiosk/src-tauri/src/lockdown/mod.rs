@@ -77,7 +77,21 @@ pub fn set_lockdown_state(app: AppHandle, state: String) -> Result<(), String> {
         *guard = state;
     }
     apply_window_mode(&app, state)?;
+    sync_watchdog_pause(state)?;
     let _ = app.emit("lockdown-changed", state.as_str());
+    Ok(())
+}
+
+#[cfg(windows)]
+fn sync_watchdog_pause(state: LockdownState) -> Result<(), String> {
+    match state {
+        LockdownState::SetupRelaxed => crate::watchdog_client::pause_for_setup(),
+        LockdownState::Locked => crate::watchdog_client::clear_watchdog_pause(),
+    }
+}
+
+#[cfg(not(windows))]
+fn sync_watchdog_pause(_state: LockdownState) -> Result<(), String> {
     Ok(())
 }
 

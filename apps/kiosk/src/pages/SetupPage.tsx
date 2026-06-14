@@ -1,9 +1,11 @@
 import { ApiError, useAsyncAction } from '@gaming-cafe/utils';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
 import { AsyncActionButton } from '../components/AsyncActionButton';
 import { useKiosk } from '../context/KioskProvider';
 import { KIOSK_LOGO_URL } from '../lib/config';
+import { setWatchdogPause } from '../lib/tauriCommands';
 
 const SETUP_IDLE_MS = 15 * 60 * 1000;
 
@@ -19,7 +21,9 @@ export function SetupPage() {
   const [busy, setBusy] = useState(false);
   const lockAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
   const factoryResetAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
-  const setupActionLoading = lockAction.loading || factoryResetAction.loading;
+  const exitDesktopAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
+  const setupActionLoading =
+    lockAction.loading || factoryResetAction.loading || exitDesktopAction.loading;
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -65,6 +69,11 @@ export function SetupPage() {
     }
   }
 
+  async function exitToDesktop() {
+    await setWatchdogPause(15, 'maintenance');
+    await getCurrentWindow().close();
+  }
+
   if (authenticated) {
     return (
       <div className="setup-shell">
@@ -87,6 +96,21 @@ export function SetupPage() {
               onClick={() => void lockAction.run(() => exitSetup())}
             >
               Done — re-lock
+            </AsyncActionButton>
+            <AsyncActionButton
+              className="secondary"
+              loading={exitDesktopAction.loading}
+              success={exitDesktopAction.succeeded}
+              successLabel="Desktop available"
+              error={exitDesktopAction.failed}
+              errorLabel={exitDesktopAction.errorMessage ?? 'Could not exit to desktop'}
+              loadingLabel="Preparing…"
+              disabled={
+                exitDesktopAction.disabled || lockAction.loading || factoryResetAction.loading
+              }
+              onClick={() => void exitDesktopAction.run(() => exitToDesktop())}
+            >
+              Exit to desktop (15 min)
             </AsyncActionButton>
             <AsyncActionButton
               className="link danger"

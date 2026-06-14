@@ -99,6 +99,24 @@ export class KioskRealtimeClient {
     };
   }
 
+  /** Replace the subscription set (used on reconnect / player login). */
+  resetSubscriptions(channels: string[]): void {
+    const previous = new Set(this.subscriptions);
+    this.subscriptions.clear();
+    for (const ch of channels) this.subscriptions.add(ch);
+
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+
+    const removed = [...previous].filter((ch) => !this.subscriptions.has(ch));
+    const added = [...this.subscriptions].filter((ch) => !previous.has(ch));
+    if (removed.length > 0) {
+      this.send({ type: 'Unsubscribe', channels: removed });
+    }
+    if (added.length > 0) {
+      this.send({ type: 'Subscribe', channels: added });
+    }
+  }
+
   subscribe(channels: string[]): void {
     for (const ch of channels) this.subscriptions.add(ch);
     if (this.ws?.readyState === WebSocket.OPEN) {
