@@ -47,7 +47,7 @@ export function resolveAuthExpiredAction(
   if (isCredentialEntryPath(url)) return null;
 
   if (message && PLAYER_TOKEN_MESSAGES.has(message)) {
-    return 'player-logout';
+    return runtime.hasPlayerToken ? 'player-logout' : null;
   }
 
   if (

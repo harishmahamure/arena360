@@ -1,9 +1,11 @@
 import { PlanType, type PlanTypeValue } from '@gaming-cafe/contracts';
 import { FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
+import { normalizeTimeOfDay } from '@gaming-cafe/utils';
 import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PlanDeductionSummary } from '../../../containers/plans/PlanDeductionSummary';
 import {
   type CreatePlanFormData,
   createPlanSchema,
@@ -12,12 +14,7 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import type { CreatePlanPayload } from '../../../services/plans/add';
 import { getPlanById } from '../../../services/plans/getById';
 import { updatePlan } from '../../../services/plans/update';
-import { planFormFields } from './PlanNewPage';
-
-function normalizeTime(value?: string): string | undefined {
-  if (!value) return undefined;
-  return value.length === 5 ? `${value}:00` : value;
-}
+import { planFormSections } from './PlanNewPage';
 
 export default function EditPlanPage() {
   const navigate = useNavigate();
@@ -45,8 +42,8 @@ export default function EditPlanPage() {
     setError(undefined);
     setSuccess(undefined);
 
-    if (!data.name || !data.price || !data.planType) {
-      setError('Name, price, and plan type are required');
+    if (!data.name || !data.price) {
+      setError('Name and price are required');
       setIsSubmitting(false);
       return;
     }
@@ -65,18 +62,14 @@ export default function EditPlanPage() {
       };
 
       if (data.timeCredits) payload.timeCredits = data.timeCredits;
-      if (data.timeWindowStart) payload.timeWindowStart = data.timeWindowStart;
-      if (data.timeWindowEnd) payload.timeWindowEnd = data.timeWindowEnd;
-      if (data.allowedDays?.length) payload.allowedDays = data.allowedDays;
-      if (data.allowedMonths?.length) payload.allowedMonths = data.allowedMonths;
       payload.dynamicDeductionEnabled = data.dynamicDeductionEnabled ?? false;
       if (data.dynamicDeductionEnabled) {
         payload.deductionProfile = {
-          peakWindowStart: normalizeTime(data.peakWindowStart) ?? '',
-          peakWindowEnd: normalizeTime(data.peakWindowEnd) ?? '',
+          peakWindowStart: normalizeTimeOfDay(data.peakWindowStart) ?? '',
+          peakWindowEnd: normalizeTimeOfDay(data.peakWindowEnd) ?? '',
           peakRatio: data.peakRatio ?? 1.5,
-          lowWindowStart: normalizeTime(data.lowWindowStart) ?? '',
-          lowWindowEnd: normalizeTime(data.lowWindowEnd) ?? '',
+          lowWindowStart: normalizeTimeOfDay(data.lowWindowStart) ?? '',
+          lowWindowEnd: normalizeTimeOfDay(data.lowWindowEnd) ?? '',
           lowRatio: data.lowRatio ?? 0.8,
         };
       }
@@ -115,15 +108,15 @@ export default function EditPlanPage() {
     >
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" fontWeight={600} gutterBottom>
-          Update Plan
+          {canWrite ? 'Update Plan' : 'Plan details'}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {plan?.name} - Update the plan details
+          {canWrite ? `${plan?.name} - Update the plan details` : plan?.name}
         </Typography>
       </Box>
 
       <FormBuilder<CreatePlanFormData>
-        fields={planFormFields}
+        sections={planFormSections}
         schema={createPlanSchema}
         defaultValues={{
           name: plan?.name || '',
@@ -134,14 +127,10 @@ export default function EditPlanPage() {
               ? PlanType.WEEKEND_SPECIAL
               : PlanType.TIME_BASED,
           validityDays: plan?.validityDays || 7,
-          timeWindowStart: plan?.timeWindowStart,
-          timeWindowEnd: plan?.timeWindowEnd,
           timeCredits: plan?.timeCredits,
           isActive: plan?.isActive ?? true,
           deviceSubType: (plan?.deviceSubType ?? undefined) as CreatePlanFormData['deviceSubType'],
           deviceType: (plan?.deviceType ?? undefined) as CreatePlanFormData['deviceType'],
-          allowedDays: plan?.allowedDays ?? undefined,
-          allowedMonths: plan?.allowedMonths ?? undefined,
           dynamicDeductionEnabled: plan?.dynamicDeductionEnabled ?? false,
           peakWindowStart: plan?.deductionProfile?.peakWindowStart,
           peakWindowEnd: plan?.deductionProfile?.peakWindowEnd,
@@ -160,9 +149,17 @@ export default function EditPlanPage() {
         showReset={canWrite}
         submitLabel="Update Plan"
         cancelLabel="Cancel"
+        resetLabel="Reset Form"
         buttonAlign="right"
         spacing={3}
       />
+
+      {!canWrite && plan?.dynamicDeductionEnabled && plan.deductionProfile ? (
+        <PlanDeductionSummary
+          timeCredits={plan.timeCredits ?? 0}
+          deductionProfile={plan.deductionProfile}
+        />
+      ) : null}
     </Paper>
   );
 }

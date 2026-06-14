@@ -1,3 +1,4 @@
+import { DEFAULT_CAFE_TZ } from '@gaming-cafe/contracts';
 import type { Action } from '@gaming-cafe/ui';
 import { formatTimeAgo } from '@gaming-cafe/utils';
 import { Box, Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material';
@@ -15,17 +16,29 @@ export function SessionListMobileCard({ row, actions }: SessionListMobileCardPro
   const isActive = !row.endTime;
 
   const timeContent = (() => {
+    if (row.endTime) {
+      return (
+        <Stack spacing={0.25}>
+          <Typography variant="body2" color="text.secondary">
+            Expired
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Ended {formatTimeAgo(row.endTime)}
+          </Typography>
+        </Stack>
+      );
+    }
     if (!row.balance || !row.startTime) {
-      if (row.endTime) return formatTimeAgo(row.endTime);
       return 'N/A';
     }
-    if (row.endTime) return formatTimeAgo(row.endTime);
     return (
       <SessionRemainingClock
         sessionStartTime={row.startTime}
         remainingMinutes={row.balance.remainingMinutes}
         timeCreditsConsumed={row.timeCreditsConsumed}
         deductionProfile={row.balance.deductionProfile}
+        cafeTimezone={row.cafeTimezone ?? DEFAULT_CAFE_TZ}
+        expiryDate={row.balance.expiryDate}
       />
     );
   })();

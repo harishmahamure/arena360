@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
+import { SESSION_EXPIRED_DISMISS_MS, SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
 import { KIOSK_APP_VERSION, KIOSK_LOGO_URL, LOGIN_BACKGROUND_VIDEO_URL } from '../lib/config';
-import { clearFailures, getLockout, recordFailure, resetLoginLockoutByStaff } from '../lib/loginLockout';
+import {
+  clearFailures,
+  getLockout,
+  recordFailure,
+  resetLoginLockoutByStaff,
+} from '../lib/loginLockout';
 import { cachedAssetSrc } from '../lib/tauriCommands';
 
 function formatRetry(retryAt: number): string {
@@ -18,8 +24,16 @@ function formatRetry(retryAt: number): string {
  * with Ctrl+Shift+B on this screen.
  */
 export function LoginHomePage() {
-  const { playerLogin, error, online, maintenance, deviceName, loginNotice, clearLoginNotice } =
-    useKiosk();
+  const {
+    playerLogin,
+    error,
+    clearError,
+    online,
+    maintenance,
+    deviceName,
+    loginNotice,
+    clearLoginNotice,
+  } = useKiosk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -33,6 +47,12 @@ export function LoginHomePage() {
     const id = setInterval(() => setLockout(getLockout()), 10000);
     return () => clearInterval(id);
   }, [lockout.locked]);
+
+  useEffect(() => {
+    if (error !== SESSION_EXPIRED_MESSAGE || lockout.locked) return;
+    const id = setTimeout(() => clearError(), SESSION_EXPIRED_DISMISS_MS);
+    return () => clearTimeout(id);
+  }, [error, lockout.locked, clearError]);
 
   // Staff-only: clear client login lockout (same hidden shortcut pattern as Ctrl+Shift+A setup).
   useEffect(() => {

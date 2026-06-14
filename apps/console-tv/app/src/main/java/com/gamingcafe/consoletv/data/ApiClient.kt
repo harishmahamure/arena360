@@ -56,6 +56,7 @@ data class TvSessionResponse(
     @SerializedName("cafeTimezone") val cafeTimezone: String,
     @SerializedName("timeCreditsConsumed") val timeCreditsConsumed: Double = 0.0,
     @SerializedName("playerUsername") val playerUsername: String?,
+    @SerializedName("expiryDate") val expiryDate: String? = null,
 )
 
 class ApiClient {

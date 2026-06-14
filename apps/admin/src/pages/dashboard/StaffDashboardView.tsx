@@ -1,4 +1,9 @@
-import { DEFAULT_CAFE_TZ, effectiveRemainingMinutes } from '@gaming-cafe/contracts';
+import {
+  capRemainingByExpiry,
+  DEFAULT_CAFE_TZ,
+  effectiveRemainingMinutes,
+  SESSION_CLOCK_TICK_MS,
+} from '@gaming-cafe/contracts';
 import { EmptyState, ErrorPanel, PageShell } from '@gaming-cafe/ui';
 import { formatRemainingLabel, toastUtils } from '@gaming-cafe/utils';
 import {
@@ -29,12 +34,15 @@ const ENDING_SOON_MAX = 5;
 
 function sessionEffectiveRemainingMinutes(session: SessionResponse): number | null {
   if (!session.startTime || !session.balance) return null;
-  return effectiveRemainingMinutes(
-    session.startTime,
-    session.balance.remainingMinutes,
-    session.timeCreditsConsumed ?? 0,
-    session.balance.deductionProfile,
-    DEFAULT_CAFE_TZ,
+  return capRemainingByExpiry(
+    effectiveRemainingMinutes(
+      session.startTime,
+      session.balance.remainingMinutes,
+      session.timeCreditsConsumed ?? 0,
+      session.balance.deductionProfile,
+      session.cafeTimezone ?? DEFAULT_CAFE_TZ,
+    ),
+    session.balance.expiryDate,
   );
 }
 
@@ -109,7 +117,7 @@ export default function StaffDashboardView() {
   // Local tick so "ending soon" decays without server refetch (matches SessionRemainingClock).
   const [clockTick, setClockTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setClockTick((t) => t + 1), 30_000);
+    const id = setInterval(() => setClockTick((t) => t + 1), SESSION_CLOCK_TICK_MS);
     return () => clearInterval(id);
   }, []);
 
@@ -320,7 +328,9 @@ export default function StaffDashboardView() {
             {endingSoonSessions.map((session) => {
               const player = session.balance?.player?.username ?? 'Unknown';
               const device = session.device?.name ?? 'Unknown';
-              const remainingLabel = formatRemainingLabel(sessionEffectiveRemainingMinutes(session));
+              const remainingLabel = formatRemainingLabel(
+                sessionEffectiveRemainingMinutes(session),
+              );
               return (
                 <Chip
                   key={session.id}

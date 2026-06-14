@@ -1,6 +1,8 @@
 import { Permission } from '@gaming-cafe/contracts';
 import { Providers } from '@gaming-cafe/providers';
 import { local } from '@gaming-cafe/utils';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useReducer } from 'react';
 import { Route, Routes } from 'react-router-dom';
@@ -52,9 +54,6 @@ import SessionsPage from './pages/dashboard/sessions/SessionsPage';
 import SettingsPage from './pages/dashboard/settings/SettingsPage';
 import ShiftDetailPage from './pages/dashboard/shifts/ShiftDetailPage';
 import ShiftsPage from './pages/dashboard/shifts/ShiftsPage';
-import UnitDetailPage from './pages/dashboard/units/UnitDetailPage';
-import UnitNewPage from './pages/dashboard/units/UnitNewPage';
-import UnitsPage from './pages/dashboard/units/UnitsPage';
 import VendorDetailPage from './pages/dashboard/vendors/VendorDetailPage';
 import VendorNewPage from './pages/dashboard/vendors/VendorNewPage';
 import VendorsPage from './pages/dashboard/vendors/VendorsPage';
@@ -75,130 +74,140 @@ function App() {
   return (
     <ErrorBoundary>
       <Providers>
-        <StoreContext value={{ dispatch, state }}>
-          <QueryClientProvider client={queryClient}>
-            <RealtimeProvider>
-              <Routes>
-                <Route element={<AuthLayout />}>
-                  <Route path="/login" element={<LoginPage />} />
-                </Route>
-                <Route element={<DashboardLayout />}>
-                  <Route path="/" element={<DashboardPage />} />
-                  <Route element={<RequirePermission permission={Permission.PlayersRead} />}>
-                    <Route path="/players" element={<PlayersPage />} />
-                    <Route path="/players/:id" element={<PlayerDetailPage />} />
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <StoreContext value={{ dispatch, state }}>
+            <QueryClientProvider client={queryClient}>
+              <RealtimeProvider>
+                <Routes>
+                  <Route element={<AuthLayout />}>
+                    <Route path="/login" element={<LoginPage />} />
                   </Route>
-                  <Route element={<RequirePermission permission={Permission.PlayersWrite} />}>
-                    <Route path="/players/new" element={<PlayerNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.DevicesRead} />}>
-                    <Route path="/devices" element={<DevicesPage />} />
-                    <Route path="/devices/:id" element={<DeviceDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.DevicesWrite} />}>
-                    <Route path="/devices/new" element={<DeviceNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.PlansRead} />}>
-                    <Route path="/plans" element={<PlansPage />} />
-                    <Route path="/plans/:id" element={<PlanDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.PlansWrite} />}>
-                    <Route path="/plans/new" element={<PlanNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.PlayerPlansRead} />}>
-                    <Route path="/plan-transactions" element={<PlanTransactionsPage />} />
-                    <Route path="/plan-transactions/:id" element={<PlanTransactionDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.PlayerPlansWrite} />}>
-                    <Route path="/plan-transactions/new" element={<PlanTransactionNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.SessionsRead} />}>
-                    <Route path="/sessions" element={<SessionsPage />} />
-                    <Route path="/sessions/:id" element={<SessionDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.SessionsWrite} />}>
-                    <Route path="/sessions/new" element={<SessionNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.ProductsRead} />}>
-                    <Route path="/products" element={<ProductsPage />} />
-                    <Route path="/products/:id" element={<ProductDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.ProductsWrite} />}>
-                    <Route path="/products/new" element={<ProductNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.GamesRead} />}>
-                    <Route path="/games" element={<GamesPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.GamesWrite} />}>
-                    <Route path="/games/new" element={<GameNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.GamesRead} />}>
-                    <Route path="/games/:id" element={<GameDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.TransactionsRead} />}>
-                    <Route path="/product-transactions" element={<ProductTransactionsPage />} />
+                  <Route element={<DashboardLayout />}>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route element={<RequirePermission permission={Permission.PlayersRead} />}>
+                      <Route path="/players" element={<PlayersPage />} />
+                      <Route path="/players/:id" element={<PlayerDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.PlayersWrite} />}>
+                      <Route path="/players/new" element={<PlayerNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.DevicesRead} />}>
+                      <Route path="/devices" element={<DevicesPage />} />
+                      <Route path="/devices/:id" element={<DeviceDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.DevicesWrite} />}>
+                      <Route path="/devices/new" element={<DeviceNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.PlansRead} />}>
+                      <Route path="/plans" element={<PlansPage />} />
+                      <Route path="/plans/:id" element={<PlanDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.PlansWrite} />}>
+                      <Route path="/plans/new" element={<PlanNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.PlayerPlansRead} />}>
+                      <Route path="/plan-transactions" element={<PlanTransactionsPage />} />
+                      <Route
+                        path="/plan-transactions/:id"
+                        element={<PlanTransactionDetailPage />}
+                      />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.PlayerPlansWrite} />}>
+                      <Route path="/plan-transactions/new" element={<PlanTransactionNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.SessionsRead} />}>
+                      <Route path="/sessions" element={<SessionsPage />} />
+                      <Route path="/sessions/:id" element={<SessionDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.SessionsWrite} />}>
+                      <Route path="/sessions/new" element={<SessionNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ProductsRead} />}>
+                      <Route path="/products" element={<ProductsPage />} />
+                      <Route path="/products/:id" element={<ProductDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ProductsWrite} />}>
+                      <Route path="/products/new" element={<ProductNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.GamesRead} />}>
+                      <Route path="/games" element={<GamesPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.GamesWrite} />}>
+                      <Route path="/games/new" element={<GameNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.GamesRead} />}>
+                      <Route path="/games/:id" element={<GameDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.TransactionsRead} />}>
+                      <Route path="/product-transactions" element={<ProductTransactionsPage />} />
+                      <Route
+                        path="/product-transactions/:id"
+                        element={<ProductTransactionDetailPage />}
+                      />
+                    </Route>
                     <Route
-                      path="/product-transactions/:id"
-                      element={<ProductTransactionDetailPage />}
-                    />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.TransactionsWrite} />}>
+                      element={<RequirePermission permission={Permission.TransactionsWrite} />}
+                    >
+                      <Route
+                        path="/product-transactions/new"
+                        element={<ProductTransactionNewPage />}
+                      />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ShiftsRead} />}>
+                      <Route path="/shifts" element={<ShiftsPage />} />
+                      <Route path="/shifts/:id" element={<ShiftDetailPage />} />
+                    </Route>
                     <Route
-                      path="/product-transactions/new"
-                      element={<ProductTransactionNewPage />}
-                    />
+                      element={<RequirePermission permission={Permission.CashRegistersRead} />}
+                    >
+                      <Route path="/cash-registers" element={<CashRegistersPage />} />
+                      <Route path="/cash-registers/:id" element={<CashRegisterDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.CashDepositsRead} />}>
+                      <Route path="/cash-deposits" element={<CashDepositsPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.CreditRead} />}>
+                      <Route path="/credit" element={<CreditPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ExpensesRead} />}>
+                      <Route path="/expenses" element={<ExpensesPage />} />
+                      <Route path="/expenses/:id" element={<ExpenseDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ExpensesWrite} />}>
+                      <Route path="/expenses/new" element={<ExpenseNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.VendorsRead} />}>
+                      <Route path="/vendors" element={<VendorsPage />} />
+                      <Route path="/vendors/:id" element={<VendorDetailPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.VendorsWrite} />}>
+                      <Route path="/vendors/new" element={<VendorNewPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.InventoryRead} />}>
+                      <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
+                      <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
+                      <Route path="/inventory/transfers" element={<InventoryTransfersPage />} />
+                      <Route
+                        path="/inventory/transfers/new"
+                        element={<InventoryTransferNewPage />}
+                      />
+                      <Route path="/inventory/waste" element={<InventoryWastePage />} />
+                      <Route path="/inventory/waste/new" element={<InventoryWasteNewPage />} />
+                      <Route
+                        path="/inventory/waste/report"
+                        element={<InventoryWasteReportPage />}
+                      />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
+                      <Route path="/settings" element={<SettingsPage />} />
+                    </Route>
+                    <Route path="*" element={<NotFoundPage />} />
                   </Route>
-                  <Route path="/units" element={<UnitsPage />} />
-                  <Route element={<RequirePermission permission={Permission.UnitsWrite} />}>
-                    <Route path="/units/new" element={<UnitNewPage />} />
-                  </Route>
-                  <Route path="/units/:id" element={<UnitDetailPage />} />
-                  <Route element={<RequirePermission permission={Permission.ShiftsRead} />}>
-                    <Route path="/shifts" element={<ShiftsPage />} />
-                    <Route path="/shifts/:id" element={<ShiftDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.CashRegistersRead} />}>
-                    <Route path="/cash-registers" element={<CashRegistersPage />} />
-                    <Route path="/cash-registers/:id" element={<CashRegisterDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.CashDepositsRead} />}>
-                    <Route path="/cash-deposits" element={<CashDepositsPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.CreditRead} />}>
-                    <Route path="/credit" element={<CreditPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.ExpensesRead} />}>
-                    <Route path="/expenses" element={<ExpensesPage />} />
-                    <Route path="/expenses/:id" element={<ExpenseDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.ExpensesWrite} />}>
-                    <Route path="/expenses/new" element={<ExpenseNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.VendorsRead} />}>
-                    <Route path="/vendors" element={<VendorsPage />} />
-                    <Route path="/vendors/:id" element={<VendorDetailPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.VendorsWrite} />}>
-                    <Route path="/vendors/new" element={<VendorNewPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.InventoryRead} />}>
-                    <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
-                    <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
-                    <Route path="/inventory/transfers" element={<InventoryTransfersPage />} />
-                    <Route path="/inventory/transfers/new" element={<InventoryTransferNewPage />} />
-                    <Route path="/inventory/waste" element={<InventoryWastePage />} />
-                    <Route path="/inventory/waste/new" element={<InventoryWasteNewPage />} />
-                    <Route path="/inventory/waste/report" element={<InventoryWasteReportPage />} />
-                  </Route>
-                  <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
-                    <Route path="/settings" element={<SettingsPage />} />
-                  </Route>
-                  <Route path="*" element={<NotFoundPage />} />
-                </Route>
-              </Routes>
-            </RealtimeProvider>
-          </QueryClientProvider>
-        </StoreContext>
+                </Routes>
+              </RealtimeProvider>
+            </QueryClientProvider>
+          </StoreContext>
+        </LocalizationProvider>
       </Providers>
     </ErrorBoundary>
   );

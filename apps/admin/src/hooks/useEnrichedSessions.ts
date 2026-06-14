@@ -80,21 +80,54 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
     const planMap = new Map(plansData?.data?.map((p) => [p.id, p]) ?? []);
 
     return sessions.map((session): SessionResponse => {
-      const balance = balanceMap.get(session.balanceId);
-      const player = balance?.player ?? (balance ? playerMap.get(balance.playerId) : undefined);
+      const balanceLookup = balanceMap.get(session.balanceId);
+      const player =
+        balanceLookup?.player ??
+        (balanceLookup ? playerMap.get(balanceLookup.playerId) : undefined);
       const plan =
-        balance?.plan ?? (balance?.sourcePlanId ? planMap.get(balance.sourcePlanId) : undefined);
+        balanceLookup?.plan ??
+        (balanceLookup?.sourcePlanId ? planMap.get(balanceLookup.sourcePlanId) : undefined);
 
-      const enrichedBalance =
-        session.balance ??
-        (balance
+      const mergedDeductionProfile =
+        session.balance?.deductionProfile ?? balanceLookup?.deductionProfile ?? null;
+      const mergedExpiryDate =
+        session.balance?.expiryDate ?? balanceLookup?.expiryDate ?? undefined;
+
+      const enrichedBalance = session.balance
+        ? {
+            ...session.balance,
+            deductionProfile: mergedDeductionProfile,
+            expiryDate: mergedExpiryDate ?? session.balance.expiryDate,
+            player:
+              session.balance.player ??
+              (player
+                ? {
+                    id: player.id,
+                    username: player.username,
+                    firstName: player.firstName,
+                    lastName: player.lastName,
+                  }
+                : session.balance.player),
+            plan:
+              session.balance.plan ??
+              (plan
+                ? {
+                    id: plan.id,
+                    name: plan.name,
+                    planType: plan.planType,
+                    timeCredits: plan.timeCredits ?? 0,
+                  }
+                : session.balance.plan),
+          }
+        : balanceLookup
           ? {
-              id: balance.id,
-              playerId: balance.playerId,
-              kind: balance.kind,
-              remainingMinutes: balance.remainingMinutes,
-              status: balance.status,
-              deductionProfile: balance.deductionProfile ?? null,
+              id: balanceLookup.id,
+              playerId: balanceLookup.playerId,
+              kind: balanceLookup.kind,
+              remainingMinutes: balanceLookup.remainingMinutes,
+              status: balanceLookup.status,
+              deductionProfile: mergedDeductionProfile,
+              expiryDate: mergedExpiryDate ?? balanceLookup.expiryDate,
               player: player
                 ? {
                     id: player.id,
@@ -102,7 +135,7 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
                     firstName: player.firstName,
                     lastName: player.lastName,
                   }
-                : balance.player,
+                : balanceLookup.player,
               plan: plan
                 ? {
                     id: plan.id,
@@ -110,9 +143,9 @@ export function useEnrichedSessions(sessions: SessionResponse[] | undefined) {
                     planType: plan.planType,
                     timeCredits: plan.timeCredits ?? 0,
                   }
-                : balance.plan,
+                : balanceLookup.plan,
             }
-          : undefined);
+          : undefined;
 
       return {
         ...session,

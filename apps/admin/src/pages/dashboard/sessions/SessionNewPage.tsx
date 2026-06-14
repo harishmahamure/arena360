@@ -55,12 +55,20 @@ export default function NewSessionPage() {
       );
   }, [enrichedPlayerPlans, selectedPlayer?.id, navigate]);
 
+  const formatPlanTypeLabel = (planType?: string) => {
+    if (planType === PlanType.TIME_BASED) return 'Time Plan';
+    if (planType === PlanType.WEEKEND_SPECIAL) return 'Happy Hours';
+    if (!planType) return 'Plan';
+    return planType
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const balanceOptions =
     enrichedPlayerPlans.map((pp) => ({
       value: pp.id,
-      label: `${pp.plan?.name} - ${
-        pp.plan?.planType === PlanType.TIME_BASED ? 'Time Plan' : 'Happy Hours'
-      } (${pp.remainingMinutes} min remaining)`,
+      label: `${pp.plan?.name} - ${formatPlanTypeLabel(pp.plan?.planType)} (${pp.remainingMinutes} min remaining)`,
     })) || [];
 
   const deviceOptions =

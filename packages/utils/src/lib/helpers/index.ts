@@ -4,5 +4,6 @@ export * from './number-utils';
 export * from './object-utils';
 export * from './storage-utils';
 export * from './string-utils';
+export * from './time-of-day';
 export * from './toast-config';
 export * from './toast-utils';

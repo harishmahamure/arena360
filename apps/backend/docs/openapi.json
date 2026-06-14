@@ -10390,22 +10390,55 @@
           "id",
           "startTime",
           "balanceId",
-          "remainingMinutes"
+          "remainingMinutes",
+          "walletBalanceMinutes",
+          "cafeTimezone",
+          "expiryDate"
         ],
         "properties": {
           "balanceId": {
             "type": "string"
+          },
+          "cafeTimezone": {
+            "type": "string"
+          },
+          "deductionProfile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeductionProfile"
+              }
+            ]
+          },
+          "expiryDate": {
+            "type": "string",
+            "format": "date-time"
           },
           "id": {
             "type": "string"
           },
           "remainingMinutes": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Server-computed effective display remaining (legacy clients)."
           },
           "startTime": {
             "type": "string",
             "format": "date-time"
+          },
+          "timeCreditsConsumed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "walletBalanceMinutes": {
+            "type": "number",
+            "format": "double",
+            "description": "Raw wallet minutes for client-side countdown anchoring."
           }
         }
       },
@@ -14483,8 +14516,10 @@
           "deviceId",
           "startTime",
           "remainingMinutes",
+          "walletBalanceMinutes",
           "resumed",
-          "cafeTimezone"
+          "cafeTimezone",
+          "expiryDate"
         ],
         "properties": {
           "balanceId": {
@@ -14513,9 +14548,13 @@
             ],
             "description": "Set when the session has been closed (auto, voluntary, force, offline_reconcile)."
           },
+          "expiryDate": {
+            "type": "string"
+          },
           "remainingMinutes": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Server-computed effective display remaining (console TV / legacy)."
           },
           "resumed": {
             "type": "boolean",
@@ -14533,6 +14572,11 @@
               "null"
             ],
             "format": "double"
+          },
+          "walletBalanceMinutes": {
+            "type": "number",
+            "format": "double",
+            "description": "Raw wallet minutes from `player_plan_balances.remainingMinutes`."
           }
         }
       },
@@ -16983,9 +17027,24 @@
           "playerId",
           "kind",
           "remainingMinutes",
-          "status"
+          "status",
+          "expiryDate"
         ],
         "properties": {
+          "deductionProfile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeductionProfile"
+              }
+            ]
+          },
+          "expiryDate": {
+            "type": "string",
+            "format": "date-time"
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -19381,7 +19440,8 @@
           "deviceId",
           "startTime",
           "remainingMinutes",
-          "cafeTimezone"
+          "cafeTimezone",
+          "expiryDate"
         ],
         "properties": {
           "balanceId": {
@@ -19401,6 +19461,9 @@
             ]
           },
           "deviceId": {
+            "type": "string"
+          },
+          "expiryDate": {
             "type": "string"
           },
           "playerUsername": {
@@ -20336,6 +20399,10 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "cafeTimezone": {
+            "type": "string",
+            "description": "IANA timezone for peak/low window math (enriched list/detail only)."
           },
           "createdAt": {
             "type": "string",

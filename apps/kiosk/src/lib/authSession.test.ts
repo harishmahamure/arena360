@@ -49,4 +49,13 @@ describe('authSession', () => {
       ),
     ).toBe('player-logout');
   });
+
+  it('ignores missing player header when no player token is stored', () => {
+    expect(
+      resolveAuthExpiredAction(
+        { url: '/kiosk/sessions', message: 'X-Player-Token required for player routes' },
+        { phase: 'session', hasPlayerToken: false },
+      ),
+    ).toBeNull();
+  });
 });

@@ -95,4 +95,16 @@ class SessionClockTest {
         val weighted = weightedMinutesBetween(start, end, profile, "Asia/Kolkata")
         assertEquals(48.0, weighted, 1.0)
     }
+
+    @Test
+    fun capRemainingByExpiry_usesMinOfWalletAndExpiry() {
+        val now = Instant.parse("2026-06-07T12:00:00Z").toEpochMilli()
+        val expirySoon = Instant.parse("2026-06-07T12:15:00Z").toString()
+        val expiryLater = Instant.parse("2026-06-14T12:00:00Z").toString()
+
+        assertEquals(300.0, capRemainingByExpiry(300.0, expiryLater, now), 0.001)
+        assertEquals(15.0, capRemainingByExpiry(300.0, expirySoon, now), 0.001)
+        assertEquals(10.0, capRemainingByExpiry(10.0, expiryLater, now), 0.001)
+        assertEquals(50.0, capRemainingByExpiry(50.0, null, now), 0.001)
+    }
 }

@@ -12,6 +12,7 @@ import com.gamingcafe.consoletv.data.RealtimeEvent
 import com.gamingcafe.consoletv.data.TokenStore
 import com.gamingcafe.consoletv.data.TvSessionResponse
 import com.gamingcafe.consoletv.domain.AUTO_END_REMAINING_SECONDS
+import com.gamingcafe.consoletv.domain.SESSION_CLOCK_TICK_MS
 import com.gamingcafe.consoletv.domain.DeductionProfile
 import com.gamingcafe.consoletv.domain.SessionClockTicker
 import com.gamingcafe.consoletv.hdmi.CecController
@@ -306,6 +307,7 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
                         gson.fromJson(it, DeductionProfile::class.java)
                     }
                 val timezone = event.payload?.get("cafeTimezone")?.asString ?: "UTC"
+                val expiryDate = event.payload?.get("expiryDate")?.asString
                 val playerId = event.payload?.get("playerId")?.asString ?: "Player"
                 startSessionUi(
                     TvSessionResponse(
@@ -348,6 +350,7 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
                 session.timeCreditsConsumed,
                 session.deductionProfile,
                 session.cafeTimezone,
+                session.expiryDate,
             )
         _uiState.value =
             _uiState.value.copy(
@@ -368,7 +371,7 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
         tickJob =
             viewModelScope.launch {
                 while (true) {
-                    delay(1_000)
+                    delay(SESSION_CLOCK_TICK_MS)
                     val ticker = clock ?: break
                     val remaining = ticker.remainingNow()
                     updateRemaining(remaining)

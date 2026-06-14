@@ -2,6 +2,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
+use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -157,7 +158,7 @@ pub async fn end_session(
     // Idempotent end (D18): a replayed offline end-intent for an
     // already-closed session is a no-op, never a second deduction.
     if session.end_time.is_some() {
-        let (remaining, deduction_profile, time_credits_consumed) =
+        let (remaining, deduction_profile, time_credits_consumed, expiry_date) =
             match session.balance_id {
                 Some(balance_id) => {
                     let balance = state.balances.get_raw(balance_id).await?;
@@ -165,9 +166,10 @@ pub async fn end_session(
                         balance.remaining_minutes,
                         balance.deduction_profile.clone(),
                         session.time_credits_consumed.map(|v| v as f64),
+                        balance.expiry_date.to_rfc3339(),
                     )
                 }
-                None => (0, None, None),
+                None => (0, None, None, Utc::now().to_rfc3339()),
             };
         return ok(KioskSessionResponseDto {
             sessionId: session.id.to_string(),
@@ -178,6 +180,7 @@ pub async fn end_session(
             deviceId: session.device_id.to_string(),
             startTime: session.start_time.to_rfc3339(),
             remainingMinutes: remaining as f64,
+            walletBalanceMinutes: remaining as f64,
             resumed: false,
             endTime: session.end_time.map(|t| t.to_rfc3339()),
             deductionProfile: deduction_profile.and_then(|value| {
@@ -188,6 +191,7 @@ pub async fn end_session(
             }),
             cafeTimezone: state.settings.cafe_timezone.clone(),
             timeCreditsConsumed: time_credits_consumed,
+            expiryDate: expiry_date,
         });
     }
 
@@ -205,16 +209,17 @@ pub async fn end_session(
         )
         .await?;
 
-    let (remaining, deduction_profile, time_credits_consumed) = match ended.balance_id {
+    let (remaining, deduction_profile, time_credits_consumed, expiry_date) = match ended.balance_id {
         Some(balance_id) => {
             let balance = state.balances.get_raw(balance_id).await?;
             (
                 balance.remaining_minutes,
                 balance.deduction_profile.clone(),
                 ended.time_credits_consumed.map(|v| v as f64),
+                balance.expiry_date.to_rfc3339(),
             )
         }
-        None => (0, None, None),
+        None => (0, None, None, Utc::now().to_rfc3339()),
     };
 
     ok(KioskSessionResponseDto {
@@ -223,6 +228,7 @@ pub async fn end_session(
         deviceId: ended.device_id.to_string(),
         startTime: ended.start_time.to_rfc3339(),
         remainingMinutes: remaining as f64,
+        walletBalanceMinutes: remaining as f64,
         resumed: false,
         endTime: ended.end_time.map(|t| t.to_rfc3339()),
         deductionProfile: deduction_profile.and_then(|value| {
@@ -231,5 +237,6 @@ pub async fn end_session(
         }),
         cafeTimezone: state.settings.cafe_timezone.clone(),
         timeCreditsConsumed: time_credits_consumed,
+        expiryDate: expiry_date,
     })
 }

@@ -1,3 +1,4 @@
+import type { UnitTypeValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
 
 interface GetUnitsResponse {
@@ -14,26 +15,17 @@ export interface UnitResponse {
   updatedAt: string;
   name: string;
   abbreviation: string;
-  type: UnitType;
+  type: UnitTypeValue;
   description?: string;
   isActive: boolean;
 }
 
-export enum UnitType {
-  BOX = 'box',
-  KILOGRAM = 'kilogram',
-  GRAM = 'gram',
-  LITER = 'liter',
-  MILLILITER = 'milliliter',
-  PIECE = 'piece',
-  PACK = 'pack',
-  DOZEN = 'dozen',
-  OTHER = 'other',
-}
+export { UnitType } from '@gaming-cafe/contracts';
+export type { UnitTypeValue };
 
 export interface GetUnitsFilters {
   name?: string;
-  type?: UnitType;
+  type?: UnitTypeValue;
   isActive?: boolean;
   page?: number;
   limit?: number;

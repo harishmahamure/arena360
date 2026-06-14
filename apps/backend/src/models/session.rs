@@ -1,8 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::FromRow;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
+
+use crate::models::deduction_profile::DeductionProfile;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +108,9 @@ pub struct SessionBalanceSummary {
     pub player: Option<SessionPlayerSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan: Option<SessionPlanSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deduction_profile: Option<DeductionProfile>,
+    pub expiry_date: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -128,6 +134,9 @@ pub struct UsageSessionResponse {
     pub balance: Option<SessionBalanceSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<SessionDeviceSummary>,
+    /// IANA timezone for peak/low window math (enriched list/detail only).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub cafe_timezone: String,
 }
 
 impl From<UsageSession> for UsageSessionResponse {
@@ -148,6 +157,7 @@ impl From<UsageSession> for UsageSessionResponse {
             deleted_at: value.deleted_at,
             balance: None,
             device: None,
+            cafe_timezone: String::new(),
         }
     }
 }
@@ -182,6 +192,12 @@ pub struct UsageSessionRow {
     pub device_type: Option<String>,
     pub device_location: Option<String>,
     pub device_status: Option<String>,
+    pub bal_deduction_profile: Option<Value>,
+    pub bal_expiry_date: Option<DateTime<Utc>>,
+}
+
+fn parse_deduction_profile(value: Option<Value>) -> Option<DeductionProfile> {
+    value.and_then(|v| serde_json::from_value(v).ok())
 }
 
 impl UsageSessionRow {
@@ -204,6 +220,7 @@ impl UsageSessionRow {
                 .unwrap_or_else(|| "time_based".to_string()),
             time_credits: self.plan_time_credits.unwrap_or(0),
         });
+        let deduction_profile = parse_deduction_profile(self.bal_deduction_profile);
         let balance = self.balance_id.map(|bid| SessionBalanceSummary {
             id: bid,
             player_id: self.bal_player_id.unwrap_or_default(),
@@ -212,6 +229,8 @@ impl UsageSessionRow {
             status: self.bal_status.unwrap_or_else(|| "active".to_string()),
             player,
             plan,
+            deduction_profile,
+            expiry_date: self.bal_expiry_date.unwrap_or_else(Utc::now),
         });
         let device = self.device_name.map(|name| SessionDeviceSummary {
             id: self.device_id,
@@ -241,6 +260,70 @@ impl UsageSessionRow {
             deleted_at: self.deleted_at,
             balance,
             device,
+            cafe_timezone: String::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn sample_profile_json() -> Value {
+        serde_json::json!({
+            "peakWindowStart": "18:00:00",
+            "peakWindowEnd": "23:00:00",
+            "peakRatio": 1.5,
+            "lowWindowStart": "07:00:00",
+            "lowWindowEnd": "11:00:00",
+            "lowRatio": 0.8
+        })
+    }
+
+    #[test]
+    fn into_response_maps_balance_deduction_profile() {
+        let now = Utc::now();
+        let balance_id = Uuid::new_v4();
+        let row = UsageSessionRow {
+            id: Uuid::new_v4(),
+            balance_id: Some(balance_id),
+            device_id: Uuid::new_v4(),
+            shift_id: None,
+            start_time: now,
+            end_time: None,
+            duration_minutes: None,
+            time_credits_consumed: None,
+            created_by: None,
+            updated_by: None,
+            created_at: now,
+            updated_at: now,
+            deleted_at: None,
+            bal_player_id: Some(Uuid::new_v4()),
+            bal_kind: Some("time".to_string()),
+            bal_remaining_minutes: Some(300),
+            bal_status: Some("active".to_string()),
+            bal_source_plan_id: Some(Uuid::new_v4()),
+            player_username: Some("player1".to_string()),
+            player_first_name: None,
+            player_last_name: None,
+            plan_name: Some("Peak plan".to_string()),
+            plan_type: Some("time_based".to_string()),
+            plan_time_credits: Some(300),
+            device_name: Some("PC-1".to_string()),
+            device_type: Some("PC".to_string()),
+            device_location: None,
+            device_status: Some("in_use".to_string()),
+            bal_deduction_profile: Some(sample_profile_json()),
+            bal_expiry_date: Some(now + chrono::Duration::days(7)),
+        };
+
+        let response = row.into_response();
+        let balance = response.balance.expect("balance summary");
+        let profile = balance
+            .deduction_profile
+            .expect("deduction profile on balance");
+        assert!((profile.peak_ratio - 1.5).abs() < f64::EPSILON);
+        assert_eq!(balance.id, balance_id);
     }
 }

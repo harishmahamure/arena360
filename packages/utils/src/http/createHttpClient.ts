@@ -59,7 +59,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
 
       const deviceToken = getDeviceToken?.();
       if (deviceToken && config.headers) {
-        config.headers[deviceTokenHeader] = deviceToken;
+        config.headers[deviceTokenHeader] = normalizeToken(deviceToken);
       }
 
       if (import.meta.env.DEV) {

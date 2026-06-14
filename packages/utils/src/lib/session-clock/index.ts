@@ -1,6 +1,7 @@
 export {
   AUTO_END_REMAINING_SECONDS,
   effectiveRemainingMinutes,
+  SESSION_CLOCK_TICK_MS,
   walletBalanceFromEffectiveRemaining,
   weightedMinutesBetween,
 } from '@gaming-cafe/contracts';

@@ -230,10 +230,17 @@ When the player has an **open session on this same device** (crash re-login, OQ-
     "id": "uuid",
     "startTime": "2026-05-30T10:00:00Z",
     "balanceId": "uuid",
-    "remainingMinutes": 42.5
+    "remainingMinutes": 38.5,
+    "walletBalanceMinutes": 60,
+    "deductionProfile": { "peakRatio": 1.2, "lowRatio": 0.8, "peakStart": "18:00", "peakEnd": "22:00" },
+    "cafeTimezone": "Asia/Kolkata",
+    "timeCreditsConsumed": 12
   }
 }
 ```
+
+`remainingMinutes` is server-computed effective display remaining. Kiosk anchors
+the local countdown from `walletBalanceMinutes` + `startTime`.
 
 The kiosk skips `POST /kiosk/sessions` when `activeSession` is present.
 

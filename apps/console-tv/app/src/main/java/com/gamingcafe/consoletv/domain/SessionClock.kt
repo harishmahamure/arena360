@@ -5,6 +5,9 @@ import kotlin.math.max
 
 const val AUTO_END_REMAINING_SECONDS = 10
 
+/** Local session countdown tick interval (matches kiosk/admin). */
+const val SESSION_CLOCK_TICK_MS = 1_000L
+
 fun weightedMinutesBetween(
     startMs: Long,
     endMs: Long,
@@ -44,6 +47,28 @@ fun effectiveRemainingMinutes(
     return max(0.0, walletBalanceMinutes - owed)
 }
 
+/** Floor minutes from now until plan expiry (0 when already expired). */
+fun minutesUntilExpiry(expiryDateIso: String?, nowMs: Long = System.currentTimeMillis()): Double {
+    if (expiryDateIso.isNullOrBlank()) return Double.MAX_VALUE
+    val expiryMs =
+        try {
+            Instant.parse(expiryDateIso).toEpochMilli()
+        } catch (_: Exception) {
+            return 0.0
+        }
+    return max(0.0, kotlin.math.floor((expiryMs - nowMs) / 60_000.0))
+}
+
+/** Cap wallet-based remaining by minutes until plan expiry. */
+fun capRemainingByExpiry(
+    walletRemainingMinutes: Double,
+    expiryDateIso: String?,
+    nowMs: Long = System.currentTimeMillis(),
+): Double {
+    if (expiryDateIso.isNullOrBlank()) return walletRemainingMinutes
+    return minOf(walletRemainingMinutes, minutesUntilExpiry(expiryDateIso, nowMs))
+}
+
 fun walletBalanceFromEffectiveRemaining(
     sessionStartTime: String,
     effectiveRemainingMinutes: Double,
@@ -69,6 +94,7 @@ class SessionClockTicker(
     private var timeCreditsConsumed: Double,
     private var deductionProfile: DeductionProfile?,
     private var cafeTimezone: String,
+    private var expiryDateIso: String? = null,
 ) {
     fun reanchor(effectiveRemainingMinutes: Double, atMs: Long = System.currentTimeMillis()) {
         walletBalanceMinutes =
@@ -88,12 +114,16 @@ class SessionClockTicker(
     }
 
     fun remainingNow(nowMs: Long = System.currentTimeMillis()): Double =
-        effectiveRemainingMinutes(
-            sessionStartTime,
-            walletBalanceMinutes,
-            timeCreditsConsumed,
-            deductionProfile,
-            cafeTimezone,
+        capRemainingByExpiry(
+            effectiveRemainingMinutes(
+                sessionStartTime,
+                walletBalanceMinutes,
+                timeCreditsConsumed,
+                deductionProfile,
+                cafeTimezone,
+                nowMs,
+            ),
+            expiryDateIso,
             nowMs,
         )
 }

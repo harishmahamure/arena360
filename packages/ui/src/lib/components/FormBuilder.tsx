@@ -331,7 +331,7 @@ function FieldRenderer<T extends FieldValues>({
                 <FormTextField
                   {...field}
                   {...commonProps}
-                  label={label + (required ? ' *' : '')}
+                  label=""
                   required={required}
                   autoComplete="one-time-code"
                   type={type === 'datetime' ? 'datetime-local' : type}
@@ -470,7 +470,7 @@ function FieldRenderer<T extends FieldValues>({
                 <>
                   <FormSwitch
                     {...commonProps}
-                    label={''}
+                    label={label + (required ? ' *' : '')}
                     checked={!!field.value}
                     onChange={(e) => field.onChange(e.target.checked)}
                     onBlur={field.onBlur}
@@ -668,14 +668,31 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   const renderFields = (fieldsToRender: FieldConfig<T>[]) => (
     <Grid container spacing={spacing}>
       {fieldsToRender.map((fieldConfig) => {
+        if (fieldConfig.type === 'hidden') {
+          return (
+            <FieldRenderer
+              key={fieldConfig.name}
+              config={fieldConfig}
+              control={control}
+              errors={errors}
+              mode={mode}
+              watch={watch}
+              form={form}
+              onSearchComplete={onSearchComplete}
+            />
+          );
+        }
+
         const gridCols = fieldConfig.fullWidth ? 12 : fieldConfig.gridCols || 6;
 
         return (
           <Grid item xs={12} sm={gridCols} key={fieldConfig.name} component="div">
-            <Typography variant="body2" color="text.secondary" sx={{ pb: 1, px: 0.2 }}>
-              {fieldConfig.label}
-              {fieldConfig.required && <span style={{ color: 'red' }}>*</span>}
-            </Typography>
+            {fieldConfig.type !== 'switch' && (
+              <Typography variant="body2" color="text.secondary" sx={{ pb: 1, px: 0.2 }}>
+                {fieldConfig.label}
+                {fieldConfig.required && <span style={{ color: 'red' }}>*</span>}
+              </Typography>
+            )}
             <FieldRenderer
               config={fieldConfig}
               control={control}

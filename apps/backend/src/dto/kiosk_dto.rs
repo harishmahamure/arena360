@@ -77,7 +77,10 @@ pub struct KioskSessionResponseDto {
     pub balanceId: String,
     pub deviceId: String,
     pub startTime: String,
+    /// Server-computed effective display remaining (console TV / legacy).
     pub remainingMinutes: f64,
+    /// Raw wallet minutes from `player_plan_balances.remainingMinutes`.
+    pub walletBalanceMinutes: f64,
     /// True when an existing open session on this device was resumed (crash recovery).
     pub resumed: bool,
     /// Set when the session has been closed (auto, voluntary, force, offline_reconcile).
@@ -88,6 +91,7 @@ pub struct KioskSessionResponseDto {
     pub cafeTimezone: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeCreditsConsumed: Option<f64>,
+    pub expiryDate: String,
 }
 
 pub fn kiosk_session_response(
@@ -104,11 +108,13 @@ pub fn kiosk_session_response(
         deviceId: started.session.device_id.to_string(),
         startTime: started.session.start_time.to_rfc3339(),
         remainingMinutes: started.remaining_minutes as f64,
+        walletBalanceMinutes: started.wallet_balance_minutes as f64,
         resumed: started.resumed,
         endTime: end_time,
         deductionProfile: deduction_profile,
         cafeTimezone: started.cafe_timezone.clone(),
         timeCreditsConsumed: Some(started.time_credits_consumed),
+        expiryDate: started.expiry_date.to_rfc3339(),
     }
 }
 
@@ -125,6 +131,7 @@ pub struct TvSessionResponseDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deductionProfile: Option<DeductionProfile>,
     pub cafeTimezone: String,
+    pub expiryDate: String,
 }
 
 #[allow(non_snake_case)]

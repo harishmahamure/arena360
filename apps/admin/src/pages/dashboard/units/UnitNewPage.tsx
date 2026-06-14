@@ -1,3 +1,4 @@
+import type { UnitTypeValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
 import { useState } from 'react';
@@ -9,7 +10,6 @@ import {
   unitTypeOptions,
 } from '../../../../src/containers/units/schemas/unit-schema';
 import { addUnit } from '../../../services/units/add';
-import type { UnitType } from '../../../services/units/list';
 
 export const unitFormFields: FieldConfig<CreateUnitFormData>[] = [
   {
@@ -76,7 +76,7 @@ export default function AddNewUnitPage() {
       await addUnit({
         name,
         abbreviation,
-        type: data.type as UnitType,
+        type: data.type as UnitTypeValue,
         description: data.description || '',
         isActive: data.isActive,
       });

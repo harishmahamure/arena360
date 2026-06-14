@@ -15,9 +15,9 @@ use crate::dto::{
     StaffLoginDto,
 };
 use crate::error::AppError;
-use crate::models::{Device, User};
+use crate::models::{deduction_profile::DeductionProfile, Device, User};
 use crate::repositories::{SessionRepository, SsoRepository, UserRepository};
-use crate::services::session_service::effective_remaining_for_session;
+use crate::services::session_service::display_remaining_for_session;
 use crate::services::totp_util::verify_totp_code;
 use crate::services::BalanceService;
 
@@ -120,16 +120,27 @@ impl AuthService {
                 .ok_or_else(|| {
                     AppError::NotFound("Open session record missing".to_string())
                 })?;
-            let remaining = effective_remaining_for_session(
+            let remaining = display_remaining_for_session(
                 &balance,
                 &usage_session,
                 &self.settings.cafe_timezone,
             );
+            let deduction_profile = balance
+                .deduction_profile
+                .as_ref()
+                .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok());
             Some(ActiveSessionDto {
                 id: session.session_id.to_string(),
                 startTime: session.start_time,
                 balanceId: session.balance_id.to_string(),
                 remainingMinutes: remaining as f64,
+                walletBalanceMinutes: balance.remaining_minutes as f64,
+                deductionProfile: deduction_profile,
+                cafeTimezone: self.settings.cafe_timezone.clone(),
+                timeCreditsConsumed: Some(
+                    usage_session.time_credits_consumed.map(|v| v as f64).unwrap_or(0.0),
+                ),
+                expiryDate: balance.expiry_date,
             })
         } else {
             self.balances

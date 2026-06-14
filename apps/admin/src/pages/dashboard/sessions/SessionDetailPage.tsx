@@ -1,5 +1,6 @@
+import { DEFAULT_CAFE_TZ } from '@gaming-cafe/contracts';
 import { DetailPage, type DetailPageSection, type FieldConfig, FormBuilder } from '@gaming-cafe/ui';
-import { formatDate } from '@gaming-cafe/utils';
+import { formatDate, formatRemainingLabel } from '@gaming-cafe/utils';
 import { Stop, Timer } from '@mui/icons-material';
 import {
   Alert,
@@ -166,7 +167,8 @@ export default function ViewSessionPage() {
       }
       return getPlayerPlanById(balanceId);
     },
-    enabled: !!session?.balanceId && !session?.balance,
+    enabled:
+      !!session?.balanceId && (!session?.balance || session.balance.deductionProfile == null),
   });
 
   const { data: deviceRecord } = useQuery({
@@ -212,6 +214,7 @@ export default function ViewSessionPage() {
   const timeCreditsConsumed = session?.timeCreditsConsumed;
   const createdAt = session?.createdAt;
   const updatedAt = session?.updatedAt;
+  const cafeTimezone = session?.cafeTimezone ?? DEFAULT_CAFE_TZ;
   const balance =
     session?.balance ??
     (balanceRecord
@@ -341,12 +344,23 @@ export default function ViewSessionPage() {
               remainingMinutes={balance.remainingMinutes}
               timeCreditsConsumed={session.timeCreditsConsumed}
               deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
+              cafeTimezone={cafeTimezone}
+              expiryDate={balance.expiryDate ?? balanceRecord?.expiryDate}
             />
           </Grid>
         )}
       </Grid>
     );
-  }, [session, balance, device, startTime, isActive, balanceRecord?.deductionProfile]);
+  }, [
+    session,
+    balance,
+    device,
+    startTime,
+    isActive,
+    balanceRecord?.deductionProfile,
+    balanceRecord?.expiryDate,
+    cafeTimezone,
+  ]);
 
   const sections: DetailPageSection[] = (() => {
     if (!session) return [];
@@ -407,19 +421,22 @@ export default function ViewSessionPage() {
               <DetailField label="Plan name">
                 <Typography variant="body1">{balance.plan?.name || 'N/A'}</Typography>
               </DetailField>
-              <DetailField label={isActive ? 'Time remaining' : 'Remaining minutes'}>
+              <DetailField label={isActive ? 'Time remaining' : 'Time at end'}>
                 {isActive && balance.remainingMinutes != null ? (
                   <SessionRemainingClock
                     sessionStartTime={startTime ?? session.startTime}
                     remainingMinutes={balance.remainingMinutes}
                     timeCreditsConsumed={session.timeCreditsConsumed}
                     deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
+                    cafeTimezone={cafeTimezone}
+                    expiryDate={balance.expiryDate ?? balanceRecord?.expiryDate}
                   />
                 ) : (
-                  <Typography variant="body1">
-                    {balance.remainingMinutes != null
-                      ? `${balance.remainingMinutes} minutes`
-                      : 'N/A'}
+                  <Typography variant="body1" color="text.secondary">
+                    Expired
+                    {balance.remainingMinutes != null && balance.remainingMinutes > 0
+                      ? ` · ${formatRemainingLabel(balance.remainingMinutes)} wallet left`
+                      : ''}
                   </Typography>
                 )}
               </DetailField>

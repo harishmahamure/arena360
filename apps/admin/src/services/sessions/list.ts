@@ -21,6 +21,7 @@ export interface SessionBalanceSummary {
   kind: string;
   remainingMinutes: number;
   status: string;
+  expiryDate?: string;
   deductionProfile?: DeductionProfile | null;
   player?: SessionPlayerSummary | null;
   plan?: SessionPlanSummary | null;
@@ -42,6 +43,7 @@ export interface SessionResponse {
   endTime?: string | null;
   durationMinutes?: number | null;
   timeCreditsConsumed?: number | null;
+  cafeTimezone?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

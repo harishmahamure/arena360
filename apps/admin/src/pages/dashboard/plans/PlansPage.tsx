@@ -1,7 +1,7 @@
 import type { PlanTypeValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
 import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
-import { Delete, Edit } from '@mui/icons-material';
+import { Delete, Edit, Visibility } from '@mui/icons-material';
 import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
@@ -33,6 +33,13 @@ export default function PlansPage() {
   }, [navigate]);
 
   const handleEditPlan = useCallback(
+    (id: string) => {
+      navigate(`/plans/${id}`);
+    },
+    [navigate],
+  );
+
+  const handleViewPlan = useCallback(
     (id: string) => {
       navigate(`/plans/${id}`);
     },
@@ -168,19 +175,27 @@ export default function PlansPage() {
     [refetch, run],
   );
 
-  const actions: Action<PlanResponse>[] = [
-    {
-      icon: <Edit color="info" />,
-      label: 'Edit Plan',
-      onClick: (row) => handleEditPlan(row.id),
-    },
-    {
-      icon: <Delete color="error" />,
-      label: 'Deactivate Plan',
-      onClick: (row) => handleDeactivatePlan(row.id),
-      disabled: () => actionLoading,
-    },
-  ];
+  const actions: Action<PlanResponse>[] = canWrite
+    ? [
+        {
+          icon: <Edit color="info" />,
+          label: 'Edit Plan',
+          onClick: (row) => handleEditPlan(row.id),
+        },
+        {
+          icon: <Delete color="error" />,
+          label: 'Deactivate Plan',
+          onClick: (row) => handleDeactivatePlan(row.id),
+          disabled: () => actionLoading,
+        },
+      ]
+    : [
+        {
+          icon: <Visibility color="info" />,
+          label: 'View',
+          onClick: (row) => handleViewPlan(row.id),
+        },
+      ];
 
   return (
     <ListPage<PlanResponse>
@@ -188,7 +203,7 @@ export default function PlansPage() {
       description="Manage your gaming plans and subscriptions here."
       data={data?.data || []}
       columns={columns}
-      actions={canWrite ? actions : []}
+      actions={actions}
       isLoading={isLoading}
       showSearch
       searchValue={inputValue}

@@ -107,6 +107,21 @@ export const UnitType = {
 export type UnitTypeValue = (typeof UnitType)[keyof typeof UnitType];
 export const UNIT_TYPE_VALUES = Object.values(UnitType);
 
+/** Canonical unit catalog — one DB row per type after migration 20260615000001. */
+export const CANONICAL_UNITS = [
+  { type: UnitType.PIECE, name: 'Piece', abbreviation: 'pc' },
+  { type: UnitType.BOX, name: 'Box', abbreviation: 'box' },
+  { type: UnitType.CARTON, name: 'Carton', abbreviation: 'ctn' },
+  { type: UnitType.PACK, name: 'Pack', abbreviation: 'pack' },
+  { type: UnitType.BOTTLE, name: 'Bottle', abbreviation: 'bt' },
+  { type: UnitType.CAN, name: 'Can', abbreviation: 'can' },
+  { type: UnitType.KILOGRAM, name: 'Kilogram', abbreviation: 'kg' },
+  { type: UnitType.GRAM, name: 'Gram', abbreviation: 'g' },
+  { type: UnitType.LITER, name: 'Liter', abbreviation: 'L' },
+  { type: UnitType.MILLILITER, name: 'Milliliter', abbreviation: 'ml' },
+  { type: UnitType.OTHER, name: 'Other', abbreviation: 'other' },
+] as const;
+
 // --- Transactions ---
 
 export const TransactionType = {
@@ -189,6 +204,7 @@ export const deviceStatusOptions: SelectOption<DeviceStatusValue>[] = [
   { value: DeviceStatus.AVAILABLE, label: 'Available' },
 ];
 
+/** Legacy admin plan type labels (create/edit UI uses time_based only). */
 export const planTypeOptions: SelectOption<(typeof PLAN_TYPE_ADMIN_VALUES)[number]>[] = [
   { value: PlanType.TIME_BASED, label: 'Time Plan' },
   { value: PlanType.WEEKEND_SPECIAL, label: 'Happy Hours' },

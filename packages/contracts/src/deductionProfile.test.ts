@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDeductionPlayBreakdown,
+  capRemainingByExpiry,
   formatDeductionTime,
   formatDeductionTimeRange,
   maxWallMinutes,
+  minutesUntilExpiry,
   ratioAtMinute,
   validateDeductionProfile,
   weightedMinutesBetween,
@@ -77,5 +79,23 @@ describe('deductionProfile contracts', () => {
     const end = start + 60 * 60_000;
     const weighted = weightedMinutesBetween(start, end, profile, 'Asia/Kolkata');
     expect(weighted).toBeCloseTo(48, 0);
+  });
+
+  it('minutesUntilExpiry floors remaining wall minutes', () => {
+    const now = Date.parse('2026-06-07T12:00:00.000Z');
+    const expiry = new Date(now + 15 * 60_000 + 30_000).toISOString();
+    expect(minutesUntilExpiry(expiry, now)).toBe(15);
+    expect(minutesUntilExpiry(expiry, now + 20 * 60_000)).toBe(0);
+  });
+
+  it('capRemainingByExpiry uses min(wallet, minutesUntilExpiry)', () => {
+    const now = Date.parse('2026-06-07T12:00:00.000Z');
+    const expirySoon = new Date(now + 15 * 60_000).toISOString();
+    const expiryLater = new Date(now + 7 * 24 * 60 * 60_000).toISOString();
+
+    expect(capRemainingByExpiry(300, expiryLater, now)).toBe(300);
+    expect(capRemainingByExpiry(300, expirySoon, now)).toBe(15);
+    expect(capRemainingByExpiry(10, expiryLater, now)).toBe(10);
+    expect(capRemainingByExpiry(50, undefined, now)).toBe(50);
   });
 });

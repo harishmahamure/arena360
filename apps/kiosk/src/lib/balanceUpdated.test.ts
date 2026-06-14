@@ -4,24 +4,24 @@ import { applyBalanceUpdated } from './balanceUpdated';
 const session = {
   id: 'session-1',
   balanceId: 'balance-1',
-  remainingMinutes: 30,
+  walletBalanceMinutes: 30,
 };
 
 describe('applyBalanceUpdated', () => {
-  it('updates remaining minutes when sessionId matches', () => {
+  it('updates wallet balance when sessionId matches', () => {
     const result = applyBalanceUpdated(session, {
       sessionId: 'session-1',
       remainingMinutes: 55,
     });
-    expect(result).toEqual({ ...session, remainingMinutes: 55 });
+    expect(result).toEqual({ ...session, walletBalanceMinutes: 55 });
   });
 
-  it('updates remaining minutes when balanceId matches', () => {
+  it('updates wallet balance when balanceId matches', () => {
     const result = applyBalanceUpdated(session, {
       balanceId: 'balance-1',
       remainingMinutes: 45,
     });
-    expect(result).toEqual({ ...session, remainingMinutes: 45 });
+    expect(result).toEqual({ ...session, walletBalanceMinutes: 45 });
   });
 
   it('ignores events for a different session and balance', () => {

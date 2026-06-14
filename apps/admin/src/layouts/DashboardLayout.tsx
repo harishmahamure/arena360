@@ -1,4 +1,4 @@
-import { Permission } from '@gaming-cafe/contracts';
+import { DEFAULT_CAFE_TZ, Permission } from '@gaming-cafe/contracts';
 import { BRAND_LOGO_URL } from '@gaming-cafe/theme';
 import { DashboardLayout as BaseDashboardLayout } from '@gaming-cafe/ui';
 import { local, toastUtils } from '@gaming-cafe/utils';
@@ -52,6 +52,8 @@ export default function DashboardLayout() {
         remainingMinutes: session.balance?.remainingMinutes ?? 0,
         timeCreditsConsumed: session.timeCreditsConsumed,
         deductionProfile: session.balance?.deductionProfile,
+        cafeTimezone: session.cafeTimezone ?? DEFAULT_CAFE_TZ,
+        expiryDate: session.balance?.expiryDate,
         sessionDetails: {
           playerName: session.balance?.player?.username ?? 'Unknown',
           deviceName: session.device?.name ?? 'Unknown',

@@ -9,6 +9,7 @@ interface SessionRemainingClockProps {
   timeCreditsConsumed?: number | null;
   deductionProfile?: DeductionProfile | null;
   cafeTimezone?: string;
+  expiryDate?: string | null;
   variant?: 'default' | 'prominent';
 }
 
@@ -22,6 +23,7 @@ export function SessionRemainingClock({
   timeCreditsConsumed = 0,
   deductionProfile,
   cafeTimezone = DEFAULT_CAFE_TZ,
+  expiryDate,
   variant = 'default',
 }: SessionRemainingClockProps) {
   const localMinutes = useSessionRemainingMinutes({
@@ -30,6 +32,7 @@ export function SessionRemainingClock({
     timeCreditsConsumed,
     deductionProfile,
     cafeTimezone,
+    expiryDate,
   });
   const isProminent = variant === 'prominent';
 

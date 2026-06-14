@@ -1,5 +1,6 @@
 export interface BalanceUpdatedPayload {
   balanceId?: string;
+  /** Raw wallet minutes from the server (ADR-0018). */
   remainingMinutes?: number;
   sessionId?: string;
   playerId?: string;
@@ -8,7 +9,7 @@ export interface BalanceUpdatedPayload {
 export interface SessionSnapshot {
   id: string;
   balanceId: string;
-  remainingMinutes: number;
+  walletBalanceMinutes: number;
 }
 
 /**
@@ -34,6 +35,6 @@ export function applyBalanceUpdated<T extends SessionSnapshot>(
 
   return {
     ...activeSession,
-    remainingMinutes: payload.remainingMinutes,
+    walletBalanceMinutes: payload.remainingMinutes,
   };
 }

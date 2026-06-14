@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::models::deduction_profile::DeductionProfile;
+
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterDto {
@@ -82,7 +84,16 @@ pub struct ActiveSessionDto {
     pub id: String,
     pub startTime: DateTime<Utc>,
     pub balanceId: String,
+    /// Server-computed effective display remaining (legacy clients).
     pub remainingMinutes: f64,
+    /// Raw wallet minutes for client-side countdown anchoring.
+    pub walletBalanceMinutes: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deductionProfile: Option<DeductionProfile>,
+    pub cafeTimezone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeCreditsConsumed: Option<f64>,
+    pub expiryDate: DateTime<Utc>,
 }
 
 #[allow(non_snake_case)]

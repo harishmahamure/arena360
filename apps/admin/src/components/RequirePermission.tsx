@@ -1,6 +1,4 @@
-import { toastUtils } from '@gaming-cafe/utils';
 import { Box, Typography } from '@mui/material';
-import { useEffect, useRef } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { type Permission, usePermissions } from '../hooks/usePermissions';
 import { getDefaultHomePath } from '../utils/homePath';
@@ -10,21 +8,7 @@ interface RequirePermissionProps {
   redirectTo?: string;
 }
 
-function PermissionDeniedRedirect({
-  redirectTo,
-  permission,
-}: {
-  redirectTo: string;
-  permission: Permission;
-}) {
-  const notified = useRef(false);
-
-  useEffect(() => {
-    if (notified.current) return;
-    notified.current = true;
-    toastUtils.warning(`You don't have access to this page (${permission}).`);
-  }, [permission]);
-
+function PermissionDeniedRedirect({ redirectTo }: { redirectTo: string; permission: Permission }) {
   return <Navigate to={redirectTo} replace />;
 }
 

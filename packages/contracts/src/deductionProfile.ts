@@ -111,6 +111,9 @@ export function currentDeductionRatio(
 /** Seconds remaining on the HUD when kiosk/console auto-call session end. */
 export const AUTO_END_REMAINING_SECONDS = 10;
 
+/** Local session countdown tick interval (kiosk, admin, console TV). */
+export const SESSION_CLOCK_TICK_MS = 1_000;
+
 /**
  * Wallet minutes consumed between two UTC instants using the plan profile.
  * Mirrors backend `weighted_minutes_between` (minute-segment integration).
@@ -155,6 +158,23 @@ export function effectiveRemainingMinutes(
 
   const owed = Math.max(0, consumed - timeCreditsConsumed);
   return Math.max(0, walletBalanceMinutes - owed);
+}
+
+/** Floor minutes from now until plan expiry (0 when already expired). */
+export function minutesUntilExpiry(expiryDateIso: string, nowMs = Date.now()): number {
+  const expiryMs = Date.parse(expiryDateIso);
+  if (Number.isNaN(expiryMs)) return 0;
+  return Math.max(0, Math.floor((expiryMs - nowMs) / 60_000));
+}
+
+/** Cap wallet-based remaining by minutes until plan expiry. */
+export function capRemainingByExpiry(
+  walletRemainingMinutes: number,
+  expiryDateIso: string | null | undefined,
+  nowMs = Date.now(),
+): number {
+  if (!expiryDateIso) return walletRemainingMinutes;
+  return Math.min(walletRemainingMinutes, minutesUntilExpiry(expiryDateIso, nowMs));
 }
 
 /** Derive wallet balance from server effective remaining at a sync instant. */

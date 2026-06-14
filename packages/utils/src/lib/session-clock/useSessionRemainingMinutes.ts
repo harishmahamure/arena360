@@ -1,7 +1,9 @@
 import type { DeductionProfile } from '@gaming-cafe/contracts';
 import {
+  capRemainingByExpiry,
   DEFAULT_CAFE_TZ,
   effectiveRemainingMinutes,
+  SESSION_CLOCK_TICK_MS,
   walletBalanceFromEffectiveRemaining,
 } from '@gaming-cafe/contracts';
 import { useEffect, useRef, useState } from 'react';
@@ -18,6 +20,8 @@ export interface SessionRemainingClockInput {
   timeCreditsConsumed?: number | null;
   deductionProfile?: DeductionProfile | null;
   cafeTimezone?: string;
+  /** Plan balance expiry — caps display at min(wallet, minutesUntilExpiry). */
+  expiryDate?: string | null;
 }
 
 /**
@@ -40,6 +44,7 @@ export function useSessionRemainingMinutes(
   const timeCreditsConsumed = input?.timeCreditsConsumed ?? 0;
   const deductionProfile = input?.deductionProfile ?? null;
   const cafeTimezone = input?.cafeTimezone ?? DEFAULT_CAFE_TZ;
+  const expiryDate = input?.expiryDate ?? null;
 
   useEffect(() => {
     if (!sessionStartTime) {
@@ -68,18 +73,21 @@ export function useSessionRemainingMinutes(
       const wallet = walletRef.current;
       if (wallet === null) return;
       setLocalMinutes(
-        effectiveRemainingMinutes(
-          sessionStartTime,
-          wallet,
-          timeCreditsConsumed,
-          deductionProfile,
-          cafeTimezone,
+        capRemainingByExpiry(
+          effectiveRemainingMinutes(
+            sessionStartTime,
+            wallet,
+            timeCreditsConsumed,
+            deductionProfile,
+            cafeTimezone,
+          ),
+          expiryDate,
         ),
       );
     };
 
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, SESSION_CLOCK_TICK_MS);
     return () => clearInterval(id);
   }, [
     sessionStartTime,
@@ -88,6 +96,7 @@ export function useSessionRemainingMinutes(
     timeCreditsConsumed,
     deductionProfile,
     cafeTimezone,
+    expiryDate,
   ]);
 
   return localMinutes;

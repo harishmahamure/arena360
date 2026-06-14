@@ -1,4 +1,10 @@
-import { DEFAULT_CAFE_TZ, effectiveRemainingMinutes, type DeductionProfile } from '@gaming-cafe/contracts';
+import {
+  capRemainingByExpiry,
+  DEFAULT_CAFE_TZ,
+  type DeductionProfile,
+  effectiveRemainingMinutes,
+  SESSION_CLOCK_TICK_MS,
+} from '@gaming-cafe/contracts';
 import { useEffect, useRef } from 'react';
 import { useNotification } from './useNotification';
 
@@ -10,6 +16,7 @@ export interface CountdownConfig {
   timeCreditsConsumed?: number | null;
   deductionProfile?: DeductionProfile | null;
   cafeTimezone?: string;
+  expiryDate?: string | null;
   sessionDetails?: {
     playerName: string;
     deviceName: string;
@@ -57,12 +64,15 @@ export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
 
     const interval = setInterval(() => {
       for (const config of configs) {
-        const localRemaining = effectiveRemainingMinutes(
-          config.sessionStartTime,
-          config.remainingMinutes,
-          config.timeCreditsConsumed ?? 0,
-          config.deductionProfile,
-          config.cafeTimezone ?? DEFAULT_CAFE_TZ,
+        const localRemaining = capRemainingByExpiry(
+          effectiveRemainingMinutes(
+            config.sessionStartTime,
+            config.remainingMinutes,
+            config.timeCreditsConsumed ?? 0,
+            config.deductionProfile,
+            config.cafeTimezone ?? DEFAULT_CAFE_TZ,
+          ),
+          config.expiryDate,
         );
 
         const notifications = notificationsSentRef.current.get(config.id);
@@ -79,7 +89,7 @@ export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
           }
         }
       }
-    }, 1000);
+    }, SESSION_CLOCK_TICK_MS);
 
     return () => clearInterval(interval);
   }, [configs, triggerNotification]);

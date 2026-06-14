@@ -6,7 +6,12 @@ import {
   PlanType,
   validateDeductionProfile,
 } from '@gaming-cafe/contracts';
-import { optionalString, stringWithLength, validationMessages } from '@gaming-cafe/utils';
+import {
+  normalizeTimeOfDay,
+  optionalString,
+  stringWithLength,
+  validationMessages,
+} from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
 export {
@@ -15,36 +20,10 @@ export {
   deviceSubTypeOptions,
   deviceTypeOptions,
   PlanType,
-  planTypeOptions,
 } from '@gaming-cafe/contracts';
 
 export const PlanTypeValues = PlanType;
 export type PlanTypeType = (typeof PlanType)[keyof typeof PlanType];
-
-export const WEEKDAY_OPTIONS = [
-  { value: 'monday', label: 'Monday' },
-  { value: 'tuesday', label: 'Tuesday' },
-  { value: 'wednesday', label: 'Wednesday' },
-  { value: 'thursday', label: 'Thursday' },
-  { value: 'friday', label: 'Friday' },
-  { value: 'saturday', label: 'Saturday' },
-  { value: 'sunday', label: 'Sunday' },
-];
-
-export const MONTH_OPTIONS = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
-];
 
 export const createPlanSchema = yup
   .object({
@@ -60,7 +39,8 @@ export const createPlanSchema = yup
     planType: yup
       .string()
       .oneOf([...PLAN_TYPE_ADMIN_VALUES], 'Please select a valid plan type')
-      .required(validationMessages.required('Plan Type')),
+      .required(validationMessages.required('Plan Type'))
+      .default(PlanType.TIME_BASED),
 
     validityDays: yup
       .number()
@@ -68,37 +48,6 @@ export const createPlanSchema = yup
       .integer('Validity days must be a whole number')
       .required(validationMessages.required('Validity days'))
       .default(7),
-
-    timeWindowStart: yup
-      .string()
-      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/, {
-        message: 'Time must be in HH:MM:SS format',
-        excludeEmptyString: true,
-      })
-      .optional()
-      .nullable()
-      .when('planType', {
-        is: PlanType.WEEKEND_SPECIAL,
-        then: (schema) => schema.required('Time window start is required for Happy Hours'),
-      }),
-
-    timeWindowEnd: yup
-      .string()
-      .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/, {
-        message: 'Time must be in HH:MM:SS format',
-        excludeEmptyString: true,
-      })
-      .optional()
-      .nullable()
-      .when('planType', {
-        is: PlanType.WEEKEND_SPECIAL,
-        then: (schema) => schema.required('Time window end is required for Happy Hours'),
-      })
-      .test('time-window-order', 'End time must be after start time', function (value) {
-        const { timeWindowStart } = this.parent;
-        if (!timeWindowStart || !value) return true;
-        return timeWindowStart < value;
-      }),
 
     timeCredits: yup
       .number()
@@ -119,19 +68,6 @@ export const createPlanSchema = yup
       .oneOf([...DEVICE_SUB_TYPE_VALUES], 'Please select a valid device sub type')
       .optional()
       .nullable(),
-
-    allowedDays: yup
-      .array()
-      .of(
-        yup
-          .string()
-          .oneOf(WEEKDAY_OPTIONS.map((d) => d.value))
-          .required(),
-      )
-      .optional()
-      .nullable(),
-
-    allowedMonths: yup.array().of(yup.number().min(1).max(12).required()).optional().nullable(),
 
     dynamicDeductionEnabled: yup.boolean().optional().default(false),
 
@@ -199,22 +135,17 @@ export const createPlanSchema = yup
   .test('deduction-profile', 'Invalid deduction profile', function (value) {
     if (!value.dynamicDeductionEnabled) return true;
     const profile: DeductionProfile = {
-      peakWindowStart: normalizeTime(value.peakWindowStart),
-      peakWindowEnd: normalizeTime(value.peakWindowEnd),
+      peakWindowStart: normalizeTimeOfDay(value.peakWindowStart),
+      peakWindowEnd: normalizeTimeOfDay(value.peakWindowEnd),
       peakRatio: value.peakRatio ?? 0,
-      lowWindowStart: normalizeTime(value.lowWindowStart),
-      lowWindowEnd: normalizeTime(value.lowWindowEnd),
+      lowWindowStart: normalizeTimeOfDay(value.lowWindowStart),
+      lowWindowEnd: normalizeTimeOfDay(value.lowWindowEnd),
       lowRatio: value.lowRatio ?? 0,
     };
     const error = validateDeductionProfile(profile);
     if (error) return this.createError({ message: error });
     return true;
   });
-
-function normalizeTime(value?: string): string {
-  if (!value) return '';
-  return value.length === 5 ? `${value}:00` : value;
-}
 
 export type CreatePlanFormData = yup.InferType<typeof createPlanSchema>;
 
@@ -224,14 +155,10 @@ export const createPlanDefaultValues: CreatePlanFormData = {
   price: 0,
   planType: PlanType.TIME_BASED,
   validityDays: 7,
-  timeWindowStart: undefined,
-  timeWindowEnd: undefined,
   timeCredits: 300,
   isActive: true,
   deviceType: undefined,
   deviceSubType: undefined,
-  allowedDays: undefined,
-  allowedMonths: undefined,
   dynamicDeductionEnabled: false,
   peakWindowStart: undefined,
   peakWindowEnd: undefined,

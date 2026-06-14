@@ -1,10 +1,10 @@
+import type { UnitTypeValue } from '@gaming-cafe/contracts';
 import { http } from '@gaming-cafe/utils';
-import type { UnitType } from './list';
 
 interface AddUnitRequest {
   name: string;
   abbreviation: string;
-  type?: UnitType;
+  type?: UnitTypeValue;
   description?: string;
   isActive?: boolean;
 }

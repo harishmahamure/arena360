@@ -1681,11 +1681,25 @@ export interface components {
         };
         ActiveSessionDto: {
             balanceId: string;
+            cafeTimezone: string;
+            deductionProfile?: null | components["schemas"]["DeductionProfile"];
+            /** Format: date-time */
+            expiryDate: string;
             id: string;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Server-computed effective display remaining (legacy clients).
+             */
             remainingMinutes: number;
             /** Format: date-time */
             startTime: string;
+            /** Format: double */
+            timeCreditsConsumed?: number | null;
+            /**
+             * Format: double
+             * @description Raw wallet minutes for client-side countdown anchoring.
+             */
+            walletBalanceMinutes: number;
         };
         AddMemberDto: {
             /** Format: uuid */
@@ -2817,7 +2831,11 @@ export interface components {
             deviceId: string;
             /** @description Set when the session has been closed (auto, voluntary, force, offline_reconcile). */
             endTime?: string | null;
-            /** Format: double */
+            expiryDate: string;
+            /**
+             * Format: double
+             * @description Server-computed effective display remaining (console TV / legacy).
+             */
             remainingMinutes: number;
             /** @description True when an existing open session on this device was resumed (crash recovery). */
             resumed: boolean;
@@ -2825,6 +2843,11 @@ export interface components {
             startTime: string;
             /** Format: double */
             timeCreditsConsumed?: number | null;
+            /**
+             * Format: double
+             * @description Raw wallet minutes from `player_plan_balances.remainingMinutes`.
+             */
+            walletBalanceMinutes: number;
         };
         LegacyHealthResponse: {
             details: unknown;
@@ -3551,6 +3574,9 @@ export interface components {
             name: string;
         };
         SessionBalanceSummary: {
+            deductionProfile?: null | components["schemas"]["DeductionProfile"];
+            /** Format: date-time */
+            expiryDate: string;
             /** Format: uuid */
             id: string;
             kind: string;
@@ -4234,6 +4260,7 @@ export interface components {
             cafeTimezone: string;
             deductionProfile?: null | components["schemas"]["DeductionProfile"];
             deviceId: string;
+            expiryDate: string;
             playerUsername?: string | null;
             /** Format: double */
             remainingMinutes: number;
@@ -4465,6 +4492,8 @@ export interface components {
             balance?: null | components["schemas"]["SessionBalanceSummary"];
             /** Format: uuid */
             balanceId?: string | null;
+            /** @description IANA timezone for peak/low window math (enriched list/detail only). */
+            cafeTimezone?: string;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */

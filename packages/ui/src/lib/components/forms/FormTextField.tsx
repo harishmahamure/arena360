@@ -16,7 +16,7 @@ const FormTextField = forwardRef<HTMLDivElement, FormTextFieldProps>(
         autoComplete="off"
         sx={{
           width: '100%',
-          maxWidth: '320px',
+          maxWidth: '100%',
           ...props.sx,
         }}
         {...props}

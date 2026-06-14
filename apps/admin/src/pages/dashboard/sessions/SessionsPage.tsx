@@ -1,5 +1,11 @@
+import { DEFAULT_CAFE_TZ, SESSION_CLOCK_TICK_MS } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { formatTimeAgo, toastUtils, useAsyncAction } from '@gaming-cafe/utils';
+import {
+  formatRemainingClock,
+  formatTimeAgo,
+  toastUtils,
+  useAsyncAction,
+} from '@gaming-cafe/utils';
 import { Pause, Timer, Visibility } from '@mui/icons-material';
 import { Chip, Stack, Typography } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -37,22 +43,13 @@ const CountTimeComponent = memo(({ startedAt }: { startedAt: string }) => {
     setTimeElapsed(Date.now() - startTimeRef.current);
     const interval = setInterval(() => {
       setTimeElapsed(Date.now() - startTimeRef.current);
-    }, 1000);
+    }, SESSION_CLOCK_TICK_MS);
     return () => clearInterval(interval);
   }, [startedAt]);
 
-  const totalSeconds = Math.floor(timeElapsed / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const elapsedMinutes = timeElapsed / 60_000;
 
-  return (
-    <Typography variant="body2">
-      {` ${hours > 0 ? `${hours} hours` : ''} ${
-        minutes > 0 ? `${minutes} min` : ''
-      } ${seconds > 0 ? `${seconds} sec` : ''}`}
-    </Typography>
-  );
+  return <Typography variant="body2">{formatRemainingClock(elapsedMinutes)}</Typography>;
 });
 
 export default function SessionsPage() {
@@ -197,17 +194,24 @@ export default function SessionsPage() {
           const session = enrichedSessions.find((s) => s.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
+          if (endTime) {
+            return (
+              <Typography variant="body2" color="text.secondary">
+                Expired
+              </Typography>
+            );
+          }
           if (!session?.balance || !startTime) {
-            if (endTime) return formatTimeAgo(endTime);
             return 'N/A';
           }
-          if (endTime) return formatTimeAgo(endTime);
           return (
             <SessionRemainingClock
               sessionStartTime={startTime}
               remainingMinutes={session.balance.remainingMinutes}
               timeCreditsConsumed={session.timeCreditsConsumed}
               deductionProfile={session.balance.deductionProfile}
+              cafeTimezone={session.cafeTimezone ?? DEFAULT_CAFE_TZ}
+              expiryDate={session.balance.expiryDate}
             />
           );
         },

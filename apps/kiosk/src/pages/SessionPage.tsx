@@ -1,3 +1,4 @@
+import { SESSION_CLOCK_TICK_MS } from '@gaming-cafe/contracts';
 import {
   AUTO_END_REMAINING_SECONDS,
   useAsyncAction,
@@ -26,12 +27,21 @@ function formatGrace(ms: number): string {
 }
 
 export function SessionPage() {
-  const { playerName, deviceName, activeSession, online, startSession, endSession } = useKiosk();
+  const {
+    playerName,
+    deviceName,
+    activeSession,
+    online,
+    startSession,
+    endSession,
+    reconcileSession,
+  } = useKiosk();
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [view, setView] = useState<SessionView>('home');
   const [libraryQuery, setLibraryQuery] = useState('');
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [refreshingTime, setRefreshingTime] = useState(false);
   const {
     loading: endingSession,
     succeeded: endSucceeded,
@@ -45,7 +55,7 @@ export function SessionPage() {
   const offlineSinceRef = useRef<number | null>(null);
   const startedRef = useRef(false);
   const firedRemindersRef = useRef<Set<number>>(new Set());
-  const prevMinutesRef = useRef<number | null>(null);
+  const prevWalletRef = useRef<number | null>(null);
   const autoEndFiredRef = useRef(false);
 
   const pushToast = useCallback((text: string, tone: ToastMessage['tone'] = 'info') => {
@@ -105,56 +115,63 @@ export function SessionPage() {
   }, [activeSession, startSession]);
 
   useEffect(() => {
+    if (!activeSession?.id) {
+      autoEndFiredRef.current = false;
+      prevWalletRef.current = null;
+      return;
+    }
     autoEndFiredRef.current = false;
+    prevWalletRef.current = null;
   }, [activeSession?.id]);
 
-  const serverRemaining = activeSession?.remainingMinutes;
-  const localRemaining = useSessionRemainingMinutes(
+  const walletBalance = activeSession?.walletBalanceMinutes;
+  const displayRemaining = useSessionRemainingMinutes(
     activeSession
       ? {
           sessionStartTime: activeSession.startTime,
-          serverEffectiveRemainingMinutes: serverRemaining,
+          walletBalanceMinutes: activeSession.walletBalanceMinutes,
           timeCreditsConsumed: activeSession.timeCreditsConsumed ?? 0,
           deductionProfile: activeSession.deductionProfile,
           cafeTimezone: activeSession.cafeTimezone,
+          expiryDate: activeSession.expiryDate,
         }
       : undefined,
   );
 
-  // Recharge toast when the server-authoritative value increases (mid-session top-up).
+  // Recharge toast when wallet balance increases (mid-session top-up via balance.updated).
   useEffect(() => {
-    if (typeof serverRemaining !== 'number') return;
-    const prev = prevMinutesRef.current;
-    if (prev !== null && serverRemaining > prev + 0.05) {
+    if (typeof walletBalance !== 'number') return;
+    const prev = prevWalletRef.current;
+    if (prev !== null && walletBalance > prev + 0.05) {
       pushToast('Time added — thanks!', 'success');
       for (const t of REMINDER_THRESHOLDS) {
-        if (serverRemaining > t) firedRemindersRef.current.delete(t);
+        if ((displayRemaining ?? walletBalance) > t) firedRemindersRef.current.delete(t);
       }
     }
-    prevMinutesRef.current = serverRemaining;
-  }, [serverRemaining, pushToast]);
+    prevWalletRef.current = walletBalance;
+  }, [walletBalance, displayRemaining, pushToast]);
 
   // Time-based reminders: driven by the local countdown so sounds fire on schedule.
   useEffect(() => {
-    if (typeof localRemaining !== 'number') return;
+    if (typeof displayRemaining !== 'number') return;
     for (const t of REMINDER_THRESHOLDS) {
-      if (localRemaining <= t && !firedRemindersRef.current.has(t)) {
+      if (displayRemaining <= t && !firedRemindersRef.current.has(t)) {
         firedRemindersRef.current.add(t);
         pushToast(`${t} minute${t === 1 ? '' : 's'} remaining`, t === 1 ? 'warning' : 'info');
         if (t !== 1) playRemainingTimeSound(t);
       }
     }
-  }, [localRemaining, pushToast]);
+  }, [displayRemaining, pushToast]);
 
   // Auto-end when display reaches the final seconds threshold (once per session).
   useEffect(() => {
-    if (typeof localRemaining !== 'number' || autoEndFiredRef.current) return;
-    const remainingSeconds = Math.floor(localRemaining * 60);
+    if (typeof displayRemaining !== 'number' || autoEndFiredRef.current) return;
+    const remainingSeconds = Math.floor(displayRemaining * 60);
     if (remainingSeconds <= AUTO_END_REMAINING_SECONDS) {
       autoEndFiredRef.current = true;
       void endSession('auto');
     }
-  }, [localRemaining, endSession]);
+  }, [displayRemaining, endSession]);
 
   // Offline grace: keep counting down locally, then re-lock when grace elapses.
   useEffect(() => {
@@ -171,7 +188,7 @@ export function SessionPage() {
       if (left <= 0) void endSession('offline_reconcile');
     };
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, SESSION_CLOCK_TICK_MS);
     return () => clearInterval(id);
   }, [online, endSession]);
 
@@ -179,13 +196,22 @@ export function SessionPage() {
     <div className="a360-session">
       <SessionNav
         playerName={playerName}
-        remainingMinutes={localRemaining ?? serverRemaining}
+        remainingMinutes={displayRemaining ?? undefined}
         deductionProfile={activeSession?.deductionProfile}
         cafeTimezone={activeSession?.cafeTimezone}
         deviceName={deviceName}
         activeView={view}
         onNavigate={setView}
         onEndSession={() => setConfirmEnd(true)}
+        onRefreshTime={async () => {
+          setRefreshingTime(true);
+          try {
+            await reconcileSession();
+          } finally {
+            setRefreshingTime(false);
+          }
+        }}
+        refreshing={refreshingTime}
         onError={onError}
       />
 

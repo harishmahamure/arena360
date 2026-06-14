@@ -21,11 +21,15 @@ use crate::services::{BalanceService, DeviceService, EventService};
 pub struct KioskSessionStart {
     pub session: UsageSession,
     pub balance_id: Uuid,
+    /// Raw wallet minutes from `player_plan_balances.remainingMinutes`.
+    pub wallet_balance_minutes: i32,
+    /// Server-computed effective display remaining (legacy clients / console TV).
     pub remaining_minutes: i32,
     pub resumed: bool,
     pub deduction_profile: Option<Value>,
     pub time_credits_consumed: f64,
     pub cafe_timezone: String,
+    pub expiry_date: DateTime<Utc>,
 }
 
 pub struct SessionService {
@@ -62,6 +66,11 @@ fn charged_wallet_minutes(session: &UsageSession) -> i32 {
     session.time_credits_consumed.unwrap_or(0).max(0)
 }
 
+/// Floor minutes from `now` until `expiry` (0 when already expired).
+pub fn minutes_until_expiry(expiry: DateTime<Utc>, now: DateTime<Utc>) -> i32 {
+    ((expiry - now).num_seconds().max(0) as f64 / 60.0).floor() as i32
+}
+
 /// Project wallet minutes left for an open session (poll/login display; does not deduct).
 pub fn effective_remaining_for_session(
     balance: &PlayerPlanBalance,
@@ -74,10 +83,29 @@ pub fn effective_remaining_for_session(
     (balance.remaining_minutes - owed).max(0)
 }
 
+/// Display remaining capped by plan expiry: min(walletRemaining, minutesUntilExpiry).
+pub fn display_remaining_for_session(
+    balance: &PlayerPlanBalance,
+    session: &UsageSession,
+    cafe_tz: &str,
+) -> i32 {
+    let now = Utc::now();
+    if now > balance.expiry_date {
+        return 0;
+    }
+    let wallet = effective_remaining_for_session(balance, session, cafe_tz);
+    wallet.min(minutes_until_expiry(balance.expiry_date, now))
+}
+
 /// Remaining play time for an open session without dynamic profile (legacy tests).
 pub fn effective_remaining_minutes(balance_remaining: i32, start_time: DateTime<Utc>) -> i32 {
     let elapsed = wall_minutes_between(start_time, Utc::now()).ceil() as i32;
     (balance_remaining - elapsed).max(0)
+}
+
+fn with_cafe_timezone(mut session: UsageSessionResponse, tz: &str) -> UsageSessionResponse {
+    session.cafe_timezone = tz.to_string();
+    session
 }
 
 impl SessionService {
@@ -104,15 +132,19 @@ impl SessionService {
         session: UsageSession,
         balance: &PlayerPlanBalance,
         balance_id: Uuid,
-        remaining_minutes: i32,
         resumed: bool,
     ) -> KioskSessionStart {
+        let wallet_balance_minutes = balance.remaining_minutes;
+        let remaining_minutes =
+            display_remaining_for_session(balance, &session, &self.cafe_timezone);
         KioskSessionStart {
             time_credits_consumed: charged_wallet_minutes(&session) as f64,
             deduction_profile: balance.deduction_profile.clone(),
             cafe_timezone: self.cafe_timezone.clone(),
+            expiry_date: balance.expiry_date,
             session,
             balance_id,
+            wallet_balance_minutes,
             remaining_minutes,
             resumed,
         }
@@ -193,24 +225,40 @@ impl SessionService {
         &self,
         filters: SessionFilterDto,
     ) -> Result<crate::dto::PaginationResult<UsageSessionResponse>, AppError> {
-        self.repo.list(&filters).await
+        let mut result = self.repo.list(&filters).await?;
+        let tz = self.cafe_timezone.as_str();
+        result.data = result
+            .data
+            .into_iter()
+            .map(|s| with_cafe_timezone(s, tz))
+            .collect();
+        Ok(result)
     }
 
     pub async fn list_active(
         &self,
     ) -> Result<crate::dto::PaginationResult<UsageSessionResponse>, AppError> {
-        self.repo
+        let mut result = self
+            .repo
             .list(&SessionFilterDto {
                 is_active: Some(1),
                 ..Default::default()
             })
-            .await
+            .await?;
+        let tz = self.cafe_timezone.as_str();
+        result.data = result
+            .data
+            .into_iter()
+            .map(|s| with_cafe_timezone(s, tz))
+            .collect();
+        Ok(result)
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<UsageSessionResponse, AppError> {
         self.repo
             .find_enriched_by_id(id)
             .await?
+            .map(|s| with_cafe_timezone(s, self.cafe_timezone.as_str()))
             .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
     }
 
@@ -265,7 +313,7 @@ impl SessionService {
         self.events.publish_session_started(&session.id.to_string());
 
         let balance = self.balances.get_raw(dto.balance_id).await?;
-        let remaining = effective_remaining_for_session(
+        let remaining = display_remaining_for_session(
             &balance,
             &session,
             &self.cafe_timezone,
@@ -335,12 +383,10 @@ impl SessionService {
                 .await?
                 .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
             let balance = self.balances.get_raw(open.balance_id).await?;
-            let remaining = effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
             return Ok(self.kiosk_session_start(
                 session,
                 &balance,
                 open.balance_id,
-                remaining,
                 true,
             ));
         }
@@ -380,13 +426,7 @@ impl SessionService {
             )
             .await?;
 
-        Ok(self.kiosk_session_start(
-            session,
-            &balance,
-            balance.id,
-            balance.remaining_minutes,
-            false,
-        ))
+        Ok(self.kiosk_session_start(session, &balance, balance.id, false))
     }
 
     /// Kiosk poll payload with deduction profile for HUD time-speeding.
@@ -403,7 +443,7 @@ impl SessionService {
             .await?
             .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
         let balance = self.balances.get_raw(open.balance_id).await?;
-        let remaining = effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
+        let remaining = display_remaining_for_session(&balance, &session, &self.cafe_timezone);
         if remaining <= 0 {
             self.auto_end_expired(open.session_id).await?;
             return Ok(None);
@@ -412,7 +452,6 @@ impl SessionService {
             session,
             &balance,
             open.balance_id,
-            remaining,
             true,
         )))
     }
@@ -433,7 +472,7 @@ impl SessionService {
             .await?
             .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
         open.remaining_minutes =
-            effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
+            display_remaining_for_session(&balance, &session, &self.cafe_timezone);
         if open.remaining_minutes <= 0 {
             self.auto_end_expired(open.session_id).await?;
             return Ok(None);
@@ -504,9 +543,7 @@ impl SessionService {
             .find_by_id(session_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Session with ID {session_id} not found")))?;
-        let remaining = updated_balance.remaining_minutes;
-
-        if remaining <= 0 {
+        if updated_balance.remaining_minutes <= 0 {
             self.auto_end_expired(session_id).await?;
         }
 
@@ -522,7 +559,6 @@ impl SessionService {
             session,
             &updated_balance,
             balance_id,
-            remaining,
             true,
         ))
     }
@@ -673,7 +709,7 @@ impl SessionService {
         })?;
         let balance = self.balances.get_raw(balance_id).await?;
         let remaining =
-            effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
+            display_remaining_for_session(&balance, &session, &self.cafe_timezone);
         let deduction_profile = balance
             .deduction_profile
             .as_ref()
@@ -688,6 +724,7 @@ impl SessionService {
             playerUsername: None,
             deductionProfile: deduction_profile,
             cafeTimezone: self.cafe_timezone.clone(),
+            expiryDate: balance.expiry_date.to_rfc3339(),
         }))
     }
 
@@ -708,16 +745,17 @@ impl SessionService {
 
         if session.end_time.is_some() {
             let balance_id = session.balance_id.unwrap_or_default();
-            let (remaining, deduction_profile) = if balance_id != Uuid::nil() {
+            let (remaining, deduction_profile, expiry_date) = if balance_id != Uuid::nil() {
                 let balance = self.balances.get_raw(balance_id).await?;
                 (
                     balance.remaining_minutes,
                     balance.deduction_profile.as_ref().and_then(|value| {
                         serde_json::from_value::<DeductionProfile>(value.clone()).ok()
                     }),
+                    balance.expiry_date.to_rfc3339(),
                 )
             } else {
-                (0, None)
+                (0, None, Utc::now().to_rfc3339())
             };
             return Ok(crate::dto::TvSessionResponseDto {
                 sessionId: session.id.to_string(),
@@ -731,6 +769,7 @@ impl SessionService {
                 playerUsername: None,
                 deductionProfile: deduction_profile,
                 cafeTimezone: self.cafe_timezone.clone(),
+                expiryDate: expiry_date,
             });
         }
 
@@ -749,16 +788,17 @@ impl SessionService {
             .await?;
 
         let balance_id = ended.balance_id.unwrap_or_default();
-        let (remaining, deduction_profile) = if balance_id != Uuid::nil() {
+        let (remaining, deduction_profile, expiry_date) = if balance_id != Uuid::nil() {
             let balance = self.balances.get_raw(balance_id).await?;
             (
                 balance.remaining_minutes,
                 balance.deduction_profile.as_ref().and_then(|value| {
                     serde_json::from_value::<DeductionProfile>(value.clone()).ok()
                 }),
+                balance.expiry_date.to_rfc3339(),
             )
         } else {
-            (0, None)
+            (0, None, Utc::now().to_rfc3339())
         };
 
         Ok(crate::dto::TvSessionResponseDto {
@@ -770,6 +810,7 @@ impl SessionService {
             playerUsername: None,
             deductionProfile: deduction_profile,
             cafeTimezone: self.cafe_timezone.clone(),
+            expiryDate: expiry_date,
         })
     }
 
@@ -778,6 +819,78 @@ impl SessionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_cafe_timezone_sets_response_field() {
+        let now = Utc::now();
+        let session = UsageSessionResponse {
+            id: Uuid::new_v4(),
+            balance_id: None,
+            device_id: Uuid::new_v4(),
+            shift_id: None,
+            start_time: now,
+            end_time: None,
+            duration_minutes: None,
+            time_credits_consumed: None,
+            created_by: None,
+            updated_by: None,
+            created_at: now,
+            updated_at: now,
+            deleted_at: None,
+            balance: None,
+            device: None,
+            cafe_timezone: String::new(),
+        };
+        let enriched = with_cafe_timezone(session, "Asia/Kolkata");
+        assert_eq!(enriched.cafe_timezone, "Asia/Kolkata");
+    }
+
+    #[test]
+    fn display_remaining_caps_by_expiry() {
+        let start = Utc::now() - chrono::Duration::minutes(5);
+        let balance = PlayerPlanBalance {
+            id: Uuid::new_v4(),
+            player_id: Uuid::new_v4(),
+            device_type: None,
+            device_sub_type: None,
+            kind: "time".to_string(),
+            remaining_minutes: 300,
+            expiry_date: Utc::now() + chrono::Duration::minutes(15),
+            window_start: None,
+            window_end: None,
+            status: "active".to_string(),
+            source_plan_id: None,
+            allowed_days: None,
+            allowed_months: None,
+            deduction_profile: None,
+            created_by: None,
+            updated_by: None,
+            created_at: start,
+            updated_at: start,
+            deleted_at: None,
+        };
+        let session = UsageSession {
+            id: Uuid::new_v4(),
+            balance_id: Some(balance.id),
+            device_id: Uuid::new_v4(),
+            shift_id: None,
+            start_time: start,
+            end_time: None,
+            duration_minutes: None,
+            time_credits_consumed: Some(0),
+            created_by: None,
+            updated_by: None,
+            created_at: start,
+            updated_at: start,
+            deleted_at: None,
+        };
+        let display = display_remaining_for_session(&balance, &session, "Asia/Kolkata");
+        assert!(
+            display <= 15,
+            "expiry in 15 min should cap display remaining, got {display}"
+        );
+        assert!(display > 0);
+    }
 
     #[test]
     fn effective_remaining_for_session_uses_weighted_consumption() {

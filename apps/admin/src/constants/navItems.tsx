@@ -124,11 +124,6 @@ export const adminNavItems: AdminNavItem[] = [
         path: '/products/new',
         requiredPermission: Permission.ProductsWrite,
       },
-      {
-        title: 'Units',
-        path: '/units',
-        requiredPermission: Permission.UnitsRead,
-      },
       { title: 'Expiring Soon', path: '/products?stockExpiringSoon=true' },
       { title: 'Inactive Products', path: '/products?deleted=true' },
     ],
