@@ -1,0 +1,52 @@
+# frozen_string_literal: true
+
+default_platform(:android)
+
+platform :android do
+  OUTPUT_DIR = File.expand_path("build", __dir__)
+
+  def gradlew
+    File.expand_path("../gradlew", __dir__)
+  end
+
+  def copy_artifacts(pattern, label)
+    files = Dir.glob(pattern)
+    UI.user_error!("No #{label} found matching #{pattern}") if files.empty?
+
+    FileUtils.mkdir_p(OUTPUT_DIR)
+    files.each do |path|
+      dest = File.join(OUTPUT_DIR, File.basename(path))
+      FileUtils.cp(path, dest)
+      UI.success("Copied #{label}: #{dest}")
+    end
+    files
+  end
+
+  desc "Build signed release AAB and APK (requires release signing credentials)"
+  lane :release do
+    sh("chmod", "+x", gradlew)
+
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      gradle_path: gradlew,
+      print_command: true,
+    )
+
+    gradle(
+      task: "assemble",
+      build_type: "Release",
+      gradle_path: gradlew,
+      print_command: true,
+    )
+
+    copy_artifacts(
+      File.expand_path("../app/build/outputs/bundle/release/*.aab", __dir__),
+      "AAB",
+    )
+    copy_artifacts(
+      File.expand_path("../app/build/outputs/apk/release/*.apk", __dir__),
+      "APK",
+    )
+  end
+end

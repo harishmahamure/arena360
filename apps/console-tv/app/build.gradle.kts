@@ -1,10 +1,13 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-fun loadEnvFile(file: java.io.File): Map<String, String> {
+fun loadEnvFile(file: File): Map<String, String> {
     if (!file.exists()) return emptyMap()
     return file.readLines()
         .filter { it.isNotBlank() && !it.startsWith("#") && it.contains("=") }
@@ -28,6 +31,57 @@ val gatewayUrl =
             val host = api.removePrefix("https://").removePrefix("http://")
             "$wsProtocol://$host/realtime"
         }
+
+data class ReleaseSigning(
+    val storeFile: File,
+    val storePassword: String,
+    val keyAlias: String,
+    val keyPassword: String,
+)
+
+fun loadReleaseSigning(rootDir: File): ReleaseSigning? {
+    val envPath = System.getenv("ANDROID_KEYSTORE_PATH")
+    val envStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val envKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+    val envKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+
+    if (
+        !envPath.isNullOrBlank() &&
+        !envStorePassword.isNullOrBlank() &&
+        !envKeyAlias.isNullOrBlank() &&
+        !envKeyPassword.isNullOrBlank()
+    ) {
+        val storeFile = File(envPath)
+        if (!storeFile.exists()) {
+            throw GradleException("ANDROID_KEYSTORE_PATH does not exist: $envPath")
+        }
+        return ReleaseSigning(storeFile, envStorePassword, envKeyAlias, envKeyPassword)
+    }
+
+    val propertiesFile = rootDir.resolve("keystore.properties")
+    if (!propertiesFile.exists()) return null
+
+    val props = Properties()
+    propertiesFile.inputStream().use { props.load(it) }
+
+    val storeFilePath = props.getProperty("storeFile")?.trim().orEmpty()
+    val storePassword = props.getProperty("storePassword")?.trim().orEmpty()
+    val keyAlias = props.getProperty("keyAlias")?.trim().orEmpty()
+    val keyPassword = props.getProperty("keyPassword")?.trim().orEmpty()
+
+    if (storeFilePath.isBlank() || storePassword.isBlank() || keyAlias.isBlank() || keyPassword.isBlank()) {
+        return null
+    }
+
+    val storeFile = rootDir.resolve(storeFilePath)
+    if (!storeFile.exists()) {
+        throw GradleException("Release keystore not found at ${storeFile.absolutePath}")
+    }
+
+    return ReleaseSigning(storeFile, storePassword, keyAlias, keyPassword)
+}
+
+val releaseSigning = loadReleaseSigning(rootProject.projectDir)
 
 android {
     namespace = "com.gamingcafe.consoletv"
@@ -64,6 +118,42 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+
+    signingConfigs {
+        val signing = releaseSigning
+        if (signing != null) {
+            create("release") {
+                storeFile = signing.storeFile
+                storePassword = signing.storePassword
+                keyAlias = signing.keyAlias
+                keyPassword = signing.keyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isDebuggable = false
+            isMinifyEnabled = false
+            if (releaseSigning != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+}
+
+gradle.taskGraph.whenReady {
+    val releaseRequested = allTasks.any { task ->
+        val name = task.name.lowercase()
+        name.contains("release") &&
+            (name.startsWith("bundle") || name.startsWith("assemble") || name.startsWith("package"))
+    }
+    if (releaseRequested && releaseSigning == null) {
+        throw GradleException(
+            "Release signing is required. Provide keystore.properties (see keystore.properties.example) " +
+                "or set ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.",
+        )
     }
 }
 

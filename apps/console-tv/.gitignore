@@ -1,8 +1,17 @@
 .env.local
 local.properties
+keystore.properties
+*.jks
+*.keystore
+release/
 .gradle/
 build/
 **/build/
 *.iml
 .idea/
 .DS_Store
+vendor/bundle/
+fastlane/build/
+fastlane/report.xml
+fastlane/test_output/
+Gemfile.lock
