@@ -70,7 +70,6 @@ export default function SessionsPage() {
         ...(activeParam === 'true' ? { isActive: 1 } : {}),
         ...(activeParam === 'false' ? { isActive: 0 } : {}),
       }),
-    refetchInterval: activeParam === 'true' ? 30_000 : false,
   });
 
   const enrichedSessions = useEnrichedSessions(data?.data);
@@ -205,7 +204,9 @@ export default function SessionsPage() {
           if (endTime) return formatTimeAgo(endTime);
           return (
             <SessionRemainingClock
+              sessionStartTime={startTime}
               remainingMinutes={session.balance.remainingMinutes}
+              timeCreditsConsumed={session.timeCreditsConsumed}
               deductionProfile={session.balance.deductionProfile}
             />
           );

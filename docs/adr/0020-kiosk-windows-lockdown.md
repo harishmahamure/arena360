@@ -7,6 +7,16 @@
 **Implements (deferred portion of)**: [ADR-0002](0002-kiosk-tauri-canonical.md)
 **Depends on**: [ADR-0019](0019-kiosk-device-allow-list.md) (`launch_allowed` validation)
 
+## Amendment 2026-06-14: session cleanup, z-order, and force-end
+
+- **Window mode (`Locked`)**: Fullscreen borderless without `HWND_TOPMOST`; re-assert
+  fullscreen + foreground on focus loss (respect OS Alt+Tab z-order).
+- **Session-end cleanup (`kill_tracked_processes`)**: After tracked trees, sweep all
+  processes in the kiosk user session except a documented system/shell/kiosk keep-list.
+  Always restore the kiosk login shell (even when nothing was tracked). No grace delay.
+- **Force-end (US-KPROC-003)**: Admin force-end triggers immediate cleanup — the
+  5-minute kiosk grace overlay is removed.
+
 ## Amendment 2026-05-30: setup entry via Ctrl+Shift+A
 
 The setup-mode entry point changes from the hidden 5-tap corner gesture to the
@@ -60,7 +70,7 @@ stateDiagram-v2
 
 | State | Hotkeys | Launch policy | Window mode |
 |-------|---------|---------------|-------------|
-| `Locked` | Block Alt+Tab, Win, Ctrl+Esc, Alt+F4 on shell; block Explorer/Run/TM shortcuts | `launch_allowed` only (ADR-0019 list) | Fullscreen borderless; re-assert topmost on focus loss |
+| `Locked` | Block Win, Ctrl+Esc, Alt+F4 on shell; block Explorer/Run/TM shortcuts; Alt+Tab allowed between kiosk and launched apps | `launch_allowed` only (ADR-0019 list) | Fullscreen borderless; re-assert foreground on focus loss (no TOPMOST) |
 | `SetupRelaxed` | None blocked | Operator may launch any binary | Normal windowed allowed |
 
 **Transitions (US-KLOCK-005):**
@@ -91,7 +101,7 @@ in user mode. Behavior:
 | `collect_fingerprint` | `fingerprint` | none | `FingerprintPayload` | Registration, heartbeat |
 | `scan_installed_software` | `scan` | `{ progressChannel? }` | `ScanCandidate[]` | Setup allow-list editor |
 | `launch_allowed` | `launcher` | `{ executablePath, arguments? }` | `{ pid: number }` | Player launcher grid |
-| `kill_tracked_processes` | `process` | `{ graceSeconds?: number }` | `{ killed: number }` | Session end, force-end |
+| `kill_tracked_processes` | `process` | none | `{ killed: number, restored: boolean }` | Session end (tracked + user-session sweep) |
 | `get_tracked_processes` | `process` | none | `TrackedProcess[]` | Setup debug only |
 
 Register in [`lib.rs`](../../apps/kiosk/src-tauri/src/lib.rs) and restrict via
@@ -119,11 +129,13 @@ Register in [`lib.rs`](../../apps/kiosk/src-tauri/src/lib.rs) and restrict via
 2. **Tracking scope** — Only PIDs spawned by `launch_allowed` during the current
    player session. Ignore pre-existing OS processes (US-KPROC-004).
 
-3. **Cleanup (`kill_tracked_processes`)**:
-   - **Normal end** (voluntary, auto-end): `graceSeconds = 0` — terminate tree immediately.
-   - **Force-end** (admin): `graceSeconds = 300` — 5 min overlay (D5), then kill remainder.
+3. **Cleanup (`kill_tracked_processes`)** — all session end paths (voluntary, auto, force):
+   - Terminate tracked launcher trees (`taskkill /T /F`).
+   - Sweep remaining processes in the kiosk Windows session except a keep-list
+     (system, `explorer.exe`, kiosk executable).
+   - Restore kiosk fullscreen shell.
 
-4. **Termination order** — Children first, then root; use `sysinfo` or `TerminateProcess`.
+4. **Termination order** — Tracked trees first, then user-session sweep; children before roots.
 
 ### Module layout (`src-tauri/src/`)
 

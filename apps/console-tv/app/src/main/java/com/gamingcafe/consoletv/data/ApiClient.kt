@@ -54,6 +54,7 @@ data class TvSessionResponse(
     @SerializedName("startTime") val startTime: String,
     @SerializedName("deductionProfile") val deductionProfile: DeductionProfile?,
     @SerializedName("cafeTimezone") val cafeTimezone: String,
+    @SerializedName("timeCreditsConsumed") val timeCreditsConsumed: Double = 0.0,
     @SerializedName("playerUsername") val playerUsername: String?,
 )
 

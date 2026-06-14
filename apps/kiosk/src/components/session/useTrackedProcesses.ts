@@ -110,7 +110,7 @@ export function useTrackedProcesses({ enabled, onError }: UseTrackedProcessesOpt
     if (closing || processes.length === 0) return;
     setClosing(true);
     try {
-      await killTrackedProcesses(0);
+      await killTrackedProcesses();
       setProcesses([]);
     } catch (e) {
       onError?.(e instanceof Error ? e.message : 'Could not close the running app');

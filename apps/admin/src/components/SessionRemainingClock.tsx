@@ -4,7 +4,9 @@ import { formatRemainingLabel, useSessionRemainingMinutes } from '@gaming-cafe/u
 import { Typography } from '@mui/material';
 
 interface SessionRemainingClockProps {
+  sessionStartTime: string;
   remainingMinutes: number;
+  timeCreditsConsumed?: number | null;
   deductionProfile?: DeductionProfile | null;
   cafeTimezone?: string;
   variant?: 'default' | 'prominent';
@@ -12,15 +14,23 @@ interface SessionRemainingClockProps {
 
 /**
  * Display-only session countdown shared with the kiosk HUD.
- * Server balance is authoritative; this interpolates between list refetches.
+ * Ticks locally from session start using backend-aligned weighted consumption.
  */
 export function SessionRemainingClock({
+  sessionStartTime,
   remainingMinutes,
+  timeCreditsConsumed = 0,
   deductionProfile,
   cafeTimezone = DEFAULT_CAFE_TZ,
   variant = 'default',
 }: SessionRemainingClockProps) {
-  const localMinutes = useSessionRemainingMinutes(remainingMinutes, deductionProfile, cafeTimezone);
+  const localMinutes = useSessionRemainingMinutes({
+    sessionStartTime,
+    walletBalanceMinutes: remainingMinutes,
+    timeCreditsConsumed,
+    deductionProfile,
+    cafeTimezone,
+  });
   const isProminent = variant === 'prominent';
 
   if (localMinutes === null || localMinutes <= 0) {

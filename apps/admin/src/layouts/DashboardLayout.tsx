@@ -30,7 +30,7 @@ export default function DashboardLayout() {
       getSessions({
         isActive: 1,
       }),
-    refetchInterval: 30_000,
+    refetchInterval: false,
   });
 
   const { data: activeShift } = useQuery({
@@ -48,7 +48,9 @@ export default function DashboardLayout() {
       .filter((session) => session.balance?.remainingMinutes != null && !session.endTime)
       .map((session) => ({
         id: session.id,
+        sessionStartTime: session.startTime,
         remainingMinutes: session.balance?.remainingMinutes ?? 0,
+        timeCreditsConsumed: session.timeCreditsConsumed,
         deductionProfile: session.balance?.deductionProfile,
         sessionDetails: {
           playerName: session.balance?.player?.username ?? 'Unknown',

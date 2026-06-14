@@ -154,7 +154,7 @@ export default function ViewSessionPage() {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     refetchOnReconnect: true,
-    refetchInterval: (query) => (query.state.data?.endTime ? false : 30_000),
+    refetchInterval: () => false,
   });
 
   const { data: balanceRecord } = useQuery({
@@ -337,7 +337,9 @@ export default function ViewSessionPage() {
             </Typography>
             <SessionRemainingClock
               variant="prominent"
+              sessionStartTime={startTime ?? session.startTime}
               remainingMinutes={balance.remainingMinutes}
+              timeCreditsConsumed={session.timeCreditsConsumed}
               deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
             />
           </Grid>
@@ -408,7 +410,9 @@ export default function ViewSessionPage() {
               <DetailField label={isActive ? 'Time remaining' : 'Remaining minutes'}>
                 {isActive && balance.remainingMinutes != null ? (
                   <SessionRemainingClock
+                    sessionStartTime={startTime ?? session.startTime}
                     remainingMinutes={balance.remainingMinutes}
+                    timeCreditsConsumed={session.timeCreditsConsumed}
                     deductionProfile={balance.deductionProfile ?? balanceRecord?.deductionProfile}
                   />
                 ) : (

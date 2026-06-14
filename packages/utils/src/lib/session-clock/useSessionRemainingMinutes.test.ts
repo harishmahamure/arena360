@@ -23,7 +23,14 @@ describe('useSessionRemainingMinutes', () => {
   });
 
   it('ticks 1:1 without a deduction profile', () => {
-    const { result } = renderHook(() => useSessionRemainingMinutes(10));
+    const start = '2026-06-07T13:00:00.000Z';
+    vi.setSystemTime(new Date(start));
+    const { result } = renderHook(() =>
+      useSessionRemainingMinutes({
+        sessionStartTime: start,
+        walletBalanceMinutes: 10,
+      }),
+    );
     expect(result.current).toBe(10);
 
     act(() => {
@@ -33,7 +40,16 @@ describe('useSessionRemainingMinutes', () => {
   });
 
   it('burns faster during peak windows', () => {
-    const { result } = renderHook(() => useSessionRemainingMinutes(10, profile, 'Asia/Kolkata'));
+    const start = '2026-06-07T12:30:00.000Z';
+    vi.setSystemTime(new Date(start));
+    const { result } = renderHook(() =>
+      useSessionRemainingMinutes({
+        sessionStartTime: start,
+        walletBalanceMinutes: 10,
+        deductionProfile: profile,
+        cafeTimezone: 'Asia/Kolkata',
+      }),
+    );
     expect(result.current).toBe(10);
 
     act(() => {
@@ -42,17 +58,24 @@ describe('useSessionRemainingMinutes', () => {
     expect(result.current).toBeCloseTo(8, 5);
   });
 
-  it('re-anchors when the authoritative value changes', () => {
-    const { result, rerender } = renderHook(({ minutes }) => useSessionRemainingMinutes(minutes), {
-      initialProps: { minutes: 10 },
-    });
+  it('re-anchors when wallet balance changes', () => {
+    const start = '2026-06-07T13:00:00.000Z';
+    vi.setSystemTime(new Date(start));
+    const { result, rerender } = renderHook(
+      ({ walletBalanceMinutes }: { walletBalanceMinutes: number }) =>
+        useSessionRemainingMinutes({
+          sessionStartTime: start,
+          walletBalanceMinutes,
+        }),
+      { initialProps: { walletBalanceMinutes: 10 } },
+    );
 
     act(() => {
       vi.advanceTimersByTime(120_000);
     });
     expect(result.current).toBeCloseTo(8, 5);
 
-    rerender({ minutes: 25 });
-    expect(result.current).toBe(25);
+    rerender({ walletBalanceMinutes: 25 });
+    expect(result.current).toBeCloseTo(23, 5);
   });
 });

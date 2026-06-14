@@ -1,5 +1,5 @@
 import type { DeductionProfile } from '@gaming-cafe/contracts';
-import { ApiError, isApiError } from '@gaming-cafe/utils';
+import { ApiError } from '@gaming-cafe/utils';
 import {
   createContext,
   type ReactNode,
@@ -26,7 +26,6 @@ import { KioskRealtimeClient } from '../lib/realtime';
 import { prepareSessionSounds } from '../lib/sessionSounds';
 import {
   clearAllTokens,
-  clearTrackedProcesses,
   killTrackedProcesses,
   setLockdownState,
 } from '../lib/tauriCommands';
@@ -96,10 +95,11 @@ interface KioskContextValue {
   maintenance: boolean;
   /** Name of the station holding the player's open session (single-login guard). */
   conflictDevice: string | null;
-  /** Epoch ms when a force-end grace period elapses (admin force-end overlay). */
-  forceEndGraceEndsAt: number | null;
-  /** False when the backend is unreachable (failed polls); drives offline UX. */
+  /** False when the backend is unreachable; drives offline UX. */
   online: boolean;
+  /** Non-blocking notice shown on the login screen (e.g. staff force-end). */
+  loginNotice: string | null;
+  clearLoginNotice: () => void;
   refresh: () => Promise<void>;
   /** First-time provisioning: verify admin OTP, capturing the admin token. */
   verifyRegistrationOtp: (otp: string, sessionOtpId: string) => Promise<void>;
@@ -122,10 +122,6 @@ interface KioskContextValue {
   startSession: () => Promise<void>;
   /** End the current session with a reason and run process cleanup. */
   endSession: (reason?: string) => Promise<void>;
-  /** Re-sync remaining minutes from the server; detects remote/auto end. */
-  syncSession: () => Promise<void>;
-  /** Server-authoritative usage heartbeat; deducts newly elapsed session time. */
-  heartbeatSession: () => Promise<void>;
   /** Dismiss the single-login conflict screen back to idle. */
   dismissConflict: () => void;
   factoryReset: () => Promise<void>;
@@ -169,14 +165,38 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<string | null>(null);
   const [conflictDevice, setConflictDevice] = useState<string | null>(null);
-  const [forceEndGraceEndsAt, setForceEndGraceEndsAt] = useState<number | null>(null);
   const [online, setOnline] = useState(true);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const deviceIdRef = useRef<string | null>(null);
+  const phaseRef = useRef<AppPhase>('loading');
   // Short-lived admin token captured during first-time provisioning (in memory only).
   const [adminToken, setAdminToken] = useState<string | null>(null);
 
   const maintenance = deviceStatus === 'under_maintenance' || deviceStatus === 'out_of_service';
 
   const realtimeRef = useMemo(() => ({ current: new KioskRealtimeClient() }), []);
+  const cleanupSessionRef = useRef<
+    ((opts?: { staffEnded?: boolean }) => Promise<void>) | null
+  >(null);
+
+  useEffect(() => {
+    deviceIdRef.current = deviceId;
+  }, [deviceId]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    const syncOnline = () => setOnline(navigator.onLine);
+    syncOnline();
+    window.addEventListener('online', syncOnline);
+    window.addEventListener('offline', syncOnline);
+    return () => {
+      window.removeEventListener('online', syncOnline);
+      window.removeEventListener('offline', syncOnline);
+    };
+  }, []);
 
   const connectWs = useCallback(
     (id: string, playerId?: string) => {
@@ -188,18 +208,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         if (frame.event_type) setLastEvent(frame.event_type);
         if (frame.event_type === 'session.ended') {
           const payload = frame.payload as { reason?: string } | undefined;
-          if (payload?.reason === 'force') {
-            // Admin force-end: keep the screen but show a grace overlay; the
-            // SessionPage countdown triggers process cleanup at expiry (D14).
-            setForceEndGraceEndsAt(Date.now() + 5 * 60 * 1000);
-          } else {
-            void killTrackedProcesses();
-            void clearTrackedProcesses();
-            setActiveSession(null);
-            setPlayerName(null);
-            void clearPlayerSession();
-            setPhase('login');
-          }
+          void cleanupSessionRef.current?.({
+            staffEnded: payload?.reason === 'force',
+          });
         }
         if (frame.event_type === 'device.status_changed') {
           const payload = frame.payload as { status?: string } | undefined;
@@ -225,29 +236,105 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     [realtimeRef],
   );
 
-  const handlePlayerAuthExpired = useCallback(async () => {
-    try {
-      await killTrackedProcesses();
-      await clearTrackedProcesses();
-    } catch {
-      // Process cleanup is best-effort off-Windows / when nothing tracked.
+  const flushEndIntents = useCallback(async () => {
+    const intents = loadEndIntents();
+    if (intents.length === 0) return;
+    const http = getHttpClient();
+    for (const intent of intents) {
+      try {
+        // Idempotent: ending an already-closed session is a no-op server-side.
+        await http.patch(`/kiosk/sessions/${intent.sessionId}/end`, {
+          reason: intent.reason,
+        });
+        removeEndIntent(intent.sessionId);
+      } catch {
+        // Still offline / transient — keep the intent for the next attempt.
+        break;
+      }
     }
-    await clearPlayerSession();
-    setPlayerName(null);
-    setActiveSession(null);
+  }, []);
+
+  const cleanupSessionAndReturnToLogin = useCallback(
+    async (opts?: { staffEnded?: boolean }) => {
+      try {
+        await killTrackedProcesses();
+      } catch {
+        // Process cleanup is best-effort off-Windows / when nothing tracked.
+      }
+      setActiveSession(null);
+      await clearPlayerSession();
+      setPlayerName(null);
+      if (opts?.staffEnded) {
+        setLoginNotice('Your session was ended by staff.');
+      }
+      setPhase('login');
+      const id = deviceIdRef.current;
+      if (id) connectWs(id);
+    },
+    [connectWs],
+  );
+
+  const reconcileSessionOnce = useCallback(async () => {
+    if (phaseRef.current !== 'session' || !tokenCache.player) return;
+    try {
+      const res = await getHttpClient().get<KioskSessionResponse | null>('/kiosk/sessions/current');
+      setOnline(true);
+      await flushEndIntents();
+      if (!res) {
+        await cleanupSessionAndReturnToLogin();
+        return;
+      }
+      setActiveSession((prev) => {
+        const next = sessionFromResponse(res);
+        return prev ? { ...prev, ...next, id: prev.id } : next;
+      });
+    } catch {
+      setOnline(false);
+    }
+  }, [cleanupSessionAndReturnToLogin, flushEndIntents]);
+
+  useEffect(() => {
+    cleanupSessionRef.current = cleanupSessionAndReturnToLogin;
+  }, [cleanupSessionAndReturnToLogin]);
+
+  useEffect(() => {
+    const rt = realtimeRef.current;
+    return rt.onConnect(() => {
+      if (phaseRef.current === 'session' && tokenCache.player) {
+        void reconcileSessionOnce();
+      }
+    });
+  }, [realtimeRef, reconcileSessionOnce]);
+
+  useEffect(() => {
+    const onResume = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (phaseRef.current === 'session' && tokenCache.player) {
+        void reconcileSessionOnce();
+      }
+    };
+    document.addEventListener('visibilitychange', onResume);
+    window.addEventListener('focus', onResume);
+    return () => {
+      document.removeEventListener('visibilitychange', onResume);
+      window.removeEventListener('focus', onResume);
+    };
+  }, [reconcileSessionOnce]);
+
+  const handlePlayerAuthExpired = useCallback(async () => {
+    await cleanupSessionAndReturnToLogin();
+
     setConflictDevice(null);
-    setForceEndGraceEndsAt(null);
-    setPhase('login');
     setError('Your session expired. Please sign in again.');
-    if (deviceId) connectWs(deviceId);
-  }, [connectWs, deviceId]);
+  }, [cleanupSessionAndReturnToLogin]);
 
   const handleDeviceAuthExpired = useCallback(async () => {
-    try {
-      await killTrackedProcesses();
-      await clearTrackedProcesses();
-    } catch {
-      // Process cleanup is best-effort off-Windows / when nothing tracked.
+    if (phaseRef.current === 'session') {
+      try {
+        await killTrackedProcesses();
+      } catch {
+        // Process cleanup is best-effort off-Windows / when nothing tracked.
+      }
     }
     await clearAllTokens();
     tokenCache.device = undefined;
@@ -260,7 +347,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setPlayerName(null);
     setActiveSession(null);
     setConflictDevice(null);
-    setForceEndGraceEndsAt(null);
     setPhase('register');
     setError('This station needs to be re-registered.');
     await setLockdownState('Locked');
@@ -506,24 +592,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const flushEndIntents = useCallback(async () => {
-    const intents = loadEndIntents();
-    if (intents.length === 0) return;
-    const http = getHttpClient();
-    for (const intent of intents) {
-      try {
-        // Idempotent: ending an already-closed session is a no-op server-side.
-        await http.patch(`/kiosk/sessions/${intent.sessionId}/end`, {
-          reason: intent.reason,
-        });
-        removeEndIntent(intent.sessionId);
-      } catch {
-        // Still offline / transient — keep the intent for the next attempt.
-        break;
-      }
-    }
-  }, []);
-
   const endSessionInFlightRef = useRef(false);
   const factoryResetInFlightRef = useRef(false);
 
@@ -536,79 +604,19 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         if (sessionId) {
           try {
             await getHttpClient().patch(`/kiosk/sessions/${sessionId}/end`, { reason });
+            setOnline(true);
           } catch {
             // Offline at end time: queue an idempotent replay for reconnect (D18).
             enqueueEndIntent(sessionId, reason === 'voluntary' ? 'offline_reconcile' : reason);
           }
         }
-        try {
-          await killTrackedProcesses();
-          await clearTrackedProcesses();
-        } catch {
-          // Process cleanup is best-effort off-Windows / when nothing tracked.
-        }
-        setActiveSession(null);
-        setForceEndGraceEndsAt(null);
-        await clearPlayerSession();
-        setPlayerName(null);
-        setPhase('login');
-        if (deviceId) connectWs(deviceId);
+        await cleanupSessionAndReturnToLogin();
       } finally {
         endSessionInFlightRef.current = false;
       }
     },
-    [activeSession, connectWs, deviceId],
+    [activeSession?.id, cleanupSessionAndReturnToLogin],
   );
-
-  const syncSession = useCallback(async () => {
-    try {
-      const res = await getHttpClient().get<KioskSessionResponse | null>('/kiosk/sessions/current');
-      setOnline(true);
-      void flushEndIntents();
-      if (!res) {
-        // Session ended elsewhere (auto-expiry or admin end) — return to idle.
-        setActiveSession(null);
-        setPlayerName(null);
-        await clearPlayerSession();
-        setPhase('login');
-        if (deviceId) connectWs(deviceId);
-        return;
-      }
-      setActiveSession((prev) => {
-        const next = sessionFromResponse(res);
-        return prev ? { ...prev, ...next, id: prev.id } : next;
-      });
-    } catch {
-      // Offline: leave the last-known countdown running (offline grace, K6).
-      setOnline(false);
-    }
-  }, [connectWs, deviceId, flushEndIntents]);
-
-  const heartbeatSession = useCallback(async () => {
-    const sessionId = activeSession?.id;
-    if (!sessionId) return;
-    try {
-      const res = await getHttpClient().patch<KioskSessionResponse>(
-        `/kiosk/sessions/${sessionId}/heartbeat`,
-        {},
-      );
-      setOnline(true);
-      setActiveSession((prev) => {
-        const next = sessionFromResponse(res);
-        return prev ? { ...prev, ...next, id: prev.id } : next;
-      });
-    } catch (error) {
-      if (isApiError(error) && error.statusCode === 404) {
-        setActiveSession(null);
-        setPlayerName(null);
-        await clearPlayerSession();
-        setPhase('login');
-        if (deviceId) connectWs(deviceId);
-        return;
-      }
-      setOnline(false);
-    }
-  }, [activeSession?.id, connectWs, deviceId]);
 
   const dismissConflict = useCallback(() => {
     setConflictDevice(null);
@@ -617,6 +625,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setPhase('login');
     if (deviceId) connectWs(deviceId);
   }, [connectWs, deviceId]);
+
+  const clearLoginNotice = useCallback(() => setLoginNotice(null), []);
 
   // Replay any queued end intents whenever connectivity is (re)established.
   useEffect(() => {
@@ -653,8 +663,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     deviceStatus,
     maintenance,
     conflictDevice,
-    forceEndGraceEndsAt,
     online,
+    loginNotice,
+    clearLoginNotice,
     refresh,
     verifyRegistrationOtp,
     provisionDevice,
@@ -667,8 +678,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     playerLogout,
     startSession,
     endSession,
-    syncSession,
-    heartbeatSession,
     dismissConflict,
     factoryReset,
   };

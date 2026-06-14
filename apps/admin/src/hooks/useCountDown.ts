@@ -1,12 +1,13 @@
-import { DEFAULT_CAFE_TZ, type DeductionProfile } from '@gaming-cafe/contracts';
-import { interpolateRemainingMinutes } from '@gaming-cafe/utils';
+import { DEFAULT_CAFE_TZ, effectiveRemainingMinutes, type DeductionProfile } from '@gaming-cafe/contracts';
 import { useEffect, useRef } from 'react';
 import { useNotification } from './useNotification';
 
 export interface CountdownConfig {
   id: string;
+  sessionStartTime: string;
   /** Server-authoritative wallet minutes at last sync. */
   remainingMinutes: number;
+  timeCreditsConsumed?: number | null;
   deductionProfile?: DeductionProfile | null;
   cafeTimezone?: string;
   sessionDetails?: {
@@ -20,7 +21,6 @@ const THRESHOLDS_MIN = [10, 5, 1] as const;
 export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
   const { triggerNotification } = useNotification();
 
-  const anchorsRef = useRef<Map<string, { remaining: number; syncedAt: number }>>(new Map());
   const notificationsSentRef = useRef<
     Map<string, Record<(typeof THRESHOLDS_MIN)[number], boolean>>
   >(new Map());
@@ -28,18 +28,13 @@ export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
 
   useEffect(() => {
     const configKey = configs
-      .map((c) => `${c.id}:${c.remainingMinutes}`)
+      .map((c) => `${c.id}:${c.remainingMinutes}:${c.sessionStartTime}`)
       .sort()
       .join('|');
 
     if (configKeyRef.current !== configKey) {
       configKeyRef.current = configKey;
-      const now = Date.now();
       for (const config of configs) {
-        anchorsRef.current.set(config.id, {
-          remaining: config.remainingMinutes,
-          syncedAt: now,
-        });
         if (!notificationsSentRef.current.has(config.id)) {
           notificationsSentRef.current.set(config.id, {
             10: false,
@@ -49,9 +44,8 @@ export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
         }
       }
       const currentIds = new Set(configs.map((c) => c.id));
-      for (const id of anchorsRef.current.keys()) {
+      for (const id of notificationsSentRef.current.keys()) {
         if (!currentIds.has(id)) {
-          anchorsRef.current.delete(id);
           notificationsSentRef.current.delete(id);
         }
       }
@@ -62,15 +56,11 @@ export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
     if (configs.length === 0) return;
 
     const interval = setInterval(() => {
-      const now = Date.now();
       for (const config of configs) {
-        const anchor = anchorsRef.current.get(config.id);
-        if (!anchor) continue;
-
-        const localRemaining = interpolateRemainingMinutes(
-          anchor.remaining,
-          anchor.syncedAt,
-          now,
+        const localRemaining = effectiveRemainingMinutes(
+          config.sessionStartTime,
+          config.remainingMinutes,
+          config.timeCreditsConsumed ?? 0,
           config.deductionProfile,
           config.cafeTimezone ?? DEFAULT_CAFE_TZ,
         );

@@ -6,6 +6,20 @@
 
 **Relates to**: [ADR-0017](0017-kiosk-player-device-auth.md), [ADR-0018](0018-kiosk-ws-device-acl.md), [ADR-0021](DRAFT-0021-session-end-reason.md)
 
+## Amendment 2026-06-14: client clock from session start (no kiosk heartbeat/poll)
+
+Current kiosk builds **do not** call `PATCH /kiosk/sessions/{id}/heartbeat` or poll
+`GET /kiosk/sessions/current` on a timer during play.
+
+- Admin, kiosk, and console TV tick locally from `session.startTime` using shared
+  `weightedMinutesBetween` (see [session-time-clock.md](../session-time-clock.md)).
+- Wallet charging happens at **session end** via `charge_session_delta` (full delta
+  from `startTime` → `endTime`); `timeCreditsConsumed` stays 0 until end.
+- Kiosk and console TV call `PATCH …/end` with `reason: auto` when the display
+  reaches **≤ 10 seconds** remaining (once per session).
+- Re-anchor on session start and websocket `balance.updated` / `session.ended`.
+- The heartbeat endpoint remains for backward compatibility but is unused by kiosk.
+
 ## Context
 
 Kiosk sessions currently return `remainingMinutes` from the linked player balance

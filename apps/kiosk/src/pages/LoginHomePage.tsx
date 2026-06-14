@@ -17,7 +17,8 @@ function formatRetry(retryAt: number): string {
  * Ctrl+Shift+A (handled globally in KioskProvider).
  */
 export function LoginHomePage() {
-  const { playerLogin, error, online, maintenance, deviceName } = useKiosk();
+  const { playerLogin, error, online, maintenance, deviceName, loginNotice, clearLoginNotice } =
+    useKiosk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -90,6 +91,16 @@ export function LoginHomePage() {
           <h1 className="a360-login-title">Welcome back</h1>
           <p className="a360-login-subtitle">Enter your credentials to access your terminal</p>
         </header>
+
+        {loginNotice ? (
+          <div className="maintenance-banner" role="status">
+            <p className="error-headline">{loginNotice}</p>
+            <p className="error-detail">You can sign in again when you are ready.</p>
+            <button type="button" className="secondary" onClick={clearLoginNotice}>
+              Dismiss
+            </button>
+          </div>
+        ) : null}
 
         {maintenance ? (
           <div className="maintenance-banner" role="alert">

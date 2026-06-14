@@ -1,59 +1,94 @@
 import type { DeductionProfile } from '@gaming-cafe/contracts';
+import {
+  DEFAULT_CAFE_TZ,
+  effectiveRemainingMinutes,
+  walletBalanceFromEffectiveRemaining,
+} from '@gaming-cafe/contracts';
 import { useEffect, useRef, useState } from 'react';
-import { interpolateRemainingMinutes } from './interpolateRemainingMinutes.js';
+
+export interface SessionRemainingClockInput {
+  sessionStartTime?: string;
+  /** Raw wallet balance minutes (admin sessions list). */
+  walletBalanceMinutes?: number;
+  /**
+   * Server effective remaining — kiosk re-anchors wallet balance from this on
+   * session start and `balance.updated`. Omit when `walletBalanceMinutes` is set.
+   */
+  serverEffectiveRemainingMinutes?: number;
+  timeCreditsConsumed?: number | null;
+  deductionProfile?: DeductionProfile | null;
+  cafeTimezone?: string;
+}
 
 /**
- * Shared session countdown for admin and kiosk.
+ * Shared session countdown for admin, kiosk, and console TV.
  *
- * Anchors to server-authoritative wallet minutes and ticks locally between
- * syncs. When a deduction profile is present, burn rate follows the current
- * venue-local ratio (peak faster, low slower). Without a profile, 1 wall
- * minute = 1 wallet minute.
+ * Ticks locally from `sessionStartTime` using backend-aligned
+ * `weightedMinutesBetween`. Re-anchors wallet balance when server values change.
  *
  * @see docs/session-time-clock.md
  */
 export function useSessionRemainingMinutes(
-  authoritativeMinutes: number | undefined,
-  deductionProfile?: DeductionProfile | null,
-  cafeTimezone?: string,
+  input: SessionRemainingClockInput | undefined,
 ): number | null {
-  const anchorRef = useRef<{
-    remaining: number;
-    syncedAt: number;
-  } | null>(null);
-  const [localMinutes, setLocalMinutes] = useState<number | null>(() =>
-    typeof authoritativeMinutes === 'number' ? authoritativeMinutes : null,
-  );
+  const walletRef = useRef<number | null>(null);
+  const [localMinutes, setLocalMinutes] = useState<number | null>(null);
+
+  const sessionStartTime = input?.sessionStartTime;
+  const walletBalanceMinutes = input?.walletBalanceMinutes;
+  const serverEffectiveRemainingMinutes = input?.serverEffectiveRemainingMinutes;
+  const timeCreditsConsumed = input?.timeCreditsConsumed ?? 0;
+  const deductionProfile = input?.deductionProfile ?? null;
+  const cafeTimezone = input?.cafeTimezone ?? DEFAULT_CAFE_TZ;
 
   useEffect(() => {
-    if (typeof authoritativeMinutes !== 'number') {
-      anchorRef.current = null;
+    if (!sessionStartTime) {
+      walletRef.current = null;
       setLocalMinutes(null);
       return;
     }
 
-    anchorRef.current = {
-      remaining: authoritativeMinutes,
-      syncedAt: Date.now(),
-    };
-    setLocalMinutes(authoritativeMinutes);
+    if (typeof walletBalanceMinutes === 'number') {
+      walletRef.current = walletBalanceMinutes;
+    } else if (typeof serverEffectiveRemainingMinutes === 'number') {
+      walletRef.current = walletBalanceFromEffectiveRemaining(
+        sessionStartTime,
+        serverEffectiveRemainingMinutes,
+        timeCreditsConsumed,
+        deductionProfile,
+        cafeTimezone,
+      );
+    } else {
+      walletRef.current = null;
+      setLocalMinutes(null);
+      return;
+    }
 
-    const id = setInterval(() => {
-      const anchor = anchorRef.current;
-      if (!anchor) return;
+    const tick = () => {
+      const wallet = walletRef.current;
+      if (wallet === null) return;
       setLocalMinutes(
-        interpolateRemainingMinutes(
-          anchor.remaining,
-          anchor.syncedAt,
-          Date.now(),
+        effectiveRemainingMinutes(
+          sessionStartTime,
+          wallet,
+          timeCreditsConsumed,
           deductionProfile,
           cafeTimezone,
         ),
       );
-    }, 1000);
+    };
 
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [authoritativeMinutes, deductionProfile, cafeTimezone]);
+  }, [
+    sessionStartTime,
+    walletBalanceMinutes,
+    serverEffectiveRemainingMinutes,
+    timeCreditsConsumed,
+    deductionProfile,
+    cafeTimezone,
+  ]);
 
   return localMinutes;
 }

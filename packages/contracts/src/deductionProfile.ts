@@ -108,6 +108,76 @@ export function currentDeductionRatio(
   return ratioAtMinute(localMinuteOfDay(now, timeZone), profile);
 }
 
+/** Seconds remaining on the HUD when kiosk/console auto-call session end. */
+export const AUTO_END_REMAINING_SECONDS = 10;
+
+/**
+ * Wallet minutes consumed between two UTC instants using the plan profile.
+ * Mirrors backend `weighted_minutes_between` (minute-segment integration).
+ */
+export function weightedMinutesBetween(
+  startMs: number,
+  endMs: number,
+  profile: DeductionProfile,
+  timeZone: string,
+): number {
+  if (endMs <= startMs) return 0;
+
+  let total = 0;
+  let cursor = startMs;
+  while (cursor < endMs) {
+    const ratio = currentDeductionRatio(profile, timeZone, new Date(cursor));
+    const nextMinute = cursor + 60_000;
+    const segmentEnd = Math.min(nextMinute, endMs);
+    const secs = (segmentEnd - cursor) / 1000;
+    total += (secs / 60) * ratio;
+    cursor = segmentEnd;
+  }
+  return total;
+}
+
+/** Project wallet minutes left for an open session (display only). */
+export function effectiveRemainingMinutes(
+  sessionStartTime: string,
+  walletBalanceMinutes: number,
+  timeCreditsConsumed: number,
+  deductionProfile: DeductionProfile | null | undefined,
+  cafeTimezone: string,
+  nowMs = Date.now(),
+): number {
+  const startMs = Date.parse(sessionStartTime);
+  if (Number.isNaN(startMs)) return walletBalanceMinutes;
+
+  const consumed =
+    deductionProfile != null
+      ? weightedMinutesBetween(startMs, nowMs, deductionProfile, cafeTimezone)
+      : (nowMs - startMs) / 60_000;
+
+  const owed = Math.max(0, consumed - timeCreditsConsumed);
+  return Math.max(0, walletBalanceMinutes - owed);
+}
+
+/** Derive wallet balance from server effective remaining at a sync instant. */
+export function walletBalanceFromEffectiveRemaining(
+  sessionStartTime: string,
+  effectiveRemainingMinutes: number,
+  timeCreditsConsumed: number,
+  deductionProfile: DeductionProfile | null | undefined,
+  cafeTimezone: string,
+  syncedAtMs = Date.now(),
+): number {
+  const startMs = Date.parse(sessionStartTime);
+  if (Number.isNaN(startMs)) return effectiveRemainingMinutes;
+
+  const consumed =
+    deductionProfile != null
+      ? weightedMinutesBetween(startMs, syncedAtMs, deductionProfile, cafeTimezone)
+      : (syncedAtMs - startMs) / 60_000;
+
+  const owed = Math.max(0, consumed - timeCreditsConsumed);
+  return effectiveRemainingMinutes + owed;
+}
+
 export function deductionPeriodLabelForNow(
   profile: DeductionProfile,
   timeZone: string,

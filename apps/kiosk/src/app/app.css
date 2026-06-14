@@ -553,10 +553,6 @@ progress {
   gap: 0.5rem;
 }
 
-.force-end-overlay {
-  align-items: center;
-  text-align: center;
-}
 
 .toast-host {
   position: fixed;

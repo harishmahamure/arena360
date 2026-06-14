@@ -4,6 +4,8 @@ import { MAX_FAILURES } from '../lib/loginLockout';
 import { LoginHomePage } from './LoginHomePage';
 
 const playerLogin = vi.fn();
+const clearLoginNotice = vi.fn();
+let loginNotice: string | null = null;
 
 vi.mock('../context/KioskProvider', () => ({
   useKiosk: () => ({
@@ -12,12 +14,17 @@ vi.mock('../context/KioskProvider', () => ({
     online: true,
     maintenance: false,
     deviceName: 'PC-01',
+    get loginNotice() {
+      return loginNotice;
+    },
+    clearLoginNotice,
   }),
 }));
 
 describe('LoginHomePage', () => {
   beforeEach(() => {
     localStorage.clear();
+    loginNotice = null;
     vi.clearAllMocks();
   });
 
@@ -33,5 +40,11 @@ describe('LoginHomePage', () => {
     render(<LoginHomePage />);
     expect(screen.getByText(/too many attempts/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeDisabled();
+  });
+
+  it('shows staff force-end notice when present', () => {
+    loginNotice = 'Your session was ended by staff.';
+    render(<LoginHomePage />);
+    expect(screen.getByText(/ended by staff/i)).toBeInTheDocument();
   });
 });

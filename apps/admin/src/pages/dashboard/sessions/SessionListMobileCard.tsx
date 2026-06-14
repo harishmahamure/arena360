@@ -22,7 +22,9 @@ export function SessionListMobileCard({ row, actions }: SessionListMobileCardPro
     if (row.endTime) return formatTimeAgo(row.endTime);
     return (
       <SessionRemainingClock
+        sessionStartTime={row.startTime}
         remainingMinutes={row.balance.remainingMinutes}
+        timeCreditsConsumed={row.timeCreditsConsumed}
         deductionProfile={row.balance.deductionProfile}
       />
     );

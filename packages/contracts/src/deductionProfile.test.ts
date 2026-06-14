@@ -6,6 +6,7 @@ import {
   maxWallMinutes,
   ratioAtMinute,
   validateDeductionProfile,
+  weightedMinutesBetween,
   windowsOverlap,
 } from './deductionProfile';
 
@@ -69,5 +70,12 @@ describe('deductionProfile contracts', () => {
     expect(peak?.timeRange).toBe('11 PM – 6 AM');
     expect(low?.timeRange).toBe('7 AM – 11 AM');
     expect(normal?.timeRange).toBe('All other hours');
+  });
+
+  it('weightedMinutesBetween matches low-window burn (~0.8 per wall minute)', () => {
+    const start = Date.parse('2026-06-07T02:30:00.000Z');
+    const end = start + 60 * 60_000;
+    const weighted = weightedMinutesBetween(start, end, profile, 'Asia/Kolkata');
+    expect(weighted).toBeCloseTo(48, 0);
   });
 });

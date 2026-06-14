@@ -1,5 +1,6 @@
+import { DEFAULT_CAFE_TZ, effectiveRemainingMinutes } from '@gaming-cafe/contracts';
 import { EmptyState, ErrorPanel, PageShell } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { formatRemainingLabel, toastUtils } from '@gaming-cafe/utils';
 import {
   AccessTime,
   Devices,
@@ -13,17 +14,29 @@ import {
 } from '@mui/icons-material';
 import { Box, Button, Card, CardContent, Chip, Grid, Skeleton, Typography } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { StatCard, type StatTone } from '../../containers/stats/StatCard';
 import { useEnrichedSessions } from '../../hooks/useEnrichedSessions';
 import { useStaffDashboardStats } from '../../hooks/useStaffDashboardStats';
+import type { SessionResponse } from '../../services/sessions/list';
 import { getSessions } from '../../services/sessions/list';
 import { clockIn } from '../../services/shifts';
 import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
 
 const ENDING_SOON_MINUTES = 15;
 const ENDING_SOON_MAX = 5;
+
+function sessionEffectiveRemainingMinutes(session: SessionResponse): number | null {
+  if (!session.startTime || !session.balance) return null;
+  return effectiveRemainingMinutes(
+    session.startTime,
+    session.balance.remainingMinutes,
+    session.timeCreditsConsumed ?? 0,
+    session.balance.deductionProfile,
+    DEFAULT_CAFE_TZ,
+  );
+}
 
 const QUICK_ACTION_SX = {
   minHeight: 44,
@@ -88,22 +101,33 @@ export default function StaffDashboardView() {
   const { data: activeSessionsData } = useQuery({
     queryKey: ['sessions', 'dashboard-active'],
     queryFn: () => getSessions({ isActive: 1, limit: 50 }),
-    refetchInterval: 30_000,
     enabled: shiftActive,
   });
 
   const enrichedSessions = useEnrichedSessions(activeSessionsData?.data);
 
+  // Local tick so "ending soon" decays without server refetch (matches SessionRemainingClock).
+  const [clockTick, setClockTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setClockTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const endingSoonSessions = useMemo(() => {
+    void clockTick;
     return enrichedSessions
-      .filter(
-        (session) =>
-          !session.endTime &&
-          (session.balance?.remainingMinutes ?? Number.POSITIVE_INFINITY) <= ENDING_SOON_MINUTES,
-      )
-      .sort((a, b) => (a.balance?.remainingMinutes ?? 0) - (b.balance?.remainingMinutes ?? 0))
+      .filter((session) => {
+        if (session.endTime) return false;
+        const remaining = sessionEffectiveRemainingMinutes(session);
+        return remaining !== null && remaining <= ENDING_SOON_MINUTES;
+      })
+      .sort((a, b) => {
+        const aRem = sessionEffectiveRemainingMinutes(a) ?? 0;
+        const bRem = sessionEffectiveRemainingMinutes(b) ?? 0;
+        return aRem - bRem;
+      })
       .slice(0, ENDING_SOON_MAX);
-  }, [enrichedSessions]);
+  }, [enrichedSessions, clockTick]);
 
   const handleStartShift = async () => {
     setStartingShift(true);
@@ -296,7 +320,7 @@ export default function StaffDashboardView() {
             {endingSoonSessions.map((session) => {
               const player = session.balance?.player?.username ?? 'Unknown';
               const device = session.device?.name ?? 'Unknown';
-              const minutes = session.balance?.remainingMinutes ?? 0;
+              const remainingLabel = formatRemainingLabel(sessionEffectiveRemainingMinutes(session));
               return (
                 <Chip
                   key={session.id}
@@ -305,7 +329,7 @@ export default function StaffDashboardView() {
                   clickable
                   color="warning"
                   variant="outlined"
-                  label={`${player} · ${device} · ${minutes} min left`}
+                  label={`${player} · ${device} · ${remainingLabel} left`}
                   sx={{ flexShrink: 0 }}
                 />
               );

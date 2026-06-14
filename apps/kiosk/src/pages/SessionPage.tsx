@@ -1,4 +1,8 @@
-import { useAsyncAction, useSessionRemainingMinutes } from '@gaming-cafe/utils';
+import {
+  AUTO_END_REMAINING_SECONDS,
+  useAsyncAction,
+  useSessionRemainingMinutes,
+} from '@gaming-cafe/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AsyncActionButton } from '../components/AsyncActionButton';
 import { HomeView } from '../components/session/HomeView';
@@ -9,7 +13,6 @@ import { SettingsView } from '../components/session/SettingsView';
 import { useTrackedProcesses } from '../components/session/useTrackedProcesses';
 import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
-import { useSessionPoller } from '../hooks/useSessionPoller';
 import { OFFLINE_GRACE_MS } from '../lib/config';
 import { playRemainingTimeSound } from '../lib/sessionSounds';
 
@@ -23,18 +26,7 @@ function formatGrace(ms: number): string {
 }
 
 export function SessionPage() {
-  const {
-    playerName,
-    deviceName,
-    activeSession,
-    wsConnected,
-    online,
-    forceEndGraceEndsAt,
-    startSession,
-    endSession,
-    syncSession,
-    heartbeatSession,
-  } = useKiosk();
+  const { playerName, deviceName, activeSession, online, startSession, endSession } = useKiosk();
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [view, setView] = useState<SessionView>('home');
@@ -49,13 +41,12 @@ export function SessionPage() {
     run: runEndSession,
     reset: resetEndSession,
   } = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
-  const [refreshing, setRefreshing] = useState(false);
-  const [graceLeft, setGraceLeft] = useState(0);
   const [offlineLeft, setOfflineLeft] = useState<number | null>(null);
   const offlineSinceRef = useRef<number | null>(null);
   const startedRef = useRef(false);
   const firedRemindersRef = useRef<Set<number>>(new Set());
   const prevMinutesRef = useRef<number | null>(null);
+  const autoEndFiredRef = useRef(false);
 
   const pushToast = useCallback((text: string, tone: ToastMessage['tone'] = 'info') => {
     setToasts((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, text, tone }]);
@@ -67,19 +58,8 @@ export function SessionPage() {
 
   const onError = useCallback((m: string) => pushToast(m, 'warning'), [pushToast]);
 
-  const handleRefreshTime = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await syncSession();
-    } catch {
-      pushToast('Could not refresh remaining time', 'warning');
-    } finally {
-      setRefreshing(false);
-    }
-  }, [pushToast, syncSession]);
-
   const { processes, closing, closeAll, refresh } = useTrackedProcesses({
-    enabled: Boolean(activeSession) && forceEndGraceEndsAt === null,
+    enabled: Boolean(activeSession),
     onError,
   });
 
@@ -124,27 +104,22 @@ export function SessionPage() {
     }
   }, [activeSession, startSession]);
 
+  useEffect(() => {
+    autoEndFiredRef.current = false;
+  }, [activeSession?.id]);
+
   const serverRemaining = activeSession?.remainingMinutes;
   const localRemaining = useSessionRemainingMinutes(
-    serverRemaining,
-    activeSession?.deductionProfile,
-    activeSession?.cafeTimezone,
+    activeSession
+      ? {
+          sessionStartTime: activeSession.startTime,
+          serverEffectiveRemainingMinutes: serverRemaining,
+          timeCreditsConsumed: activeSession.timeCreditsConsumed ?? 0,
+          deductionProfile: activeSession.deductionProfile,
+          cafeTimezone: activeSession.cafeTimezone,
+        }
+      : undefined,
   );
-  const activeSessionId = activeSession?.id;
-  useSessionPoller(
-    localRemaining ?? serverRemaining,
-    syncSession,
-    Boolean(activeSession) && forceEndGraceEndsAt === null,
-    wsConnected ? 60_000 : undefined,
-  );
-
-  useEffect(() => {
-    if (!activeSessionId || forceEndGraceEndsAt !== null) return;
-    const id = setInterval(() => {
-      void heartbeatSession();
-    }, 120_000);
-    return () => clearInterval(id);
-  }, [activeSessionId, forceEndGraceEndsAt, heartbeatSession]);
 
   // Recharge toast when the server-authoritative value increases (mid-session top-up).
   useEffect(() => {
@@ -171,25 +146,15 @@ export function SessionPage() {
     }
   }, [localRemaining, pushToast]);
 
-  // Auto-end when the local countdown reaches zero (unless extended in time).
+  // Auto-end when display reaches the final seconds threshold (once per session).
   useEffect(() => {
-    if (typeof localRemaining === 'number' && localRemaining <= 0 && forceEndGraceEndsAt === null) {
+    if (typeof localRemaining !== 'number' || autoEndFiredRef.current) return;
+    const remainingSeconds = Math.floor(localRemaining * 60);
+    if (remainingSeconds <= AUTO_END_REMAINING_SECONDS) {
+      autoEndFiredRef.current = true;
       void endSession('auto');
     }
-  }, [localRemaining, forceEndGraceEndsAt, endSession]);
-
-  // Force-end grace overlay countdown -> cleanup at zero.
-  useEffect(() => {
-    if (forceEndGraceEndsAt === null) return;
-    const tick = () => {
-      const left = forceEndGraceEndsAt - Date.now();
-      setGraceLeft(left);
-      if (left <= 0) void endSession('force');
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [forceEndGraceEndsAt, endSession]);
+  }, [localRemaining, endSession]);
 
   // Offline grace: keep counting down locally, then re-lock when grace elapses.
   useEffect(() => {
@@ -210,18 +175,6 @@ export function SessionPage() {
     return () => clearInterval(id);
   }, [online, endSession]);
 
-  if (forceEndGraceEndsAt !== null) {
-    return (
-      <section className="panel force-end-overlay">
-        <h1>Session ended by staff</h1>
-        <p className="error-detail">
-          Please save your work and step away. This station will lock in
-        </p>
-        <p className="hud-timer-value">{formatGrace(graceLeft)}</p>
-      </section>
-    );
-  }
-
   return (
     <div className="a360-session">
       <SessionNav
@@ -233,8 +186,6 @@ export function SessionPage() {
         activeView={view}
         onNavigate={setView}
         onEndSession={() => setConfirmEnd(true)}
-        onRefreshTime={handleRefreshTime}
-        refreshing={refreshing}
         onError={onError}
       />
 

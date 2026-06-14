@@ -991,14 +991,14 @@
 ### `kiosk-poll-final-burst` — 15 s poll and final-minute 4x burst
 
 - **Phase**: K4
-- **Status**: `done` (useSessionPoller 15s → 5s final minute; auto-end at zero)
+- **Status**: `superseded` — replaced by client clock from `session.startTime` + WS re-anchor; auto-end at 10 s (see [session-time-clock.md](session-time-clock.md))
 - **Owner**: TBD
 - **ADR refs**: `adr/0009`
 - **User-story refs**: US-KSESSION-004, US-KSESSION-005
 - **Migration rows**: (none — new code)
 - **Plan / NFR refs**: REQUIREMENTS-KIOSK.md §5
 
-**Description** — Poll `GET /sessions/:id` every 15 s; in final 60 s schedule 4 polls ~15 s apart; if minutes increase, cancel auto-logout; else auto-end at zero.
+**Description** — ~~Poll `GET /sessions/:id` every 15 s~~ **Removed.** Client ticks locally; optional one-shot reconcile on WS reconnect / app resume. Auto-end at **10 seconds** remaining.
 
 **Implementation notes** —
 - `useSessionPoller` hook.
@@ -1861,7 +1861,7 @@ Should/Could stories map to the same epic tasks; verification deferred unless pr
     Session-end-reason persisted at the API/WS layer only; DB column deferred behind `DRAFT-0021`.
   - **K2 wiring**: `@gaming-cafe/theme` tokens in kiosk entry; `storage.rs` rationale doc; `KioskProvider` error/`deviceName`/port reconcile; realtime reconnect fix.
   - **K3 onboarding**: `fingerprint.rs` (PowerShell CIM, dev stub), `scan.rs` (`scan_installed_software` + progress events), `RegistrationPage` fields + fingerprint preview, `AllowListEditor`, `IdlePage` maintenance banner via `device.status_changed`.
-  - **K4 session loop**: attract `IdlePage` + hidden `SetupGesture`; `PlayerLoginPage` lockout (`loginLockout.ts`); `AlreadyInSessionPage` (409 guard); `SessionPage` start/launcher (`LauncherGrid`), `HudTimer`, reminders, `useSessionPoller` (15s + final-60s burst), recharge toast, voluntary/auto/force-end. Member screen partial (launcher covers audio-app launch; standalone history tab deferred).
+  - **K4 session loop**: attract `IdlePage` + hidden `SetupGesture`; `PlayerLoginPage` lockout (`loginLockout.ts`); `AlreadyInSessionPage` (409 guard); `SessionPage` start/launcher (`LauncherGrid`), local HUD countdown (`useSessionRemainingMinutes`), reminders, recharge toast via WS, voluntary/auto end at 10 s, immediate staff force-end cleanup. Member screen partial (launcher covers audio-app launch; standalone history tab deferred).
   - **K5 lockdown**: `lockdown/mod.rs` emits `lockdown-changed`, serialized transitions; `keyboard.rs` CAD-limit doc; setup-mode auth relaxes only after admin OTP + 15-min idle re-lock; launch guard + process tracker cleanup wired from `endSession`.
   - **K6 offline**: `config.ts` `OFFLINE_GRACE_MS`; connection-lost UI + local countdown then re-lock; login denial offline; `offlineQueue.ts` end-intent replay with idempotent backend end.
   - **K7 admin**: `KioskFingerprintCard` (parsed fingerprint + drift badge) on device detail; `forceEndSession` + confirm dialog on `SessionDetailPage`; registration-code card already present.

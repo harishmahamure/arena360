@@ -22,6 +22,7 @@ export class KioskRealtimeClient {
   private subscriptions = new Set<string>();
   private handlers = new Map<string, Set<RealtimeHandler>>();
   private globalHandlers = new Set<RealtimeHandler>();
+  private connectHandlers = new Set<() => void>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private disposed = false;
@@ -52,6 +53,9 @@ export class KioskRealtimeClient {
       this.reconnectAttempts = 0;
       if (this.subscriptions.size > 0) {
         this.send({ type: 'Subscribe', channels: [...this.subscriptions] });
+      }
+      for (const handler of this.connectHandlers) {
+        handler();
       }
     };
 
@@ -122,6 +126,12 @@ export class KioskRealtimeClient {
   onAny(handler: RealtimeHandler): () => void {
     this.globalHandlers.add(handler);
     return () => this.globalHandlers.delete(handler);
+  }
+
+  /** Fires whenever the socket opens, including after auto-reconnect. */
+  onConnect(handler: () => void): () => void {
+    this.connectHandlers.add(handler);
+    return () => this.connectHandlers.delete(handler);
   }
 
   disconnect(): void {

@@ -11,6 +11,7 @@ import com.gamingcafe.consoletv.data.RealtimeClient
 import com.gamingcafe.consoletv.data.RealtimeEvent
 import com.gamingcafe.consoletv.data.TokenStore
 import com.gamingcafe.consoletv.data.TvSessionResponse
+import com.gamingcafe.consoletv.domain.AUTO_END_REMAINING_SECONDS
 import com.gamingcafe.consoletv.domain.DeductionProfile
 import com.gamingcafe.consoletv.domain.SessionClockTicker
 import com.gamingcafe.consoletv.hdmi.CecController
@@ -342,8 +343,9 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
         playedReminders.clear()
         clock =
             SessionClockTicker(
+                session.startTime,
                 session.remainingMinutes,
-                System.currentTimeMillis(),
+                session.timeCreditsConsumed,
                 session.deductionProfile,
                 session.cafeTimezone,
             )
@@ -371,7 +373,7 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
                     val remaining = ticker.remainingNow()
                     updateRemaining(remaining)
                     maybePlayReminder(remaining.toInt())
-                    if (remaining <= 0.0) {
+                    if (remaining * 60 <= AUTO_END_REMAINING_SECONDS) {
                         autoEndSession(sessionId)
                         break
                     }

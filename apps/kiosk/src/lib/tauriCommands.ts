@@ -166,8 +166,8 @@ export async function getTrackedProcesses(): Promise<TrackedProcess[]> {
   return invoke<TrackedProcess[]>('get_tracked_processes');
 }
 
-export async function killTrackedProcesses(graceSeconds?: number): Promise<{ killed: number }> {
-  return invoke('kill_tracked_processes', { graceSeconds });
+export async function killTrackedProcesses(): Promise<{ killed: number; restored: boolean }> {
+  return invoke('kill_tracked_processes');
 }
 
 export async function clearTrackedProcesses(): Promise<void> {

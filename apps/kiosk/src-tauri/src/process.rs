@@ -47,6 +47,7 @@ pub struct LaunchResult {
 #[serde(rename_all = "camelCase")]
 pub struct KillResult {
     pub killed: u32,
+    pub restored: bool,
 }
 
 fn normalize_path(path: &str) -> String {
@@ -175,12 +176,16 @@ fn executable_basename(path: &str) -> String {
 
 fn is_launcher_executable(path: &str) -> bool {
     let name = executable_basename(path);
+    is_overlay_launcher_exe(&name) || is_launcher_exe_basename(&name, path)
+}
+
+fn is_launcher_exe_basename(name: &str, path: &str) -> bool {
     let norm = normalize_path(path);
     if name == "launcher.exe" && norm.contains("/rockstar games/launcher/") {
         return true;
     }
     matches!(
-        name.as_str(),
+        name,
         "riotclientservices.exe"
             | "steam.exe"
             | "epicgameslauncher.exe"
@@ -193,11 +198,64 @@ fn is_launcher_executable(path: &str) -> bool {
     )
 }
 
+/// Launcher UI processes whose windows should not cover the kiosk shell.
+pub fn is_overlay_launcher_exe(name: &str) -> bool {
+    matches!(
+        name,
+        "riotclientux.exe"
+            | "riotclientservices.exe"
+            | "steamwebhelper.exe"
+            | "steamservice.exe"
+    )
+}
+
+const SESSION_KEEP_EXE: &[&str] = &[
+    "csrss.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "services.exe",
+    "lsass.exe",
+    "svchost.exe",
+    "dwm.exe",
+    "explorer.exe",
+    "fontdrvhost.exe",
+    "sihost.exe",
+    "taskhostw.exe",
+    "runtimebroker.exe",
+    "searchhost.exe",
+    "startmenuexperiencehost.exe",
+    "shellexperiencehost.exe",
+    "ctfmon.exe",
+    "audiodg.exe",
+    "securityhealthsystray.exe",
+    "securityhealthservice.exe",
+    "system",
+    "registry",
+    "smss.exe",
+    "conhost.exe",
+];
+
+pub fn is_session_keep_process(name: &str, kiosk_exe_name: Option<&str>) -> bool {
+    let lower = name.to_lowercase();
+    if lower.is_empty() {
+        return true;
+    }
+    if SESSION_KEEP_EXE.iter().any(|keep| *keep == lower) {
+        return true;
+    }
+    if let Some(kiosk) = kiosk_exe_name {
+        if lower == kiosk.to_lowercase() {
+            return true;
+        }
+    }
+    false
+}
+
 fn kill_pid(pid: u32) {
     #[cfg(target_os = "windows")]
     {
         let _ = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
             .creation_flags(CREATE_NO_WINDOW)
             .status();
     }
@@ -336,6 +394,100 @@ fn window_area(hwnd: windows::Win32::Foundation::HWND) -> i32 {
 }
 
 #[cfg(target_os = "windows")]
+fn primary_monitor_area() -> i32 {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY};
+    use windows::Win32::Foundation::POINT;
+
+    unsafe {
+        let monitor = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return 1920 * 1080;
+        }
+        let rect = info.rcMonitor;
+        (rect.right - rect.left).saturating_mul(rect.bottom - rect.top)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn primary_monitor_area() -> i32 {
+    1920 * 1080
+}
+
+#[cfg(target_os = "windows")]
+fn process_exe_name(pid: u32) -> Option<String> {
+    use sysinfo::{Pid, ProcessesToUpdate, System};
+
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    system
+        .process(Pid::from_u32(pid))
+        .map(|p| p.name().to_string_lossy().to_lowercase())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn process_exe_name(_pid: u32) -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn is_overlay_hwnd(hwnd: windows::Win32::Foundation::HWND, min_primary_area: i32) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, GWL_EXSTYLE,
+        WS_EX_TOOLWINDOW,
+    };
+
+    unsafe {
+        let area = window_area(hwnd);
+        if area > 0 && area < min_primary_area / 4 {
+            return true;
+        }
+
+        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        if ex_style & WS_EX_TOOLWINDOW.0 != 0 {
+            return true;
+        }
+
+        let mut class_buf = [0u16; 256];
+        let class_len = GetClassNameW(hwnd, &mut class_buf);
+        if class_len > 0 {
+            let class_name = String::from_utf16_lossy(&class_buf[..class_len as usize]).to_lowercase();
+            if class_name.contains("rclient") || class_name.contains("riot") {
+                return true;
+            }
+        }
+
+        let mut title_buf = [0u16; 256];
+        let title_len = GetWindowTextW(hwnd, &mut title_buf);
+        if title_len > 0 {
+            let title = String::from_utf16_lossy(&title_buf[..title_len as usize]).to_lowercase();
+            if title.contains("riot client") {
+                return true;
+            }
+        }
+
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if let Some(exe) = process_exe_name(pid) {
+            if is_overlay_launcher_exe(&exe) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_overlay_hwnd(_hwnd: isize, _min_primary_area: i32) -> bool {
+    false
+}
+
+#[cfg(target_os = "windows")]
 fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -347,11 +499,13 @@ fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
     }
 
     let pid_set: HashSet<u32> = pids.iter().copied().collect();
+    let min_primary_area = primary_monitor_area();
 
     struct Search {
         pid_set: HashSet<u32>,
         best_hwnd: HWND,
         best_area: i32,
+        min_primary_area: i32,
     }
 
     unsafe extern "system" fn enum_windows(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -359,6 +513,9 @@ fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
         let mut window_pid = 0u32;
         GetWindowThreadProcessId(hwnd, Some(&mut window_pid));
         if !search.pid_set.contains(&window_pid) || !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        if is_overlay_hwnd(hwnd, search.min_primary_area) {
             return BOOL(1);
         }
         let area = window_area(hwnd);
@@ -373,6 +530,7 @@ fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
         pid_set,
         best_hwnd: HWND(std::ptr::null_mut()),
         best_area: 0,
+        min_primary_area,
     };
     unsafe {
         let _ = EnumWindows(
@@ -503,7 +661,6 @@ fn fullscreen_process_window(pid: u32) -> Option<isize> {
             unsafe {
                 make_borderless_fullscreen(hwnd);
             }
-            bring_hwnd_to_foreground(hwnd.0 as isize);
             set_last_allowed_hwnd(hwnd.0 as isize);
             return Some(hwnd.0 as isize);
         }
@@ -530,34 +687,6 @@ fn set_foreground_window(window: &tauri::WebviewWindow) {
         }
         bring_hwnd_to_foreground(hwnd_raw.0 as isize);
         set_last_allowed_hwnd(hwnd_raw.0 as isize);
-    }
-}
-
-#[cfg(windows)]
-fn force_foreground_topmost(window: &tauri::WebviewWindow) {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SetForegroundWindow, SetWindowPos, ShowWindow, HWND_TOPMOST, SW_RESTORE, SW_SHOW,
-        SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
-    };
-
-    if let Ok(hwnd_raw) = window.hwnd() {
-        unsafe {
-            let hwnd = HWND(hwnd_raw.0 as *mut _);
-            let _ = ShowWindow(hwnd, SW_SHOW);
-            let _ = ShowWindow(hwnd, SW_RESTORE);
-            let _ = SetWindowPos(
-                hwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
-            );
-            let _ = SetForegroundWindow(hwnd);
-            set_last_allowed_hwnd(hwnd_raw.0 as isize);
-        }
     }
 }
 
@@ -591,19 +720,17 @@ pub fn send_kiosk_behind_games(window: &tauri::WebviewWindow) {
     }
 }
 
-/// Fullscreen topmost shell — idle/login or after all games closed.
+/// Fullscreen shell — idle/login or after all games closed (no TOPMOST).
 pub fn apply_kiosk_shell_lockdown(app: &AppHandle) {
     if let Ok(window) = main_window(app) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_decorations(false);
         let _ = window.set_fullscreen(true);
-        let _ = window.set_always_on_top(true);
+        let _ = window.set_always_on_top(false);
         let _ = window.set_focus();
         #[cfg(windows)]
-        force_foreground_topmost(&window);
-        #[cfg(not(windows))]
-        let _ = &window;
+        set_foreground_window(&window);
         if let Some(hwnd) = kiosk_hwnd(app) {
             set_last_allowed_hwnd(hwnd);
         }
@@ -620,7 +747,10 @@ pub fn apply_kiosk_session_foreground(app: &AppHandle) {
         let _ = window.set_fullscreen(true);
         let _ = window.set_focus();
         #[cfg(windows)]
-        set_foreground_window(&window);
+        {
+            set_foreground_window(&window);
+            suppress_tracked_overlays();
+        }
         if let Some(hwnd) = kiosk_hwnd(app) {
             set_last_allowed_hwnd(hwnd);
         }
@@ -668,6 +798,10 @@ pub fn on_kiosk_focused(app: &AppHandle) {
     }
     if crate::lockdown::is_locked() {
         crate::lockdown::shell::hide_shell_chrome();
+        #[cfg(windows)]
+        if has_tracked_processes() {
+            suppress_tracked_overlays();
+        }
     }
 }
 
@@ -689,6 +823,151 @@ fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
 
 fn restore_kiosk_window(app: &AppHandle) {
     apply_kiosk_shell_lockdown(app);
+}
+
+#[cfg(windows)]
+fn suppress_tracked_overlays() {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, SetWindowPos, ShowWindow,
+        HWND_BOTTOM, SW_MINIMIZE, SWP_NOACTIVATE, SWP_NOSIZE,
+    };
+
+    let pids = all_tree_pids(
+        TRACKED
+            .lock()
+            .map(|t| t.clone())
+            .unwrap_or_default()
+            .as_slice(),
+    );
+    if pids.is_empty() {
+        return;
+    }
+    let pid_set: HashSet<u32> = pids.into_iter().collect();
+    let min_primary_area = primary_monitor_area();
+
+    struct Search {
+        pid_set: HashSet<u32>,
+        min_primary_area: i32,
+    }
+
+    unsafe extern "system" fn enum_windows(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = &*(lparam.0 as *const Search);
+        let mut window_pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut window_pid));
+        if !search.pid_set.contains(&window_pid) || !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        if is_overlay_hwnd(hwnd, search.min_primary_area) {
+            let _ = ShowWindow(hwnd, SW_MINIMIZE);
+            let _ = SetWindowPos(
+                hwnd,
+                HWND_BOTTOM,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+        BOOL(1)
+    }
+
+    let search = Search {
+        pid_set,
+        min_primary_area,
+    };
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_windows),
+            LPARAM(&search as *const Search as isize),
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn suppress_tracked_overlays() {}
+
+#[cfg(windows)]
+fn terminate_user_session_apps() -> u32 {
+    use sysinfo::{Pid, ProcessesToUpdate, System};
+    use windows::Win32::System::Environment::GetCurrentProcessId;
+    use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+
+    let kiosk_exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
+
+    let mut session_id = 0u32;
+    unsafe {
+        let _ = ProcessIdToSessionId(GetCurrentProcessId(), Some(&mut session_id));
+    }
+
+    let mut killed = 0u32;
+    for pass in 0..3 {
+        let mut system = System::new();
+        system.refresh_processes(ProcessesToUpdate::All, true);
+        let mut targets = Vec::new();
+        for (pid, process) in system.processes() {
+            let pid_u32 = pid.as_u32();
+            if pid_u32 <= 4 {
+                continue;
+            }
+            let mut proc_session = 0u32;
+            unsafe {
+                if ProcessIdToSessionId(pid_u32, Some(&mut proc_session)).is_err()
+                    || proc_session != session_id
+                {
+                    continue;
+                }
+            }
+            let name = process.name().to_string_lossy();
+            if is_session_keep_process(&name, kiosk_exe.as_deref()) {
+                continue;
+            }
+            targets.push(pid_u32);
+        }
+        if targets.is_empty() {
+            break;
+        }
+        for pid in targets {
+            kill_pid(pid);
+            killed += 1;
+        }
+        if pass < 2 {
+            thread::sleep(Duration::from_millis(500));
+        }
+    }
+    killed
+}
+
+#[cfg(not(windows))]
+fn terminate_user_session_apps() -> u32 {
+    0
+}
+
+fn session_end_cleanup(app: &AppHandle) -> KillResult {
+    let entries: Vec<WatchEntry> = TRACKED
+        .lock()
+        .map(|t| t.clone())
+        .unwrap_or_default();
+    let mut killed = all_tree_pids(&entries).len() as u32;
+    if !entries.is_empty() {
+        kill_process_trees(&entries);
+    }
+    killed += terminate_user_session_apps();
+    if let Ok(mut tracked) = TRACKED.lock() {
+        tracked.clear();
+    }
+    if let Ok(mut guard) = LAST_ALLOWED_HWND.lock() {
+        *guard = None;
+    }
+    crate::boost::restore_game_boost();
+    restore_kiosk_window(app);
+    KillResult {
+        killed,
+        restored: true,
+    }
 }
 
 pub fn recover_minimized_kiosk(app: &AppHandle) {
@@ -796,26 +1075,8 @@ pub fn get_tracked_processes() -> Result<Vec<TrackedProcess>, String> {
 }
 
 #[tauri::command]
-pub fn kill_tracked_processes(
-    app: AppHandle,
-    grace_seconds: Option<u32>,
-) -> Result<KillResult, String> {
-    let grace = grace_seconds.unwrap_or(0);
-    if grace > 0 {
-        thread::sleep(Duration::from_secs(grace as u64));
-    }
-    let entries: Vec<WatchEntry> = TRACKED
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone();
-    let killed = all_tree_pids(&entries).len() as u32;
-    kill_process_trees(&entries);
-    TRACKED.lock().map_err(|e| e.to_string())?.clear();
-    if killed > 0 {
-        crate::boost::restore_game_boost();
-        restore_kiosk_window(&app);
-    }
-    Ok(KillResult { killed })
+pub fn kill_tracked_processes(app: AppHandle) -> Result<KillResult, String> {
+    Ok(session_end_cleanup(&app))
 }
 
 #[tauri::command]
@@ -827,8 +1088,8 @@ pub fn clear_tracked_processes() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        all_tree_pids, has_tracked_processes, is_allowed, is_launcher_executable, normalize_path,
-        WatchEntry,
+        all_tree_pids, has_tracked_processes, is_allowed, is_launcher_executable,
+        is_overlay_launcher_exe, is_session_keep_process, normalize_path, WatchEntry,
     };
 
     #[test]
@@ -875,6 +1136,23 @@ mod tests {
         ));
     }
 
+
+    #[test]
+    fn is_overlay_launcher_exe_detects_riot_ux() {
+        assert!(is_overlay_launcher_exe("riotclientux.exe"));
+        assert!(is_overlay_launcher_exe("steamwebhelper.exe"));
+        assert!(!is_overlay_launcher_exe("valorant-win64-shipping.exe"));
+    }
+
+    #[test]
+    fn is_session_keep_process_skips_system_and_kiosk() {
+        assert!(is_session_keep_process("explorer.exe", Some("Arena360 Kiosk.exe")));
+        assert!(is_session_keep_process(
+            "Arena360 Kiosk.exe",
+            Some("Arena360 Kiosk.exe")
+        ));
+        assert!(!is_session_keep_process("discord.exe", Some("Arena360 Kiosk.exe")));
+    }
 
     #[test]
     fn all_tree_pids_dedupes_roots_and_descendants() {
