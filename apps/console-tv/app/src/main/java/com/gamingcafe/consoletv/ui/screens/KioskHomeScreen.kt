@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -16,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -23,6 +26,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.gamingcafe.consoletv.BuildConfig
+import com.gamingcafe.consoletv.ui.Arena360Colors
+import com.gamingcafe.consoletv.ui.BrandHeader
 
 @Composable
 fun KioskHomeScreen(
@@ -68,7 +73,7 @@ fun KioskHomeScreen(
                     .fillMaxSize()
                     .background(
                         Brush.radialGradient(
-                            colors = listOf(Color.Transparent, Color(0xCC000000)),
+                            colors = listOf(Color.Transparent, Color(0xCC0B0F1A)),
                         ),
                     ),
         )
@@ -81,12 +86,36 @@ fun KioskHomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(text = title)
+            BrandHeader(logoHeight = 72.dp)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Arena360Colors.OnSurface,
+                textAlign = TextAlign.Center,
+            )
             if (deviceType.isNotBlank()) {
-                Text(text = deviceType)
+                Text(
+                    text = deviceType,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Arena360Colors.OnSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
             }
-            Text(text = subtitle)
-            Text(text = if (wsConnected) "Connected" else "Reconnecting…")
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Arena360Colors.Muted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Text(
+                text = if (wsConnected) "Connected" else "Reconnecting…",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (wsConnected) Arena360Colors.Primary else Arena360Colors.Muted,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

@@ -123,10 +123,14 @@ changes.
 Run before pushing. CI runs the same commands.
 
 ```bash
-pnpm lint        # biome check across the workspace (read-only; pre-commit uses this)
-pnpm lint:fix    # biome check --write — format, import sort, safe lint fixes (run if the hook fails)
+pnpm lint        # biome check across the workspace (read-only)
+pnpm lint:fix    # biome check --write — format, import sort, safe lint fixes (full workspace)
 pnpm format      # biome format --write across the workspace
 ```
+
+The **pre-commit hook** runs `biome check --write --staged` on staged files, re-stages
+autofixes, and still fails on non-fixable diagnostics. Run `pnpm lint:fix` manually if
+you need to clean up unstaged files before committing.
 
 Do **not** use `biome lint --fix` as a substitute for `pnpm lint:fix`; it does not apply the formatter or organize-imports assist actions.
 

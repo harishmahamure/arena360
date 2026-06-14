@@ -58,6 +58,6 @@
     "typescript": "~5.6.3"
   },
   "simple-git-hooks": {
-    "pre-commit": "pnpm exec biome check --staged --no-errors-on-unmatched"
+    "pre-commit": "bash scripts/pre-commit-biome.sh"
   }
 }

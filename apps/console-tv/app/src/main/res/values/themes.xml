@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.ConsoleTv" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowBackground">@color/arena_bg</item>
+        <item name="android:colorPrimary">@color/arena_primary</item>
     </style>
 </resources>

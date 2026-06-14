@@ -13,6 +13,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -23,9 +24,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gamingcafe.consoletv.RegisterForm
 import com.gamingcafe.consoletv.RegistrationStep
+import com.gamingcafe.consoletv.ui.Arena360Colors
 
 private data class SelectOption(
     val value: String,
@@ -95,7 +98,6 @@ fun RegistrationScreen(
     step: RegistrationStep,
     form: RegisterForm,
     statusMessage: String,
-    adminAuthenticated: Boolean,
     isBusy: Boolean,
     onUsernameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
@@ -117,7 +119,6 @@ fun RegistrationScreen(
     ) {
         when (step) {
             RegistrationStep.CREDENTIALS -> {
-                Text("Sign in with an administrator account to register this station.")
                 OutlinedTextField(
                     value = form.username,
                     onValueChange = onUsernameChange,
@@ -136,14 +137,13 @@ fun RegistrationScreen(
                     visualTransformation = PasswordVisualTransformation(),
                 )
                 if (statusMessage.isNotBlank() && !statusMessage.startsWith("Sign in")) {
-                    Text(text = statusMessage)
+                    RegistrationStatusMessage(statusMessage)
                 }
                 Button(onClick = onSubmitCredentials, enabled = !isBusy) {
                     Text(if (isBusy) "Signing in…" else "Continue")
                 }
             }
             RegistrationStep.TOTP -> {
-                Text("Enter the authenticator code for ${form.username}.")
                 OutlinedTextField(
                     value = form.totp,
                     onValueChange = onTotpChange,
@@ -153,7 +153,7 @@ fun RegistrationScreen(
                     singleLine = true,
                 )
                 if (statusMessage.isNotBlank()) {
-                    Text(text = statusMessage)
+                    RegistrationStatusMessage(statusMessage)
                 }
                 Button(onClick = onSubmitTotp, enabled = !isBusy) {
                     Text(if (isBusy) "Verifying…" else "Verify")
@@ -163,13 +163,6 @@ fun RegistrationScreen(
                 }
             }
             RegistrationStep.DEVICE -> {
-                Text(
-                    if (adminAuthenticated) {
-                        "Administrator verified. Name this PlayStation station."
-                    } else {
-                        "Name this PlayStation station."
-                    },
-                )
                 OutlinedTextField(
                     value = form.name,
                     onValueChange = { onRegisterFieldChange(it, null, null, null) },
@@ -201,7 +194,7 @@ fun RegistrationScreen(
                     singleLine = true,
                 )
                 if (statusMessage.isNotBlank() && !statusMessage.startsWith("Administrator")) {
-                    Text(text = statusMessage)
+                    RegistrationStatusMessage(statusMessage)
                 }
                 Button(
                     onClick = onProvision,
@@ -212,4 +205,15 @@ fun RegistrationScreen(
             }
         }
     }
+}
+
+@Composable
+private fun RegistrationStatusMessage(message: String) {
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = Arena360Colors.OnSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
