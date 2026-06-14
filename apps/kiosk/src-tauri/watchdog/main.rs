@@ -19,5 +19,5 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn run() -> Result<(), String> {
     let watchdog_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    kiosk_lib::watchdog::win::watchdog_main_loop(watchdog_exe)
+    kiosk_lib::watchdog_main_loop(watchdog_exe)
 }

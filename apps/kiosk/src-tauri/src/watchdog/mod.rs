@@ -232,8 +232,8 @@ fn days_from_civil(year: i64, month: u64, day: u64) -> Result<u64, String> {
 
 #[cfg(windows)]
 pub use win::{
-    acquire_instance_mutex, is_instance_mutex_held, is_kiosk_running_in_dir, spawn_kiosk,
-    acquire_watchdog_mutex,
+    acquire_instance_mutex, acquire_watchdog_mutex, is_instance_mutex_held,
+    is_kiosk_running_in_dir, spawn_kiosk, watchdog_main_loop,
 };
 
 #[cfg(test)]

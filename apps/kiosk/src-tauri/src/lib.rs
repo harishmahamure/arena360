@@ -11,6 +11,9 @@ mod storage;
 mod watchdog;
 mod watchdog_client;
 
+#[cfg(windows)]
+pub use watchdog::watchdog_main_loop;
+
 use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
 use tauri::{Manager, RunEvent};
 
