@@ -25,6 +25,7 @@ const sidecarPath = path.join(tauriDir, sidecarName);
 execSync(`cargo build --release --manifest-path "${manifest}" --bin arena360-watchdog`, {
   stdio: 'inherit',
   cwd: kioskRoot,
+  env: { ...process.env, SKIP_TAURI_EXTERNAL_BINS: '1' },
 });
 
 if (!fs.existsSync(releaseBin)) {
