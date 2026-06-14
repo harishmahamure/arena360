@@ -2,7 +2,7 @@ import type { SearchOption } from '@gaming-cafe/ui';
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import {
@@ -22,6 +22,7 @@ export default function NewSessionPage() {
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<SearchOption | null>(null);
+  const [selectedBalanceId, setSelectedBalanceId] = useState<string | undefined>();
 
   const { data: enrichedPlayerPlans } = useEnrichedPlayerPlans(
     selectedPlayer ? String(selectedPlayer.id) : undefined,
@@ -71,11 +72,42 @@ export default function NewSessionPage() {
       label: `${pp.plan?.name} - ${formatPlanTypeLabel(pp.plan?.planType)} (${pp.remainingMinutes} min remaining)`,
     })) || [];
 
-  const deviceOptions =
-    devicesData?.data?.map((device) => ({
-      value: device.id,
-      label: `${device.name} (${device.deviceType})`,
-    })) || [];
+  const selectedPlan = useMemo(
+    () => enrichedPlayerPlans.find((pp) => pp.id === selectedBalanceId),
+    [enrichedPlayerPlans, selectedBalanceId],
+  );
+
+  const compatibleDevices = useMemo(() => {
+    if (!devicesData?.data || !selectedBalanceId) return [];
+    return devicesData.data.filter((device) => {
+      if (selectedPlan?.deviceType && device.deviceType !== selectedPlan.deviceType) {
+        return false;
+      }
+      if (selectedPlan?.deviceSubType && device.deviceSubType !== selectedPlan.deviceSubType) {
+        return false;
+      }
+      return true;
+    });
+  }, [devicesData?.data, selectedBalanceId, selectedPlan]);
+
+  const planDeviceLabel = selectedPlan?.deviceType
+    ? selectedPlan.deviceSubType
+      ? `${selectedPlan.deviceType} · ${selectedPlan.deviceSubType}`
+      : selectedPlan.deviceType
+    : null;
+
+  const deviceHelperText = !selectedBalanceId
+    ? 'Select a player balance first'
+    : planDeviceLabel && compatibleDevices.length === 0
+      ? `No available ${planDeviceLabel} stations match this plan`
+      : planDeviceLabel
+        ? `Showing ${planDeviceLabel} stations that match the selected plan`
+        : 'Select the device to use for this session';
+
+  const deviceOptions = compatibleDevices.map((device) => ({
+    value: device.id,
+    label: `${device.name} (${device.deviceType})`,
+  }));
 
   const fields: FieldConfig<StartSessionFormData>[] = [
     {
@@ -114,7 +146,7 @@ export default function NewSessionPage() {
       required: true,
       fullWidth: true,
       options: deviceOptions,
-      helperText: 'Select the device to use for this session',
+      helperText: deviceHelperText,
     },
     {
       name: 'startTime',
@@ -181,6 +213,9 @@ export default function NewSessionPage() {
           buttonAlign="right"
           spacing={3}
           onSearchComplete={onPlayerSearchComplete}
+          onChange={(values) => {
+            setSelectedBalanceId(values.balanceId || undefined);
+          }}
         />
       </FormPage>
     </ActiveShiftGuard>

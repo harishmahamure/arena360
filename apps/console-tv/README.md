@@ -22,6 +22,33 @@ cp .env.example .env.local
 ./gradlew testDebugUnitTest assembleDebug
 ```
 
+## Emulator / touch device (dev)
+
+The manifest declares touch as optional and supports both Android TV (`LEANBACK_LAUNCHER`) and phone/emulator launchers (`LAUNCHER`) for local testing.
+
+From the repo root (requires a running emulator or USB device with `adb`):
+
+```bash
+pnpm console-tv:run
+```
+
+This uninstalls any existing `com.gamingcafe.consoletv` build, installs a fresh debug APK, and launches `MainActivity`.
+
+To remove a stale install manually:
+
+```bash
+adb uninstall com.gamingcafe.consoletv
+```
+
+If an old package id remains, list and remove it:
+
+```bash
+adb shell pm list packages | grep gamingcafe
+adb uninstall <package-name>
+```
+
+Emulator API URLs default to `http://10.0.2.2:3000` (host loopback). Ensure the backend is running on your machine and `.env.local` is configured when testing registration or WebSocket flows.
+
 ## Release signing
 
 Release builds **require** signing credentials. Unsigned release APK/AAB builds are blocked.

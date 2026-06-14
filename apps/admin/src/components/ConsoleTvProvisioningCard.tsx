@@ -1,7 +1,19 @@
 import { FormButton } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import LoginIcon from '@mui/icons-material/Login';
+import SyncIcon from '@mui/icons-material/Sync';
 import TvIcon from '@mui/icons-material/Tv';
-import { Alert, Box, Paper, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Paper,
+  Typography,
+} from '@mui/material';
 import QRCode from 'react-qr-code';
 import { createSsoToken } from '../services/auth/createSsoToken';
 
@@ -10,6 +22,32 @@ export interface ConsoleTvProvisioningCardProps {
   deviceName?: string;
   registrationStatus?: string;
 }
+
+const PROVISIONING_STEPS = [
+  {
+    icon: <TvIcon fontSize="small" />,
+    primary: 'Enter the device ID on the Android TV',
+    secondary:
+      'On the station, type or scan the device ID shown below, then tap Connect & wait for SSO.',
+  },
+  {
+    icon: <SyncIcon fontSize="small" />,
+    primary: 'Wait for the TV to connect',
+    secondary: 'The TV opens a WebSocket and shows “Waiting for admin to send TV login…”.',
+  },
+  {
+    icon: <LoginIcon fontSize="small" />,
+    primary: 'Send TV login from admin',
+    secondary:
+      'Click the button below. The TV receives the token over WebSocket and advances automatically.',
+  },
+  {
+    icon: <CheckCircleOutlineIcon fontSize="small" />,
+    primary: 'Complete station details on the TV',
+    secondary:
+      'On the TV, confirm the station name, device type, and location, then tap Provision station.',
+  },
+] as const;
 
 export function ConsoleTvProvisioningCard({
   deviceId,
@@ -47,9 +85,30 @@ export function ConsoleTvProvisioningCard({
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {deviceName
-          ? `On "${deviceName}", enter this device ID on the TV, then send login.`
-          : 'Enter this device ID on the TV, then send login.'}
+          ? `Provision "${deviceName}" by pairing the TV with this device record.`
+          : 'Pair the Android TV with this device record using the steps below.'}
       </Typography>
+
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Ensure device type, sub type, and location in the form below match what you enter on the TV.
+        Staff must send TV login while the TV is waiting on step 1.
+      </Alert>
+
+      <List dense disablePadding sx={{ mb: 2 }}>
+        {PROVISIONING_STEPS.map((step) => (
+          <ListItem key={step.primary} disableGutters sx={{ alignItems: 'flex-start', py: 0.75 }}>
+            <ListItemIcon sx={{ minWidth: 36, mt: 0.25 }}>{step.icon}</ListItemIcon>
+            <ListItemText
+              primary={
+                <Typography variant="body2" fontWeight={600}>
+                  {step.primary}
+                </Typography>
+              }
+              secondary={step.secondary}
+            />
+          </ListItem>
+        ))}
+      </List>
 
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <Box>
@@ -80,6 +139,14 @@ export function ConsoleTvProvisioningCard({
           )}
         </Box>
       </Box>
+
+      {registrationStatus && registrationStatus !== 'registered' && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="caption" color="text.secondary">
+            Current status: {registrationStatus}
+          </Typography>
+        </Box>
+      )}
     </Paper>
   );
 }

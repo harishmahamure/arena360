@@ -194,7 +194,7 @@ export default function DevicesPage() {
     },
     {
       id: 'registrationStatus',
-      label: 'Kiosk',
+      label: 'Registration',
       minWidth: 110,
       align: 'center',
       format: (value) => {

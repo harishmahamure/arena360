@@ -395,7 +395,6 @@ fn window_area(hwnd: windows::Win32::Foundation::HWND) -> i32 {
 
 #[cfg(target_os = "windows")]
 fn primary_monitor_area() -> i32 {
-    use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY};
     use windows::Win32::Foundation::POINT;
 
@@ -436,7 +435,6 @@ fn process_exe_name(_pid: u32) -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn is_overlay_hwnd(hwnd: windows::Win32::Foundation::HWND, min_primary_area: i32) -> bool {
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         GetClassNameW, GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, GWL_EXSTYLE,
         WS_EX_TOOLWINDOW,
@@ -890,7 +888,7 @@ fn suppress_tracked_overlays() {}
 
 #[cfg(windows)]
 fn terminate_user_session_apps() -> u32 {
-    use sysinfo::{Pid, ProcessesToUpdate, System};
+    use sysinfo::{ProcessesToUpdate, System};
     use windows::Win32::System::Environment::GetCurrentProcessId;
     use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
 
