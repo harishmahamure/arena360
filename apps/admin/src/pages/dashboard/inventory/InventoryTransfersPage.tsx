@@ -1,6 +1,6 @@
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
-import { CheckCircleOutline, Clear, LocalShipping } from '@mui/icons-material';
+import { CheckCircleOutline, Clear, LocalShipping, Visibility } from '@mui/icons-material';
 import {
   Alert,
   Button,
@@ -127,6 +127,11 @@ export default function InventoryTransfersPage() {
   ];
 
   const actions: Action<StockTransferRequest>[] = [
+    {
+      icon: <Visibility color="info" />,
+      label: 'View',
+      onClick: (row) => navigate(`/inventory/transfers/${row.id}`),
+    },
     ...(can(Permission.InventoryTransferFulfill)
       ? [
           {

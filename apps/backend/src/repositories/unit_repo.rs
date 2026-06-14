@@ -32,7 +32,38 @@ impl UnitRepository {
         Ok(unit)
     }
 
+    pub async fn ensure_canonical_units(&self) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO units (id, name, abbreviation, type, description, "isActive", "createdAt", "updatedAt")
+            SELECT gen_random_uuid(), v.name, v.abbreviation, v.type::units_type_enum, NULL, true, NOW(), NOW()
+            FROM (VALUES
+              ('Piece', 'pc', 'piece'),
+              ('Box', 'box', 'box'),
+              ('Carton', 'ctn', 'carton'),
+              ('Pack', 'pack', 'pack'),
+              ('Bottle', 'bt', 'bottle'),
+              ('Can', 'can', 'can'),
+              ('Kilogram', 'kg', 'kilogram'),
+              ('Gram', 'g', 'gram'),
+              ('Liter', 'L', 'liter'),
+              ('Milliliter', 'ml', 'milliliter'),
+              ('Other', 'other', 'other')
+            ) AS v(name, abbreviation, type)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM units u
+              WHERE u.type::text = v.type AND u."deletedAt" IS NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn list(&self, filters: &UnitFilterDto) -> Result<PaginationResult<Unit>, AppError> {
+        self.ensure_canonical_units().await?;
+
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;

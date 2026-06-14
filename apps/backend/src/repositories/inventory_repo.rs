@@ -7,7 +7,8 @@ use crate::models::{
     CreateInventoryLocationDto, CreateStockReceiptDto,
     CreateStockWasteEventDto, InventoryLocation, InventoryLocationFilterDto,
     LocationStockFilterDto, LocationStockRow, StockReceipt, StockReceiptFilterDto,
-    StockReceiptLine, StockTransferFilterDto, StockTransferLine, StockTransferRequest,
+    StockReceiptLine, StockAdjustment, StockAdjustmentFilterDto, StockAdjustmentLine,
+    CreateStockAdjustmentDto, StockTransferFilterDto, StockTransferLine, StockTransferRequest,
     StockWasteEvent, StockWasteFilterDto, StockWasteLine, UpdateInventoryLocationDto,
     WasteSummaryRow,
 };
@@ -221,6 +222,168 @@ impl InventoryRepository {
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
         Ok(PaginationResult::new(rows, total.0, page, limit))
+    }
+
+    pub async fn stock_quantity_at(
+        &self,
+        location_id: Uuid,
+        product_id: Uuid,
+    ) -> Result<i32, AppError> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            r#"SELECT "quantityPieces" FROM location_stock
+               WHERE "locationId" = $1 AND "productId" = $2"#,
+        )
+        .bind(location_id)
+        .bind(product_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(q,)| q).unwrap_or(0))
+    }
+
+    pub async fn create_adjustment(
+        &self,
+        dto: &CreateStockAdjustmentDto,
+        created_by: Option<Uuid>,
+    ) -> Result<(StockAdjustment, Vec<StockAdjustmentLine>), AppError> {
+        let mut tx = self.pool.begin().await?;
+
+        let adjustment = sqlx::query_as::<_, StockAdjustment>(
+            r#"
+            INSERT INTO stock_adjustments (id, "locationId", notes, "createdBy")
+            VALUES (gen_random_uuid(), $1, $2, $3)
+            RETURNING id, "locationId" as location_id, notes,
+                      "createdBy" as created_by, "createdAt" as created_at
+            "#,
+        )
+        .bind(dto.location_id)
+        .bind(dto.notes.trim())
+        .bind(created_by)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let mut saved_lines = Vec::with_capacity(dto.lines.len());
+        for line in &dto.lines {
+            let previous: Option<(i32,)> = sqlx::query_as(
+                r#"SELECT "quantityPieces" FROM location_stock
+                   WHERE "locationId" = $1 AND "productId" = $2 FOR UPDATE"#,
+            )
+            .bind(dto.location_id)
+            .bind(line.product_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let previous_pieces = previous.map(|(q,)| q).unwrap_or(0);
+            let delta = line.counted_pieces - previous_pieces;
+
+            let saved = sqlx::query_as::<_, StockAdjustmentLine>(
+                r#"
+                INSERT INTO stock_adjustment_lines (
+                    id, "adjustmentId", "productId", "previousPieces", "countedPieces", "deltaPieces"
+                )
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+                RETURNING id, "adjustmentId" as adjustment_id, "productId" as product_id,
+                          "previousPieces" as previous_pieces, "countedPieces" as counted_pieces,
+                          "deltaPieces" as delta_pieces
+                "#,
+            )
+            .bind(adjustment.id)
+            .bind(line.product_id)
+            .bind(previous_pieces)
+            .bind(line.counted_pieces)
+            .bind(delta)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            if delta != 0 {
+                Self::adjust_stock_in_tx(
+                    &mut tx,
+                    dto.location_id,
+                    line.product_id,
+                    delta,
+                    "adjustment",
+                    adjustment.id,
+                    "stock_adjustment",
+                    created_by,
+                )
+                .await?;
+            }
+
+            saved_lines.push(saved);
+        }
+
+        tx.commit().await?;
+        Ok((adjustment, saved_lines))
+    }
+
+    pub async fn list_adjustments(
+        &self,
+        filters: &StockAdjustmentFilterDto,
+    ) -> Result<PaginationResult<StockAdjustment>, AppError> {
+        let page = filters.page.unwrap_or(1).max(1);
+        let limit = filters.limit.unwrap_or(20).clamp(1, 100);
+        let offset = (page - 1) * limit;
+
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT id, \"locationId\" as location_id, notes, \"createdBy\" as created_by, \
+             \"createdAt\" as created_at FROM stock_adjustments WHERE 1=1",
+        );
+
+        if let Some(location_id) = filters.location_id {
+            builder.push(" AND \"locationId\" = ");
+            builder.push_bind(location_id);
+        }
+
+        builder.push(" ORDER BY \"createdAt\" DESC LIMIT ");
+        builder.push_bind(limit);
+        builder.push(" OFFSET ");
+        builder.push_bind(offset);
+
+        let rows = builder
+            .build_query_as::<StockAdjustment>()
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut count_builder: QueryBuilder<Postgres> =
+            QueryBuilder::new("SELECT COUNT(*) FROM stock_adjustments WHERE 1=1");
+        if let Some(location_id) = filters.location_id {
+            count_builder.push(" AND \"locationId\" = ");
+            count_builder.push_bind(location_id);
+        }
+
+        let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
+        Ok(PaginationResult::new(rows, total.0, page, limit))
+    }
+
+    pub async fn find_adjustment_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<StockAdjustment>, AppError> {
+        Ok(sqlx::query_as::<_, StockAdjustment>(
+            r#"
+            SELECT id, "locationId" as location_id, notes, "createdBy" as created_by,
+                   "createdAt" as created_at
+            FROM stock_adjustments WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn adjustment_lines(
+        &self,
+        adjustment_id: Uuid,
+    ) -> Result<Vec<StockAdjustmentLine>, AppError> {
+        Ok(sqlx::query_as::<_, StockAdjustmentLine>(
+            r#"
+            SELECT id, "adjustmentId" as adjustment_id, "productId" as product_id,
+                   "previousPieces" as previous_pieces, "countedPieces" as counted_pieces,
+                   "deltaPieces" as delta_pieces
+            FROM stock_adjustment_lines WHERE "adjustmentId" = $1
+            "#,
+        )
+        .bind(adjustment_id)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     pub async fn get_config_location_id(&self, key: &str) -> Result<Option<Uuid>, AppError> {

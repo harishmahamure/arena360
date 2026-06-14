@@ -12,5 +12,5 @@ export function getDefaultHomePath(can: (permission: Permission) => boolean): st
   if (can(Permission.PlayerPlansRead)) {
     return '/plan-transactions';
   }
-  return '/sessions';
+  return '/';
 }

@@ -409,6 +409,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/inventory/stock", get(handlers::inventory::list_stock))
         .route(
+            "/inventory/adjustments",
+            get(handlers::inventory::list_adjustments)
+                .post(handlers::inventory::create_adjustment),
+        )
+        .route(
+            "/inventory/adjustments/{id}",
+            get(handlers::inventory::get_adjustment),
+        )
+        .route(
             "/inventory/receipts",
             get(handlers::inventory::list_receipts).post(handlers::inventory::create_receipt),
         )

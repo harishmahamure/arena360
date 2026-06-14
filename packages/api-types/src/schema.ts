@@ -644,6 +644,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inventory/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_adjustments"];
+        put?: never;
+        post: operations["create_adjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/adjustments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_adjustment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/inventory/locations": {
         parameters: {
             query?: never;
@@ -2192,6 +2224,18 @@ export interface components {
             deviceId?: string | null;
             expiresAt: string;
             token: string;
+        };
+        CreateStockAdjustmentDto: {
+            lines: components["schemas"]["CreateStockAdjustmentLineDto"][];
+            /** Format: uuid */
+            locationId: string;
+            notes: string;
+        };
+        CreateStockAdjustmentLineDto: {
+            /** Format: int32 */
+            countedPieces: number;
+            /** Format: uuid */
+            productId: string;
         };
         CreateStockReceiptDto: {
             lines: components["schemas"]["CreateStockReceiptLineDto"][];
@@ -3848,6 +3892,74 @@ export interface components {
         StatsQuery: {
             endDate?: string | null;
             startDate?: string | null;
+        };
+        StockAdjustment: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            locationId: string;
+            notes: string;
+        };
+        StockAdjustmentEnvelope: {
+            data: components["schemas"]["StockAdjustment"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockAdjustmentFilterDto: {
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+        };
+        StockAdjustmentLine: {
+            /** Format: uuid */
+            adjustmentId: string;
+            /** Format: int32 */
+            countedPieces: number;
+            /** Format: int32 */
+            deltaPieces: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            previousPieces: number;
+            /** Format: uuid */
+            productId: string;
+        };
+        StockAdjustmentPaginationEnvelope: {
+            data: components["schemas"]["StockAdjustmentPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockAdjustmentPaginationPage: {
+            data: components["schemas"]["StockAdjustment"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        StockAdjustmentWithLines: components["schemas"]["StockAdjustment"] & {
+            lines: components["schemas"]["StockAdjustmentLine"][];
+        };
+        StockAdjustmentWithLinesEnvelope: {
+            data: components["schemas"]["StockAdjustmentWithLines"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         StockReceipt: {
             /** Format: date-time */
@@ -7807,6 +7919,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_adjustments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List stock adjustments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockAdjustmentPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_adjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStockAdjustmentDto"];
+            };
+        };
+        responses: {
+            /** @description Reconcile stock count */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockAdjustmentWithLinesEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_adjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Adjustment ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get stock adjustment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockAdjustmentWithLinesEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Internal server error */

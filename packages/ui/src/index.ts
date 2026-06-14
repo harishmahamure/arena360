@@ -48,6 +48,8 @@ export { GameCard } from './lib/components/GameCard';
 export { GridSkeleton } from './lib/components/GridSkeleton';
 export type { FallbackIconKind, IconFallbackProps } from './lib/components/IconFallback';
 export { defaultIconKind, IconFallback } from './lib/components/IconFallback';
+export type { ListMobileCardProps } from './lib/components/ListMobileCard';
+export { ListMobileCard } from './lib/components/ListMobileCard';
 export type { ListPagePagination, ListPageProps } from './lib/components/ListPage';
 // ListPage
 export { ListPage } from './lib/components/ListPage';

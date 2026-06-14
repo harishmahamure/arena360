@@ -18,6 +18,7 @@ import {
   useTheme,
 } from '@mui/material';
 import type { ReactNode } from 'react';
+import { ListMobileCard } from './ListMobileCard';
 
 export interface Column<T = Record<string, unknown>> {
   id: keyof T;
@@ -53,10 +54,6 @@ interface DataGridProps<T = Record<string, unknown>> {
   renderMobileCard?: (row: T, rowActions: Action<T>[]) => ReactNode;
 }
 
-// const ROW_HEIGHT = 52; // Approximate height of each row (py: 2 = 32px + content ~20px)
-// const HEADER_HEIGHT = 56; // Approximate height of header row
-// const MIN_ROWS = 10;
-
 export function DataGrid<T extends Record<string, unknown>>({
   columns,
   data,
@@ -70,6 +67,7 @@ export function DataGrid<T extends Record<string, unknown>>({
   renderMobileCard,
 }: DataGridProps<T>) {
   const theme = useTheme();
+  const isCompact = useMediaQuery(theme.breakpoints.down('md'));
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -96,13 +94,18 @@ export function DataGrid<T extends Record<string, unknown>>({
     column.key ?? `${String(column.id)}-${index}`;
 
   const headerCellSx = {
-    backgroundColor: alpha(theme.palette.text.primary, 0.04),
+    backgroundColor: theme.palette.background.paper,
     fontWeight: 600,
     fontSize: '0.8125rem',
     color: theme.palette.text.secondary,
     borderBottom: `1px solid ${theme.palette.divider}`,
     py: 2,
-    px: isMobile ? 1.5 : 2,
+    px: 2,
+    ...(stickyHeader && {
+      position: 'sticky' as const,
+      top: 0,
+      zIndex: 2,
+    }),
   };
 
   const paperSx = {
@@ -114,7 +117,14 @@ export function DataGrid<T extends Record<string, unknown>>({
     maxHeight: maxHeight,
   };
 
-  if (isMobile && renderMobileCard) {
+  const renderCard = (row: T, rowActions: Action<T>[]) =>
+    renderMobileCard ? (
+      renderMobileCard(row, rowActions)
+    ) : (
+      <ListMobileCard row={row} columns={visibleColumns} actions={rowActions} />
+    );
+
+  if (isCompact) {
     if (data.length === 0) {
       return (
         <Paper sx={{ ...paperSx, py: 8, textAlign: 'center' }}>
@@ -128,7 +138,7 @@ export function DataGrid<T extends Record<string, unknown>>({
     return (
       <Stack spacing={2} sx={maxHeight ? { maxHeight, overflow: 'auto' } : undefined}>
         {data.map((row, index) => (
-          <Box key={getRowKey(row, index)}>{renderMobileCard(row, actions)}</Box>
+          <Box key={getRowKey(row, index)}>{renderCard(row, actions)}</Box>
         ))}
       </Stack>
     );
@@ -205,7 +215,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                       align={column.align || 'left'}
                       sx={{
                         py: 2,
-                        px: isMobile ? 1.5 : 2,
+                        px: 2,
                         fontSize: '0.875rem',
                         color: theme.palette.text.primary,
                       }}
@@ -219,7 +229,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                     align="center"
                     sx={{
                       py: 1,
-                      px: isMobile ? 1 : 2,
+                      px: 2,
                     }}
                   >
                     <Box

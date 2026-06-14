@@ -36,7 +36,8 @@ export default function CashDepositsPage() {
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
   const statusFilter = searchParams.get('status') || undefined;
-  const { can, isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const canApprove = can(Permission.CashDepositsApprove);
   const [approveTarget, setApproveTarget] = useState<CashDeposit | null>(null);
   const [depositType, setDepositType] = useState<'bank' | 'home'>('bank');
   const {
@@ -136,7 +137,7 @@ export default function CashDepositsPage() {
     },
   ];
 
-  const actions: Action<CashDeposit>[] = isAdmin
+  const actions: Action<CashDeposit>[] = canApprove
     ? [
         {
           label: 'Approve',

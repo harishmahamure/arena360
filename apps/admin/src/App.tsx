@@ -27,6 +27,8 @@ import GameDetailPage from './pages/dashboard/games/GameDetailPage';
 import GameNewPage from './pages/dashboard/games/GameNewPage';
 import GamesPage from './pages/dashboard/games/GamesPage';
 import InventoryLocationsPage from './pages/dashboard/inventory/InventoryLocationsPage';
+import InventoryStockPage from './pages/dashboard/inventory/InventoryStockPage';
+import InventoryTransferDetailPage from './pages/dashboard/inventory/InventoryTransferDetailPage';
 import InventoryTransferNewPage from './pages/dashboard/inventory/InventoryTransferNewPage';
 import InventoryTransfersPage from './pages/dashboard/inventory/InventoryTransfersPage';
 import InventoryWarehousePage from './pages/dashboard/inventory/InventoryWarehousePage';
@@ -185,8 +187,13 @@ function App() {
                     </Route>
                     <Route element={<RequirePermission permission={Permission.InventoryRead} />}>
                       <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
+                      <Route path="/inventory/stock" element={<InventoryStockPage />} />
                       <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
                       <Route path="/inventory/transfers" element={<InventoryTransfersPage />} />
+                      <Route
+                        path="/inventory/transfers/:id"
+                        element={<InventoryTransferDetailPage />}
+                      />
                       <Route
                         path="/inventory/transfers/new"
                         element={<InventoryTransferNewPage />}

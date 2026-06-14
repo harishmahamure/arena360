@@ -10,32 +10,43 @@ import { useMemo } from 'react';
 import { getUnits } from '../services/units/list';
 
 const labelByType = new Map(unitTypeOptions.map((o) => [o.value, o.label]));
+const canonicalTypeOrder = CANONICAL_UNITS.map(({ type }) => type);
+
+function sortUnitsByCanonicalOrder<T extends { type: string }>(units: T[]): T[] {
+  return [...units].sort((a, b) => {
+    const ai = canonicalTypeOrder.indexOf(a.type as UnitTypeValue);
+    const bi = canonicalTypeOrder.indexOf(b.type as UnitTypeValue);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+}
 
 export function useProductUnits() {
-  const { data, isSuccess } = useQuery({
+  const { data, isSuccess, isLoading } = useQuery({
     queryKey: ['units-for-product'],
     queryFn: () => getUnits({ limit: 100, isActive: true }),
+    staleTime: 1000 * 60 * 5,
   });
+
+  const activeUnits = useMemo(
+    () => sortUnitsByCanonicalOrder((data?.data ?? []).filter((unit) => unit.isActive)),
+    [data],
+  );
 
   const unitsByType = useMemo(() => {
     const map = new Map<UnitTypeValue, string>();
-    for (const unit of data?.data ?? []) {
+    for (const unit of activeUnits) {
       map.set(unit.type as UnitTypeValue, unit.id);
     }
     return map;
-  }, [data]);
+  }, [activeUnits]);
 
   const unitSelectOptions: FormSelectOption[] = useMemo(
     () =>
-      CANONICAL_UNITS.map(({ type }) => {
-        const id = unitsByType.get(type);
-        return {
-          value: id ?? type,
-          label: labelByType.get(type) ?? type,
-          disabled: !id,
-        };
-      }),
-    [unitsByType],
+      activeUnits.map((unit) => ({
+        value: unit.id,
+        label: labelByType.get(unit.type as UnitTypeValue) ?? unit.name,
+      })),
+    [activeUnits],
   );
 
   const defaultUnitIds = useMemo(
@@ -46,5 +57,11 @@ export function useProductUnits() {
     [unitsByType],
   );
 
-  return { unitSelectOptions, defaultUnitIds, unitsReady: isSuccess };
+  return {
+    unitSelectOptions,
+    defaultUnitIds,
+    unitsReady: isSuccess && unitSelectOptions.length > 0,
+    unitsMissing: isSuccess && unitSelectOptions.length === 0,
+    unitsLoading: isLoading,
+  };
 }

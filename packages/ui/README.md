@@ -69,7 +69,7 @@ import { buildListUrl } from '../utils/buildListUrl';
 
 Filter query preservation stays in the app layer via `buildListUrl` — `ListPage` only calls `onPageChange(page)`.
 
-Below `sm`, pass `mobileCardRender` to swap the table for stacked cards (sessions pilot). Desktop table layout is unchanged.
+Below `md`, `ListPage` renders stacked cards instead of a table. Pass `mobileCardRender` for a custom card layout; when omitted, a default label/value `ListMobileCard` is used. Desktop table layout is unchanged.
 
 ## Form pages
 

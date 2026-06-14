@@ -12,16 +12,18 @@ use crate::dto::{
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::models::{
     CreateInventoryLocationDto, CreateStockReceiptDto, CreateStockTransferRequestDto,
-    CreateStockWasteEventDto, InventoryLocation, InventoryLocationFilterDto,
+    CreateStockWasteEventDto, CreateStockAdjustmentDto, InventoryLocation, InventoryLocationFilterDto,
     LocationStockFilterDto, LocationStockRow, RejectStockTransferDto, RejectStockWasteDto,
-    StockReceipt, StockReceiptFilterDto, StockReceiptWithLines, StockTransferFilterDto,
+    StockReceipt, StockReceiptFilterDto, StockReceiptWithLines, StockAdjustment,
+    StockAdjustmentFilterDto, StockAdjustmentWithLines, StockTransferFilterDto,
     StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent,
     StockWasteEventWithLines, StockWasteFilterDto, UpdateInventoryLocationDto, WasteSummaryRow,
 };
 use crate::openapi::responses::{
     ErrorEnvelope, InventoryLocationEnvelope, InventoryLocationPaginationEnvelope,
     LocationStockPaginationEnvelope, StockReceiptPaginationEnvelope,
-    StockReceiptWithLinesEnvelope, StockTransferEnvelope, StockTransferPaginationEnvelope,
+    StockReceiptWithLinesEnvelope, StockAdjustmentEnvelope, StockAdjustmentPaginationEnvelope,
+    StockAdjustmentWithLinesEnvelope, StockTransferEnvelope, StockTransferPaginationEnvelope,
     StockTransferWithLinesEnvelope, StockWasteEnvelope, StockWastePaginationEnvelope,
     StockWasteSummaryListEnvelope, StockWasteWithLinesEnvelope,
 };
@@ -152,6 +154,69 @@ pub async fn list_receipts(
     Query(filters): Query<StockReceiptFilterDto>,
 ) -> ApiResult<PaginationResult<StockReceipt>> {
     ok(state.inventory.list_receipts(filters).await?)
+}
+
+#[utoipa::path(
+    post,
+    path = "/inventory/adjustments",
+    request_body = CreateStockAdjustmentDto,
+    responses(
+        (status = 201, description = "Reconcile stock count", body = StockAdjustmentWithLinesEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "inventory"
+)]
+pub async fn create_adjustment(
+    AdminUser(claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<CreateStockAdjustmentDto>,
+) -> ApiResult<StockAdjustmentWithLines> {
+    let user_id = Uuid::parse_str(&claims.userId).ok();
+    created(state.inventory.create_adjustment(dto, user_id).await?)
+}
+
+#[utoipa::path(
+    get,
+    path = "/inventory/adjustments",
+    responses(
+        (status = 200, description = "List stock adjustments", body = StockAdjustmentPaginationEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "inventory"
+)]
+pub async fn list_adjustments(
+    AdminOrStaff(_claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Query(filters): Query<StockAdjustmentFilterDto>,
+) -> ApiResult<PaginationResult<StockAdjustment>> {
+    ok(state.inventory.list_adjustments(filters).await?)
+}
+
+#[utoipa::path(
+    get,
+    path = "/inventory/adjustments/{id}",
+    params(("id" = Uuid, Path, description = "Adjustment ID")),
+    responses(
+        (status = 200, description = "Get stock adjustment", body = StockAdjustmentWithLinesEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "inventory"
+)]
+pub async fn get_adjustment(
+    AdminOrStaff(_claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StockAdjustmentWithLines> {
+    ok(state.inventory.get_adjustment(id).await?)
 }
 
 #[utoipa::path(

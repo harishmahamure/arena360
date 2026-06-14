@@ -15,6 +15,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   type CashRegister,
   getCashRegisters,
@@ -32,6 +33,9 @@ const statusConfig: Record<string, { label: string; color: 'success' | 'default'
 
 export default function CashRegistersPage() {
   const navigate = useNavigate();
+  const { can } = usePermissions();
+  const canReconcile = can(Permission.CashRegistersReconcile);
+  const canAdjustOpening = can(Permission.CashRegistersAdjustOpening);
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
   const queryClient = useQueryClient();
@@ -207,7 +211,7 @@ export default function CashRegistersPage() {
             label: 'Reconcile',
             icon: <CheckCircleOutline fontSize="small" />,
             color: 'success',
-            show: (row) => row.status === 'closed',
+            show: (row) => row.status === 'closed' && canReconcile,
             onClick: (row) => {
               setReconcileTarget(row);
               setReconcileNotes('');
@@ -218,7 +222,7 @@ export default function CashRegistersPage() {
             label: 'Set Balance',
             icon: <Edit fontSize="small" />,
             color: 'warning',
-            show: (row) => row.status === 'open',
+            show: (row) => row.status === 'open' && canAdjustOpening,
             onClick: (row) => {
               setBalanceTarget(row);
               setOpeningBalance(row.openingBalance.toString());

@@ -1,3 +1,4 @@
+import { local } from '@gaming-cafe/utils';
 import { Box, Typography } from '@mui/material';
 import { Navigate, Outlet } from 'react-router-dom';
 import { type Permission, usePermissions } from '../hooks/usePermissions';
@@ -8,12 +9,18 @@ interface RequirePermissionProps {
   redirectTo?: string;
 }
 
-function PermissionDeniedRedirect({ redirectTo }: { redirectTo: string; permission: Permission }) {
+function PermissionDeniedRedirect({ redirectTo }: { redirectTo: string }) {
   return <Navigate to={redirectTo} replace />;
 }
 
 export default function RequirePermission({ permission, redirectTo }: RequirePermissionProps) {
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
+  const accessToken = local.get('accessToken');
+
+  if (!accessToken || !role) {
+    return <Navigate to="/login" replace />;
+  }
+
   const fallbackPath = redirectTo ?? getDefaultHomePath(can);
 
   if (can(permission)) {
@@ -21,7 +28,7 @@ export default function RequirePermission({ permission, redirectTo }: RequirePer
   }
 
   if (fallbackPath) {
-    return <PermissionDeniedRedirect redirectTo={fallbackPath} permission={permission} />;
+    return <PermissionDeniedRedirect redirectTo={fallbackPath} />;
   }
 
   return (

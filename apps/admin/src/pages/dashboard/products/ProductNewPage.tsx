@@ -1,6 +1,7 @@
 import type { FormSelectOption } from '@gaming-cafe/ui';
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
+import { Alert } from '@mui/material';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -131,7 +132,8 @@ export default function AddNewProductPage() {
     lockOnSuccess: true,
   });
   const [error, setError] = useState<string | undefined>();
-  const { unitSelectOptions, defaultUnitIds, unitsReady } = useProductUnits();
+  const { unitSelectOptions, defaultUnitIds, unitsReady, unitsMissing, unitsLoading } =
+    useProductUnits();
   const productFormFields = useMemo(
     () => buildProductFormFields(unitSelectOptions),
     [unitSelectOptions],
@@ -181,8 +183,14 @@ export default function AddNewProductPage() {
       backLabel="Back to products"
       breadcrumbs={[{ label: 'Products', to: '/products' }, { label: 'New product' }]}
     >
+      {unitsMissing ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Product units are not available yet. Refresh the page or contact an administrator if sale
+          and purchase unit dropdowns stay empty.
+        </Alert>
+      ) : null}
       <FormBuilder<CreateProductFormData>
-        key={unitsReady ? 'units-ready' : 'units-loading'}
+        key={unitsReady ? 'units-ready' : unitsLoading ? 'units-loading' : 'units-empty'}
         fields={productFormFields}
         schema={createProductSchema}
         defaultValues={defaultValues}

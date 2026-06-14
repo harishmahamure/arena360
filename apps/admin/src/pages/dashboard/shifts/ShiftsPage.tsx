@@ -14,7 +14,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { useStaffNameMap } from '../../../hooks/useStaffNameMap';
 import { forceCloseShift, getShifts, type Shift } from '../../../services/shifts';
 import { buildListUrl } from '../../../utils/buildListUrl';
@@ -29,7 +29,8 @@ const statusConfig: Record<string, { label: string; color: 'success' | 'default'
 export default function ShiftsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const canForceClose = can(Permission.ShiftsForceClose);
   const { resolveName } = useStaffNameMap();
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
@@ -111,7 +112,7 @@ export default function ShiftsPage() {
             icon: <Visibility fontSize="small" />,
             onClick: (row) => navigate(`/shifts/${row.id}`),
           },
-          ...(isAdmin
+          ...(canForceClose
             ? [
                 {
                   label: 'Force close',

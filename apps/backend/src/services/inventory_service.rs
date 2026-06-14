@@ -8,9 +8,10 @@ use crate::error::AppError;
 use crate::models::{
     normalize_inventory_location_kind, normalize_stock_waste_reason, CreateInventoryLocationDto,
     CreateStockReceiptDto, CreateStockTransferRequestDto, CreateStockWasteEventDto,
-    CreateStockWasteLineDto, InventoryLocation, InventoryLocationFilterDto,
+    CreateStockWasteLineDto, CreateStockAdjustmentDto, InventoryLocation, InventoryLocationFilterDto,
     LocationStockFilterDto, LocationStockRow, Product, StockReceipt, StockReceiptFilterDto,
-    StockReceiptWithLines, StockTransferFilterDto, StockTransferRequest,
+    StockReceiptWithLines, StockAdjustment, StockAdjustmentFilterDto, StockAdjustmentWithLines,
+    StockTransferFilterDto, StockTransferRequest,
     StockTransferRequestWithLines, StockWasteEvent, StockWasteEventWithLines, StockWasteFilterDto,
     UpdateInventoryLocationDto, WasteSummaryRow,
 };
@@ -177,6 +178,71 @@ impl InventoryService {
 
         let lines = self.repo.receipt_lines(id).await?;
         Ok(StockReceiptWithLines { receipt, lines })
+    }
+
+    pub async fn create_adjustment(
+        &self,
+        dto: CreateStockAdjustmentDto,
+        created_by: Option<Uuid>,
+    ) -> Result<StockAdjustmentWithLines, AppError> {
+        if dto.lines.is_empty() {
+            return Err(AppError::BadRequest("lines must not be empty".to_string()));
+        }
+        if dto.notes.trim().len() < 3 {
+            return Err(AppError::BadRequest(
+                "notes must be at least 3 characters".to_string(),
+            ));
+        }
+
+        self.get_location(dto.location_id).await?;
+
+        for line in &dto.lines {
+            if line.counted_pieces < 0 {
+                return Err(AppError::BadRequest(
+                    "countedPieces must be zero or positive".to_string(),
+                ));
+            }
+        }
+
+        let has_change = {
+            let mut any = false;
+            for line in &dto.lines {
+                let current = self
+                    .repo
+                    .stock_quantity_at(dto.location_id, line.product_id)
+                    .await?;
+                if line.counted_pieces != current {
+                    any = true;
+                    break;
+                }
+            }
+            any
+        };
+        if !has_change {
+            return Err(AppError::BadRequest(
+                "No quantity changes — counted pieces match current stock".to_string(),
+            ));
+        }
+
+        let (adjustment, lines) = self.repo.create_adjustment(&dto, created_by).await?;
+        Ok(StockAdjustmentWithLines { adjustment, lines })
+    }
+
+    pub async fn list_adjustments(
+        &self,
+        filters: StockAdjustmentFilterDto,
+    ) -> Result<PaginationResult<StockAdjustment>, AppError> {
+        self.repo.list_adjustments(&filters).await
+    }
+
+    pub async fn get_adjustment(&self, id: Uuid) -> Result<StockAdjustmentWithLines, AppError> {
+        let adjustment = self
+            .repo
+            .find_adjustment_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Adjustment {id} not found")))?;
+        let lines = self.repo.adjustment_lines(id).await?;
+        Ok(StockAdjustmentWithLines { adjustment, lines })
     }
 
     pub async fn create_transfer_request(

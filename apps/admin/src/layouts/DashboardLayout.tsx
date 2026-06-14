@@ -5,7 +5,7 @@ import { local, toastUtils } from '@gaming-cafe/utils';
 import Box from '@mui/material/Box';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
 import { useDispatch, useSelector } from '../hooks/store';
@@ -24,6 +24,13 @@ export default function DashboardLayout() {
   const location = useLocation();
   const outletKey = `${location.pathname}${location.search}`;
 
+  const { email, firstName, lastName, role } = useSelector((state) => state.auth);
+  const { can, isStaff, isAdmin } = usePermissions();
+  const [handoverOpen, setHandoverOpen] = useState(false);
+
+  const accessToken = local.get('accessToken');
+  const isAuthenticated = Boolean(accessToken && role);
+
   const { data, isLoading } = useQuery({
     queryKey: ['sessions'],
     queryFn: () =>
@@ -31,12 +38,14 @@ export default function DashboardLayout() {
         isActive: 1,
       }),
     refetchInterval: false,
+    enabled: isAuthenticated,
   });
 
   const { data: activeShift } = useQuery({
     queryKey: ['activeShift'],
     queryFn: getActiveShift,
     retry: false,
+    enabled: isAuthenticated,
   });
 
   const enrichedSessions = useEnrichedSessions(data?.data);
@@ -63,18 +72,13 @@ export default function DashboardLayout() {
 
   useMultipleCountdowns(countDownData);
 
-  const { email, firstName, lastName, role } = useSelector((state) => state.auth);
-  const { can, isStaff, isAdmin } = usePermissions();
-  const [handoverOpen, setHandoverOpen] = useState(false);
-
   const filteredNavItems = useMemo(() => filterNavItemsByPermission(adminNavItems, can), [can]);
 
   useEffect(() => {
-    const accessToken = local.get('accessToken');
-    if (!accessToken) {
-      navigate('/login');
+    if (!isAuthenticated) {
+      navigate('/login', { replace: true });
     }
-  }, [navigate]);
+  }, [isAuthenticated, navigate]);
 
   useEffect(() => {
     if (outletKey) {
@@ -138,6 +142,10 @@ export default function DashboardLayout() {
       onClick: () => navigate('/'),
     };
   }, [activeShift, isStaff, navigate]);
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <>

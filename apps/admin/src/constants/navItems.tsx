@@ -130,7 +130,7 @@ export const adminNavItems: AdminNavItem[] = [
   },
   {
     title: 'Inventory',
-    path: '/inventory/locations',
+    path: '/inventory/stock',
     icon: <Inventory2 />,
     section: 'Catalog',
     requiredPermission: Permission.InventoryRead,
@@ -140,6 +140,7 @@ export const adminNavItems: AdminNavItem[] = [
         path: '/inventory/locations',
         requiredPermission: Permission.InventoryManage,
       },
+      { title: 'Stock overview', path: '/inventory/stock' },
       { title: 'Warehouse stock', path: '/inventory/warehouse' },
       { title: 'Transfer requests', path: '/inventory/transfers' },
       {

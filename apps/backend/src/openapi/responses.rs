@@ -217,8 +217,8 @@ pagination_envelope!(
 
 use crate::models::{
     InventoryLocation, LocationStockRow, StockReceipt, StockReceiptWithLines,
-    StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent,
-    StockWasteEventWithLines, WasteSummaryRow,
+    StockAdjustment, StockAdjustmentWithLines, StockTransferRequest, StockTransferRequestWithLines,
+    StockWasteEvent, StockWasteEventWithLines, WasteSummaryRow,
 };
 
 success_envelope!(InventoryLocationEnvelope, InventoryLocation);
@@ -238,6 +238,13 @@ pagination_envelope!(
     StockReceiptPaginationEnvelope,
     StockReceiptPaginationPage,
     StockReceipt
+);
+success_envelope!(StockAdjustmentEnvelope, StockAdjustment);
+success_envelope!(StockAdjustmentWithLinesEnvelope, StockAdjustmentWithLines);
+pagination_envelope!(
+    StockAdjustmentPaginationEnvelope,
+    StockAdjustmentPaginationPage,
+    StockAdjustment
 );
 success_envelope!(StockTransferEnvelope, StockTransferRequest);
 success_envelope!(StockTransferWithLinesEnvelope, StockTransferRequestWithLines);

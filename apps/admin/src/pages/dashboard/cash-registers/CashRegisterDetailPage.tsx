@@ -15,7 +15,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   type CashRegisterEntry,
   getCashRegister,
@@ -38,7 +38,9 @@ const entryTypeLabels: Record<string, string> = {
 export default function CashRegisterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const canReconcile = can(Permission.CashRegistersReconcile);
+  const canAdjustOpening = can(Permission.CashRegistersAdjustOpening);
 
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcileNotes, setReconcileNotes] = useState('');
@@ -195,9 +197,9 @@ export default function CashRegisterDetailPage() {
           ) : undefined
         }
         actions={
-          register && isAdmin ? (
+          register && (canReconcile || canAdjustOpening) ? (
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {register.status === 'closed' && (
+              {canReconcile && register.status === 'closed' && (
                 <Button
                   variant="outlined"
                   color="success"
@@ -210,7 +212,7 @@ export default function CashRegisterDetailPage() {
                   Reconcile
                 </Button>
               )}
-              {register.status === 'open' && (
+              {canAdjustOpening && register.status === 'open' && (
                 <Button
                   variant="outlined"
                   color="warning"

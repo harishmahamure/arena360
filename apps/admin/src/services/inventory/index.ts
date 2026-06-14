@@ -43,6 +43,28 @@ export interface StockReceipt {
   lines?: StockReceiptLine[];
 }
 
+export interface StockAdjustmentLine {
+  id: string;
+  adjustmentId: string;
+  productId: string;
+  previousPieces: number;
+  countedPieces: number;
+  deltaPieces: number;
+}
+
+export interface StockAdjustment {
+  id: string;
+  locationId: string;
+  notes: string;
+  createdBy?: string | null;
+  createdAt: string;
+  lines?: StockAdjustmentLine[];
+}
+
+export interface StockAdjustmentWithLines extends StockAdjustment {
+  lines: StockAdjustmentLine[];
+}
+
 export interface StockTransferLine {
   id: string;
   transferRequestId: string;
@@ -55,8 +77,19 @@ export interface StockTransferRequest {
   fromLocationId: string;
   toLocationId: string;
   status: string;
+  requestedBy?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
+  fulfilledBy?: string | null;
+  fulfilledAt?: string | null;
   createdAt: string;
+  updatedAt: string;
   lines?: StockTransferLine[];
+}
+
+export interface StockTransferRequestWithLines extends StockTransferRequest {
+  lines: StockTransferLine[];
 }
 
 export interface StockWasteLine {
@@ -104,6 +137,18 @@ export const updateInventoryLocation = async (
 export const getLocationStock = async (filters: Record<string, unknown> = {}) =>
   http.get<ListResponse<LocationStockRow>>('/inventory/stock', { params: filters });
 
+export const createStockAdjustment = async (data: {
+  locationId: string;
+  notes: string;
+  lines: { productId: string; countedPieces: number }[];
+}) => http.post<StockAdjustmentWithLines>('/inventory/adjustments', data);
+
+export const getStockAdjustments = async (filters: Record<string, unknown> = {}) =>
+  http.get<ListResponse<StockAdjustment>>('/inventory/adjustments', { params: filters });
+
+export const getStockAdjustmentById = async (id: string) =>
+  http.get<StockAdjustmentWithLines>(`/inventory/adjustments/${id}`);
+
 export const createStockReceipt = async (data: {
   locationId: string;
   vendorId?: string;
@@ -122,6 +167,9 @@ export const createTransferRequest = async (data: {
 
 export const getTransferRequests = async (filters: Record<string, unknown> = {}) =>
   http.get<ListResponse<StockTransferRequest>>('/inventory/transfer-requests', { params: filters });
+
+export const getTransferRequestById = async (id: string) =>
+  http.get<StockTransferRequestWithLines>(`/inventory/transfer-requests/${id}`);
 
 export const approveTransferRequest = async (id: string) =>
   http.patch<StockTransferRequest>(`/inventory/transfer-requests/${id}/approve`, {});

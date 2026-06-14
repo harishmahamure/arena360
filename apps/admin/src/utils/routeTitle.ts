@@ -13,6 +13,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/products': 'Products',
   '/products/new': 'Add product',
   '/inventory/locations': 'Inventory locations',
+  '/inventory/stock': 'Stock overview',
   '/inventory/warehouse': 'Warehouse stock',
   '/inventory/transfers': 'Transfer requests',
   '/inventory/transfers/new': 'New transfer',

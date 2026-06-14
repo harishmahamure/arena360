@@ -15,7 +15,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getPlayerById } from '../../../services/players/getById';
 import { forceCloseShift, getShift } from '../../../services/shifts';
 import { formatDisplayDateTime, formatDuration } from '../../../utils/date';
@@ -29,7 +29,8 @@ const statusConfig: Record<string, { label: string; color: 'success' | 'default'
 export default function ShiftDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const canForceClose = can(Permission.ShiftsForceClose);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [forcing, setForcing] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -147,7 +148,7 @@ export default function ShiftDetailPage() {
           ) : undefined
         }
         actions={
-          isAdmin && shift?.status === 'active' ? (
+          canForceClose && shift?.status === 'active' ? (
             <Button
               variant="outlined"
               color="warning"

@@ -23,6 +23,7 @@ import { getPlayers, type PlayerResponse } from '../../../services/players/list'
 import { updatePlayer } from '../../../services/players/update';
 import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
+import { PlayerListMobileCard } from './PlayerListMobileCard';
 
 const getRoleColor = (role: UserRole) => {
   switch (role) {
@@ -275,6 +276,9 @@ export default function PlayersPage() {
               }),
             ),
         }}
+        mobileCardRender={(row, rowActions) => (
+          <PlayerListMobileCard row={row} actions={rowActions} />
+        )}
       />
 
       <Dialog

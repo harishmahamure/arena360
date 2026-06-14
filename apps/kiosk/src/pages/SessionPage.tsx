@@ -133,7 +133,7 @@ export function SessionPage() {
           timeCreditsConsumed: activeSession.timeCreditsConsumed ?? 0,
           deductionProfile: activeSession.deductionProfile,
           cafeTimezone: activeSession.cafeTimezone,
-          expiryDate: activeSession.expiryDate,
+          expiryDate: activeSession.expiryDate ?? undefined,
         }
       : undefined,
   );

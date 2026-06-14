@@ -81,6 +81,15 @@ function navItemSx(theme: Theme, isActive: boolean, collapsedDesktop: boolean): 
   };
 }
 
+function locationMatchesNavPath(navPath: string, pathname: string, search: string): boolean {
+  const [base, query] = navPath.split('?');
+  if (query) {
+    const normalizedSearch = search.startsWith('?') ? search : search ? `?${search}` : '';
+    return `${pathname}${normalizedSearch}` === navPath;
+  }
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
 function childNavItemSx(theme: Theme, isActive: boolean): SxProps<Theme> {
   const primary = theme.palette.primary.main;
   return {
@@ -122,17 +131,31 @@ export default function Sidebar({
 
   const collapsedDesktop = collapsed && !isMobile;
 
+  const searchString = searchParams.toString();
+
   useEffect(() => {
     const activeParent = navItems.find((item) => {
       if (!item.children?.length) return false;
       if (item.path === '/') return location.pathname === '/';
+      const childMatch = item.children.some((child) =>
+        locationMatchesNavPath(child.path, location.pathname, searchString),
+      );
+      if (childMatch) return true;
       return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     });
 
     setExpandedItem(activeParent?.title ?? null);
-  }, [location.pathname, navItems]);
+  }, [location.pathname, navItems, searchString]);
 
   const handleExpand = (title: string) => {
+    const item = navItems.find((i) => i.title === title);
+    if (
+      item?.children?.some((child) =>
+        locationMatchesNavPath(child.path, location.pathname, searchString),
+      )
+    ) {
+      return;
+    }
     setExpandedItem((prev) => (prev === title ? null : title));
   };
 
@@ -162,10 +185,11 @@ export default function Sidebar({
     return completePath.startsWith(path);
   };
 
-  const isExactPath = (path: string) => completePath === path;
+  const isChildPathActive = (path: string) =>
+    locationMatchesNavPath(path, location.pathname, searchString);
 
   const isAnyChildActive = (item: NavItem) =>
-    item.children?.some((child) => isExactPath(child.path)) ?? false;
+    item.children?.some((child) => isChildPathActive(child.path)) ?? false;
 
   const userInitials = user.name
     .split(' ')
@@ -303,7 +327,7 @@ export default function Sidebar({
                           <ListItemButton
                             key={child.path}
                             onClick={() => handleNavigate(child.path)}
-                            sx={childNavItemSx(theme, isExactPath(child.path))}
+                            sx={childNavItemSx(theme, isChildPathActive(child.path))}
                           >
                             <ListItemText
                               primary={child.title}
@@ -357,7 +381,7 @@ export default function Sidebar({
         {flyoutItem?.children?.map((child) => (
           <MenuItem
             key={child.path}
-            selected={completePath === child.path}
+            selected={isChildPathActive(child.path)}
             onClick={() => handleNavigate(child.path)}
           >
             {child.title}
