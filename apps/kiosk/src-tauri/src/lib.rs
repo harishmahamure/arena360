@@ -83,6 +83,7 @@ pub fn run() {
             cache::cache_asset,
             watchdog_client::set_watchdog_pause,
             watchdog_client::clear_watchdog_pause,
+            watchdog_client::prepare_update_install,
             watchdog_client::prepare_update_relaunch,
         ])
         .build(tauri::generate_context!())

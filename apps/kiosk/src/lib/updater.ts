@@ -1,7 +1,7 @@
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
 import type { AppPhase } from '../context/KioskProvider';
-import { prepareUpdateRelaunch } from './tauriCommands';
+import { prepareUpdateInstall, prepareUpdateRelaunch } from './tauriCommands';
 
 /** Phases where no player session is active and an update check is safe (ADR-0028). */
 export type IdleUpdatePhase = Extract<AppPhase, 'register' | 'setup' | 'login'>;
@@ -30,6 +30,9 @@ export async function checkForUpdateWhenIdle(): Promise<void> {
   try {
     const update = await check();
     if (!update) return;
+    // Pause watchdog before install: NSIS may exit this process and replace locked
+    // binaries; without a pause the sidecar respawns the kiosk and blocks install.
+    await prepareUpdateInstall();
     await update.downloadAndInstall();
     await prepareUpdateRelaunch();
     await relaunch();

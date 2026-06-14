@@ -72,6 +72,10 @@ export async function clearWatchdogPause(): Promise<void> {
   await invoke('clear_watchdog_pause');
 }
 
+export async function prepareUpdateInstall(): Promise<void> {
+  await invoke('prepare_update_install');
+}
+
 export async function prepareUpdateRelaunch(): Promise<void> {
   await invoke('prepare_update_relaunch');
 }

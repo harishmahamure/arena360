@@ -15,7 +15,9 @@ pub const PAUSE_DIR: &str = "Arena360";
 pub const PAUSE_FILENAME: &str = "watchdog.pause";
 
 pub const DEFAULT_SETUP_PAUSE_MINUTES: u64 = 15;
-pub const UPDATE_HANDOFF_PAUSE_SECS: u64 = 30;
+/// Covers download, UAC, NSIS replace, and relaunch so the watchdog does not respawn
+/// the kiosk while installer files are locked (perMachine auto-update).
+pub const UPDATE_PAUSE_MINUTES: u64 = 10;
 pub const POLL_INTERVAL_SECS: u64 = 5;
 pub const SPAWN_DEBOUNCE_SECS: u64 = 3;
 

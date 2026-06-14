@@ -1,8 +1,7 @@
 //! Tauri-facing watchdog pause/mutex helpers (Windows).
 
 use crate::watchdog::{
-    clear_pause, write_pause, write_pause_secs, DEFAULT_SETUP_PAUSE_MINUTES,
-    UPDATE_HANDOFF_PAUSE_SECS,
+    clear_pause, write_pause, DEFAULT_SETUP_PAUSE_MINUTES, UPDATE_PAUSE_MINUTES,
 };
 
 #[tauri::command]
@@ -41,10 +40,10 @@ pub fn pause_for_setup() -> Result<(), String> {
     }
 }
 
-pub fn pause_for_update_handoff() -> Result<(), String> {
+fn pause_for_update() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        write_pause_secs(UPDATE_HANDOFF_PAUSE_SECS, "update")
+        write_pause(UPDATE_PAUSE_MINUTES, "update")
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -74,11 +73,15 @@ pub fn init_instance_mutex() {
     }
 }
 
-pub fn pause_before_update_relaunch() -> Result<(), String> {
-    pause_for_update_handoff()
+/// Pause watchdog before download/install so it does not respawn the kiosk while
+/// NSIS replaces locked binaries.
+#[tauri::command]
+pub fn prepare_update_install() -> Result<(), String> {
+    pause_for_update()
 }
 
+/// Refresh the update pause before relaunch (no-op if the installer already exited the process).
 #[tauri::command]
 pub fn prepare_update_relaunch() -> Result<(), String> {
-    pause_before_update_relaunch()
+    pause_for_update()
 }
