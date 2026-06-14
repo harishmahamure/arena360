@@ -7,6 +7,7 @@ import {
   validateDeductionProfile,
 } from '@gaming-cafe/contracts';
 import {
+  currencySchema,
   normalizeTimeOfDay,
   optionalString,
   stringWithLength,
@@ -31,10 +32,7 @@ export const createPlanSchema = yup
 
     description: optionalString(),
 
-    price: yup
-      .number()
-      .min(0.01, 'Price must be greater than 0')
-      .required(validationMessages.required('Price')),
+    price: currencySchema('Price'),
 
     planType: yup
       .string()

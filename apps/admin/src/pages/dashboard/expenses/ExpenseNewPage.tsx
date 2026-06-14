@@ -1,4 +1,4 @@
-import { FormButton, FormPage } from '@gaming-cafe/ui';
+import { CurrencyField, FormButton, FormPage } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
 import { Alert, Button, MenuItem, Stack, TextField } from '@mui/material';
 import { useEffect, useState } from 'react';
@@ -111,14 +111,12 @@ export default function ExpenseNewPage() {
           ))}
         </TextField>
 
-        <TextField
+        <CurrencyField
           label="Amount"
-          type="number"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           fullWidth
           required
-          inputProps={{ min: 0, step: '0.01' }}
           helperText="Total expense amount in ₹ (must be greater than 0)"
         />
 

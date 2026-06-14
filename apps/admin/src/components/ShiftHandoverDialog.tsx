@@ -1,5 +1,5 @@
 import { permissionsForRole } from '@gaming-cafe/contracts';
-import { FormButton, FormTextField } from '@gaming-cafe/ui';
+import { CurrencyField, FormButton, FormTextField, IntegerField } from '@gaming-cafe/ui';
 import { local, toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import {
   Alert,
@@ -144,14 +144,12 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
     <Grid container spacing={1.5} sx={{ mt: 1 }}>
       {DENOMINATIONS.notes.map((value) => (
         <Grid key={value} size={{ xs: 6, sm: 4, md: 3 }}>
-          <TextField
+          <IntegerField
             fullWidth
             size="small"
-            type="number"
             label={`₹${value}`}
             value={denominations[String(value)] ?? ''}
             onChange={(event) => handleDenominationChange(setter, value, event.target.value)}
-            inputProps={{ min: 0 }}
           />
         </Grid>
       ))}
@@ -323,11 +321,10 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
                   </Alert>
                 )}
 
-                <FormTextField
+                <CurrencyField
                   fullWidth
                   size="small"
                   label="Closing Balance (optional if using denominations)"
-                  type="number"
                   value={closingBalance}
                   onChange={(event) => setClosingBalance(event.target.value)}
                 />

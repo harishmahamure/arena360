@@ -1,4 +1,4 @@
-import { type Column, ListPage } from '@gaming-cafe/ui';
+import { type Column, IntegerField, ListPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { EditNote } from '@mui/icons-material';
 import {
@@ -343,8 +343,7 @@ export default function InventoryStockPage() {
                 System quantity: <strong>{systemCurrent} pieces</strong>
               </Typography>
             ) : null}
-            <TextField
-              type="number"
+            <IntegerField
               label="Counted pieces"
               value={countedPieces}
               onChange={(e) => setCountedPieces(e.target.value)}

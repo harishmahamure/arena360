@@ -1,6 +1,6 @@
 import type { PlanTypeValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
+import { formatCurrency, toastUtils, useAsyncAction } from '@gaming-cafe/utils';
 import { Delete, Edit, Visibility } from '@mui/icons-material';
 import { Chip, debounce } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
@@ -124,7 +124,7 @@ export default function PlansPage() {
       label: 'Price',
       minWidth: 100,
       align: 'right',
-      format: (value) => `$${parseFloat(value as string).toFixed(2)}`,
+      format: (value) => formatCurrency(Number.parseFloat(value as string)),
     },
     {
       id: 'timeCredits',

@@ -1,3 +1,4 @@
+import { CurrencyField } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import {
   Alert,
@@ -156,13 +157,11 @@ export default function ExpenseDetailPage() {
           <Stack spacing={3}>
             {isPending ? (
               <>
-                <TextField
+                <CurrencyField
                   label="Amount"
-                  type="number"
                   value={editAmount}
                   onChange={(e) => setEditAmount(e.target.value)}
                   fullWidth
-                  inputProps={{ min: 0, step: '0.01' }}
                 />
                 <TextField
                   select

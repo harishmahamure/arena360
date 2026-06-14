@@ -1,5 +1,5 @@
 import type { UserRole } from '@gaming-cafe/contracts';
-import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
+import { CurrencyField, type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { Box, Button, Divider, Paper, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -261,15 +261,13 @@ export default function EditPlayerPage() {
             Set to 0 to disable credit purchases for this member.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, maxWidth: 480, alignItems: 'flex-start' }}>
-            <TextField
+            <CurrencyField
               label="Credit Limit (INR)"
-              type="number"
               size="small"
               value={creditLimitInput}
               onChange={(e) => setCreditLimitInput(e.target.value)}
               helperText="Maximum outstanding credit allowed"
               sx={{ flex: 1 }}
-              inputProps={{ min: 0, step: 0.01 }}
             />
             <Button
               variant="contained"

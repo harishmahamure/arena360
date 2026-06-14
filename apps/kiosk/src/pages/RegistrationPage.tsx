@@ -2,6 +2,7 @@ import { deviceSubTypeOptions, deviceTypeOptions } from '@gaming-cafe/contracts'
 import { ApiError } from '@gaming-cafe/utils';
 import { useEffect, useState } from 'react';
 import { useKiosk } from '../context/KioskProvider';
+import { totpInputProps } from '../lib/inputHints';
 import { collectFingerprint, type FingerprintPayload } from '../lib/tauriCommands';
 
 type Step = 'credentials' | 'totp' | 'device';
@@ -124,8 +125,7 @@ export function RegistrationPage() {
             <input
               value={totp}
               onChange={(e) => setTotp(e.target.value.replace(/\s+/g, '').slice(0, 6))}
-              inputMode="numeric"
-              autoComplete="one-time-code"
+              {...totpInputProps}
               required
             />
           </label>

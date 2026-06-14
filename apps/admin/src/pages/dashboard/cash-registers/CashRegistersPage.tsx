@@ -1,4 +1,4 @@
-import { type Column, ListPage } from '@gaming-cafe/ui';
+import { type Column, CurrencyField, ListPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Edit, Visibility } from '@mui/icons-material';
 import {
@@ -274,10 +274,9 @@ export default function CashRegistersPage() {
           <Typography variant="body2" sx={{ mb: 2 }}>
             Update the opening balance for this active cash register.
           </Typography>
-          <TextField
+          <CurrencyField
             fullWidth
             label="Opening Balance"
-            type="number"
             value={openingBalance}
             onChange={(e) => setOpeningBalance(e.target.value)}
           />

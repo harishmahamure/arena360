@@ -1,4 +1,4 @@
-import { type Column, DataGrid, DetailPage } from '@gaming-cafe/ui';
+import { type Column, CurrencyField, DataGrid, DetailPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { CheckCircleOutline, Edit } from '@mui/icons-material';
 import {
@@ -282,10 +282,9 @@ export default function CashRegisterDetailPage() {
       <Dialog open={balanceOpen} onClose={() => setBalanceOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Set Opening Balance</DialogTitle>
         <DialogContent>
-          <TextField
+          <CurrencyField
             fullWidth
             label="Opening Balance"
-            type="number"
             value={openingBalance}
             onChange={(e) => setOpeningBalance(e.target.value)}
             sx={{ mt: 1 }}

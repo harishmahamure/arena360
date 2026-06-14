@@ -26,6 +26,8 @@ import {
   useForm,
 } from 'react-hook-form';
 import type * as yup from 'yup';
+import CurrencyField from './forms/CurrencyField';
+import DecimalField from './forms/DecimalField';
 import FileUpload from './forms/FileUpload';
 import FormButton from './forms/FormButton';
 import FormCheckbox from './forms/FormCheckbox';
@@ -34,6 +36,7 @@ import FormRadioGroup, { type FormRadioOption } from './forms/FormRadioGroup';
 import FormSelect, { type FormSelectOption } from './forms/FormSelect';
 import FormSwitch from './forms/FormSwitch';
 import FormTextField from './forms/FormTextField';
+import IntegerField from './forms/IntegerField';
 import PasswordField from './forms/PasswordField';
 import { RHFSearchOnEnterAutocomplete, type SearchOption } from './forms/SearchInput';
 
@@ -41,6 +44,7 @@ export type FieldType =
   | 'text'
   | 'email'
   | 'number'
+  | 'currency'
   | 'password'
   | 'textarea'
   | 'select'
@@ -87,6 +91,12 @@ export interface FieldConfig<T extends FieldValues = FieldValues> {
   min?: number;
   /** Max value for number input */
   max?: number;
+  /** Step for number input (1 implies integer keyboard) */
+  step?: number | string;
+  /** If true, number field uses integer input (digits only) */
+  integer?: boolean;
+  /** Max decimal places for number/currency fields */
+  decimalPlaces?: number;
   /** Accept attribute for file upload */
   accept?: string;
   /** Allow multiple files */
@@ -257,6 +267,9 @@ function FieldRenderer<T extends FieldValues>({
     rows = 4,
     min,
     max,
+    step,
+    integer,
+    decimalPlaces,
     accept,
     multiple,
     maxSize,
@@ -345,23 +358,71 @@ function FieldRenderer<T extends FieldValues>({
                 />
               );
 
-            case 'number':
+            case 'currency':
               return (
-                <FormTextField
+                <CurrencyField
                   {...field}
                   {...commonProps}
-                  label={''}
-                  type="number"
+                  label=""
                   autoComplete="one-time-code"
-                  inputProps={{ min, max, autoComplete: 'one-time-code' }}
                   InputLabelProps={{ shrink: true }}
                   value={field.value ?? ''}
                   onChange={(e) => {
                     const value = e.target.value;
-                    field.onChange(value === '' ? '' : Number(value));
+                    if (value === '' || value === '.') {
+                      field.onChange('');
+                      return;
+                    }
+                    const num = Number(value);
+                    field.onChange(Number.isNaN(num) ? '' : num);
                   }}
                 />
               );
+
+            case 'number': {
+              const useInteger = integer === true || step === 1 || step === '1';
+              const numericValue = field.value ?? '';
+
+              if (useInteger) {
+                return (
+                  <IntegerField
+                    {...field}
+                    {...commonProps}
+                    label=""
+                    autoComplete="one-time-code"
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ min, max }}
+                    value={numericValue}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      field.onChange(value === '' ? '' : Number(value));
+                    }}
+                  />
+                );
+              }
+
+              return (
+                <DecimalField
+                  {...field}
+                  {...commonProps}
+                  label=""
+                  autoComplete="one-time-code"
+                  InputLabelProps={{ shrink: true }}
+                  decimalPlaces={decimalPlaces}
+                  inputProps={{ min, max }}
+                  value={numericValue}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '' || value === '.') {
+                      field.onChange('');
+                      return;
+                    }
+                    const num = Number(value);
+                    field.onChange(Number.isNaN(num) ? '' : num);
+                  }}
+                />
+              );
+            }
 
             case 'textarea':
               return (

@@ -8,6 +8,7 @@ import {
   KIOSK_LOGO_URL,
   LOGIN_BACKGROUND_VIDEO_URL,
 } from '../lib/config';
+import { currentPasswordInputProps, usernameInputProps } from '../lib/inputHints';
 import { clearFailures, getLockout, recordFailure } from '../lib/loginLockout';
 import { cachedAssetSrc } from '../lib/tauriCommands';
 
@@ -178,7 +179,7 @@ export function LoginHomePage() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
                 disabled={blocked}
-                autoComplete="off"
+                {...usernameInputProps}
                 required
               />
             </div>
@@ -196,6 +197,7 @@ export function LoginHomePage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 disabled={blocked}
+                {...currentPasswordInputProps}
                 required
               />
               <button

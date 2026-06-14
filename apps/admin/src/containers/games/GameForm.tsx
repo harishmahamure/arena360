@@ -1,4 +1,4 @@
-import { FormButton } from '@gaming-cafe/ui';
+import { FormButton, IntegerField } from '@gaming-cafe/ui';
 import { Alert, Box, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
 import { AssetUploadField } from '../../components/AssetUploadField';
@@ -95,9 +95,8 @@ export function GameForm({
         </Stack>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-          <TextField
+          <IntegerField
             label="Sort order"
-            type="number"
             value={sortOrder}
             onChange={(e) => setSortOrder(Number.parseInt(e.target.value, 10) || 0)}
             sx={{ width: { xs: '100%', sm: 200 } }}

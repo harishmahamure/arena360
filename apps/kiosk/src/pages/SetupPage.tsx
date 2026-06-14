@@ -5,6 +5,7 @@ import { AllowListEditor } from '../components/AllowListEditor';
 import { AsyncActionButton } from '../components/AsyncActionButton';
 import { useKiosk } from '../context/KioskProvider';
 import { KIOSK_LOGO_URL } from '../lib/config';
+import { totpInputProps } from '../lib/inputHints';
 import { setWatchdogPause } from '../lib/tauriCommands';
 
 const SETUP_IDLE_MS = 15 * 60 * 1000;
@@ -196,8 +197,8 @@ export function SetupPage() {
               <input
                 value={totp}
                 onChange={(e) => setTotp(e.target.value.replace(/\s+/g, '').slice(0, 6))}
+                {...totpInputProps}
                 required
-                autoComplete="one-time-code"
               />
             </label>
             {error ? <p className="error">{error}</p> : null}

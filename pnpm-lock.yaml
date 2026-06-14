@@ -351,6 +351,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.15)
+      vitest:
+        specifier: ^3.0.9
+        version: 3.2.4(@types/node@20.19.41)(jsdom@29.1.1)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)
 
   packages/utils:
     dependencies:

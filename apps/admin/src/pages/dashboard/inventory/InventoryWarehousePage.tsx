@@ -1,4 +1,4 @@
-import { type Column, ListPage } from '@gaming-cafe/ui';
+import { type Column, IntegerField, ListPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import {
   Alert,
@@ -177,8 +177,7 @@ export default function InventoryWarehousePage() {
                     </MenuItem>
                   ))}
                 </TextField>
-                <TextField
-                  type="number"
+                <IntegerField
                   label="Boxes received"
                   value={boxQty}
                   onChange={(e) => setBoxQty(e.target.value)}

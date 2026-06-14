@@ -1,3 +1,4 @@
+import { CurrencyField, DecimalField } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import {
   Box,
@@ -15,10 +16,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { getConfigs, upsertConfig } from '../../../services/config';
 
+type ConfigFieldVariant = 'currency' | 'decimal';
+
 interface ConfigGroup {
   title: string;
   category: string;
-  fields: { key: string; label: string; type?: 'text' | 'number' | 'boolean' }[];
+  fields: {
+    key: string;
+    label: string;
+    type?: 'text' | 'number' | 'boolean';
+    variant?: ConfigFieldVariant;
+  }[];
 }
 
 const CONFIG_GROUPS: ConfigGroup[] = [
@@ -50,12 +58,46 @@ const CONFIG_GROUPS: ConfigGroup[] = [
         key: 'pricing.default_per_minute_rate',
         label: 'Default Per-Minute Rate (INR)',
         type: 'number',
+        variant: 'currency',
       },
       { key: 'pricing.currency', label: 'Currency Code' },
-      { key: 'pricing.tax_rate', label: 'Tax Rate (%)', type: 'number' },
+      {
+        key: 'pricing.tax_rate',
+        label: 'Tax Rate (%)',
+        type: 'number',
+        variant: 'decimal',
+      },
     ],
   },
 ];
+
+function ConfigValueField({
+  field,
+  value,
+  onChange,
+}: {
+  field: ConfigGroup['fields'][number];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const common = {
+    label: field.label,
+    size: 'small' as const,
+    fullWidth: true,
+    value,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value),
+  };
+
+  if (field.variant === 'currency') {
+    return <CurrencyField {...common} />;
+  }
+
+  if (field.variant === 'decimal') {
+    return <DecimalField {...common} />;
+  }
+
+  return <TextField {...common} type={field.type === 'number' ? 'number' : 'text'} />;
+}
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -125,15 +167,10 @@ export default function SettingsPage() {
               <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {group.fields.map((field) => (
                   <Box key={field.key} sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-                    <TextField
-                      label={field.label}
-                      size="small"
-                      fullWidth
-                      type={field.type === 'number' ? 'number' : 'text'}
+                    <ConfigValueField
+                      field={field}
                       value={values[field.key] ?? ''}
-                      onChange={(e) =>
-                        setValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                      }
+                      onChange={(next) => setValues((prev) => ({ ...prev, [field.key]: next }))}
                     />
                     <Button
                       variant="outlined"

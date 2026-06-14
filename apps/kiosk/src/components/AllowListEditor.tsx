@@ -28,6 +28,7 @@ import {
   loadGameBoostSettings,
   syncGameBoostToNative,
 } from '../lib/gameBoost';
+import { integerInputProps } from '../lib/inputHints';
 import { pickExecutable, type ScanCandidate, scanInstalledSoftware } from '../lib/tauriCommands';
 import { GalleryPicker } from './GalleryPicker';
 
@@ -551,7 +552,7 @@ export function AllowListEditor() {
               <label className="catalog-field catalog-field--narrow">
                 Sort order
                 <input
-                  type="number"
+                  {...integerInputProps}
                   value={selected.sortOrder ?? 0}
                   onChange={(e) => patchSelected({ sortOrder: Number(e.target.value) || 0 })}
                 />

@@ -1,4 +1,5 @@
-import { Grid, InputAdornment, TextField } from '@mui/material';
+import { CurrencyField } from '@gaming-cafe/ui';
+import { Grid } from '@mui/material';
 
 export interface PosSplitAmountFieldsProps {
   cashAmount: string;
@@ -18,29 +19,21 @@ export function PosSplitAmountFields({
   return (
     <Grid container spacing={2} sx={{ mb: 2 }}>
       <Grid size={{ xs: 6 }}>
-        <TextField
+        <CurrencyField
           label="Cash Amount"
-          type="number"
           value={cashAmount}
           onChange={(e) => onCashChange(e.target.value)}
           fullWidth
           helperText={helperText}
-          InputProps={{
-            startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-          }}
         />
       </Grid>
       <Grid size={{ xs: 6 }}>
-        <TextField
+        <CurrencyField
           label="Online Amount"
-          type="number"
           value={onlineAmount}
           onChange={(e) => onOnlineChange(e.target.value)}
           fullWidth
           helperText={helperText}
-          InputProps={{
-            startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-          }}
         />
       </Grid>
     </Grid>

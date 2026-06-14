@@ -1,4 +1,4 @@
-import { FormPage } from '@gaming-cafe/ui';
+import { FormPage, IntegerField } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { Alert, Autocomplete, Box, Button, MenuItem, TextField } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -112,8 +112,7 @@ export default function InventoryWasteNewPage() {
           )}
         />
 
-        <TextField
-          type="number"
+        <IntegerField
           label="Quantity (pieces)"
           value={quantityPieces}
           onChange={(e) => setQuantityPieces(e.target.value)}

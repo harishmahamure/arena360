@@ -1,4 +1,4 @@
-import { FormButton } from '@gaming-cafe/ui';
+import { FormButton, IntegerField } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
 import {
   Add as AddIcon,
@@ -536,13 +536,12 @@ export default function CreateProductTransactionPage() {
                       >
                         <RemoveIcon fontSize="small" />
                       </IconButton>
-                      <TextField
+                      <IntegerField
                         value={item.quantity}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value, 10) || 0;
+                          const val = Number.parseInt(e.target.value, 10) || 0;
                           updateQuantity(item.id, val);
                         }}
-                        type="number"
                         sx={{ width: 60, mx: 1 }}
                         size="small"
                         disabled={submitting}

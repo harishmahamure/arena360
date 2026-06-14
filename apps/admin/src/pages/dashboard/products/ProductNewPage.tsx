@@ -46,7 +46,7 @@ function buildProductFormFields(
     {
       name: 'price',
       label: 'Day price (₹)',
-      type: 'number',
+      type: 'currency',
       required: true,
       gridCols: 4,
       min: 0,
@@ -55,7 +55,7 @@ function buildProductFormFields(
     {
       name: 'nightPrice',
       label: 'Night price (₹)',
-      type: 'number',
+      type: 'currency',
       required: true,
       gridCols: 4,
       min: 0,
@@ -64,7 +64,7 @@ function buildProductFormFields(
     {
       name: 'purchasePricePerBox',
       label: 'Purchase price / box (₹)',
-      type: 'number',
+      type: 'currency',
       gridCols: 4,
       min: 0,
       helperText: 'Cost per purchase unit (box); used for margin reporting',
@@ -73,6 +73,7 @@ function buildProductFormFields(
       name: 'unitsPerPurchaseUnit',
       label: 'Units per box',
       type: 'number',
+      integer: true,
       gridCols: 4,
       min: 1,
       helperText: 'Pieces in one purchase unit (box)',
@@ -106,6 +107,7 @@ function buildProductFormFields(
       name: 'stockQuantity',
       label: 'Initial store stock (pieces)',
       type: 'number',
+      integer: true,
       gridCols: 4,
       min: 0,
       helperText: 'Optional; synced to default store on create',

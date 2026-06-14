@@ -1,4 +1,4 @@
-import { FormPage } from '@gaming-cafe/ui';
+import { FormPage, IntegerField } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { Delete } from '@mui/icons-material';
 import {
@@ -156,8 +156,7 @@ export default function InventoryTransferNewPage() {
           <ToggleButton value="boxes">Boxes</ToggleButton>
           <ToggleButton value="pieces">Pieces</ToggleButton>
         </ToggleButtonGroup>
-        <TextField
-          type="number"
+        <IntegerField
           label={quantityMode === 'boxes' ? 'Boxes' : 'Pieces'}
           value={qty}
           onChange={(e) => setQty(e.target.value)}
@@ -180,8 +179,7 @@ export default function InventoryTransferNewPage() {
                 {formatTransferQuantity(line.quantityPieces, line.unitsPerBox)}
               </Typography>
             </Box>
-            <TextField
-              type="number"
+            <IntegerField
               size="small"
               label="Pieces"
               value={line.quantityPieces}

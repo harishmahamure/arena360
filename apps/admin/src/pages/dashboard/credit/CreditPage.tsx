@@ -1,4 +1,4 @@
-import { type Action, type Column, DataGrid, GridSkeleton } from '@gaming-cafe/ui';
+import { type Action, type Column, CurrencyField, DataGrid, GridSkeleton } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { Payment as PaymentIcon } from '@mui/icons-material';
 import {
@@ -347,13 +347,11 @@ export default function CreditPage() {
                       </TableCell>
                       <TableCell align="right">{formatCurrency(line.remaining)}</TableCell>
                       <TableCell align="right">
-                        <TextField
+                        <CurrencyField
                           size="small"
-                          type="number"
                           value={line.amount}
                           disabled={!line.selected}
                           onChange={(e) => updateLineAmount(line.transactionId, e.target.value)}
-                          inputProps={{ min: 0, max: line.remaining, step: 0.01 }}
                           sx={{ width: 100 }}
                         />
                       </TableCell>
@@ -394,17 +392,15 @@ export default function CreditPage() {
             />
             {paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (
               <>
-                <TextField
+                <CurrencyField
                   size="small"
                   label="Cash amount"
-                  type="number"
                   value={cashAmount}
                   onChange={(e) => setCashAmount(e.target.value)}
                 />
-                <TextField
+                <CurrencyField
                   size="small"
                   label="Online amount"
-                  type="number"
                   value={onlineAmount}
                   onChange={(e) => setOnlineAmount(e.target.value)}
                 />
