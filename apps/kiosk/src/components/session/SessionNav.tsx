@@ -7,7 +7,7 @@ import { getSystemVolume, setSystemVolume } from '../../lib/tauriCommands';
 
 const VOLUME_KEY = 'gaming-cafe.kiosk.volume';
 
-export type SessionView = 'library' | 'settings';
+export type SessionView = 'home' | 'library' | 'settings';
 
 interface SessionNavProps {
   playerName: string | null;
@@ -24,6 +24,7 @@ interface SessionNavProps {
 }
 
 const TABS: { id: SessionView; label: string }[] = [
+  { id: 'home', label: 'Home' },
   { id: 'library', label: 'Games' },
   { id: 'settings', label: 'Settings' },
 ];

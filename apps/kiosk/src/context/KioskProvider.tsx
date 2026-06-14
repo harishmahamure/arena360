@@ -22,6 +22,7 @@ import {
   persistPlayerToken,
   tokenCache,
 } from '../lib/http';
+import { resetLoginLockoutByStaff } from '../lib/loginLockout';
 import { enqueueEndIntent, loadEndIntents, removeEndIntent } from '../lib/offlineQueue';
 import { formatPlayerLoginError } from '../lib/planErrors';
 import { KioskRealtimeClient } from '../lib/realtime';
@@ -33,7 +34,13 @@ import {
   staffEndedFromPayload,
 } from '../lib/remoteSessionEnd';
 import { prepareSessionSounds } from '../lib/sessionSounds';
-import { clearAllTokens, killTrackedProcesses, setLockdownState } from '../lib/tauriCommands';
+import { resolveSetupShortcutAction } from '../lib/setupShortcut';
+import {
+  clearAllTokens,
+  focusKiosk,
+  killTrackedProcesses,
+  setLockdownState,
+} from '../lib/tauriCommands';
 
 export type AppPhase =
   | 'loading'
@@ -172,6 +179,8 @@ interface KioskContextValue {
   /** Dismiss the single-login conflict screen back to idle. */
   dismissConflict: () => void;
   factoryReset: () => Promise<void>;
+  /** Bumped when staff clears player login lockout (Ctrl+Shift+B). */
+  staffLockoutClearTick: number;
 }
 
 const KioskContext = createContext<KioskContextValue | null>(null);
@@ -222,6 +231,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   // Short-lived admin token captured during first-time provisioning (in memory only).
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [setupAuthenticated, setSetupAuthenticated] = useState(false);
+  const [staffLockoutClearTick, setStaffLockoutClearTick] = useState(0);
 
   const maintenance = deviceStatus === 'under_maintenance' || deviceStatus === 'out_of_service';
 
@@ -587,10 +597,25 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const requestEnterSetup = useCallback(() => {
-    const phase = phaseRef.current;
-    if (phase === 'setup' || phase === 'register' || phase === 'loading') return;
-    void enterSetup();
+    switch (resolveSetupShortcutAction(phaseRef.current)) {
+      case 'noop':
+        return;
+      case 'focusSetup':
+        void focusKiosk().catch(() => {
+          // Non-fatal when running outside Tauri (browser dev).
+        });
+        return;
+      case 'enterSetup':
+        void enterSetup();
+        return;
+    }
   }, [enterSetup]);
+
+  const requestClearLoginLockout = useCallback(() => {
+    if (phaseRef.current !== 'login') return;
+    resetLoginLockoutByStaff();
+    setStaffLockoutClearTick((tick) => tick + 1);
+  }, []);
 
   const clearSetupAuthenticated = useCallback(() => {
     setSetupAuthenticated(false);
@@ -598,7 +623,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const exitSetup = useCallback(async () => {
     setSetupAuthenticated(false);
-    await setLockdownState('Locked');
+    const wasRelaxed = setupRelaxedRef.current;
+    setupRelaxedRef.current = false;
+    if (wasRelaxed) {
+      await setLockdownState('Locked');
+    }
     setPhase('login');
   }, []);
 
@@ -626,6 +655,31 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [requestEnterSetup]);
+
+  // Staff lockout clear via Ctrl+Shift+B (ADR-0020). Native hook emits
+  // `clear-login-lockout` when the webview lacks focus under lockdown.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/event').then(({ listen }) =>
+      listen('clear-login-lockout', () => {
+        requestClearLoginLockout();
+      }).then((fn) => {
+        unlisten = fn;
+      }),
+    );
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+        e.preventDefault();
+        requestClearLoginLockout();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      unlisten?.();
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [requestClearLoginLockout]);
 
   const playerLogin = useCallback(
     async (username: string, password: string) => {
@@ -807,6 +861,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     endSession,
     dismissConflict,
     factoryReset,
+    staffLockoutClearTick,
   };
 
   return <KioskContext.Provider value={value}>{children}</KioskContext.Provider>;

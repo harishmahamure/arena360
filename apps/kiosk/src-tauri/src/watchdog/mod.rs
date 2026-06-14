@@ -18,6 +18,8 @@ pub const DEFAULT_SETUP_PAUSE_MINUTES: u64 = 15;
 /// Covers download, UAC, NSIS replace, and relaunch so the watchdog does not respawn
 /// the kiosk while installer files are locked (perMachine auto-update).
 pub const UPDATE_PAUSE_MINUTES: u64 = 10;
+/// Covers shutdown/reboot handoff only; cleared when the watchdog starts after reboot.
+pub const POWER_HANDOFF_PAUSE_SECS: u64 = 90;
 pub const POLL_INTERVAL_SECS: u64 = 5;
 pub const SPAWN_DEBOUNCE_SECS: u64 = 3;
 
@@ -69,6 +71,17 @@ pub fn clear_pause() -> Result<(), String> {
     let path = pause_file_path();
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// After reboot, a `power` pause was only meant to cover shutdown — drop it at watchdog boot.
+pub fn clear_pause_if_power_handoff() -> Result<(), String> {
+    let Some(file) = read_pause_file()? else {
+        return Ok(());
+    };
+    if file.reason == "power" {
+        clear_pause()?;
     }
     Ok(())
 }
@@ -259,5 +272,27 @@ mod tests {
         let past = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
         let now = SystemTime::UNIX_EPOCH + Duration::from_secs(10_000);
         assert!(parse_rfc3339(&format_rfc3339(past)).unwrap() < now);
+    }
+
+    #[test]
+    fn clear_power_pause_on_watchdog_boot() {
+        let path = pause_file_path();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = clear_pause();
+
+        let until = SystemTime::now() + Duration::from_secs(900);
+        write_pause_until(until, "power").unwrap();
+        assert!(path.exists());
+
+        clear_pause_if_power_handoff().unwrap();
+        assert!(!path.exists());
+
+        write_pause_until(until, "setup").unwrap();
+        clear_pause_if_power_handoff().unwrap();
+        assert!(path.exists());
+
+        let _ = clear_pause();
     }
 }

@@ -8,12 +8,7 @@ import {
   KIOSK_LOGO_URL,
   LOGIN_BACKGROUND_VIDEO_URL,
 } from '../lib/config';
-import {
-  clearFailures,
-  getLockout,
-  recordFailure,
-  resetLoginLockoutByStaff,
-} from '../lib/loginLockout';
+import { clearFailures, getLockout, recordFailure } from '../lib/loginLockout';
 import { cachedAssetSrc } from '../lib/tauriCommands';
 
 function formatRetry(retryAt: number): string {
@@ -26,7 +21,7 @@ function formatRetry(retryAt: number): string {
  * centered glass sign-in card, and station controls. All auth logic (lockout,
  * maintenance/offline gating, player login) is preserved. Setup is reached via
  * Ctrl+Shift+A (handled globally in KioskProvider). Staff can clear login lockout
- * with Ctrl+Shift+B on this screen.
+ * with Ctrl+Shift+B (handled globally in KioskProvider).
  */
 export function LoginHomePage() {
   const {
@@ -38,6 +33,7 @@ export function LoginHomePage() {
     deviceName,
     loginNotice,
     clearLoginNotice,
+    staffLockoutClearTick,
   } = useKiosk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -62,18 +58,11 @@ export function LoginHomePage() {
     return () => clearTimeout(id);
   }, [error, lockout.locked, clearError]);
 
-  // Staff-only: clear client login lockout (same hidden shortcut pattern as Ctrl+Shift+A setup).
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
-        e.preventDefault();
-        setLockout(resetLoginLockoutByStaff());
-        setStaffLockCleared(true);
-      }
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+    if (staffLockoutClearTick === 0) return;
+    setLockout(getLockout());
+    setStaffLockCleared(true);
+  }, [staffLockoutClearTick]);
 
   useEffect(() => {
     let cancelled = false;

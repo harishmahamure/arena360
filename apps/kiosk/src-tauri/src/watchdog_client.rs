@@ -1,7 +1,8 @@
 //! Tauri-facing watchdog pause/mutex helpers (Windows).
 
 use crate::watchdog::{
-    clear_pause, write_pause, DEFAULT_SETUP_PAUSE_MINUTES, UPDATE_PAUSE_MINUTES,
+    clear_pause, write_pause, write_pause_secs, DEFAULT_SETUP_PAUSE_MINUTES,
+    POWER_HANDOFF_PAUSE_SECS, UPDATE_PAUSE_MINUTES,
 };
 
 #[tauri::command]
@@ -54,7 +55,7 @@ fn pause_for_update() -> Result<(), String> {
 pub fn pause_for_power_action() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        write_pause(DEFAULT_SETUP_PAUSE_MINUTES, "power")
+        write_pause_secs(POWER_HANDOFF_PAUSE_SECS, "power")
     }
     #[cfg(not(target_os = "windows"))]
     {

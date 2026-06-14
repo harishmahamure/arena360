@@ -6,7 +6,8 @@
 //! the Menu/Apps (context-menu) key. Alt+Tab is intentionally allowed so
 //! players can switch between approved launched apps. **Ctrl+Shift+H** raises
 //! the kiosk above launched games without closing them. **Ctrl+Shift+A** opens
-//! administrator setup (emits `enter-setup` to the webview). **Limitation:**
+//! administrator setup (emits `enter-setup` to the webview). **Ctrl+Shift+B**
+//! clears the player login lockout (emits `clear-login-lockout`). **Limitation:**
 //! Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user
 //! mode by design — it always reaches the Windows Secure Desktop. Full CAD
 //! suppression requires the `DisableLockWorkstation` /
@@ -18,30 +19,30 @@
 #[cfg(target_os = "windows")]
 mod win {
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
     use std::thread;
     use std::time::{Duration, Instant};
     use tauri::{AppHandle, Emitter};
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_A, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_H, VK_LWIN, VK_MENU,
-        VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB,
+        GetAsyncKeyState, VK_A, VK_APPS, VK_B, VK_CONTROL, VK_ESCAPE, VK_F4, VK_H, VK_LWIN,
+        VK_MENU, VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
         WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
-    /// Newtype so the hook handle can live in a `static OnceLock`. `HHOOK`
-    /// wraps a raw `*mut c_void` (so it is `!Send + !Sync`), but the handle is
-    /// an opaque value only ever installed/removed/used on the main UI thread,
-    /// so sharing it is sound.
+    /// Newtype so the hook handle can live in a `static Mutex`. `HHOOK` wraps a
+    /// raw `*mut c_void` (so it is `!Send + !Sync`), but the handle is an opaque
+    /// value only ever installed/removed/used on the main UI thread, so sharing
+    /// it is sound.
     struct HookHandle(HHOOK);
     unsafe impl Send for HookHandle {}
     unsafe impl Sync for HookHandle {}
 
-    static HOOK: OnceLock<HookHandle> = OnceLock::new();
+    static HOOK: Mutex<Option<HookHandle>> = Mutex::new(None);
     static ENABLED: AtomicBool = AtomicBool::new(false);
     static ALT_REHIDE_RUNNING: AtomicBool = AtomicBool::new(false);
     static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -51,6 +52,13 @@ mod win {
 
     pub fn set_app_handle(app: AppHandle) {
         let _ = APP.set(app);
+    }
+
+    fn next_hook_handle() -> HHOOK {
+        HOOK.lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|h| h.0))
+            .unwrap_or_default()
     }
 
     /// `true` if `vk` is currently held down (high bit of the async key state).
@@ -97,6 +105,13 @@ mod win {
     /// Ctrl+Shift+A — open administrator setup (handled in the webview via event).
     unsafe fn is_enter_setup_combo(vk: u32) -> bool {
         vk == VK_A.0 as u32
+            && is_down(VK_CONTROL.0 as i32)
+            && is_down(VK_SHIFT.0 as i32)
+    }
+
+    /// Ctrl+Shift+B — clear player login lockout (handled in the webview via event).
+    unsafe fn is_clear_lockout_combo(vk: u32) -> bool {
+        vk == VK_B.0 as u32
             && is_down(VK_CONTROL.0 as i32)
             && is_down(VK_SHIFT.0 as i32)
     }
@@ -154,6 +169,13 @@ mod win {
                     }
                     return LRESULT(1);
                 }
+                if is_clear_lockout_combo(kb.vkCode) {
+                    if let Some(app) = APP.get() {
+                        let _ = crate::process::focus_kiosk_window(app);
+                        let _ = app.emit("clear-login-lockout", ());
+                    }
+                    return LRESULT(1);
+                }
                 if should_block(kb.vkCode) {
                     return LRESULT(1);
                 }
@@ -164,29 +186,34 @@ mod win {
             }
         }
 
-        CallNextHookEx(
-            HOOK.get().map(|h| h.0).unwrap_or_default(),
-            code,
-            wparam,
-            lparam,
-        )
+        CallNextHookEx(next_hook_handle(), code, wparam, lparam)
     }
 
     pub fn install() {
         if ENABLED.swap(true, Ordering::SeqCst) {
             return;
         }
+        let Ok(mut guard) = HOOK.lock() else {
+            ENABLED.store(false, Ordering::SeqCst);
+            return;
+        };
+        if guard.is_some() {
+            return;
+        }
         unsafe {
             let module = GetModuleHandleW(None).unwrap_or_default();
             let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), module, 0)
                 .expect("keyboard hook");
-            let _ = HOOK.set(HookHandle(hook));
+            *guard = Some(HookHandle(hook));
         }
     }
 
     pub fn remove() {
         ENABLED.store(false, Ordering::SeqCst);
-        if let Some(hook) = HOOK.get() {
+        let Ok(mut guard) = HOOK.lock() else {
+            return;
+        };
+        if let Some(hook) = guard.take() {
             unsafe {
                 let _ = UnhookWindowsHookEx(hook.0);
             }

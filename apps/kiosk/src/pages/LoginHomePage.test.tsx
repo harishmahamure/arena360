@@ -16,6 +16,7 @@ const { lockWorkstation, restartStation, shutdownStation } = vi.hoisted(() => ({
 
 let loginNotice: string | null = null;
 let error: string | null = null;
+let staffLockoutClearTick = 0;
 
 vi.mock('../context/KioskProvider', () => ({
   useKiosk: () => ({
@@ -31,6 +32,9 @@ vi.mock('../context/KioskProvider', () => ({
       return loginNotice;
     },
     clearLoginNotice,
+    get staffLockoutClearTick() {
+      return staffLockoutClearTick;
+    },
   }),
 }));
 
@@ -50,6 +54,7 @@ describe('LoginHomePage', () => {
     localStorage.clear();
     loginNotice = null;
     error = null;
+    staffLockoutClearTick = 0;
     vi.clearAllMocks();
     vi.useRealTimers();
   });
@@ -82,14 +87,16 @@ describe('LoginHomePage', () => {
     expect(screen.getByRole('button', { name: /sign in/i })).toBeDisabled();
   });
 
-  it('staff Ctrl+Shift+B clears login lockout', async () => {
+  it('staff lockout clear tick shows cleared banner and enables sign-in', async () => {
     const failures = Array.from({ length: MAX_FAILURES }, () => Date.now());
     localStorage.setItem('gaming-cafe.kiosk.login_failures', JSON.stringify(failures));
-    render(<LoginHomePage />);
+    const { rerender } = render(<LoginHomePage />);
     expect(screen.getByText(/too many attempts/i)).toBeInTheDocument();
 
+    localStorage.removeItem('gaming-cafe.kiosk.login_failures');
+    staffLockoutClearTick = 1;
     await act(async () => {
-      fireEvent.keyDown(window, { ctrlKey: true, shiftKey: true, key: 'B' });
+      rerender(<LoginHomePage />);
     });
 
     expect(screen.queryByText(/too many attempts/i)).not.toBeInTheDocument();

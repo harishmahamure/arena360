@@ -134,6 +134,7 @@ pub fn spawn_kiosk(kiosk_exe: &Path) -> Result<(), String> {
 
 pub fn watchdog_main_loop(watchdog_exe: PathBuf) -> Result<(), String> {
     let _watchdog_guard = acquire_watchdog_mutex()?;
+    super::clear_pause_if_power_handoff()?;
     let kiosk_exe = super::resolve_kiosk_exe(&watchdog_exe)?;
     let install_dir = kiosk_exe
         .parent()

@@ -84,14 +84,27 @@ function Resolve-WatchdogExe([string]$Dir) {
     return $null
 }
 
-function Install-WatchdogTask([string]$WatchdogExe) {
+function Install-WatchdogTask([string]$WatchdogExe, [string]$RunAsUser) {
     if (-not (Test-Path -LiteralPath $WatchdogExe)) {
         Write-Warn "Watchdog binary not found at $WatchdogExe; skipping scheduled task."
         return
     }
     $null = schtasks /Delete /TN $WatchdogTaskName /F 2>&1
     $quoted = "`"$WatchdogExe`""
-    $result = schtasks /Create /TN $WatchdogTaskName /TR $quoted /SC ONLOGON /RL LIMITED /F 2>&1
+    $createArgs = @(
+        '/Create', '/TN', $WatchdogTaskName,
+        '/TR', $quoted,
+        '/SC', 'ONLOGON',
+        '/RL', 'LIMITED',
+        '/F'
+    )
+    if (-not [string]::IsNullOrWhiteSpace($RunAsUser)) {
+        $createArgs += @('/RU', $RunAsUser)
+        Write-Info "Registering $WatchdogTaskName for user '$RunAsUser' at logon."
+    } else {
+        Write-Info "Registering $WatchdogTaskName at logon (current installer context)."
+    }
+    $result = schtasks @createArgs 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Could not register watchdog task (exit $LASTEXITCODE): $result"
         return
@@ -241,7 +254,7 @@ if (-not $SkipWatchdog) {
     } else {
         $watchdog = Resolve-WatchdogExe $InstallDir
         if ($watchdog) {
-            Install-WatchdogTask $watchdog
+            Install-WatchdogTask -WatchdogExe $watchdog -RunAsUser $KioskUser
         } else {
             Write-Warn "No watchdog binary under $InstallDir; skipping scheduled task."
         }
@@ -259,7 +272,7 @@ if ($AutoLogonPassword) {
     if ($prompted) {
         Install-AutoLogon -User $KioskUser -Password $prompted
     } else {
-        Write-Warn 'Auto-logon not configured. Use Sysinternals Autologon or re-run with -AutoLogonPassword for fleet deploy.'
+        Write-Warn "Auto-logon not configured. The kiosk will not start until a user logs on. Use Sysinternals Autologon, re-run with -AutoLogonPassword, or ensure the auto-logon user matches -KioskUser ($KioskUser)."
     }
 }
 
