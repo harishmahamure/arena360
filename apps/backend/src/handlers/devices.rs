@@ -7,12 +7,15 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
+use crate::error::AppError;
 use crate::dto::{
     created, ok, ApiResult, DeviceRegisterResponseDto, ProvisionDeviceDto, RegisteredDeviceDto,
 };
-use crate::middleware::AdminUser;
+use crate::middleware::{AdminOrStaff, AdminUser};
+use crate::validation::{is_playstation_device_type, require_playstation_device_type};
 use crate::models::{
-    CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
+    normalize_device_type, CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto,
+    UpdateDeviceStatusDto,
 };
 use crate::openapi::responses::{DeviceEnvelope, DevicePaginationEnvelope, ErrorEnvelope};
 
@@ -98,10 +101,20 @@ pub async fn create_device(
     tag = "devices"
 )]
 pub async fn provision_device(
-    AdminUser(claims): AdminUser,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Json(dto): Json<ProvisionDeviceDto>,
+    Json(mut dto): Json<ProvisionDeviceDto>,
 ) -> ApiResult<DeviceRegisterResponseDto> {
+    if dto.provisionClient.as_deref() == Some("console-tv") {
+        dto.deviceType = Some(require_playstation_device_type(dto.deviceType)?);
+    } else if let Some(ref device_type) = dto.deviceType {
+        if normalize_device_type(device_type)
+            .is_some_and(|normalized| is_playstation_device_type(&normalized))
+        {
+            return Err(AppError::forbidden_code("DEVICE_TYPE_NOT_ALLOWED"));
+        }
+    }
+
     let device = state.devices.provision(dto, claims.user_id_uuid()).await?;
     let token = state.auth.generate_device_token(device.id)?;
     ok(DeviceRegisterResponseDto {

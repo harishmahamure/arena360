@@ -151,6 +151,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/login/player", post(handlers::auth::login_player))
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/verify-otp", post(handlers::auth::verify_otp))
+        .route("/auth/sso/tokens", post(handlers::auth::create_sso_token))
+        .route("/auth/sso/redeem", post(handlers::auth::redeem_sso_token))
+        .route("/auth/device-pairing", post(handlers::auth::device_pairing))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))
         .route(
             "/stats/staff-dashboard",
@@ -291,6 +294,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/kiosk/sessions/{id}/end",
             patch(handlers::kiosk::end_session),
+        )
+        .route(
+            "/tv/sessions/current",
+            get(handlers::console_tv::current_session),
+        )
+        .route(
+            "/tv/sessions/{id}/end",
+            patch(handlers::console_tv::end_session),
         )
         .route(
             "/transactions",

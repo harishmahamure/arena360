@@ -101,6 +101,22 @@ impl SessionRepository {
         Ok(sessions)
     }
 
+    pub async fn find_open_session_for_device(
+        &self,
+        device_id: Uuid,
+    ) -> Result<Option<UsageSession>, AppError> {
+        let query = format!(
+            r#"{} WHERE "deviceId" = $1 AND "endTime" IS NULL AND "deletedAt" IS NULL
+            ORDER BY "startTime" DESC LIMIT 1"#,
+            Self::SELECT
+        );
+        let session = sqlx::query_as::<_, UsageSession>(&query)
+            .bind(device_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(session)
+    }
+
     pub async fn find_open_session_for_player(
         &self,
         player_id: Uuid,

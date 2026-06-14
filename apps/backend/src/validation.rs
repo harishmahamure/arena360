@@ -16,6 +16,21 @@ pub fn require_non_empty(value: Option<String>, message: &str) -> Result<String,
     Ok(trimmed)
 }
 
+const PLAYSTATION_DEVICE_TYPES: &[&str] = &["PS5", "PS4"];
+
+pub fn is_playstation_device_type(device_type: &str) -> bool {
+    PLAYSTATION_DEVICE_TYPES.contains(&device_type)
+}
+
+pub fn require_playstation_device_type(value: Option<String>) -> Result<String, AppError> {
+    let normalized = require_device_type(value)?;
+    if is_playstation_device_type(&normalized) {
+        Ok(normalized)
+    } else {
+        Err(AppError::forbidden_code("DEVICE_TYPE_NOT_ALLOWED"))
+    }
+}
+
 pub fn require_device_type(value: Option<String>) -> Result<String, AppError> {
     let raw = require_non_empty(value, "deviceType is required")?;
     normalize_device_type(&raw).ok_or_else(|| AppError::BadRequest(device_type_error_message()))

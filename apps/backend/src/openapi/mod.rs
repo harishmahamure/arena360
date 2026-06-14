@@ -2,9 +2,11 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::dto::auth_dto::{
-    ActiveSessionDto, AuthResponseDto, AuthUserDto, ChangePasswordDto, LoginDto, RegisterDto,
-    RegisterResponseDto, VerifyOtpDto,
+    ActiveSessionDto, AuthResponseDto, AuthUserDto, ChangePasswordDto, CreateSsoTokenDto,
+    CreateSsoTokenResponseDto, DevicePairingDto, DevicePairingResponseDto, LoginDto, RedeemSsoTokenDto,
+    RegisterDto, RegisterResponseDto, VerifyOtpDto,
 };
+use crate::dto::{EndTvSessionDto, TvSessionResponseDto};
 use crate::handlers;
 use crate::dto::{ApproveInventoryActionDto, WasteSummaryFilterDto};
 use crate::models::{
@@ -81,6 +83,9 @@ impl Modify for SecurityAddon {
         handlers::auth::login_staff,
         handlers::auth::login_player,
         handlers::auth::verify_otp,
+        handlers::auth::create_sso_token,
+        handlers::auth::redeem_sso_token,
+        handlers::auth::device_pairing,
         handlers::auth::register,
         handlers::stats::dashboard_stats,
         handlers::stats::staff_dashboard_stats,
@@ -103,6 +108,8 @@ impl Modify for SecurityAddon {
         handlers::kiosk::current_session,
         handlers::kiosk::heartbeat_session,
         handlers::kiosk::end_session,
+        handlers::console_tv::current_session,
+        handlers::console_tv::end_session,
         handlers::plans::list_plans,
         handlers::plans::get_active_plans,
         handlers::plans::get_plan,
@@ -236,6 +243,13 @@ impl Modify for SecurityAddon {
             AuthResponseDto,
             AuthUserDto,
             ActiveSessionDto,
+            CreateSsoTokenDto,
+            CreateSsoTokenResponseDto,
+            RedeemSsoTokenDto,
+            DevicePairingDto,
+            DevicePairingResponseDto,
+            TvSessionResponseDto,
+            EndTvSessionDto,
             AuthResponseEnvelope,
             RegisterResponseDto,
             RegisterResponseEnvelope,

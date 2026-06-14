@@ -4,9 +4,11 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
-    created, ok, ApiResult, AuthResponseDto, LoginDto, OtpPendingResponse, PlayerLoginDto,
-    RegisterDto, RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
+    created, ok, ApiResult, AuthResponseDto, CreateSsoTokenDto, CreateSsoTokenResponseDto,
+    DevicePairingDto, DevicePairingResponseDto, LoginDto, OtpPendingResponse, PlayerLoginDto,
+    RedeemSsoTokenDto, RegisterDto, RegisterResponseDto, StaffLoginDto, VerifyOtpDto,
 };
+use crate::validation::{is_playstation_device_type, require_playstation_device_type};
 use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, DeviceUser};
 use crate::models::ClockInDto;
@@ -146,6 +148,105 @@ pub async fn login_player(
         )
         .await?;
     ok(result)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/sso/tokens",
+    request_body = CreateSsoTokenDto,
+    responses(
+        (status = 200, description = "SSO token created"),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "auth"
+)]
+pub async fn create_sso_token(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<CreateSsoTokenDto>,
+) -> ApiResult<CreateSsoTokenResponseDto> {
+    let created_by = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user".to_string()))?;
+
+    if let Some(device_id) = dto.deviceId.as_deref() {
+        let device_uuid = Uuid::parse_str(device_id)
+            .map_err(|_| AppError::BadRequest("Invalid deviceId".to_string()))?;
+        let device = state.devices.get_by_id(device_uuid).await?;
+        if !is_playstation_device_type(&device.device_type) {
+            return Err(AppError::forbidden_code("DEVICE_TYPE_NOT_ALLOWED"));
+        }
+    }
+
+    let created_token = state
+        .auth
+        .create_sso_token(dto.clone(), created_by)
+        .await?;
+
+    if let Some(device_id) = &created_token.deviceId {
+        let channel = format!("device:{device_id}");
+        let payload = serde_json::json!({
+            "token": created_token.token,
+            "expiresAt": created_token.expiresAt,
+            "purpose": dto.purpose,
+            "deviceId": device_id,
+        });
+        let _ = state
+            .outbox
+            .publish(&channel, "sso.token.created", payload, None, None, false)
+            .await;
+    }
+
+    ok(created_token)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/sso/redeem",
+    request_body = RedeemSsoTokenDto,
+    responses(
+        (status = 200, description = "Staff JWT issued", body = AuthResponseEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    tag = "auth"
+)]
+pub async fn redeem_sso_token(
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<RedeemSsoTokenDto>,
+) -> ApiResult<AuthResponseDto> {
+    let result = state.auth.redeem_sso_token(dto).await?;
+    ok(result)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/device-pairing",
+    request_body = DevicePairingDto,
+    responses(
+        (status = 200, description = "Pairing JWT for pre-provision WS"),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    tag = "auth"
+)]
+pub async fn device_pairing(
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<DevicePairingDto>,
+) -> ApiResult<DevicePairingResponseDto> {
+    let device_id = Uuid::parse_str(dto.deviceId.trim())
+        .map_err(|_| AppError::BadRequest("Invalid deviceId".to_string()))?;
+    let device = state.devices.get_by_id(device_id).await?;
+    require_playstation_device_type(Some(device.device_type.clone()))?;
+    let pairing = state.auth.generate_pairing_token(device_id)?;
+    ok(pairing)
 }
 
 #[utoipa::path(

@@ -19,6 +19,8 @@ const PUBLIC_EXACT: &[&str] = &[
     "/auth/login/admin",
     "/auth/login/staff",
     "/auth/verify-otp",
+    "/auth/sso/redeem",
+    "/auth/device-pairing",
     "/health/live",
     "/realtime",
 ];

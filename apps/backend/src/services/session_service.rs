@@ -264,10 +264,22 @@ impl SessionService {
 
         self.events.publish_session_started(&session.id.to_string());
 
+        let balance = self.balances.get_raw(dto.balance_id).await?;
+        let remaining = effective_remaining_for_session(
+            &balance,
+            &session,
+            &self.cafe_timezone,
+        );
         let device_channel = format!("device:{}", dto.device_id);
         let payload = serde_json::json!({
             "sessionId": session.id.to_string(),
             "deviceId": dto.device_id.to_string(),
+            "playerId": balance.player_id.to_string(),
+            "balanceId": dto.balance_id.to_string(),
+            "startTime": session.start_time.to_rfc3339(),
+            "remainingMinutes": remaining as f64,
+            "deductionProfile": balance.deduction_profile,
+            "cafeTimezone": self.cafe_timezone,
         });
         let _ = self
             .outbox
@@ -640,6 +652,125 @@ impl SessionService {
         }
 
         Ok(updated)
+    }
+
+    pub async fn open_tv_session_for_device(
+        &self,
+        device: &Device,
+    ) -> Result<Option<crate::dto::TvSessionResponseDto>, AppError> {
+        crate::validation::require_playstation_device_type(Some(device.device_type.clone()))?;
+
+        let Some(session) = self
+            .repo
+            .find_open_session_for_device(device.id)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let balance_id = session.balance_id.ok_or_else(|| {
+            AppError::BadRequest("Session has no linked balance".to_string())
+        })?;
+        let balance = self.balances.get_raw(balance_id).await?;
+        let remaining =
+            effective_remaining_for_session(&balance, &session, &self.cafe_timezone);
+        let deduction_profile = balance
+            .deduction_profile
+            .as_ref()
+            .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok());
+
+        Ok(Some(crate::dto::TvSessionResponseDto {
+            sessionId: session.id.to_string(),
+            balanceId: balance_id.to_string(),
+            deviceId: device.id.to_string(),
+            startTime: session.start_time.to_rfc3339(),
+            remainingMinutes: remaining as f64,
+            playerUsername: None,
+            deductionProfile: deduction_profile,
+            cafeTimezone: self.cafe_timezone.clone(),
+        }))
+    }
+
+    pub async fn end_tv_session_for_device(
+        &self,
+        device: &Device,
+        session_id: Uuid,
+        reason: Option<String>,
+    ) -> Result<crate::dto::TvSessionResponseDto, AppError> {
+        crate::validation::require_playstation_device_type(Some(device.device_type.clone()))?;
+
+        let session = self.get_by_id(session_id).await?;
+        if session.device_id != device.id {
+            return Err(AppError::Forbidden(
+                "Session does not belong to this device".to_string(),
+            ));
+        }
+
+        if session.end_time.is_some() {
+            let balance_id = session.balance_id.unwrap_or_default();
+            let (remaining, deduction_profile) = if balance_id != Uuid::nil() {
+                let balance = self.balances.get_raw(balance_id).await?;
+                (
+                    balance.remaining_minutes,
+                    balance.deduction_profile.as_ref().and_then(|value| {
+                        serde_json::from_value::<DeductionProfile>(value.clone()).ok()
+                    }),
+                )
+            } else {
+                (0, None)
+            };
+            return Ok(crate::dto::TvSessionResponseDto {
+                sessionId: session.id.to_string(),
+                balanceId: session
+                    .balance_id
+                    .map(|b| b.to_string())
+                    .unwrap_or_default(),
+                deviceId: device.id.to_string(),
+                startTime: session.start_time.to_rfc3339(),
+                remainingMinutes: remaining as f64,
+                playerUsername: None,
+                deductionProfile: deduction_profile,
+                cafeTimezone: self.cafe_timezone.clone(),
+            });
+        }
+
+        let end_reason = reason.unwrap_or_else(|| "auto".to_string());
+        let ended = self
+            .end(
+                session_id,
+                EndSessionDto {
+                    end_time: None,
+                    time_credits_consumed: None,
+                    staff_totp: None,
+                    reason: Some(end_reason),
+                },
+                None,
+            )
+            .await?;
+
+        let balance_id = ended.balance_id.unwrap_or_default();
+        let (remaining, deduction_profile) = if balance_id != Uuid::nil() {
+            let balance = self.balances.get_raw(balance_id).await?;
+            (
+                balance.remaining_minutes,
+                balance.deduction_profile.as_ref().and_then(|value| {
+                    serde_json::from_value::<DeductionProfile>(value.clone()).ok()
+                }),
+            )
+        } else {
+            (0, None)
+        };
+
+        Ok(crate::dto::TvSessionResponseDto {
+            sessionId: ended.id.to_string(),
+            balanceId: balance_id.to_string(),
+            deviceId: device.id.to_string(),
+            startTime: ended.start_time.to_rfc3339(),
+            remainingMinutes: remaining as f64,
+            playerUsername: None,
+            deductionProfile: deduction_profile,
+            cafeTimezone: self.cafe_timezone.clone(),
+        })
     }
 
 }

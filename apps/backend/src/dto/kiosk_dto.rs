@@ -26,6 +26,9 @@ pub struct ProvisionDeviceDto {
     pub deviceType: Option<String>,
     pub deviceSubType: Option<String>,
     pub location: Option<String>,
+    /// When `console-tv`, backend rejects non-PlayStation device types.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provisionClient: Option<String>,
 }
 
 #[allow(non_snake_case)]
@@ -107,6 +110,27 @@ pub fn kiosk_session_response(
         cafeTimezone: started.cafe_timezone.clone(),
         timeCreditsConsumed: Some(started.time_credits_consumed),
     }
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TvSessionResponseDto {
+    pub sessionId: String,
+    pub balanceId: String,
+    pub deviceId: String,
+    pub startTime: String,
+    pub remainingMinutes: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playerUsername: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deductionProfile: Option<DeductionProfile>,
+    pub cafeTimezone: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, Default, ToSchema)]
+pub struct EndTvSessionDto {
+    pub reason: Option<String>,
 }
 
 #[allow(non_snake_case)]

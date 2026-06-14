@@ -38,7 +38,10 @@
     "backend:clippy": "cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml -- -D warnings",
     "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml",
     "kiosk:dev": "pnpm --filter @gaming-cafe/kiosk tauri:dev",
-    "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build"
+    "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build",
+    "console-tv:assemble": "cd apps/console-tv && ./gradlew :app:assembleDebug",
+    "console-tv:install": "cd apps/console-tv && ./gradlew :app:installDebug",
+    "console-tv:run": "pnpm console-tv:install && adb shell am start -n com.gamingcafe.consoletv/.MainActivity"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

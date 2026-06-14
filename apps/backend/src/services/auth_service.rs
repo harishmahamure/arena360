@@ -4,17 +4,19 @@ use bcrypt::verify;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::dto::{
-    ActiveSessionDto, AuthResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse,
-    RateLimitClaims, StaffLoginDto, VerifyOtpDto,
+    ActiveSessionDto, AuthResponseDto, CreateSsoTokenDto, CreateSsoTokenResponseDto,
+    DevicePairingResponseDto, JwtUserClaims, LoginDto, OtpPendingResponse, RateLimitClaims,
+    RedeemSsoTokenDto, StaffLoginDto, VerifyOtpDto,
 };
 use crate::error::AppError;
 use crate::models::{Device, User};
-use crate::repositories::{SessionRepository, UserRepository};
+use crate::repositories::{SessionRepository, SsoRepository, UserRepository};
 use crate::services::session_service::effective_remaining_for_session;
 use crate::services::totp_util::verify_totp_code;
 use crate::services::{BalanceService, MailService, OtpRateLimiter};
@@ -22,6 +24,7 @@ use crate::services::{BalanceService, MailService, OtpRateLimiter};
 pub struct AuthService {
     user_repo: UserRepository,
     session_repo: SessionRepository,
+    sso_repo: SsoRepository,
     balances: Arc<BalanceService>,
     mail_service: MailService,
     otp_limiter: OtpRateLimiter,
@@ -32,7 +35,8 @@ impl AuthService {
     pub fn new(pool: PgPool, settings: Arc<Settings>, balances: Arc<BalanceService>) -> Self {
         Self {
             user_repo: UserRepository::new(pool.clone()),
-            session_repo: SessionRepository::new(pool),
+            session_repo: SessionRepository::new(pool.clone()),
+            sso_repo: SsoRepository::new(pool),
             balances,
             mail_service: MailService::new(settings.as_ref()),
             otp_limiter: OtpRateLimiter::new(),
@@ -202,6 +206,137 @@ impl AuthService {
         self.ensure_active_for_player(&user)?;
 
         Ok(user)
+    }
+
+    pub async fn create_sso_token(
+        &self,
+        dto: CreateSsoTokenDto,
+        created_by: Uuid,
+    ) -> Result<CreateSsoTokenResponseDto, AppError> {
+        let purpose = dto.purpose.trim();
+        if purpose != "tv_provision" && purpose != "tv_login" {
+            return Err(AppError::BadRequest(
+                "purpose must be tv_provision or tv_login".to_string(),
+            ));
+        }
+
+        let device_id = match purpose {
+            "tv_provision" => {
+                let raw = dto
+                    .deviceId
+                    .as_deref()
+                    .ok_or_else(|| AppError::BadRequest("deviceId is required".to_string()))?;
+                Some(
+                    Uuid::parse_str(raw)
+                        .map_err(|_| AppError::BadRequest("Invalid deviceId".to_string()))?,
+                )
+            }
+            _ => dto
+                .deviceId
+                .as_deref()
+                .map(|raw| {
+                    Uuid::parse_str(raw)
+                        .map_err(|_| AppError::BadRequest("Invalid deviceId".to_string()))
+                })
+                .transpose()?,
+        };
+
+        let raw_token = Uuid::new_v4().to_string();
+        let token_hash = hash_sso_token(&raw_token);
+        let expires_at = Utc::now() + Duration::minutes(5);
+
+        self.sso_repo
+            .insert(&token_hash, purpose, device_id, created_by, expires_at)
+            .await?;
+
+        Ok(CreateSsoTokenResponseDto {
+            token: raw_token,
+            expiresAt: expires_at.to_rfc3339(),
+            deviceId: device_id.map(|id| id.to_string()),
+        })
+    }
+
+    pub async fn redeem_sso_token(
+        &self,
+        dto: RedeemSsoTokenDto,
+    ) -> Result<AuthResponseDto, AppError> {
+        let token = dto.token.trim();
+        if token.is_empty() {
+            return Err(AppError::BadRequest("token is required".to_string()));
+        }
+
+        let row = self
+            .sso_repo
+            .find_valid_by_hash(&hash_sso_token(token))
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("Invalid or expired SSO token".to_string()))?;
+
+        if row.redeemed_at.is_some() {
+            return Err(AppError::Unauthorized("SSO token already used".to_string()));
+        }
+        if row.expires_at < Utc::now() {
+            return Err(AppError::Unauthorized("SSO token expired".to_string()));
+        }
+
+        let staff_id = row
+            .created_by
+            .ok_or_else(|| AppError::Internal("SSO token missing creator".to_string()))?;
+        let user = self
+            .user_repo
+            .find_by_id(staff_id)
+            .await?
+            .ok_or_else(|| AppError::Unauthorized("SSO creator not found".to_string()))?;
+
+        if !user.role.as_deref().is_some_and(|r| r == "admin" || r == "staff") {
+            return Err(AppError::Forbidden("SSO creator is not staff".to_string()));
+        }
+        self.ensure_active(&user)?;
+
+        self.sso_repo.mark_redeemed(row.id).await?;
+        let access_token = self.generate_access_token(&user)?;
+
+        Ok(AuthResponseDto {
+            accessToken: access_token,
+            user: user.to_auth_user(),
+            shiftId: None,
+            activeSession: None,
+        })
+    }
+
+    pub fn generate_pairing_token(&self, device_id: Uuid) -> Result<DevicePairingResponseDto, AppError> {
+        let now = Utc::now();
+        let expires_at = now + Duration::minutes(5);
+        let id = device_id.to_string();
+
+        let claims = JwtUserClaims {
+            sub: id.clone(),
+            permissions: vec![],
+            allowedTenants: vec![],
+            rateLimit: Some(RateLimitClaims { qps: 100 }),
+            iss: "gamezone".to_string(),
+            aud: serde_json::json!("gamezone"),
+            iat: Some(now.timestamp()),
+            exp: Some(expires_at.timestamp()),
+            userId: id.clone(),
+            tenantId: "dualshock-arena".to_string(),
+            roles: vec!["device_pairing".to_string()],
+            appId: "game-zone-console-tv".to_string(),
+            orgIds: vec![],
+            deviceId: Some(id.clone()),
+        };
+
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(self.settings.jwt_secret.as_bytes()),
+        )
+        .map_err(AppError::Jwt)?;
+
+        Ok(DevicePairingResponseDto {
+            accessToken: token,
+            expiresAt: expires_at.to_rfc3339(),
+            deviceId: id,
+        })
     }
 
     pub fn generate_device_token(&self, device_id: Uuid) -> Result<String, AppError> {
@@ -464,6 +599,12 @@ impl AuthService {
         )
         .map_err(AppError::Jwt)
     }
+}
+
+fn hash_sso_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 fn parse_duration(value: &str) -> Duration {
