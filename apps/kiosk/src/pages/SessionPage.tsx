@@ -6,7 +6,6 @@ import {
 } from '@gaming-cafe/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AsyncActionButton } from '../components/AsyncActionButton';
-import { HomeView } from '../components/session/HomeView';
 import { LibraryView } from '../components/session/LibraryView';
 import { RunningAppsBar } from '../components/session/RunningAppsBar';
 import { SessionNav, type SessionView } from '../components/session/SessionNav';
@@ -38,8 +37,7 @@ export function SessionPage() {
   } = useKiosk();
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [view, setView] = useState<SessionView>('home');
-  const [libraryQuery, setLibraryQuery] = useState('');
+  const [view, setView] = useState<SessionView>('library');
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [refreshingTime, setRefreshingTime] = useState(false);
   const {
@@ -97,14 +95,6 @@ export function SessionPage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
-
-  // When the player returns from a launched game, land on the session homepage.
-  useEffect(() => {
-    if (!activeSession || processes.length === 0) return;
-    const onFocus = () => setView('home');
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [activeSession, processes.length]);
 
   // Create (or resume) the session once when arriving without one.
   useEffect(() => {
@@ -212,12 +202,11 @@ export function SessionPage() {
           }
         }}
         refreshing={refreshingTime}
-        onError={onError}
       />
 
       <RunningAppsBar processes={processes} closing={closing} onCloseAll={closeAll} />
 
-      <div className={`a360-session-body${view === 'home' ? ' a360-session-body--home' : ''}`}>
+      <div className="a360-session-body">
         {!online ? (
           <div className="a360-section">
             <div className="maintenance-banner" role="alert">
@@ -230,15 +219,8 @@ export function SessionPage() {
           </div>
         ) : null}
 
-        {view === 'home' ? (
-          <HomeView
-            onError={onError}
-            onNavigate={setView}
-            onSearchLibrary={setLibraryQuery}
-            onLaunched={refresh}
-          />
-        ) : view === 'library' ? (
-          <LibraryView initialQuery={libraryQuery} onError={onError} onLaunched={refresh} />
+        {view === 'library' ? (
+          <LibraryView onError={onError} onLaunched={refresh} />
         ) : (
           <SettingsView onError={onError} onLaunched={refresh} />
         )}

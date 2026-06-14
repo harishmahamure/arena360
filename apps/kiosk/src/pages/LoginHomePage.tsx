@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
 import { SESSION_EXPIRED_DISMISS_MS, SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
 import { KIOSK_APP_VERSION, KIOSK_LOGO_URL, LOGIN_BACKGROUND_VIDEO_URL } from '../lib/config';
@@ -14,6 +13,12 @@ import { cachedAssetSrc } from '../lib/tauriCommands';
 function formatRetry(retryAt: number): string {
   const mins = Math.max(1, Math.ceil((retryAt - Date.now()) / 60000));
   return `${mins} minute${mins === 1 ? '' : 's'}`;
+}
+
+function stationStatusLabel(online: boolean, maintenance: boolean): string {
+  if (maintenance) return 'Maintenance';
+  if (!online) return 'Offline';
+  return 'Online';
 }
 
 /**
@@ -226,7 +231,14 @@ export function LoginHomePage() {
           </button>
         </form>
 
-        <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
+        <section className="station-status-line" aria-label="Station status">
+          <span className="station-status-line-name">{deviceName ?? 'Station'}</span>
+          <span
+            className={`station-status station-status-${stationStatusLabel(online, maintenance).toLowerCase()}`}
+          >
+            {stationStatusLabel(online, maintenance)}
+          </span>
+        </section>
 
         {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: version line exposes build label to screen readers */}
         <p className="a360-login-version" aria-label={`App version ${KIOSK_APP_VERSION}`}>

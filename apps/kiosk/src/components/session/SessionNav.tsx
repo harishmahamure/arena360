@@ -3,11 +3,11 @@ import { formatRemainingClock } from '@gaming-cafe/utils';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { KIOSK_LOGO_URL } from '../../lib/config';
-import { getSystemVolume, openAudioSettings, setSystemVolume } from '../../lib/tauriCommands';
+import { getSystemVolume, setSystemVolume } from '../../lib/tauriCommands';
 
 const VOLUME_KEY = 'gaming-cafe.kiosk.volume';
 
-export type SessionView = 'home' | 'library' | 'settings';
+export type SessionView = 'library' | 'settings';
 
 interface SessionNavProps {
   playerName: string | null;
@@ -21,11 +21,9 @@ interface SessionNavProps {
   onEndSession: () => void;
   onRefreshTime?: () => Promise<void>;
   refreshing?: boolean;
-  onError?: (message: string) => void;
 }
 
 const TABS: { id: SessionView; label: string }[] = [
-  { id: 'home', label: 'Home' },
   { id: 'library', label: 'Games' },
   { id: 'settings', label: 'Settings' },
 ];
@@ -41,7 +39,7 @@ function readVolume(): number {
 }
 
 /**
- * Arena360 in-session top navigation: brand, Home/Games/Settings tabs, the
+ * Arena360 in-session top navigation: brand, Games/Settings tabs, the
  * remaining-time pill, a UI volume control and a profile menu with End session.
  * Volume + countdown logic preserved from the prior KioskTopBar.
  */
@@ -56,7 +54,6 @@ export function SessionNav({
   onEndSession,
   onRefreshTime,
   refreshing = false,
-  onError,
 }: SessionNavProps) {
   const [open, setOpen] = useState<'audio' | 'profile' | null>(null);
   const [volume, setVolume] = useState<number>(() => readVolume());
@@ -116,15 +113,6 @@ export function SessionNav({
       setVolume(actual);
     } catch {
       // Non-Windows/dev fallback remains UI-only.
-    }
-  }
-
-  async function handleOpenAudioSettings() {
-    try {
-      await openAudioSettings();
-      setOpen(null);
-    } catch (error) {
-      onError?.(error instanceof Error ? error.message : 'Could not open sound settings');
     }
   }
 
@@ -204,15 +192,6 @@ export function SessionNav({
                 onChange={(e) => void changeVolume(Number.parseInt(e.target.value, 10))}
               />
               <span className="kiosk-audio-value">{volume}%</span>
-              <button
-                type="button"
-                className="kiosk-audio-settings"
-                aria-label="Open Windows sound settings"
-                title="Sound settings"
-                onClick={() => void handleOpenAudioSettings()}
-              >
-                <span className="material-symbols-outlined">settings</span>
-              </button>
             </div>
           ) : null}
         </div>

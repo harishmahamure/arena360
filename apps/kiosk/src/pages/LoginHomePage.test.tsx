@@ -40,6 +40,10 @@ describe('LoginHomePage', () => {
     render(<LoginHomePage />);
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/app version/i)).toHaveTextContent(/^v\d/);
+    expect(screen.queryByRole('button', { name: /^lock$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^restart$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^shutdown$/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/station status/i)).toBeInTheDocument();
   });
 
   it('locks the form after too many failures', () => {
