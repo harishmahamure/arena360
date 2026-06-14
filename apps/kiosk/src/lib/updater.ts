@@ -1,6 +1,14 @@
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
+import type { AppPhase } from '../context/KioskProvider';
 import { prepareUpdateRelaunch } from './tauriCommands';
+
+/** Phases where no player session is active and an update check is safe (ADR-0028). */
+export type IdleUpdatePhase = Extract<AppPhase, 'register' | 'setup' | 'login'>;
+
+export function isIdleUpdatePhase(phase: AppPhase): phase is IdleUpdatePhase {
+  return phase === 'register' || phase === 'setup' || phase === 'login';
+}
 
 /**
  * Tauri auto-update manager (ADR-0028).
@@ -11,7 +19,8 @@ import { prepareUpdateRelaunch } from './tauriCommands';
  * CI builds have no update source, so `check()` simply errors and we no-op.
  *
  * Callers MUST only invoke this while the station is idle (no active player
- * session) so an update never interrupts play — see ADR-0020 lockdown.
+ * session) — `register`, `setup`, or `login` phases — so an update never
+ * interrupts play (ADR-0020 lockdown).
  */
 let inFlight = false;
 

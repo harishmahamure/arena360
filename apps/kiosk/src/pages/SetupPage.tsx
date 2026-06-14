@@ -12,7 +12,14 @@ const SETUP_IDLE_MS = 15 * 60 * 1000;
 type SetupLoginStep = 'credentials' | 'totp';
 
 export function SetupPage() {
-  const { adminLogin, exitSetup, factoryReset, error } = useKiosk();
+  const {
+    adminLogin,
+    exitSetup,
+    factoryReset,
+    error,
+    setupAuthenticated,
+    clearSetupAuthenticated,
+  } = useKiosk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
@@ -25,6 +32,12 @@ export function SetupPage() {
   const setupActionLoading =
     lockAction.loading || factoryResetAction.loading || exitDesktopAction.loading;
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!setupAuthenticated) return;
+    setAuthenticated(true);
+    clearSetupAuthenticated();
+  }, [setupAuthenticated, clearSetupAuthenticated]);
 
   useEffect(() => {
     if (!authenticated) return;

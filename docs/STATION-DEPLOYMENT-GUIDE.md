@@ -103,10 +103,12 @@ replacement, Run key) are in
 - [ ] **Verify watchdog:** After install, confirm `schtasks /Query /TN "Arena360 Watchdog"`
   and that `%ProgramFiles%\Arena360\kiosk\arena360-watchdog.exe` exists (exact path may vary).
 
-- [ ] **GPO hardening (recommended):** `DisableTaskMgr`, `DisableLockWorkstation`,
-  `DisableChangePassword`.
-- [ ] **First boot provisioning:** Operator at station presses **Ctrl+Shift+A** → admin
-  login → register device → curate software allow-list in setup.
+- [ ] **GPO hardening (recommended):** Applied by default at install (`DisableTaskMgr`,
+  `DisableLockWorkstation`, `DisableChangePassword`, `NoRun`); pass `/NOHARDENING` to skip.
+- [ ] **First boot provisioning:** After reboot/auto-logon, kiosk shows **RegistrationPage**
+  (no device token). Sign in with Arena360 admin credentials → register device. The kiosk
+  then opens **SetupPage** automatically for allow-list curation (`SetupRelaxed`; no second
+  admin login). Exit setup to reach the player login screen.
 - [ ] **Post-deploy QA:** Run [kiosk-windows-qa-checklist.md](kiosk-windows-qa-checklist.md).
 
 ### Lockdown layers
@@ -134,8 +136,10 @@ Arena360 PC lockdown has two layers. **Both** are required for a hardened public
 
 ### What is not automated yet
 
-- Fleet script `scripts/windows/configure-station.ps1` (not in repo yet)
-- Assigned Access / auto-logon automation (IT manual)
+- Assigned Access / shell replacement (Layer 1 Options A/B — manual)
+- Auto-logon password in fully silent `/S` installs (run `configure-station.ps1` with `-AutoLogonPassword` after install, or use Sysinternals Autologon)
+
+Post-install watchdog, HKLM hardening, and interactive auto-logon: [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) (bundled in NSIS; `/NOCONFIGURE` opt-out). See [KIOSK-WINDOWS-DEPLOYMENT.md § Single-user post-logon provisioning](KIOSK-WINDOWS-DEPLOYMENT.md#single-user-post-logon-provisioning-recommended).
 
 Manual Scheduled Task fallback: [KIOSK-WINDOWS-DEPLOYMENT.md § Manual setup now](KIOSK-WINDOWS-DEPLOYMENT.md#manual-setup-now-fallback).
 
@@ -332,5 +336,4 @@ To re-register: clear app data or uninstall/reinstall (see Sideload install).
 
 - Google Play Store distribution for Console TV (`supply` not configured)
 - Android Device Owner / MDM kiosk mode (no app support)
-- Automated `configure-station.ps1` (K10 fleet script — still pending)
 - App-level boot receiver for Console TV

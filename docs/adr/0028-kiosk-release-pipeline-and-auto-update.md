@@ -5,6 +5,23 @@
 **Deciders**: Platform team
 **Relates to**: [ADR-0002](0002-kiosk-tauri-canonical.md), [ADR-0016](0016-kiosk-monorepo-reintroduce.md), [ADR-0003](0003-secrets-management.md), [ADR-0020](0020-kiosk-windows-lockdown.md)
 
+## Amendment 2026-06-15: post-install station configuration
+
+The NSIS installer ships [`configure-station.ps1`](../../apps/kiosk/scripts/windows/configure-station.ps1)
+and runs it post-install (unless `/NOCONFIGURE`):
+
+| Default action | Opt-out flag |
+|----------------|--------------|
+| Register **Arena360 Watchdog** at logon | `/NOAUTOSTART` → `-SkipWatchdog` |
+| Set HKLM policy keys (`DisableTaskMgr`, `DisableLockWorkstation`, `DisableChangePassword`, `NoRun`) | `/NOHARDENING` |
+| Prompt for auto-logon password (interactive) or accept `-AutoLogonPassword` on manual re-run | skip by pressing Enter at prompt |
+
+- Marker file `%ProgramData%\Arena360\registry-hardening.json` records values written by the
+  installer; uninstall invokes the script with `-Uninstall` to remove them.
+- `/KIOSKUSER=Name` targets the single Windows kiosk account (default: installing user).
+- Watchdog at logon only — does **not** set `Winlogon\Shell` or replace `explorer.exe`.
+- Assigned Access / shell replacement remain manual (see `KIOSK-WINDOWS-DEPLOYMENT.md` Layer 1).
+
 ## Context
 
 The kiosk is a Tauri 2 app (`apps/kiosk`). Today `.github/workflows/kiosk-ci.yml`
@@ -58,9 +75,10 @@ Add a `workflow_dispatch` release workflow
   `tauri-plugin-process` / `@tauri-apps/plugin-process` (to relaunch after
   install). Register both behind `#[cfg(desktop)]` in the Tauri builder, and add
   `updater:default` + `process:default` to the kiosk capability.
-- The webview checks for updates **only while the station is idle** (the kiosk
-  `login` phase — no active player session), gated to respect ADR-0020 lockdown,
-  with failures swallowed (offline / not-yet-configured is non-fatal).
+- The webview checks for updates **only while the station is idle** (kiosk
+  `register`, `setup`, or `login` phase — no active player session), gated to
+  respect ADR-0020 lockdown, with failures swallowed (offline /
+  not-yet-configured is non-fatal).
 
 ### 3. Signing + endpoint injected at release time (not committed)
 
@@ -114,8 +132,8 @@ simply have no update endpoint (checks no-op).
 - `perMachine` installs mean the NSIS updater needs **elevation** to replace
   machine-wide files; on a locked-down kiosk this surfaces a UAC prompt. Operator
   must run the kiosk with rights to self-update or accept a manual elevation step.
-- Auto-update must never interrupt an active player session — hence the idle/login
-  gate (ADR-0020).
+- Auto-update must never interrupt an active player session — hence the idle
+  gate on `register` | `setup` | `login` phases (ADR-0020).
 - GitHub Releases must be reachable from cafe networks; if blocked, fall back to
   object storage (see alternatives).
 
@@ -123,7 +141,8 @@ simply have no update endpoint (checks no-op).
 
 - Document key generation (`tauri signer generate`) and storage in the README;
   keep a sealed backup of the private key outside CI.
-- Gate `check()` / `downloadAndInstall()` behind the kiosk idle (`login`) state.
+- Gate `check()` / `downloadAndInstall()` behind the kiosk idle phases
+  (`register`, `setup`, `login`).
 - Revisit `perUser` install or an elevated update service if UAC prompts prove
   unworkable on locked stations.
 
@@ -154,6 +173,8 @@ simply have no update endpoint (checks no-op).
 
 - `.github/workflows/kiosk-release.yml` (new), `.github/workflows/kiosk-ci.yml`
 - `apps/kiosk/scripts/set-version.mjs` (new)
+- `apps/kiosk/scripts/windows/configure-station.ps1` (post-install station config)
+- `apps/kiosk/src-tauri/windows/hooks.nsh` (NSIS hooks)
 - `apps/kiosk/src-tauri/tauri.conf.json`, `Cargo.toml`, capabilities/default.json
 - `apps/kiosk/src/lib/updater.ts` (new)
 - `apps/kiosk/README.md` §"Auto-update", §signing

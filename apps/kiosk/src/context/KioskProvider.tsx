@@ -149,6 +149,9 @@ interface KioskContextValue {
   provisionDevice: (input: DeviceProvisionInput) => Promise<void>;
   /** True once an admin has signed in during registration. */
   adminAuthenticated: boolean;
+  /** True after registration until SetupPage consumes the handoff (skip re-login). */
+  setupAuthenticated: boolean;
+  clearSetupAuthenticated: () => void;
   enterSetup: () => Promise<void>;
   exitSetup: () => Promise<void>;
   /** Admin sign-in (optional TOTP). Stores token; optionally relaxes lockdown for setup. */
@@ -217,6 +220,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const cleanupInFlightRef = useRef(false);
   // Short-lived admin token captured during first-time provisioning (in memory only).
   const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [setupAuthenticated, setSetupAuthenticated] = useState(false);
 
   const maintenance = deviceStatus === 'under_maintenance' || deviceStatus === 'out_of_service';
 
@@ -557,8 +561,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         setDeviceName(result.device.name);
         storeDeviceName(result.device.name);
         setAdminToken(null);
-        setPhase('login');
-        await setLockdownState('Locked');
+        await setLockdownState('SetupRelaxed');
+        setSetupAuthenticated(true);
+        setPhase('setup');
         connectWs(result.device.id);
       } catch (e) {
         // Revert the temporary admin bearer so a failed attempt leaves no token.
@@ -577,7 +582,12 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setPhase('setup');
   }, []);
 
+  const clearSetupAuthenticated = useCallback(() => {
+    setSetupAuthenticated(false);
+  }, []);
+
   const exitSetup = useCallback(async () => {
+    setSetupAuthenticated(false);
     await setLockdownState('Locked');
     setPhase('login');
   }, []);
@@ -766,6 +776,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     refresh,
     provisionDevice,
     adminAuthenticated: adminToken !== null,
+    setupAuthenticated,
+    clearSetupAuthenticated,
     enterSetup,
     exitSetup,
     adminLogin,

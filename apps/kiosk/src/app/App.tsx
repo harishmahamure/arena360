@@ -16,12 +16,15 @@ function KioskShell() {
   const locked = phase !== 'setup' && phase !== 'loading';
   useKioskShellGuard(locked);
 
-  // Auto-update manager (ADR-0028): only check while idle at the login screen,
+  // Auto-update manager (ADR-0028): check while idle (register, setup, login),
   // never during an active session. Loaded lazily so the Tauri updater plugin
   // is not pulled into browser/test bundles.
   useEffect(() => {
-    if (phase !== 'login') return;
-    void import('../lib/updater').then((m) => m.checkForUpdateWhenIdle());
+    void import('../lib/updater').then((m) => {
+      if (m.isIdleUpdatePhase(phase)) {
+        void m.checkForUpdateWhenIdle();
+      }
+    });
   }, [phase]);
 
   let content = <p className="meta">Loading…</p>;

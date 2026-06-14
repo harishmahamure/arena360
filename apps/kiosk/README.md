@@ -76,6 +76,8 @@ This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bund
 
 MSI is not built: WiX bundling fails when `externalBin` sidecars are configured ([tauri#14681](https://github.com/tauri-apps/tauri/issues/14681)). For SCCM/Intune, deploy the NSIS installer silently (`/S`) instead.
 
+**Post-install flags** (see [KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)): `/NOCONFIGURE`, `/NOAUTOSTART`, `/NOHARDENING`, `/KIOSKUSER=Name`. The bundled `configure-station.ps1` registers the watchdog, applies HKLM hardening by default, and optionally configures auto-logon for a single Windows user.
+
 ### WebView2 runtime (Windows 10)
 
 The app renders through the Microsoft **Edge WebView2** runtime. The installer is
@@ -90,7 +92,7 @@ bootstrapper is embedded and run during install (small download at install time)
 
 ### Lockdown / kiosk OS configuration
 
-App-level lockdown blocks the Windows keys, Alt+F4 and Ctrl+Shift+Esc. Alt+Tab uses native Windows switching.
+App-level lockdown blocks the Windows keys, Alt+F4 and Ctrl+Shift+Esc, hides the taskbar and Start menu flyout while locked, and Alt+Tab uses native Windows switching.
 
 **Staff shortcuts (login screen):**
 
@@ -103,9 +105,10 @@ Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user mod
 For a hardened station, also apply at the OS level:
 
 - Assigned Access / kiosk account, or group policy `DisableLockWorkstation` and
-  `DisableTaskMgr`.
-- Auto-login of the kiosk account; the NSIS installer registers **Arena360 Watchdog** at
-  logon (watchdog relaunches the kiosk if it exits). Pass `/NOAUTOSTART` to skip.
+  `DisableTaskMgr` (applied by default via post-install script; pass `/NOHARDENING` to skip).
+- Auto-login of the kiosk account; the installer runs **configure-station.ps1** (watchdog at
+  logon, optional auto-logon prompt). Pass `/NOAUTOSTART` or `/NOCONFIGURE` to skip parts.
+  This registers startup at logon only — it does **not** replace `explorer.exe` as the shell.
 
 **Full roadmap:** [docs/KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)
 (Assigned Access, shell replacement, watchdog sidecar, fleet rollout).
@@ -122,8 +125,8 @@ is intentionally left unconfigured in-repo so no certificate material is committ
 
 The kiosk ships with the Tauri update manager (`tauri-plugin-updater` +
 `tauri-plugin-process`). It checks for a newer signed build **only while the
-station is idle** (the `login` phase, no active player session) and, if found,
-downloads, installs, and relaunches.
+station is idle** (`register`, `setup`, or `login` phase — no active player
+session) and, if found, downloads, installs, and relaunches.
 
 Updates are produced and published by the **Release Kiosk (Windows)** workflow
 (`.github/workflows/kiosk-release.yml`), triggered manually with a

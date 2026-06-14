@@ -17,11 +17,12 @@
 | Block window close while locked | **Shipped** | `CloseRequested` → `prevent_close` when `is_locked()` |
 | Setup escape (`Ctrl+Shift+A` → admin login) | **Shipped** | `SetupRelaxed` allows close and non-allow-listed launches |
 | Windows installer (NSIS `perMachine`) | **Shipped** | [ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md) |
-| Idle auto-update | **Shipped** | Only on login/attract screen, no active session |
-| Boot auto-start (watchdog) | **Shipped** | NSIS registers `Arena360 Watchdog` scheduled task at logon (skip with `/NOAUTOSTART`) |
+| Idle auto-update | **Shipped** | On registration, setup, and login/attract screens (no active session) |
+| Boot auto-start (watchdog) | **Shipped** | NSIS post-install `configure-station.ps1` registers **Arena360 Watchdog** at logon (skip with `/NOAUTOSTART`) |
 | Auto-reopen after crash/kill | **Shipped** | `arena360-watchdog.exe` sidecar polls every 2 s and relaunches kiosk |
+| Post-install station config | **Shipped** | `configure-station.ps1`: watchdog, HKLM hardening, optional auto-logon (skip with `/NOCONFIGURE`) |
 
-**Gap (remaining):** OS shell hardening (Assigned Access / GPO) is still IT manual.
+**Gap (remaining):** Assigned Access / shell replacement (Layer 1 Options A/B) is still IT manual.
 `SetupRelaxed` close and **Exit to desktop (15 min)** write a pause file so the watchdog
 does not relaunch until the TTL expires. Power restart/shutdown and auto-update handoff
 also pause the watchdog briefly.
@@ -41,6 +42,58 @@ flowchart LR
   setup -->|admin logout / idle| locked
   setup -->|intentional maintenance exit| pause[Watchdog paused 15 min]
 ```
+
+---
+
+## Single-user post-logon provisioning (recommended)
+
+Use **one** local Windows account (e.g. `ArenaKiosk`) for install, daily player sessions,
+and in-app operator setup. Keep a separate **break-glass** local administrator for recovery
+only—not for daily operations.
+
+**Startup only — Explorer is not replaced.** The recommended path matches Layer 1 **Option C**
+(auto-logon + **Arena360 Watchdog** scheduled task at logon). `explorer.exe` remains the
+Windows shell; the kiosk launches on top after logon. Post-install config does **not** write
+`Winlogon\Shell`. Layer 1 Option B (shell replacement) is optional advanced IT manual only.
+
+| Step | Who | Action |
+|------|-----|--------|
+| 1 | IT | Create standard local user `ArenaKiosk` (no admin rights) |
+| 2 | IT | Run NSIS installer **logged in as that user** (UAC elevation OK) or pass `/KIOSKUSER=ArenaKiosk` |
+| 3 | Installer | Runs [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) unless `/NOCONFIGURE` |
+| 4 | IT | Provide auto-logon password when prompted, or pass `-AutoLogonPassword` when re-running the script for fleet deploy |
+| 5 | Reboot | Windows auto-logon → watchdog → kiosk fullscreen (`Locked`) |
+| 6 | Operator | **RegistrationPage**: sign in with Arena360 admin credentials → name and register device |
+| 7 | Operator | **SetupPage** opens automatically (`SetupRelaxed`) → curate software allow-list (no second admin login) |
+| 8 | Operator | **Done — re-lock** → player login/attract screen |
+
+First-time device registration runs under **`Locked`** until provisioning completes; the kiosk
+then transitions to **`SetupRelaxed`** for allow-list curation. Use setup mode after
+registration to install games and edit the allow-list.
+
+### Installer flags
+
+Pass on the NSIS command line (silent: `setup.exe /S /KIOSKUSER=ArenaKiosk`):
+
+| Flag | Effect |
+|------|--------|
+| `/NOCONFIGURE` | Skip post-install `configure-station.ps1` entirely |
+| `/NOAUTOSTART` | Skip watchdog scheduled task (still runs script for hardening unless `/NOCONFIGURE`) |
+| `/NOHARDENING` | Skip HKLM policy registry keys (`DisableTaskMgr`, etc.) |
+| `/KIOSKUSER=Name` | Target account for auto-logon prompt and watchdog logon task (default: installing user) |
+
+### Silent fleet example
+
+```text
+Arena360-setup.exe /S /KIOSKUSER=ArenaKiosk
+# Auto-logon password is not passed on the command line (secrets in shell history).
+# After install, run once as elevated PowerShell:
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Arena360\kiosk\scripts\configure-station.ps1" `
+  -InstallDir "C:\Program Files\Arena360\kiosk" -KioskUser ArenaKiosk -AutoLogonPassword (Read-Host -AsSecureString)
+```
+
+Uninstall removes the watchdog task and registry values recorded in
+`%ProgramData%\Arena360\registry-hardening.json`.
 
 ---
 
@@ -227,7 +280,7 @@ sub-5 s recovery.
 | `kiosk-deploy-guide` | Operator deployment guide + GPO checklist | Should | This doc + README link; PowerShell samples |
 | `kiosk-startup-task` | NSIS watchdog scheduled task at logon | Should | **Done** — `hooks.nsh`; `/NOAUTOSTART` opt-out |
 | `kiosk-watchdog` | Watchdog sidecar + pause file + mutex | Should | **Done** — `arena360-watchdog.exe` |
-| `kiosk-installer-fleet` | Silent install + `configure-station.ps1` | Could | SCCM/Intune one-liner |
+| `kiosk-installer-fleet` | Silent install + `configure-station.ps1` | Should | **Done** — bundled in NSIS; `/NOCONFIGURE` opt-out |
 | `kiosk-deploy-adr` | DRAFT ADR only if Windows Service chosen | Conditional | Per [20-adr-discipline](../.cursor/rules/20-adr-discipline.mdc) |
 
 **Suggested order:** `kiosk-deploy-guide` (done — this file) → `kiosk-startup-task` →
@@ -240,12 +293,12 @@ as ADR-0028). Draft ADR if adding a privileged Windows Service or shell-wide pol
 
 ## Manual setup now (fallback)
 
-Use this only when the NSIS installer cannot register the watchdog task (e.g. silent
-deploy without logon task permissions). Fresh installs from GitHub Releases register the
-task automatically unless `/NOAUTOSTART` is passed.
+Use this only when the NSIS installer cannot run post-install configuration (e.g. `/NOCONFIGURE`).
+Fresh installs from GitHub Releases run [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1)
+automatically unless `/NOCONFIGURE` is passed.
 
 1. Install kiosk from the latest GitHub Release.
-2. Create `ArenaKiosk` user; enable auto-logon.
+2. Create `ArenaKiosk` user; run configure script manually or enable auto-logon.
 3. Pick Option A, B, or C above for shell.
 4. Create a Scheduled Task (run as `ArenaKiosk`, highest available):
 

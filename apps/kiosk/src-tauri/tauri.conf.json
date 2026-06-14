@@ -32,6 +32,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": {
+      "../scripts/windows/configure-station.ps1": "scripts/configure-station.ps1"
+    },
     "publisher": "Arena360",
     "category": "Game",
     "shortDescription": "Locked-down Arena360 Station Management Application",
