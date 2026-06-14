@@ -24,8 +24,8 @@ registration. There is no separate code to copy between two screens.
    body `{ fingerprint, name, deviceType, deviceSubType, location, serialNumber? }`.
    It creates (or updates) the device row as `registered`, stores the fingerprint
    snapshot, and returns `{ accessToken (device token), device }` — the same shape
-   as the old register response. Reprovision matches by fingerprint (BIOS UUID, or
-   MAC when BIOS UUID is a placeholder), not by serial number (DRAFT-0040).
+   as the old register response. Reprovision matches by **MAC address** only;
+   `serialNumber` on the device row is set to the station MAC (DRAFT-0040).
 3. **Retire the public code flow.** `POST /devices/register` and
    `POST /devices/{id}/registration-code` are deprecated; the registration-code
    columns from `20260530000004` are dropped (down migration restores them).

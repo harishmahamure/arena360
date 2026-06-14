@@ -71,7 +71,7 @@ export function RegistrationPage() {
         deviceType,
         deviceSubType,
         location: location.trim(),
-        serialNumber: fingerprint?.serial,
+        serialNumber: fingerprint?.mac,
       });
     } catch {
       // surfaced via context error
@@ -188,12 +188,8 @@ export function RegistrationPage() {
           <legend>Hardware fingerprint</legend>
           {fingerprint ? (
             <dl>
-              <dt>MAC</dt>
+              <dt>MAC (station identifier)</dt>
               <dd>{fingerprint.mac}</dd>
-              <dt>Serial</dt>
-              <dd>{fingerprint.serial}</dd>
-              <dt>BIOS UUID</dt>
-              <dd>{fingerprint.biosUuid}</dd>
             </dl>
           ) : (
             <p className="hint">Collecting hardware fingerprint…</p>

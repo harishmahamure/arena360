@@ -75,6 +75,8 @@ impl DeviceService {
         }
         dto.deviceType = Some(require_device_type(dto.deviceType)?);
         dto.deviceSubType = Some(require_device_sub_type(dto.deviceSubType)?);
+        // BIOS serial is often an OEM placeholder; persist MAC as the station identifier.
+        dto.serialNumber = Some(dto.fingerprint.mac.trim().to_string());
 
         let fingerprint_json = serde_json::to_string(&dto.fingerprint)
             .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -114,13 +116,10 @@ impl DeviceService {
         &self,
         fingerprint: &DeviceFingerprintDto,
     ) -> Result<Option<Device>, AppError> {
-        if is_placeholder_bios_uuid(&fingerprint.biosUuid) {
-            self.repo.find_registered_by_mac(&fingerprint.mac).await
-        } else {
-            self.repo
-                .find_registered_by_bios_uuid(&fingerprint.biosUuid)
-                .await
+        if is_unusable_mac(&fingerprint.mac) {
+            return Ok(None);
         }
+        self.repo.find_registered_by_mac(&fingerprint.mac).await
     }
 
     async fn reprovision_existing(
@@ -167,7 +166,7 @@ impl DeviceService {
             Ok(value) => value,
             Err(_) => return Ok(true),
         };
-        Ok(fingerprint_drift_count(&stored, presented) <= 1)
+        Ok(mac_addresses_match(&stored, presented))
     }
 
     pub async fn update(
@@ -292,14 +291,24 @@ pub fn fingerprint_drift_count(
     count
 }
 
-/// True when BIOS UUID is empty or a known non-unique placeholder from OEM images.
-pub fn is_placeholder_bios_uuid(bios_uuid: &str) -> bool {
-    let normalized = bios_uuid.trim().to_ascii_lowercase();
+/// Case-insensitive MAC equality for provisioning / reprovision.
+pub fn mac_addresses_match(
+    stored: &DeviceFingerprintDto,
+    presented: &DeviceFingerprintDto,
+) -> bool {
+    stored
+        .mac
+        .trim()
+        .eq_ignore_ascii_case(presented.mac.trim())
+}
+
+/// MAC values that must not be used as a station lookup key.
+pub fn is_unusable_mac(mac: &str) -> bool {
+    let normalized = mac.trim().to_ascii_lowercase();
     normalized.is_empty()
-        || normalized == "00000000-0000-0000-0000-000000000000"
-        || normalized == "00000000-0000-4000-8000-000000000001"
-        || normalized == "ffffffff-ffff-ffff-ffff-ffffffffffff"
-        || normalized == "unknown"
+        || normalized == "00:00:00:00:00:00"
+        || normalized == "00-00-00-00-00-00"
+        || normalized == "aa:bb:cc:dd:ee:ff"
 }
 
 #[cfg(test)]
@@ -351,24 +360,24 @@ mod fingerprint_tests {
     }
 
     #[test]
-    fn same_serial_different_bios_and_mac_is_two_drift_not_reprovision() {
+    fn same_serial_different_mac_is_not_reprovision() {
         let pc_a = fp("AA:11", "OEM-SERIAL", "BIOS-A");
-        let pc_b = fp("BB:22", "OEM-SERIAL", "BIOS-B");
-        assert_eq!(fingerprint_drift_count(&pc_a, &pc_b), 2);
+        let pc_b = fp("BB:22", "OEM-SERIAL", "BIOS-A");
+        assert!(!mac_addresses_match(&pc_a, &pc_b));
     }
 
     #[test]
-    fn same_bios_uuid_single_mac_drift_is_reprovision_compatible() {
-        let stored = fp("AA:BB", "OEM-SERIAL", "BIOS-1");
-        let presented = fp("CC:DD", "OEM-SERIAL", "BIOS-1");
-        assert_eq!(fingerprint_drift_count(&stored, &presented), 1);
+    fn same_mac_is_reprovision_compatible() {
+        let stored = fp("AA:BB:CC:DD:EE:01", "OEM-SERIAL", "BIOS-1");
+        let presented = fp("aa:bb:cc:dd:ee:01", "To be filled by O.E.M.", "BIOS-2");
+        assert!(mac_addresses_match(&stored, &presented));
     }
 
     #[test]
-    fn placeholder_bios_uuid_detected() {
-        assert!(is_placeholder_bios_uuid("00000000-0000-0000-0000-000000000000"));
-        assert!(is_placeholder_bios_uuid("  UNKNOWN  "));
-        assert!(!is_placeholder_bios_uuid("a1b2c3d4-e5f6-7890-abcd-ef1234567890"));
+    fn unusable_mac_detected() {
+        assert!(is_unusable_mac("00:00:00:00:00:00"));
+        assert!(is_unusable_mac("AA:BB:CC:DD:EE:FF"));
+        assert!(!is_unusable_mac("10:20:30:40:50:60"));
     }
 }
 

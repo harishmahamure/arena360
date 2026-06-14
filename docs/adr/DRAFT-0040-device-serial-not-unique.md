@@ -21,24 +21,22 @@ even when MAC and BIOS UUID differed. A TypeORM-era **unique constraint** on
 ## Decision
 
 1. **Drop** the DB unique constraint/index on `devices."serialNumber"`.
-2. **Reprovision** only when a registered device's stored fingerprint matches the
-   presented one with drift ≤ 1 (ADR-0017), keyed by **BIOS UUID** (or MAC when
-   BIOS UUID is a known placeholder).
-3. **Stop** using serial number as the reprovision lookup key; serial remains
-   informational metadata on the device row.
+2. **Reprovision** only when the stored fingerprint **MAC** matches the presented
+   MAC (case-insensitive). BIOS serial and UUID are not used for lookup.
+3. **Persist MAC** in `devices."serialNumber"` at provision time (admin-visible
+   station identifier). OEM BIOS serial strings are ignored.
 
 ## Consequences
 
 ### Positive
 
-- Multiple stations can register with duplicate OEM serial strings.
-- Factory reset / NIC change on the same PC still reprovisions the same row.
+- Factory reset on the same PC reprovisions when MAC is unchanged.
+- Admin device list shows MAC in the serial number field.
 
 ### Negative
 
-- Serial alone is no longer a reliable hardware identifier in admin.
-- Duplicate placeholder BIOS UUIDs (rare) could still collide; MAC fallback
-  mitigates the all-zero placeholder case.
+- Serial field in admin no longer reflects BIOS serial.
+- NIC replacement changes MAC → registers as a new device row.
 
 ## Alternatives Considered
 

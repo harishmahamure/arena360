@@ -284,7 +284,7 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
                             deviceType = deviceType,
                             deviceSubType = form.deviceSubType.uppercase(),
                             location = form.location.ifBlank { null },
-                            serialNumber = fingerprint.serial,
+                            serialNumber = fingerprint.mac,
                         )
                     val response =
                         withContext(Dispatchers.IO) {

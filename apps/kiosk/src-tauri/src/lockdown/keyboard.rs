@@ -5,7 +5,8 @@
 //! (system menu), Ctrl+Esc (Start menu), Ctrl+Shift+Esc (Task Manager), and
 //! the Menu/Apps (context-menu) key. Alt+Tab is intentionally allowed so
 //! players can switch between approved launched apps. **Ctrl+Shift+H** raises
-//! the kiosk above launched games without closing them. **Limitation:**
+//! the kiosk above launched games without closing them. **Ctrl+Shift+A** opens
+//! administrator setup (emits `enter-setup` to the webview). **Limitation:**
 //! Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user
 //! mode by design — it always reaches the Windows Secure Desktop. Full CAD
 //! suppression requires the `DisableLockWorkstation` /
@@ -20,12 +21,12 @@ mod win {
     use std::sync::OnceLock;
     use std::thread;
     use std::time::{Duration, Instant};
-    use tauri::AppHandle;
+    use tauri::{AppHandle, Emitter};
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_H, VK_LWIN, VK_MENU, VK_RWIN,
-        VK_SHIFT, VK_SPACE, VK_TAB,
+        GetAsyncKeyState, VK_A, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_H, VK_LWIN, VK_MENU,
+        VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
@@ -93,6 +94,13 @@ mod win {
             && is_down(VK_SHIFT.0 as i32)
     }
 
+    /// Ctrl+Shift+A — open administrator setup (handled in the webview via event).
+    unsafe fn is_enter_setup_combo(vk: u32) -> bool {
+        vk == VK_A.0 as u32
+            && is_down(VK_CONTROL.0 as i32)
+            && is_down(VK_SHIFT.0 as i32)
+    }
+
     /// Alt+Tab is allowed through, but Explorer often flashes the taskbar when the switcher opens.
     unsafe fn is_alt_tab(vk: u32) -> bool {
         vk == VK_TAB.0 as u32 && is_down(VK_MENU.0 as i32)
@@ -136,6 +144,13 @@ mod win {
                 if is_focus_kiosk_combo(kb.vkCode) {
                     if let Some(app) = APP.get() {
                         let _ = crate::process::focus_kiosk_window(app);
+                    }
+                    return LRESULT(1);
+                }
+                if is_enter_setup_combo(kb.vkCode) {
+                    if let Some(app) = APP.get() {
+                        let _ = crate::process::focus_kiosk_window(app);
+                        let _ = app.emit("enter-setup", ());
                     }
                     return LRESULT(1);
                 }

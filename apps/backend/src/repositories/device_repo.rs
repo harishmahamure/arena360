@@ -267,29 +267,7 @@ impl DeviceRepository {
         Ok(exists.0)
     }
 
-    /// Match registered device by BIOS UUID stored in the fingerprint snapshot.
-    pub async fn find_registered_by_bios_uuid(
-        &self,
-        bios_uuid: &str,
-    ) -> Result<Option<Device>, AppError> {
-        let query = format!(
-            r#"
-            {} WHERE "deletedAt" IS NULL
-              AND "registrationStatus" = 'registered'::devices_registrationstatus_enum
-              AND "registeredKiosk" IS NOT NULL
-              AND LOWER(TRIM("registeredKiosk"::jsonb->>'biosUuid')) = LOWER(TRIM($1))
-            LIMIT 1
-            "#,
-            Self::SELECT
-        );
-        let device = sqlx::query_as::<_, Device>(&query)
-            .bind(bios_uuid)
-            .fetch_optional(&self.pool)
-            .await?;
-        Ok(device)
-    }
-
-    /// Match registered device by MAC when BIOS UUID is an unreliable placeholder.
+    /// Match registered device by MAC address stored in the fingerprint snapshot.
     pub async fn find_registered_by_mac(
         &self,
         mac: &str,

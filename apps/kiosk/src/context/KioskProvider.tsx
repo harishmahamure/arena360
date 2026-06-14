@@ -216,6 +216,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   const phaseRef = useRef<AppPhase>('loading');
+  const setupRelaxedRef = useRef(false);
   const activeSessionRef = useRef<ActiveSession | null>(null);
   const cleanupInFlightRef = useRef(false);
   // Short-lived admin token captured during first-time provisioning (in memory only).
@@ -485,14 +486,17 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     return () => realtimeRef.current.disconnect();
   }, [refresh, realtimeRef]);
 
-  // Reconcile the React phase with the native lockdown state. If the OS layer
-  // re-locks (e.g. setup idle timeout fires) while we're still on the setup
-  // screen, drop back to idle.
+  // Reconcile the React phase with the native lockdown state. When setup mode
+  // ends (SetupRelaxed → Locked), return to the player login screen. Do not
+  // bounce when opening setup admin login via Ctrl+Shift+A while still Locked.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     void import('@tauri-apps/api/event').then(({ listen }) =>
       listen<string>('lockdown-changed', (event) => {
-        if (event.payload === 'Locked') {
+        if (event.payload === 'SetupRelaxed') {
+          setupRelaxedRef.current = true;
+        } else if (event.payload === 'Locked' && setupRelaxedRef.current) {
+          setupRelaxedRef.current = false;
           setPhase((prev) => (prev === 'setup' ? 'login' : prev));
         }
       }).then((fn) => {
@@ -554,7 +558,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           deviceType: input.deviceType,
           deviceSubType: input.deviceSubType,
           location: input.location || undefined,
-          serialNumber: input.serialNumber || fingerprint.serial,
+          serialNumber: input.serialNumber || fingerprint.mac,
         });
         await persistDeviceToken(result.accessToken);
         setDeviceId(result.device.id);
@@ -582,6 +586,12 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setPhase('setup');
   }, []);
 
+  const requestEnterSetup = useCallback(() => {
+    const phase = phaseRef.current;
+    if (phase === 'setup' || phase === 'register' || phase === 'loading') return;
+    void enterSetup();
+  }, [enterSetup]);
+
   const clearSetupAuthenticated = useCallback(() => {
     setSetupAuthenticated(false);
   }, []);
@@ -592,21 +602,30 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setPhase('login');
   }, []);
 
-  // Setup entry via Ctrl+Shift+A (ADR-0020 amendment). The native keyboard hook
-  // does not block this combo, so it reaches the webview while Locked. It only
-  // reveals the admin login form; lockdown stays Locked until an admin signs in.
+  // Setup entry via Ctrl+Shift+A (ADR-0020 amendment). Windows also handles this
+  // in the native keyboard hook (`enter-setup` event) when the webview lacks focus.
   useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/event').then(({ listen }) =>
+      listen('enter-setup', () => {
+        requestEnterSetup();
+      }).then((fn) => {
+        unlisten = fn;
+      }),
+    );
+
     function onKeyDown(e: KeyboardEvent) {
       if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
         e.preventDefault();
-        if (phase !== 'setup' && phase !== 'register' && phase !== 'loading') {
-          void enterSetup();
-        }
+        requestEnterSetup();
       }
     }
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [phase, enterSetup]);
+    return () => {
+      unlisten?.();
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [requestEnterSetup]);
 
   const playerLogin = useCallback(
     async (username: string, password: string) => {
