@@ -1,6 +1,18 @@
 # Console TV (Android)
 
-Kotlin Android TV agent for PlayStation stations (`PS5`, `PS4`). See [REQUIREMENTS-CONSOLE-TV.md](../../docs/REQUIREMENTS-CONSOLE-TV.md) and [DRAFT-0035](../../docs/adr/DRAFT-0035-android-tv-console-station.md).
+Kotlin Android TV agent for PlayStation stations (`PS5`, `PS4`). See [REQUIREMENTS-CONSOLE-TV.md](../../docs/REQUIREMENTS-CONSOLE-TV.md) and [DRAFT-0037](../../docs/adr/DRAFT-0037-console-tv-kiosk-style-provisioning.md).
+
+## Registration
+
+Provisioning matches the PC kiosk flow (see [DRAFT-0023](../../docs/adr/DRAFT-0023-admin-authorized-device-registration.md)):
+
+1. Open the Console TV app on the station (no pre-created device record required).
+2. Sign in with an **admin** username and password (enter TOTP if your account requires it).
+3. Name the station, choose PS5 or PS4, sub-type, and optional location, then tap **Register device**.
+
+The TV calls `POST /auth/login/admin` then `POST /devices/provision` with `provisionClient: "console-tv"`. After success it connects on the device WebSocket and shows KioskHome until an admin starts a session.
+
+To re-register, clear app data or uninstall/reinstall the app.
 
 ## Prerequisites
 

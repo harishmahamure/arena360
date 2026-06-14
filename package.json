@@ -41,7 +41,7 @@
     "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build",
     "console-tv:assemble": "cd apps/console-tv && ./gradlew :app:assembleDebug",
     "console-tv:uninstall": "adb uninstall com.gamingcafe.consoletv || true",
-    "console-tv:install": "cd apps/console-tv && ./gradlew :app:installDebug",
+    "console-tv:install": "cd apps/console-tv && ./gradlew :app:generateDebugBuildConfig :app:installDebug",
     "console-tv:run": "pnpm console-tv:uninstall && pnpm console-tv:install && adb shell am start -n com.gamingcafe.consoletv/.MainActivity"
   },
   "devDependencies": {

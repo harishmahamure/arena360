@@ -1,12 +1,13 @@
 package com.gamingcafe.consoletv
 
 import android.app.Application
-import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gamingcafe.consoletv.data.ApiClient
-import com.gamingcafe.consoletv.data.DeviceFingerprint
+import com.gamingcafe.consoletv.data.ApiException
+import com.gamingcafe.consoletv.data.DeviceIdentity
 import com.gamingcafe.consoletv.data.ProvisionRequest
+import com.gamingcafe.consoletv.data.ProvisionResponse
 import com.gamingcafe.consoletv.data.RealtimeClient
 import com.gamingcafe.consoletv.data.RealtimeEvent
 import com.gamingcafe.consoletv.data.TokenStore
@@ -18,14 +19,15 @@ import com.gamingcafe.consoletv.domain.SessionClockTicker
 import com.gamingcafe.consoletv.hdmi.CecController
 import com.gamingcafe.consoletv.media.SessionSounds
 import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class AppPhase {
@@ -35,8 +37,16 @@ enum class AppPhase {
     SESSION,
 }
 
+enum class RegistrationStep {
+    CREDENTIALS,
+    TOTP,
+    DEVICE,
+}
+
 data class RegisterForm(
-    val deviceId: String = "",
+    val username: String = "",
+    val password: String = "",
+    val totp: String = "",
     val name: String = "",
     val deviceType: String = "PS5",
     val deviceSubType: String = "PREMIUM_TV_CONSOLES",
@@ -51,15 +61,15 @@ data class ActiveSessionUi(
 
 data class ConsoleTvUiState(
     val phase: AppPhase = AppPhase.LOADING,
-    val registerStep: Int = 0,
+    val registrationStep: RegistrationStep = RegistrationStep.CREDENTIALS,
     val registerForm: RegisterForm = RegisterForm(),
+    val adminAuthenticated: Boolean = false,
     val wsConnected: Boolean = false,
     val statusMessage: String = "Starting…",
     val deviceName: String = "",
     val deviceType: String = "",
     val activeSession: ActiveSessionUi? = null,
     val cecDegraded: Boolean = false,
-    val staffToken: String? = null,
     val isBusy: Boolean = false,
 )
 
@@ -73,6 +83,7 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
     private val _uiState = MutableStateFlow(ConsoleTvUiState())
     val uiState: StateFlow<ConsoleTvUiState> = _uiState.asStateFlow()
 
+    private var adminToken: String? = null
     private var realtime: RealtimeClient? = null
     private var clock: SessionClockTicker? = null
     private var tickJob: Job? = null
@@ -110,8 +121,8 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
                 _uiState.value =
                     ConsoleTvUiState(
                         phase = AppPhase.REGISTER,
-                        registerStep = 0,
-                        statusMessage = "Enter device ID from admin",
+                        registrationStep = RegistrationStep.CREDENTIALS,
+                        statusMessage = "Sign in as administrator to register this station",
                     )
                 return@launch
             }
@@ -122,7 +133,10 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun enterKioskOrSession(deviceToken: String) {
         cec.discoverPlayStation()
         connectDeviceWs(deviceToken)
-        val current = api.currentTvSession(deviceToken)
+        val current =
+            withContext(Dispatchers.IO) {
+                api.currentTvSession(deviceToken)
+            }
         if (current != null) {
             startSessionUi(current)
             cec.switchToConsole()
@@ -139,10 +153,20 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
         sounds.prepare()
     }
 
-    fun updateRegisterDeviceId(deviceId: String) {
+    fun updateRegisterCredentials(
+        username: String? = null,
+        password: String? = null,
+        totp: String? = null,
+    ) {
+        val form = _uiState.value.registerForm
         _uiState.value =
             _uiState.value.copy(
-                registerForm = _uiState.value.registerForm.copy(deviceId = deviceId.trim()),
+                registerForm =
+                    form.copy(
+                        username = username ?: form.username,
+                        password = password ?: form.password,
+                        totp = totp ?: form.totp,
+                    ),
             )
     }
 
@@ -165,25 +189,62 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
             )
     }
 
-    fun beginRegisterPairing() {
-        val deviceId = _uiState.value.registerForm.deviceId
-        if (deviceId.isBlank()) {
-            _uiState.value = _uiState.value.copy(statusMessage = "Device ID required")
+    fun backToCredentials() {
+        adminToken = null
+        _uiState.value =
+            _uiState.value.copy(
+                registrationStep = RegistrationStep.CREDENTIALS,
+                adminAuthenticated = false,
+                registerForm = _uiState.value.registerForm.copy(totp = ""),
+                statusMessage = "Sign in as administrator to register this station",
+            )
+    }
+
+    fun submitAdminLogin() {
+        val form = _uiState.value.registerForm
+        if (form.username.isBlank() || form.password.isBlank()) {
+            _uiState.value = _uiState.value.copy(statusMessage = "Username and password required")
             return
         }
+        val totp =
+            when (_uiState.value.registrationStep) {
+                RegistrationStep.TOTP -> form.totp.trim().ifBlank { null }
+                else -> null
+            }
         runIfIdle {
             viewModelScope.launch {
                 try {
-                    val pairing = api.devicePairing(deviceId)
-                    connectPairingWs(pairing.accessToken, "device:$deviceId")
+                    val auth =
+                        withContext(Dispatchers.IO) {
+                            api.loginAdmin(form.username, form.password, totp)
+                        }
+                    adminToken = auth.accessToken
                     _uiState.value =
                         _uiState.value.copy(
-                            registerStep = 1,
-                            statusMessage = "Waiting for admin to send TV login…",
+                            registrationStep = RegistrationStep.DEVICE,
+                            adminAuthenticated = true,
+                            registerForm = form.copy(password = "", totp = ""),
+                            statusMessage = "Administrator verified",
                         )
+                } catch (error: ApiException) {
+                    if (error.message == "TOTP code is required" && totp.isNullOrBlank()) {
+                        _uiState.value =
+                            _uiState.value.copy(
+                                registrationStep = RegistrationStep.TOTP,
+                                statusMessage = "",
+                            )
+                    } else {
+                        _uiState.value =
+                            _uiState.value.copy(
+                                statusMessage = error.message ?: "Login failed",
+                            )
+                    }
                 } catch (error: Exception) {
+                    val detail =
+                        error.message?.takeIf { it.isNotBlank() }
+                            ?: error.javaClass.simpleName
                     _uiState.value =
-                        _uiState.value.copy(statusMessage = "Pairing failed: ${error.message}")
+                        _uiState.value.copy(statusMessage = "Login failed: $detail")
                 } finally {
                     clearBusy()
                 }
@@ -192,40 +253,55 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun provisionDevice() {
-        val staffToken = _uiState.value.staffToken ?: return
+        val token = adminToken
+        if (token.isNullOrBlank()) {
+            _uiState.value =
+                _uiState.value.copy(
+                    registrationStep = RegistrationStep.CREDENTIALS,
+                    statusMessage = "Sign in as administrator to register this station",
+                )
+            return
+        }
         val form = _uiState.value.registerForm
+        if (form.name.isBlank()) {
+            _uiState.value = _uiState.value.copy(statusMessage = "Station name required")
+            return
+        }
+        val deviceType = form.deviceType.uppercase()
+        if (deviceType !in setOf("PS5", "PS4")) {
+            _uiState.value = _uiState.value.copy(statusMessage = "Device type must be PS5 or PS4")
+            return
+        }
         runIfIdle {
             viewModelScope.launch {
                 try {
-                    val fingerprint =
-                        DeviceFingerprint(
-                            mac = "android-tv",
-                            serial = Build.SERIAL.ifBlank { UUID.randomUUID().toString() },
-                            biosUuid = UUID.randomUUID().toString(),
-                            platform = "AndroidTV",
-                            collectedAt = Instant.now().toString(),
+                    val app = getApplication<Application>()
+                    val fingerprint = DeviceIdentity.buildFingerprint(app, tokenStore)
+                    val request =
+                        ProvisionRequest(
+                            fingerprint = fingerprint,
+                            name = form.name.trim(),
+                            deviceType = deviceType,
+                            deviceSubType = form.deviceSubType.uppercase(),
+                            location = form.location.ifBlank { null },
+                            serialNumber = fingerprint.serial,
                         )
                     val response =
-                        api.provision(
-                            staffToken,
-                            ProvisionRequest(
-                                fingerprint = fingerprint,
-                                name = form.name,
-                                deviceType = form.deviceType,
-                                deviceSubType = form.deviceSubType,
-                                location = form.location.ifBlank { null },
-                                serialNumber = fingerprint.serial,
-                            ),
+                        withContext(Dispatchers.IO) {
+                            provisionWithOrphanRetry(token, request, form.name.trim())
+                        }
+                    completeProvision(response)
+                } catch (error: ApiException) {
+                    _uiState.value =
+                        _uiState.value.copy(
+                            statusMessage = provisionErrorMessage(error, form.name.trim()),
                         )
-                    tokenStore.deviceToken = response.accessToken
-                    tokenStore.deviceId = response.device.id
-                    tokenStore.deviceName = response.device.name
-                    tokenStore.deviceType = response.device.deviceType
-                    _uiState.value = _uiState.value.copy(staffToken = null)
-                    enterKioskOrSession(response.accessToken)
                 } catch (error: Exception) {
+                    val detail =
+                        error.message?.takeIf { it.isNotBlank() }
+                            ?: error.javaClass.simpleName
                     _uiState.value =
-                        _uiState.value.copy(statusMessage = "Provision failed: ${error.message}")
+                        _uiState.value.copy(statusMessage = "Provision failed: $detail")
                 } finally {
                     clearBusy()
                 }
@@ -233,40 +309,63 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun handleDeepLinkSsoToken(token: String) {
-        runIfIdle {
-            viewModelScope.launch {
-                try {
-                    val auth = api.redeemSsoToken(token)
-                    onStaffAuthenticated(auth.accessToken)
-                } catch (error: Exception) {
-                    _uiState.value =
-                        _uiState.value.copy(statusMessage = "SSO redeem failed: ${error.message}")
-                } finally {
-                    clearBusy()
-                }
-            }
+    private suspend fun provisionWithOrphanRetry(
+        adminToken: String,
+        request: ProvisionRequest,
+        stationName: String,
+    ): ProvisionResponse {
+        try {
+            return api.provision(adminToken, request)
+        } catch (first: ApiException) {
+            if (!canCleanupOrphan()) throw first
+            cleanupOrphanDevice(adminToken, stationName)
+            return api.provision(adminToken, request)
         }
     }
 
-    private fun onStaffAuthenticated(staffToken: String) {
-        _uiState.value =
-            _uiState.value.copy(
-                staffToken = staffToken,
-                registerStep = 2,
-                statusMessage = "Complete device details",
-            )
+    private fun canCleanupOrphan(): Boolean = tokenStore.deviceToken.isNullOrBlank()
+
+    private fun cleanupOrphanDevice(
+        adminToken: String,
+        stationName: String,
+    ) {
+        val matches =
+            api.findDeviceByName(adminToken, stationName)
+                .filter { it.name.trim() == stationName }
+        val orphan = matches.firstOrNull() ?: return
+        api.deleteDevice(adminToken, orphan.id)
     }
 
-    private fun connectPairingWs(token: String, channel: String) {
-        realtime?.disconnect()
-        realtime =
-            RealtimeClient(
-                onEvent = { handleRealtimeEvent(it, pairingMode = true) },
-                onConnectionChanged = { connected ->
-                    _uiState.value = _uiState.value.copy(wsConnected = connected)
-                },
-            ).also { it.connect(token, listOf(channel)) }
+    private suspend fun completeProvision(response: ProvisionResponse) {
+        adminToken = null
+        tokenStore.deviceToken = response.accessToken
+        tokenStore.deviceId = response.device.id
+        tokenStore.deviceName = response.device.name
+        tokenStore.deviceType = response.device.deviceType
+        try {
+            enterKioskOrSession(response.accessToken)
+        } catch (_: Exception) {
+            _uiState.value =
+                _uiState.value.copy(
+                    phase = AppPhase.KIOSK_HOME,
+                    deviceName = response.device.name,
+                    deviceType = response.device.deviceType,
+                    statusMessage = "Waiting for session",
+                    activeSession = null,
+                )
+            sounds.prepare()
+        }
+    }
+
+    private fun provisionErrorMessage(
+        error: ApiException,
+        stationName: String,
+    ): String {
+        val message = error.message.orEmpty()
+        if (message.contains("already exists", ignoreCase = true)) {
+            return "Station name already registered — remove \"$stationName\" in admin or pick a new name"
+        }
+        return message.ifBlank { "Provision failed" }
     }
 
     private fun connectDeviceWs(deviceToken: String) {
@@ -274,31 +373,15 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
         realtime?.disconnect()
         realtime =
             RealtimeClient(
-                onEvent = { handleRealtimeEvent(it, pairingMode = false) },
+                onEvent = { handleRealtimeEvent(it) },
                 onConnectionChanged = { connected ->
                     _uiState.value = _uiState.value.copy(wsConnected = connected)
                 },
             ).also { it.connect(deviceToken, listOf("device:$deviceId")) }
     }
 
-    private fun handleRealtimeEvent(event: RealtimeEvent, pairingMode: Boolean) {
+    private fun handleRealtimeEvent(event: RealtimeEvent) {
         when (event.eventType) {
-            "sso.token.created" -> {
-                val token = event.payload?.get("token")?.asString ?: return
-                if (pairingMode) {
-                    viewModelScope.launch {
-                        try {
-                            val auth = api.redeemSsoToken(token)
-                            onStaffAuthenticated(auth.accessToken)
-                        } catch (error: Exception) {
-                            _uiState.value =
-                                _uiState.value.copy(
-                                    statusMessage = "SSO redeem failed: ${error.message}",
-                                )
-                        }
-                    }
-                }
-            }
             "session.started" -> {
                 val sessionId = event.payload?.get("sessionId")?.asString ?: return
                 val remaining = event.payload?.get("remainingMinutes")?.asDouble ?: 0.0
@@ -409,7 +492,9 @@ class ConsoleTvViewModel(application: Application) : AndroidViewModel(applicatio
         val deviceToken = tokenStore.deviceToken ?: return
         viewModelScope.launch {
             try {
-                api.endTvSession(deviceToken, sessionId, "auto")
+                withContext(Dispatchers.IO) {
+                    api.endTvSession(deviceToken, sessionId, "auto")
+                }
             } catch (_: Exception) {
                 // Queue intent best-effort; session.ended WS is authoritative.
             }

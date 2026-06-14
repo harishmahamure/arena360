@@ -5,8 +5,8 @@ import { Box, Chip, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { KioskFingerprintCard } from '../../../components/KioskFingerprintCard';
 import { ConsoleTvProvisioningCard } from '../../../components/ConsoleTvProvisioningCard';
+import { KioskFingerprintCard } from '../../../components/KioskFingerprintCard';
 import { KioskProvisioningCard } from '../../../components/KioskProvisioningCard';
 import {
   type CreateDeviceFormData,
@@ -237,7 +237,6 @@ export default function EditDevicePage() {
       {deviceData &&
         (deviceData.deviceType === 'PS5' || deviceData.deviceType === 'PS4' ? (
           <ConsoleTvProvisioningCard
-            deviceId={deviceData.id}
             deviceName={deviceData.name}
             registrationStatus={deviceData.registrationStatus}
           />

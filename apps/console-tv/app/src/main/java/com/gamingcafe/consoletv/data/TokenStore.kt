@@ -38,6 +38,12 @@ class TokenStore(context: Context) {
             prefs.edit().putString(KEY_DEVICE_TYPE, value).apply()
         }
 
+    var biosUuid: String?
+        get() = prefs.getString(KEY_BIOS_UUID, null)
+        set(value) {
+            prefs.edit().putString(KEY_BIOS_UUID, value).apply()
+        }
+
     fun clearDevice() {
         prefs.edit()
             .remove(KEY_DEVICE)
@@ -52,5 +58,6 @@ class TokenStore(context: Context) {
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_DEVICE_NAME = "device_name"
         private const val KEY_DEVICE_TYPE = "device_type"
+        private const val KEY_BIOS_UUID = "bios_uuid"
     }
 }

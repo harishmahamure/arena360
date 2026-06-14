@@ -6,15 +6,19 @@ Kotlin Android TV device agent for **PlayStation stations only** (`PS5`, `PS4`).
 
 ## User Stories (Must)
 
-### US-TV-000 — SSO via WebSocket
+### US-TV-000 — Admin login on device
 
 **As** staff  
-**I want** to send TV login from admin for a PS5/PS4 device  
-**So that** the station receives `sso.token.created` and provisions without password entry on the remote
+**I want** to sign in as admin on the Console TV and provision the station  
+**So that** PlayStation stations register the same way as PC kiosks without SSO pairing
 
-**Given** an unregistered PS5/PS4 device record in admin  
-**When** staff clicks “Send TV login”  
-**Then** the backend publishes `sso.token.created` on `device:{deviceId}` and the TV auto-redeems
+**Given** an unprovisioned Console TV app  
+**When** staff enters admin credentials (and TOTP if required), names the station, and confirms  
+**Then** the TV calls `POST /devices/provision` with `provisionClient: "console-tv"` and receives a device JWT
+
+**Given** a registered console TV  
+**When** staff views the device in admin  
+**Then** registration status shows `registered` (device row may be created at provision time; no pre-created record required)
 
 ### US-TV-001 — Admin-started session
 
@@ -43,7 +47,7 @@ Kotlin Android TV device agent for **PlayStation stations only** (`PS5`, `PS4`).
 ### US-TV-005 — KioskHome looping video
 
 **Given** no active session  
-**When** the TV is on KioskHome or waiting for SSO  
+**When** the TV is on KioskHome or the registration screen  
 **Then** it plays the same looping background video as the Windows kiosk (`launch.webm`)
 
 ### US-TV-006 — Audio reminders
