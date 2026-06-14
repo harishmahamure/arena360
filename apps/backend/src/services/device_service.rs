@@ -79,13 +79,8 @@ impl DeviceService {
         let fingerprint_json = serde_json::to_string(&dto.fingerprint)
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        if let Some(serial) = dto
-            .serialNumber
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            if let Some(existing) = self.repo.find_by_serial_number(serial).await? {
+        if let Some(existing) = self.find_existing_for_reprovision(&dto.fingerprint).await? {
+            if self.fingerprint_compatible(&existing, &dto.fingerprint)? {
                 return self
                     .reprovision_existing(existing, &dto, &fingerprint_json, actor_id)
                     .await;
@@ -115,6 +110,19 @@ impl DeviceService {
         }
     }
 
+    async fn find_existing_for_reprovision(
+        &self,
+        fingerprint: &DeviceFingerprintDto,
+    ) -> Result<Option<Device>, AppError> {
+        if is_placeholder_bios_uuid(&fingerprint.biosUuid) {
+            self.repo.find_registered_by_mac(&fingerprint.mac).await
+        } else {
+            self.repo
+                .find_registered_by_bios_uuid(&fingerprint.biosUuid)
+                .await
+        }
+    }
+
     async fn reprovision_existing(
         &self,
         existing: Device,
@@ -124,8 +132,8 @@ impl DeviceService {
     ) -> Result<Device, AppError> {
         if !self.fingerprint_compatible(&existing, &dto.fingerprint)? {
             return Err(AppError::Conflict(format!(
-                "Serial number is already registered to device '{}'. \
-                 Delete that device in admin or factory-reset the original kiosk before reusing this hardware.",
+                "This hardware fingerprint does not match device '{}'. \
+                 Delete that device in admin or factory-reset the original kiosk before reusing it.",
                 existing.name
             )));
         }
@@ -284,6 +292,16 @@ pub fn fingerprint_drift_count(
     count
 }
 
+/// True when BIOS UUID is empty or a known non-unique placeholder from OEM images.
+pub fn is_placeholder_bios_uuid(bios_uuid: &str) -> bool {
+    let normalized = bios_uuid.trim().to_ascii_lowercase();
+    normalized.is_empty()
+        || normalized == "00000000-0000-0000-0000-000000000000"
+        || normalized == "00000000-0000-4000-8000-000000000001"
+        || normalized == "ffffffff-ffff-ffff-ffff-ffffffffffff"
+        || normalized == "unknown"
+}
+
 #[cfg(test)]
 mod fingerprint_tests {
     use super::*;
@@ -330,6 +348,27 @@ mod fingerprint_tests {
         let stored = fp("AA:BB", "SN1", "UUID1");
         let presented = fp("AA:BB", "SN2", "UUID1");
         assert_eq!(fingerprint_drift_count(&stored, &presented), 1);
+    }
+
+    #[test]
+    fn same_serial_different_bios_and_mac_is_two_drift_not_reprovision() {
+        let pc_a = fp("AA:11", "OEM-SERIAL", "BIOS-A");
+        let pc_b = fp("BB:22", "OEM-SERIAL", "BIOS-B");
+        assert_eq!(fingerprint_drift_count(&pc_a, &pc_b), 2);
+    }
+
+    #[test]
+    fn same_bios_uuid_single_mac_drift_is_reprovision_compatible() {
+        let stored = fp("AA:BB", "OEM-SERIAL", "BIOS-1");
+        let presented = fp("CC:DD", "OEM-SERIAL", "BIOS-1");
+        assert_eq!(fingerprint_drift_count(&stored, &presented), 1);
+    }
+
+    #[test]
+    fn placeholder_bios_uuid_detected() {
+        assert!(is_placeholder_bios_uuid("00000000-0000-0000-0000-000000000000"));
+        assert!(is_placeholder_bios_uuid("  UNKNOWN  "));
+        assert!(!is_placeholder_bios_uuid("a1b2c3d4-e5f6-7890-abcd-ef1234567890"));
     }
 }
 

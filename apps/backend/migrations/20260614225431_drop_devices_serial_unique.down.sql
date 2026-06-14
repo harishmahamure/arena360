@@ -1,0 +1,1 @@
+-- Irreversible: cannot restore serialNumber uniqueness if duplicate values exist.

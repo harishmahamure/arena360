@@ -267,24 +267,51 @@ impl DeviceRepository {
         Ok(exists.0)
     }
 
-    /// Match on serial including soft-deleted rows (DB unique constraint spans all rows).
-    pub async fn find_by_serial_number(
+    /// Match registered device by BIOS UUID stored in the fingerprint snapshot.
+    pub async fn find_registered_by_bios_uuid(
         &self,
-        serial: &str,
+        bios_uuid: &str,
     ) -> Result<Option<Device>, AppError> {
         let query = format!(
-            r#"{} WHERE "serialNumber" IS NOT NULL AND LOWER(TRIM("serialNumber")) = LOWER(TRIM($1)) LIMIT 1"#,
+            r#"
+            {} WHERE "deletedAt" IS NULL
+              AND "registrationStatus" = 'registered'::devices_registrationstatus_enum
+              AND "registeredKiosk" IS NOT NULL
+              AND LOWER(TRIM("registeredKiosk"::jsonb->>'biosUuid')) = LOWER(TRIM($1))
+            LIMIT 1
+            "#,
             Self::SELECT
         );
         let device = sqlx::query_as::<_, Device>(&query)
-            .bind(serial)
+            .bind(bios_uuid)
             .fetch_optional(&self.pool)
             .await?;
         Ok(device)
     }
 
-    /// Re-register an existing row (factory reset / re-provision) without violating
-    /// unique constraints on name or serial.
+    /// Match registered device by MAC when BIOS UUID is an unreliable placeholder.
+    pub async fn find_registered_by_mac(
+        &self,
+        mac: &str,
+    ) -> Result<Option<Device>, AppError> {
+        let query = format!(
+            r#"
+            {} WHERE "deletedAt" IS NULL
+              AND "registrationStatus" = 'registered'::devices_registrationstatus_enum
+              AND "registeredKiosk" IS NOT NULL
+              AND LOWER(TRIM("registeredKiosk"::jsonb->>'mac')) = LOWER(TRIM($1))
+            LIMIT 1
+            "#,
+            Self::SELECT
+        );
+        let device = sqlx::query_as::<_, Device>(&query)
+            .bind(mac)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(device)
+    }
+
+    /// Re-register an existing row (factory reset / re-provision).
     pub async fn reprovision(
         &self,
         id: Uuid,
