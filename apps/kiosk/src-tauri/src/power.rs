@@ -1,12 +1,14 @@
 #[cfg(target_os = "windows")]
 mod win {
     use windows::Win32::Foundation::{CloseHandle, HANDLE, LUID};
+    use windows::Win32::Foundation::BOOL;
     use windows::Win32::Security::{
         AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
         SE_SHUTDOWN_NAME, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
     };
+    use windows::Win32::System::Power::SetSuspendState;
     use windows::Win32::System::Shutdown::{
-        ExitWindowsEx, LockWorkStation, EWX_FORCEIFHUNG, EWX_POWEROFF, EWX_REBOOT, EWX_SHUTDOWN,
+        ExitWindowsEx, EWX_FORCEIFHUNG, EWX_POWEROFF, EWX_REBOOT, EWX_SHUTDOWN,
         SHTDN_REASON_FLAG_PLANNED, SHTDN_REASON_MAJOR_APPLICATION, SHTDN_REASON_MINOR_OTHER,
     };
     use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
@@ -48,8 +50,13 @@ mod win {
         }
     }
 
-    pub fn lock_workstation() -> Result<(), String> {
-        unsafe { LockWorkStation().map_err(|e| e.to_string()) }
+    pub fn sleep() -> Result<(), String> {
+        unsafe {
+            SetSuspendState(BOOL(0), BOOL(0), BOOL(0))
+                .ok()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
     }
 
     pub fn restart() -> Result<(), String> {
@@ -80,15 +87,15 @@ mod win {
 }
 
 #[tauri::command]
-pub fn lock_workstation() -> Result<(), String> {
+pub fn sleep_station() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        win::lock_workstation()
+        win::sleep()
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        Err("Lock workstation is only available on Windows".to_string())
+        Err("Sleep is only available on Windows".to_string())
     }
 }
 

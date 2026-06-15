@@ -8,10 +8,10 @@ const playerLogin = vi.fn();
 const clearLoginNotice = vi.fn();
 const clearError = vi.fn();
 
-const { lockWorkstation, restartStation, shutdownStation } = vi.hoisted(() => ({
-  lockWorkstation: vi.fn(),
+const { restartStation, shutdownStation, sleepStation } = vi.hoisted(() => ({
   restartStation: vi.fn(),
   shutdownStation: vi.fn(),
+  sleepStation: vi.fn(),
 }));
 
 let loginNotice: string | null = null;
@@ -43,7 +43,7 @@ vi.mock('../lib/tauriCommands', async (importOriginal) => {
   return {
     ...actual,
     cachedAssetSrc: vi.fn(async (url: string) => url),
-    lockWorkstation,
+    sleepStation,
     restartStation,
     shutdownStation,
   };
@@ -63,7 +63,7 @@ describe('LoginHomePage', () => {
     render(<LoginHomePage />);
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/app version/i)).toHaveTextContent(/^v\d/);
-    expect(screen.getByRole('button', { name: /^lock$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^sleep$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^restart$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^shutdown$/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/station controls/i)).toBeInTheDocument();

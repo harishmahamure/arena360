@@ -66,7 +66,7 @@ pub fn run() {
             scan::scan_installed_software,
             lockdown::set_lockdown_state,
             lockdown::get_lockdown_state,
-            power::lock_workstation,
+            power::sleep_station,
             power::restart_station,
             power::shutdown_station,
             process::launch_allowed,

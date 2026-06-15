@@ -60,8 +60,8 @@ export async function openAudioSettings(): Promise<void> {
   await invoke('open_audio_settings');
 }
 
-export async function lockWorkstation(): Promise<void> {
-  await invoke('lock_workstation');
+export async function sleepStation(): Promise<void> {
+  await invoke('sleep_station');
 }
 
 export async function restartStation(): Promise<void> {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { lockWorkstation, restartStation, shutdownStation } from '../lib/tauriCommands';
+import { restartStation, shutdownStation, sleepStation } from '../lib/tauriCommands';
 
 type PowerAction = 'restart' | 'shutdown';
 
@@ -20,16 +20,16 @@ function statusLabel({
 
 export function StationControls({ deviceName, online, maintenance }: StationControlsProps) {
   const [confirm, setConfirm] = useState<PowerAction | null>(null);
-  const [busy, setBusy] = useState<PowerAction | 'lock' | null>(null);
+  const [busy, setBusy] = useState<PowerAction | 'sleep' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function runLock() {
-    setBusy('lock');
+  async function runSleep() {
+    setBusy('sleep');
     setError(null);
     try {
-      await lockWorkstation();
+      await sleepStation();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not lock this PC');
+      setError(e instanceof Error ? e.message : 'Could not put this PC to sleep');
     } finally {
       setBusy(null);
     }
@@ -62,9 +62,9 @@ export function StationControls({ deviceName, online, maintenance }: StationCont
           type="button"
           className="secondary station-control-button"
           disabled={busy !== null}
-          onClick={() => void runLock()}
+          onClick={() => void runSleep()}
         >
-          {busy === 'lock' ? 'Locking…' : 'Lock'}
+          {busy === 'sleep' ? 'Sleeping…' : 'Sleep'}
         </button>
         <button
           type="button"
