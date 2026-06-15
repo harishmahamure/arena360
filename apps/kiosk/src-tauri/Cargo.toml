@@ -19,10 +19,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "kiosk"
 path = "src/main.rs"
 
-[[bin]]
-name = "arena360-watchdog"
-path = "watchdog/main.rs"
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -1,6 +1,5 @@
 {
   "bundle": {
-    "externalBin": ["arena360-watchdog"],
     "targets": ["nsis"]
   }
 }

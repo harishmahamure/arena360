@@ -49,17 +49,17 @@ Run on a **Windows 10/11** station with Riot Client / Valorant (or Steam) instal
 | 14 | Disconnect network briefly during session | Offline banner; local countdown continues; reconnect replays end intents | |
 | 15 | Reconnect WS after brief outage (session still active) | One-shot `GET /kiosk/sessions/current` re-anchors; no periodic poll | |
 
-## Watchdog & auto-restart (Part 5)
+## Logon autostart (Part 5)
 
-Requires NSIS install with watchdog (default). Run installer logged in as the kiosk user.
+Requires NSIS install with autostart (default). Run installer logged in as the kiosk user.
 
 | # | Steps | Expected | Pass |
 |---|--------|----------|------|
-| 16 | Kill kiosk process from Task Manager while on login screen | Kiosk relaunches within **10 s** | |
-| 17 | Enter setup, click **Exit to desktop (15 min)**, close kiosk | Watchdog does **not** relaunch for 15 min | |
-| 18 | After pause expires (or click **Done — re-lock**) | Kiosk returns; watchdog resumes monitoring | |
-| 19 | Reboot station | Watchdog starts at logon; kiosk appears without manual launch | |
-| 20 | Uninstall kiosk | `Arena360 Watchdog` task removed | |
+| 16 | Kill kiosk process from Task Manager while on login screen | Kiosk **stays closed** until next logon (no crash relaunch) | |
+| 17 | Enter setup, click **Exit to desktop**, close kiosk | Desktop usable; kiosk does **not** relaunch until next logon | |
+| 18 | Log off and log on again (or reboot with auto-logon) | Kiosk starts automatically | |
+| 19 | Reboot station with auto-logon configured | **Arena360 Kiosk** task runs; kiosk appears without manual launch | |
+| 20 | Uninstall kiosk | `Arena360 Kiosk` task removed (legacy `Arena360 Watchdog` too) | |
 
 ## Sign-off
 

@@ -2,7 +2,7 @@
 
 > IT runbook for deploying and hardening Arena360 **PC gaming stations** (Windows kiosk)
 > and **PlayStation stations** (Android TV Console TV). For deep dives, see
-> [KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md) (PC shell, watchdog, GPO) and
+> [KIOSK-WINDOWS-DEPLOYMENT.md](KIOSK-WINDOWS-DEPLOYMENT.md) (PC shell, logon autostart, GPO) and
 > [CONSOLE-TV-ANDROID-DEPLOYMENT.md](CONSOLE-TV-ANDROID-DEPLOYMENT.md) (Android TV auto-start,
 > lockdown limits, fleet rollout).
 
@@ -10,7 +10,7 @@
 
 | Station type | App | Lockdown | Auto-start on boot |
 |--------------|-----|----------|-------------------|
-| **PC gaming** | [apps/kiosk](../apps/kiosk) (Tauri) | In-app (shipped) + OS shell (IT configures) | Manual today; installer hook planned (K10) |
+| **PC gaming** | [apps/kiosk](../apps/kiosk) (Tauri) | In-app (shipped) + OS shell (IT configures) | **Arena360 Kiosk** ONLOGON task + optional auto-logon (shipped) |
 | **PlayStation TV** | [apps/console-tv](../apps/console-tv) (Android TV) | **Not in app** — TV/OEM settings only | **Not in app** — TV/OEM or third-party launcher |
 
 Both station types use the same **admin-on-device provisioning** flow: an admin signs in
@@ -91,17 +91,16 @@ replacement, Run key) are in
 - [ ] **Dedicated local user:** Create `ArenaKiosk` (or venue-specific name) with **no**
   administrator rights.
 - [ ] **Install kiosk:** Download latest NSIS `perMachine` installer from GitHub Release
-  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). The installer ships
-  `arena360-watchdog.exe` and registers an **Arena360 Watchdog** scheduled task at logon
-  (skip with silent flag `/NOAUTOSTART`). Run the installer logged in as `ArenaKiosk` when
-  possible so the task applies to the kiosk user.
+  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). The installer registers
+  an **Arena360 Kiosk** scheduled task at logon (main exe; skip with `/NOAUTOSTART`). Run
+  the installer logged in as `ArenaKiosk` when possible so the task applies to the kiosk user.
 - [ ] **Shell strategy:** Choose one (recommend **Option A — Assigned Access** on
   Windows Pro/Enterprise). See
   [KIOSK-WINDOWS-DEPLOYMENT.md § Layer 1](KIOSK-WINDOWS-DEPLOYMENT.md#layer-1--os-kiosk-shell-operator--it).
 - [ ] **Auto-logon:** Enable auto-logon for the kiosk user (Sysinternals Autologon or
   unattend XML). Never store passwords in git.
-- [ ] **Verify watchdog:** After install, confirm `schtasks /Query /TN "Arena360 Watchdog"`
-  and that `%ProgramFiles%\Arena360\kiosk\arena360-watchdog.exe` exists (exact path may vary).
+- [ ] **Verify autostart:** After install, confirm `schtasks /Query /TN "Arena360 Kiosk"`
+  and that `Arena360 Station Management.exe` exists under the install directory.
 
 - [ ] **GPO hardening (recommended):** Applied by default at install (`DisableTaskMgr`,
   `DisableLockWorkstation`, `DisableChangePassword`, `NoRun`); pass `/NOHARDENING` to skip.
@@ -139,7 +138,7 @@ Arena360 PC lockdown has two layers. **Both** are required for a hardened public
 - Assigned Access / shell replacement (Layer 1 Options A/B — manual)
 - Auto-logon password in fully silent `/S` installs (run `configure-station.ps1` with `-AutoLogonPassword` after install, or use Sysinternals Autologon)
 
-Post-install watchdog, HKLM hardening, and interactive auto-logon: [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) (bundled in NSIS; `/NOCONFIGURE` opt-out). See [KIOSK-WINDOWS-DEPLOYMENT.md § Single-user post-logon provisioning](KIOSK-WINDOWS-DEPLOYMENT.md#single-user-post-logon-provisioning-recommended).
+Post-install logon task, HKLM hardening, and interactive auto-logon: [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) (bundled in NSIS; `/NOCONFIGURE` opt-out). See [KIOSK-WINDOWS-DEPLOYMENT.md § Single-user post-logon provisioning](KIOSK-WINDOWS-DEPLOYMENT.md#single-user-post-logon-provisioning-recommended).
 
 Manual Scheduled Task fallback: [KIOSK-WINDOWS-DEPLOYMENT.md § Manual setup now](KIOSK-WINDOWS-DEPLOYMENT.md#manual-setup-now-fallback).
 
@@ -303,7 +302,7 @@ To re-register: clear app data or uninstall/reinstall (see Sideload install).
 | Symptom | PC kiosk | Console TV |
 |---------|----------|------------|
 | Cannot reach backend | Verify `VITE_API_URL` in build/CI; check firewall and DNS | Rebuild APK with correct `VITE_API_URL` in `.env.local` |
-| App not starting on boot | Verify `Arena360 Watchdog` scheduled task; re-run installer as kiosk user | Check TV OEM auto-start setting; confirm app not force-stopped |
+| App not starting on boot | Verify **Arena360 Kiosk** scheduled task and auto-logon; re-run installer as kiosk user | Check TV OEM auto-start setting; confirm app not force-stopped |
 | Stuck on registration | Confirm admin credentials and TOTP; check backend logs | Same; ensure device type is PS4/PS5 only |
 | Need to re-provision | Setup → Factory reset, or clear tokens via setup | Settings → Apps → Clear data, or `adb uninstall` |
 | Player cannot sign in | Check login lockout; staff **Ctrl+Shift+B** on login screen | N/A — no player login on TV |

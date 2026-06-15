@@ -6,7 +6,6 @@ import { AsyncActionButton } from '../components/AsyncActionButton';
 import { useKiosk } from '../context/KioskProvider';
 import { KIOSK_LOGO_URL } from '../lib/config';
 import { totpInputProps } from '../lib/inputHints';
-import { setWatchdogPause } from '../lib/tauriCommands';
 
 const SETUP_IDLE_MS = 15 * 60 * 1000;
 
@@ -84,7 +83,6 @@ export function SetupPage() {
   }
 
   async function exitToDesktop() {
-    await setWatchdogPause(15, 'maintenance');
     await getCurrentWindow().close();
   }
 

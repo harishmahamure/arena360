@@ -64,22 +64,6 @@ export async function lockWorkstation(): Promise<void> {
   await invoke('lock_workstation');
 }
 
-export async function setWatchdogPause(minutes: number, reason: string): Promise<void> {
-  await invoke('set_watchdog_pause', { minutes, reason });
-}
-
-export async function clearWatchdogPause(): Promise<void> {
-  await invoke('clear_watchdog_pause');
-}
-
-export async function prepareUpdateInstall(): Promise<void> {
-  await invoke('prepare_update_install');
-}
-
-export async function prepareUpdateRelaunch(): Promise<void> {
-  await invoke('prepare_update_relaunch');
-}
-
 export async function restartStation(): Promise<void> {
   await invoke('restart_station');
 }

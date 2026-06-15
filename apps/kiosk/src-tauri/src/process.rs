@@ -249,9 +249,6 @@ pub fn is_session_keep_process(name: &str, kiosk_exe_name: Option<&str>) -> bool
     if SESSION_KEEP_EXE.iter().any(|keep| *keep == lower) {
         return true;
     }
-    if lower.starts_with("arena360-watchdog") {
-        return true;
-    }
     if let Some(kiosk) = kiosk_exe_name {
         if lower == kiosk.to_lowercase() {
             return true;
@@ -1254,7 +1251,6 @@ mod tests {
             Some("Arena360 Kiosk.exe")
         ));
         assert!(is_session_keep_process("msedgewebview2.exe", Some("Arena360 Kiosk.exe")));
-        assert!(is_session_keep_process("arena360-watchdog.exe", Some("Arena360 Kiosk.exe")));
         assert!(!is_session_keep_process("discord.exe", Some("Arena360 Kiosk.exe")));
     }
 

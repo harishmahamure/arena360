@@ -2,18 +2,15 @@ mod audio;
 mod boost;
 mod cache;
 mod fingerprint;
+mod instance_mutex;
 mod launch_profile;
 mod lockdown;
 mod power;
 mod process;
 mod scan;
 mod storage;
-mod watchdog;
-mod watchdog_client;
 
-#[cfg(windows)]
-pub use watchdog::watchdog_main_loop;
-
+use instance_mutex::init_instance_mutex;
 use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
 use tauri::{Manager, RunEvent};
 
@@ -53,7 +50,7 @@ pub fn run() {
         .setup(|app| {
             register_keyboard_app(app.handle().clone());
             init_locked_on_startup(app.handle());
-            watchdog_client::init_instance_mutex();
+            init_instance_mutex();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -81,10 +78,6 @@ pub fn run() {
             boost::set_game_boost_config,
             boost::get_game_boost_config,
             cache::cache_asset,
-            watchdog_client::set_watchdog_pause,
-            watchdog_client::clear_watchdog_pause,
-            watchdog_client::prepare_update_install,
-            watchdog_client::prepare_update_relaunch,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

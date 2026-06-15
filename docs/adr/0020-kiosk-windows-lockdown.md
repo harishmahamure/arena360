@@ -7,7 +7,14 @@
 **Implements (deferred portion of)**: [ADR-0002](0002-kiosk-tauri-canonical.md)
 **Depends on**: [ADR-0019](0019-kiosk-device-allow-list.md) (`launch_allowed` validation)
 
-## Amendment 2026-06-15: watchdog pause IPC (K10)
+## Amendment 2026-06-17: superseded by DRAFT-0041
+
+The **2026-06-15 watchdog pause IPC** amendment below is **superseded** by
+[DRAFT-0041](DRAFT-0041-remove-watchdog-logon-autostart.md). Windows autostart is now a
+single **Arena360 Kiosk** ONLOGON scheduled task; pause-file IPC and `arena360-watchdog.exe`
+are removed.
+
+## Amendment 2026-06-15: watchdog pause IPC (K10) — superseded
 
 - **`SetupRelaxed`** writes `%ProgramData%\Arena360\watchdog.pause` (15 min) so the
   external `arena360-watchdog.exe` sidecar does not relaunch during setup or

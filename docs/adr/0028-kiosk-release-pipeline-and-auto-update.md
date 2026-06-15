@@ -12,7 +12,7 @@ and runs it post-install (unless `/NOCONFIGURE`):
 
 | Default action | Opt-out flag |
 |----------------|--------------|
-| Register **Arena360 Watchdog** at logon | `/NOAUTOSTART` → `-SkipWatchdog` |
+| Register **Arena360 Kiosk** at logon (main exe) | `/NOAUTOSTART` → `-SkipAutostart` (alias `-SkipWatchdog`) |
 | Set HKLM policy keys (`DisableTaskMgr`, `DisableLockWorkstation`, `DisableChangePassword`, `NoRun`) | `/NOHARDENING` |
 | Prompt for auto-logon password (interactive) or accept `-AutoLogonPassword` on manual re-run | skip by pressing Enter at prompt |
 

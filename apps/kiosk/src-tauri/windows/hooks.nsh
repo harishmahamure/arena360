@@ -1,22 +1,12 @@
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 
-Var WatchdogExePath
 Var KioskUserName
 Var ConfigureScriptPath
 
-!macro ResolveWatchdogExe
-  StrCpy $WatchdogExePath "$INSTDIR\arena360-watchdog.exe"
-  ${IfNot} ${FileExists} "$WatchdogExePath"
-    FindFirst $0 $1 "$INSTDIR\arena360-watchdog*.exe"
-    ${If} $0 != ""
-      StrCpy $WatchdogExePath "$INSTDIR\$1"
-      FindClose $0
-    ${EndIf}
-  ${EndIf}
-!macroend
-
-!macro RemoveWatchdogTask
+!macro RemoveAutostartTasks
+  nsExec::ExecToLog 'schtasks /Delete /TN "Arena360 Kiosk" /F'
+  Pop $0
   nsExec::ExecToLog 'schtasks /Delete /TN "Arena360 Watchdog" /F'
   Pop $0
 !macroend
@@ -45,7 +35,7 @@ Var ConfigureScriptPath
   ${GetParameters} $R0
   ${GetOptions} $R0 "/NOAUTOSTART" $R1
   ${IfNot} ${Errors}
-    StrCpy $R2 "-SkipWatchdog"
+    StrCpy $R2 "-SkipAutostart"
   ${EndIf}
   ${GetOptions} $R0 "/NOHARDENING" $R1
   ${IfNot} ${Errors}
@@ -86,7 +76,7 @@ Var ConfigureScriptPath
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  !insertmacro RemoveWatchdogTask
+  !insertmacro RemoveAutostartTasks
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

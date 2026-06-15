@@ -96,7 +96,6 @@ pub fn lock_workstation() -> Result<(), String> {
 pub fn restart_station() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::watchdog_client::pause_for_power_action()?;
         win::restart()
     }
 
@@ -110,7 +109,6 @@ pub fn restart_station() -> Result<(), String> {
 pub fn shutdown_station() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::watchdog_client::pause_for_power_action()?;
         win::shutdown()
     }
 

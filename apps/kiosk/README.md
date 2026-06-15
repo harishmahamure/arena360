@@ -72,11 +72,9 @@ pnpm --filter @gaming-cafe/kiosk tauri:build
 
 This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bundle/nsis/`:
 
-- **NSIS** (`nsis/*-setup.exe`) — per-machine install (`installMode: perMachine`), includes `arena360-watchdog.exe` sidecar.
+- **NSIS** (`nsis/*-setup.exe`) — per-machine install (`installMode: perMachine`). For SCCM/Intune, deploy silently (`/S`).
 
-MSI is not built: WiX bundling fails when `externalBin` sidecars are configured ([tauri#14681](https://github.com/tauri-apps/tauri/issues/14681)). For SCCM/Intune, deploy the NSIS installer silently (`/S`) instead.
-
-**Post-install flags** (see [KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)): `/NOCONFIGURE`, `/NOAUTOSTART`, `/NOHARDENING`, `/KIOSKUSER=Name`. The bundled `configure-station.ps1` registers the watchdog, applies HKLM hardening by default, and optionally configures auto-logon for a single Windows user.
+**Post-install flags** (see [KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)): `/NOCONFIGURE`, `/NOAUTOSTART`, `/NOHARDENING`, `/KIOSKUSER=Name`. The bundled `configure-station.ps1` registers the **Arena360 Kiosk** logon scheduled task, applies HKLM hardening by default, and optionally configures auto-logon for a single Windows user.
 
 ### WebView2 runtime (Windows 10)
 
@@ -106,12 +104,12 @@ For a hardened station, also apply at the OS level:
 
 - Assigned Access / kiosk account, or group policy `DisableLockWorkstation` and
   `DisableTaskMgr` (applied by default via post-install script; pass `/NOHARDENING` to skip).
-- Auto-login of the kiosk account; the installer runs **configure-station.ps1** (watchdog at
-  logon, optional auto-logon prompt). Pass `/NOAUTOSTART` or `/NOCONFIGURE` to skip parts.
+- Auto-login of the kiosk account; the installer runs **configure-station.ps1** (Arena360 Kiosk
+  logon task, optional auto-logon prompt). Pass `/NOAUTOSTART` or `/NOCONFIGURE` to skip parts.
   This registers startup at logon only — it does **not** replace `explorer.exe` as the shell.
 
 **Full roadmap:** [docs/KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)
-(Assigned Access, shell replacement, watchdog sidecar, fleet rollout).
+(Assigned Access, shell replacement, logon autostart, fleet rollout).
 **IT entry point:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md).
 
 ### Code signing (release)
