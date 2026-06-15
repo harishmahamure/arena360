@@ -1,7 +1,6 @@
 #[cfg(target_os = "windows")]
 mod win {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, LUID};
-    use windows::Win32::Foundation::BOOL;
+    use windows::Win32::Foundation::{CloseHandle, BOOLEAN, HANDLE, LUID};
     use windows::Win32::Security::{
         AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
         SE_SHUTDOWN_NAME, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
@@ -52,10 +51,11 @@ mod win {
 
     pub fn sleep() -> Result<(), String> {
         unsafe {
-            SetSuspendState(BOOL(0), BOOL(0), BOOL(0))
-                .ok()
-                .map_err(|e| e.to_string())?;
-            Ok(())
+            if SetSuspendState(BOOLEAN(0), BOOLEAN(0), BOOLEAN(0)).as_bool() {
+                Ok(())
+            } else {
+                Err("Could not put this PC to sleep".to_string())
+            }
         }
     }
 
