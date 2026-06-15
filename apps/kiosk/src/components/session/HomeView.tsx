@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchGames } from '../../lib/allowList';
 import { LOGIN_BACKGROUND_VIDEO_URL } from '../../lib/config';
-import { GameCard } from './GameCard';
 import { HeroGameCarousel } from './HeroGameCarousel';
 import type { SessionView } from './SessionNav';
 import { useAllowList } from './useAllowList';
 import { useLauncher } from './useLauncher';
 
-const QUICK_LAUNCH_LIMIT = 12;
+const HERO_CAROUSEL_LIMIT = 4;
 
 interface HomeViewProps {
-  deviceName?: string | null;
   disabled?: boolean;
   onError?: (message: string) => void;
   onNavigate: (view: SessionView) => void;
@@ -23,7 +21,6 @@ function tryAutoplay(video: HTMLVideoElement) {
 }
 
 export function HomeView({
-  deviceName,
   disabled,
   onError,
   onNavigate,
@@ -37,13 +34,13 @@ export function HomeView({
     onLaunched,
   );
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const heroGames = useMemo(() => games.slice(0, HERO_CAROUSEL_LIMIT), [games]);
 
   useEffect(() => {
-    if (selectedIndex >= games.length) setSelectedIndex(0);
-  }, [games.length, selectedIndex]);
+    if (selectedIndex >= heroGames.length) setSelectedIndex(0);
+  }, [heroGames.length, selectedIndex]);
 
-  const featured = games[selectedIndex];
-  const quickLaunch = useMemo(() => games.slice(0, QUICK_LAUNCH_LIMIT), [games]);
+  const featured = heroGames[selectedIndex];
 
   const canPlay = featured ? isLaunchable(featured) : false;
   const isLaunching = featured ? launchingKey === featured.id : false;
@@ -74,7 +71,7 @@ export function HomeView({
 
         <div className="a360-hero-content">
           <HeroGameCarousel
-            games={games}
+            games={heroGames}
             selectedIndex={selectedIndex}
             onSelect={setSelectedIndex}
             onAllGames={() => onNavigate('library')}
@@ -113,44 +110,6 @@ export function HomeView({
           </div>
         </div>
       </section>
-
-      {quickLaunch.length > 0 ? (
-        <section className="a360-quick-launch">
-          <div className="a360-section-head">
-            <div>
-              <h2 className="a360-section-title">
-                <span className="material-symbols-outlined">rocket_launch</span>
-                Quick Launch
-              </h2>
-              <p className="a360-section-sub">Jump back into your recently allowed adventures</p>
-            </div>
-            <button type="button" className="a360-link-btn" onClick={() => onNavigate('library')}>
-              View all games
-              <span className="material-symbols-outlined">arrow_forward</span>
-            </button>
-          </div>
-          <div className="a360-carousel no-scrollbar">
-            {quickLaunch.map((entry) => (
-              <GameCard
-                key={entry.id}
-                entry={entry}
-                launchable={isLaunchable(entry)}
-                launching={launchingKey === entry.id}
-                disabled={disabled}
-                onLaunch={() => void launch(entry)}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <footer className="a360-home-footer">
-        <div>
-          <span className="a360-home-footer-brand">Arena360</span>
-          <p className="a360-home-footer-meta">Experience the future.</p>
-        </div>
-        {deviceName ? <span className="a360-home-footer-station">{deviceName}</span> : null}
-      </footer>
     </div>
   );
 }

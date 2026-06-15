@@ -94,37 +94,86 @@ function Remove-LegacyWatchdogTask {
     Write-Info "Removed legacy watchdog scheduled task (if present)."
 }
 
+function Clear-LegacyWatchdogPause {
+    $pausePath = Join-Path $MarkerDir 'watchdog.pause'
+    if (Test-Path -LiteralPath $pausePath) {
+        Remove-Item -LiteralPath $pausePath -Force
+        Write-Info 'Removed legacy watchdog.pause file.'
+    }
+}
+
+function Test-KioskLogonTaskInteractive {
+    $query = schtasks /Query /TN $KioskTaskName /V /FO LIST 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Could not verify $KioskTaskName task: $query"
+        return
+    }
+    $logonLine = $query | Where-Object { $_ -match 'Logon Mode' }
+    if ($logonLine -match 'Interactive') {
+        Write-Info "Verified $KioskTaskName logon mode is interactive."
+    } else {
+        Write-Warn "$KioskTaskName may not run in the user desktop session. Logon Mode: $logonLine"
+    }
+}
+
 function Install-KioskLogonTask([string]$KioskExe, [string]$RunAsUser) {
     if (-not (Test-Path -LiteralPath $KioskExe)) {
         Write-Warn "Kiosk binary not found at $KioskExe; skipping scheduled task."
         return
     }
+
+    if ([string]::IsNullOrWhiteSpace($RunAsUser)) {
+        $RunAsUser = $env:USERNAME
+    }
+
     Remove-LegacyWatchdogTask
-    $null = schtasks /Delete /TN $KioskTaskName /F 2>&1
-    $quoted = "`"$KioskExe`""
-    $createArgs = @(
-        '/Create', '/TN', $KioskTaskName,
-        '/TR', $quoted,
-        '/SC', 'ONLOGON',
-        '/RL', 'LIMITED',
-        '/F'
-    )
-    if (-not [string]::IsNullOrWhiteSpace($RunAsUser)) {
-        $createArgs += @('/RU', $RunAsUser)
-        Write-Info "Registering $KioskTaskName for user '$RunAsUser' at logon."
-    } else {
-        Write-Info "Registering $KioskTaskName at logon (current installer context)."
+    Clear-LegacyWatchdogPause
+
+    try {
+        Unregister-ScheduledTask -TaskName $KioskTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {
+        $null = schtasks /Delete /TN $KioskTaskName /F 2>&1
     }
-    $result = schtasks @createArgs 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Could not register kiosk logon task (exit $LASTEXITCODE): $result"
-        return
+
+    Write-Info "Registering $KioskTaskName for user '$RunAsUser' at logon (interactive, 30s delay)."
+
+    $action = New-ScheduledTaskAction -Execute $KioskExe
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $RunAsUser
+    $trigger.Delay = 'PT30S'
+    $principal = New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit ([TimeSpan]::Zero)
+
+    try {
+        Register-ScheduledTask `
+            -TaskName $KioskTaskName `
+            -Action $action `
+            -Trigger $trigger `
+            -Principal $principal `
+            -Settings $settings `
+            -Force | Out-Null
+    } catch {
+        Write-Warn "Register-ScheduledTask failed; falling back to schtasks: $_"
+        $quoted = "`"$KioskExe`""
+        $result = schtasks /Create /TN $KioskTaskName /TR $quoted /SC ONLOGON /RU $RunAsUser /IT /DELAY 0000:30 /RL LIMITED /F 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "Could not register kiosk logon task (exit $LASTEXITCODE): $result"
+            return
+        }
     }
+
     Write-Info "Registered $KioskTaskName to start at logon."
+    Test-KioskLogonTaskInteractive
 }
 
 function Remove-KioskLogonTask {
-    $null = schtasks /Delete /TN $KioskTaskName /F 2>&1
+    try {
+        Unregister-ScheduledTask -TaskName $KioskTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {
+        $null = schtasks /Delete /TN $KioskTaskName /F 2>&1
+    }
     Remove-LegacyWatchdogTask
     Write-Info "Removed kiosk autostart scheduled tasks (if present)."
 }

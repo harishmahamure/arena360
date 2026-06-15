@@ -103,11 +103,30 @@ function loadDatabaseUrl(cliUrl) {
 
   const envPath = new URL('../.env', import.meta.url);
   const env = readFileSync(envPath, 'utf8');
-  const match = env.match(/DATABASE_URL=(?:"([^"]+)"|([^\s#]+))/);
-  if (match) return match[1] ?? match[2];
+
+  const urlMatch = env.match(/DATABASE_URL=(?:"([^"]+)"|([^\s#]+))/);
+  if (urlMatch) {
+    const url = urlMatch[1] ?? urlMatch[2];
+    if (url) return url;
+  }
+
+  const pick = (key) => {
+    const match = env.match(new RegExp(`${key}=(.+)`));
+    return match?.[1]?.trim();
+  };
+  const host = pick('DB_HOST');
+  const port = pick('DB_PORT');
+  const username = pick('DB_USERNAME');
+  const password = pick('DB_PASSWORD');
+  const database = pick('DB_DATABASE');
+  if (host && port && username && password && database) {
+    return `postgres://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+  }
 
   // biome-ignore lint/suspicious/noConsole: CLI script
-  console.error('DATABASE_URL not found. Pass --database-url or set apps/backend/.env');
+  console.error(
+    'DATABASE_URL not found. Pass --database-url or set DATABASE_URL / DB_* in apps/backend/.env',
+  );
   process.exit(1);
 }
 
@@ -253,11 +272,35 @@ function planMatchKey(scope, { nameOnly = false, deviceOnly = false } = {}) {
   return `${scope.planType}|${scope.price}|${normalizePlanName(scope.name)}|${scope.deviceType ?? ''}|${scope.deviceSubType ?? ''}`;
 }
 
+function deviceScopeKey(scope) {
+  return `${scope.planType}|${scope.deviceType ?? ''}|${scope.deviceSubType ?? ''}`;
+}
+
+function pickPlanByDeviceScope(scope, byDeviceScope) {
+  const candidates = byDeviceScope.get(deviceScopeKey(scope));
+  if (!candidates?.length) return null;
+
+  const targetPrice = Number.parseFloat(scope.price);
+  if (Number.isNaN(targetPrice)) return candidates[0];
+
+  let best = candidates[0];
+  let bestDiff = Math.abs(best.price - targetPrice);
+  for (const plan of candidates) {
+    const diff = Math.abs(plan.price - targetPrice);
+    if (diff < bestDiff) {
+      best = plan;
+      bestDiff = diff;
+    }
+  }
+  return best;
+}
+
 function buildPlanIndexes(plans) {
   const byId = new Map();
   const byFullKey = new Map();
   const byNameKey = new Map();
   const byDeviceKey = new Map();
+  const byDeviceScope = new Map();
 
   for (const plan of plans) {
     byId.set(plan.id, plan);
@@ -271,9 +314,19 @@ function buildPlanIndexes(plans) {
     byFullKey.set(planMatchKey(scope), plan);
     byNameKey.set(planMatchKey(scope, { nameOnly: true }), plan);
     byDeviceKey.set(planMatchKey(scope, { deviceOnly: true }), plan);
+
+    const scopeKey = deviceScopeKey(scope);
+    if (!byDeviceScope.has(scopeKey)) {
+      byDeviceScope.set(scopeKey, []);
+    }
+    byDeviceScope.get(scopeKey).push(plan);
   }
 
-  return { byId, byFullKey, byNameKey, byDeviceKey };
+  for (const list of byDeviceScope.values()) {
+    list.sort((a, b) => a.price - b.price);
+  }
+
+  return { byId, byFullKey, byNameKey, byDeviceKey, byDeviceScope };
 }
 
 function resolvePlanForCsvRow(row, indexes) {
@@ -288,9 +341,12 @@ function resolvePlanForCsvRow(row, indexes) {
   plan = indexes.byNameKey.get(planMatchKey(scope, { nameOnly: true }));
   if (plan) return { plan, planId: plan.id, match: 'name', scope };
 
+  plan = indexes.byDeviceKey.get(planMatchKey(scope, { deviceOnly: true }));
+  if (plan) return { plan, planId: plan.id, match: 'device', scope };
+
   if (scope.deviceType || scope.deviceSubType) {
-    plan = indexes.byDeviceKey.get(planMatchKey(scope, { deviceOnly: true }));
-    if (plan) return { plan, planId: plan.id, match: 'device', scope };
+    plan = pickPlanByDeviceScope(scope, indexes.byDeviceScope);
+    if (plan) return { plan, planId: plan.id, match: 'deviceScope', scope };
   }
 
   return { plan: null, planId: null, match: null, scope };
@@ -364,6 +420,12 @@ async function seedMissingPlans(client, planRows, adminId, dryRun) {
       indexes.byFullKey.set(planMatchKey(scope), fakePlan);
       indexes.byNameKey.set(planMatchKey(scope, { nameOnly: true }), fakePlan);
       indexes.byDeviceKey.set(planMatchKey(scope, { deviceOnly: true }), fakePlan);
+      const fakeScopeKey = deviceScopeKey(scope);
+      if (!indexes.byDeviceScope.has(fakeScopeKey)) {
+        indexes.byDeviceScope.set(fakeScopeKey, []);
+      }
+      indexes.byDeviceScope.get(fakeScopeKey).push(fakePlan);
+      indexes.byDeviceScope.get(fakeScopeKey).sort((a, b) => a.price - b.price);
       inserted += 1;
       continue;
     }
@@ -411,6 +473,12 @@ async function seedMissingPlans(client, planRows, adminId, dryRun) {
     indexes.byFullKey.set(planMatchKey(scope), plan);
     indexes.byNameKey.set(planMatchKey(scope, { nameOnly: true }), plan);
     indexes.byDeviceKey.set(planMatchKey(scope, { deviceOnly: true }), plan);
+    const scopeKey = deviceScopeKey(scope);
+    if (!indexes.byDeviceScope.has(scopeKey)) {
+      indexes.byDeviceScope.set(scopeKey, []);
+    }
+    indexes.byDeviceScope.get(scopeKey).push(plan);
+    indexes.byDeviceScope.get(scopeKey).sort((a, b) => a.price - b.price);
     inserted += 1;
   }
 

@@ -519,11 +519,12 @@ body,
 /* ---- Home view: cinematic hero ---- */
 .a360-home {
   flex: 1;
-  min-height: 0;
+  min-height: var(--a360-viewport-height);
+  height: 100%;
   width: 100%;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .a360-hero {
@@ -533,8 +534,8 @@ body,
 }
 
 .a360-hero--cinematic {
-  flex-shrink: 0;
-  min-height: min(65vh, 720px);
+  flex: 1;
+  min-height: 0;
   align-self: stretch;
   display: flex;
 }
@@ -828,45 +829,6 @@ body,
 .a360-btn-ghost:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.a360-quick-launch {
-  flex-shrink: 0;
-  position: relative;
-  z-index: 20;
-  padding: 1.5rem clamp(1.25rem, 5vw, 4rem) 1rem;
-  background: var(--a360-surface);
-}
-
-.a360-home-footer {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem clamp(1.25rem, 5vw, 4rem);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: var(--a360-surface);
-  font-size: 0.75rem;
-  color: var(--a360-on-surface-variant);
-}
-
-.a360-home-footer-brand {
-  display: block;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--a360-on-surface);
-}
-
-.a360-home-footer-meta {
-  margin: 0.15rem 0 0;
-  font-size: 0.7rem;
-}
-
-.a360-home-footer-station {
-  font-weight: 600;
-  color: var(--a360-primary);
 }
 
 .a360-modal-scrim {

@@ -223,7 +223,6 @@ export function SessionPage() {
 
         {view === 'home' ? (
           <HomeView
-            deviceName={deviceName}
             onError={onError}
             onLaunched={refresh}
             onNavigate={setView}
