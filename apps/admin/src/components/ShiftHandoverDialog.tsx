@@ -1,6 +1,12 @@
 import { permissionsForRole } from '@gaming-cafe/contracts';
 import { CurrencyField, FormButton, FormTextField, IntegerField } from '@gaming-cafe/ui';
-import { local, toastUtils, useAsyncAction } from '@gaming-cafe/utils';
+import {
+  local,
+  normalizeUsername,
+  toastUtils,
+  trimValue,
+  useAsyncAction,
+} from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -188,9 +194,9 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
             closingDenominations:
               Object.keys(closingDenominations).length > 0 ? closingDenominations : undefined,
             notes: notes || undefined,
-            validatorUsername,
-            validatorPassword,
-            validatorTotp,
+            validatorUsername: normalizeUsername(validatorUsername),
+            validatorPassword: trimValue(validatorPassword),
+            validatorTotp: trimValue(validatorTotp),
             deposit: depositInput,
           });
 

@@ -1,4 +1,5 @@
 import * as yup from 'yup';
+import { digitsOnly, normalizeUsername, trimOptional, trimValue } from '../helpers/string-utils';
 
 // ==============================================================
 // VALIDATION MESSAGES
@@ -43,7 +44,11 @@ export const requiredString = (fieldName = 'Field') =>
 /**
  * Optional string validation schema
  */
-export const optionalString = () => yup.string().optional();
+export const optionalString = () =>
+  yup
+    .string()
+    .transform((value) => trimOptional(value))
+    .optional();
 
 /**
  * String with min/max length validation
@@ -54,7 +59,7 @@ export const stringWithLength = (
   max?: number,
   required = true,
 ) => {
-  let schema = yup.string();
+  let schema = yup.string().transform((value) => trimValue(value));
 
   if (min) {
     schema = schema.min(min, validationMessages.min(fieldName, min));
@@ -93,12 +98,6 @@ export const noSpecialCharsSchema = (fieldName = 'Field', required = true) => {
 
   return required ? schema.required(validationMessages.required(fieldName)) : schema.optional();
 };
-
-/**
- * Trim whitespace validator
- */
-export const trimmedString = (fieldName = 'Field') =>
-  yup.string().trim().required(validationMessages.required(fieldName));
 
 // ==============================================================
 // EMAIL & COMMUNICATION VALIDATORS
@@ -345,13 +344,51 @@ export const optionalNameSchema = (fieldName = 'Name') =>
 /**
  * Username validation schema
  */
+export const USERNAME_HELPER_TEXT =
+  '3–50 characters; spaces become underscores; letters, numbers, dots, hyphens, and underscores only';
+
 export const usernameSchema = yup
   .string()
+  .transform((value) => normalizeUsername(value))
   .min(3, validationMessages.min('Username', 3))
-  .max(20, validationMessages.max('Username', 20))
-  .matches(/^[a-zA-Z0-9_]+$/, validationMessages.alphanumeric)
-  .trim()
+  .max(50, validationMessages.max('Username', 50))
+  .matches(
+    /^[a-zA-Z0-9._-]+$/,
+    'Username can only contain letters, numbers, dots, hyphens, and underscores',
+  )
+  .test('no-whitespace', 'Username cannot contain spaces', (value) =>
+    value ? !/\s/.test(value) : true,
+  )
   .required(validationMessages.required('Username'));
+
+/**
+ * Trim required string fields on submit.
+ */
+export const trimmedString = (fieldName = 'Field') =>
+  yup
+    .string()
+    .transform((value) => trimValue(value))
+    .required(validationMessages.required(fieldName));
+
+/**
+ * Trim optional string fields; empty becomes undefined.
+ */
+export const trimmedOptionalString = () =>
+  yup
+    .string()
+    .transform((value) => trimOptional(value))
+    .optional()
+    .nullable();
+
+/**
+ * Phone number: trim, digits only, min 10.
+ */
+export const phoneDigitsSchema = (fieldName = 'Phone Number') =>
+  yup
+    .string()
+    .transform((value) => digitsOnly(trimValue(value)))
+    .min(10, `${fieldName} must be at least 10 digits`)
+    .required(validationMessages.required(fieldName));
 
 /**
  * Slug validation schema (for URLs)

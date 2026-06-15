@@ -63,5 +63,6 @@ export { PageShell } from './lib/components/PageShell';
 // Components
 export type { NavItem } from './lib/components/Sidebar';
 export { default as Sidebar } from './lib/components/Sidebar';
+export * from './lib/inputHints';
 export { default as AuthLayout } from './lib/layouts/AuthLayout';
 export { default as DashboardLayout } from './lib/layouts/DashboardLayout';

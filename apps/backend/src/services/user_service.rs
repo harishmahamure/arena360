@@ -6,6 +6,9 @@ use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
 use crate::repositories::{CreatePlayerParams, UserRepository};
 use crate::services::totp_util::{generate_totp_setup, verify_totp_code};
+use crate::validation::{
+    normalize_phone_digits, trim_optional_string, trim_secret, validate_username,
+};
 
 pub struct UserService {
     repo: UserRepository,
@@ -35,13 +38,21 @@ impl UserService {
         dto: UpdateUserDto,
         actor_id: Option<Uuid>,
     ) -> Result<User, AppError> {
-        if let Some(username) = &dto.username {
-            if self.repo.username_exists(username, Some(id)).await? {
+        let mut dto = dto;
+        if let Some(username) = dto.username.take() {
+            let normalized = validate_username(&username)?;
+            if self.repo.username_exists(&normalized, Some(id)).await? {
                 return Err(AppError::Conflict(format!(
-                    "User with username '{username}' already exists"
+                    "User with username '{normalized}' already exists"
                 )));
             }
+            dto.username = Some(normalized);
         }
+        if let Some(phone) = dto.phone_number.take() {
+            dto.phone_number = Some(normalize_phone_digits(&phone));
+        }
+        dto.first_name = trim_optional_string(dto.first_name);
+        dto.last_name = trim_optional_string(dto.last_name);
         self.repo.update(id, &dto, actor_id).await
     }
 
@@ -50,10 +61,10 @@ impl UserService {
         dto: RegisterDto,
         claims: &JwtUserClaims,
     ) -> Result<RegisterResponseDto, AppError> {
-        if self.repo.username_exists(&dto.username, None).await? {
+        let username = validate_username(&dto.username)?;
+        if self.repo.username_exists(&username, None).await? {
             return Err(AppError::Conflict(format!(
-                "User with username '{}' already exists",
-                dto.username
+                "User with username '{username}' already exists"
             )));
         }
 
@@ -74,18 +85,20 @@ impl UserService {
             )));
         }
 
-        let password_hash = bcrypt::hash(&dto.password, bcrypt::DEFAULT_COST)
+        let password = trim_secret(&dto.password);
+        let password_hash = bcrypt::hash(&password, bcrypt::DEFAULT_COST)
             .map_err(|e| AppError::Internal(format!("Failed to hash password: {e}")))?;
 
+        let phone_number = normalize_phone_digits(&dto.phoneNumber);
         let actor_id = claims.user_id_uuid();
 
         self.repo
             .create_player(CreatePlayerParams {
-                username: &dto.username,
+                username: &username,
                 password_hash: &password_hash,
-                phone_number: &dto.phoneNumber,
-                first_name: dto.firstName.as_deref(),
-                last_name: dto.lastName.as_deref(),
+                phone_number: &phone_number,
+                first_name: trim_optional_string(dto.firstName).as_deref(),
+                last_name: trim_optional_string(dto.lastName).as_deref(),
                 role,
                 actor_id,
             })

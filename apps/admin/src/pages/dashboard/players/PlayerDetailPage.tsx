@@ -1,5 +1,12 @@
 import type { UserRole } from '@gaming-cafe/contracts';
-import { CurrencyField, type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
+import {
+  CurrencyField,
+  type FieldConfig,
+  FormBuilder,
+  FormSkeleton,
+  OtpField,
+} from '@gaming-cafe/ui';
+import { USERNAME_HELPER_TEXT } from '@gaming-cafe/utils';
 import { Box, Button, Divider, Paper, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -30,16 +37,16 @@ export default function EditPlayerPage() {
       {
         name: 'username',
         label: 'Username',
-        type: 'text',
+        type: 'username',
         placeholder: 'e.g., johndoe',
         required: true,
         gridCols: 6,
-        helperText: '3-50 characters, must be unique',
+        helperText: USERNAME_HELPER_TEXT,
       },
       {
         name: 'phoneNumber',
         label: 'Phone Number',
-        type: 'text',
+        type: 'phone',
         placeholder: 'e.g., 9876543210',
         required: true,
         gridCols: 6,
@@ -361,13 +368,10 @@ export default function EditPlayerPage() {
                   secret={totpSecret}
                 />
               )}
-              <TextField
+              <OtpField
                 label="Verification Code"
                 value={totpCode}
-                onChange={(event) =>
-                  setTotpCode(event.target.value.replace(/\s+/g, '').slice(0, 6))
-                }
-                inputProps={{ autoComplete: 'one-time-code' }}
+                onChange={(event) => setTotpCode(event.target.value)}
               />
               <Box sx={{ display: 'flex', gap: 1 }}>
                 <Button variant="contained" onClick={handleVerifyTotp} disabled={totpLoading}>

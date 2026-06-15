@@ -1,5 +1,11 @@
 import { isUserRole, type UserRole } from '@gaming-cafe/contracts';
-import { validationMessages } from '@gaming-cafe/utils';
+import {
+  phoneDigitsSchema,
+  trimmedOptionalString,
+  trimmedString,
+  usernameSchema,
+  validationMessages,
+} from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
 export const userRoleOptions: { value: UserRole; label: string }[] = [
@@ -19,30 +25,25 @@ export const isActiveOptions = [
 ];
 
 export const createPlayerSchema = yup.object({
-  username: yup
-    .string()
-    .min(3, 'Username must be at least 3 characters')
-    .max(50, 'Username must not exceed 50 characters')
-    .required(validationMessages.required('Username')),
+  username: usernameSchema,
 
-  phoneNumber: yup
-    .string()
-    .min(10, 'Phone number must be at least 10 digits')
-    .required(validationMessages.required('Phone Number')),
+  phoneNumber: phoneDigitsSchema('Phone Number'),
 
   password: yup
     .string()
+    .transform((value) => (value == null ? '' : String(value).trim()))
     .min(8, 'Password must be at least 8 characters')
     .required(validationMessages.required('Password')),
 
   confirmPassword: yup
     .string()
+    .transform((value) => (value == null ? '' : String(value).trim()))
     .oneOf([yup.ref('password')], 'Passwords must match')
     .required(validationMessages.required('Confirm Password')),
 
-  firstName: yup.string().max(50, 'First name must not exceed 50 characters').optional().nullable(),
+  firstName: trimmedOptionalString().max(50, 'First name must not exceed 50 characters'),
 
-  lastName: yup.string().max(50, 'Last name must not exceed 50 characters').optional().nullable(),
+  lastName: trimmedOptionalString().max(50, 'Last name must not exceed 50 characters'),
 
   role: yup.string().oneOf(['player', 'staff'], 'Please select a valid role').default('player'),
 });
@@ -60,20 +61,13 @@ export const createPlayerDefaultValues: CreatePlayerFormData = {
 };
 
 export const updatePlayerSchema = yup.object({
-  username: yup
-    .string()
-    .min(3, 'Username must be at least 3 characters')
-    .max(50, 'Username must not exceed 50 characters')
-    .required(validationMessages.required('Username')),
+  username: usernameSchema,
 
-  phoneNumber: yup
-    .string()
-    .min(10, 'Phone number must be at least 10 digits')
-    .required(validationMessages.required('Phone Number')),
+  phoneNumber: phoneDigitsSchema('Phone Number'),
 
-  firstName: yup.string().max(50, 'First name must not exceed 50 characters').optional().nullable(),
+  firstName: trimmedOptionalString().max(50, 'First name must not exceed 50 characters'),
 
-  lastName: yup.string().max(50, 'Last name must not exceed 50 characters').optional().nullable(),
+  lastName: trimmedOptionalString().max(50, 'Last name must not exceed 50 characters'),
 
   role: yup
     .string()

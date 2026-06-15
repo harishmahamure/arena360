@@ -161,6 +161,46 @@ export const isValidUrl = (url: string): boolean => {
 };
 
 /**
+ * Trim string; empty string if only whitespace.
+ */
+export const trimValue = (value: string | null | undefined): string => {
+  if (value == null) return '';
+  return value.trim();
+};
+
+/**
+ * Trim string; undefined if empty after trim.
+ */
+export const trimOptional = (value: string | null | undefined): string | undefined => {
+  const trimmed = trimValue(value);
+  return trimmed === '' ? undefined : trimmed;
+};
+
+/**
+ * Remove non-digit characters from a phone string.
+ */
+export const digitsOnly = (value: string | null | undefined): string => {
+  if (!value) return '';
+  return value.replace(/\D/g, '');
+};
+
+/**
+ * Replace interior whitespace runs with underscore (live input sanitization).
+ * Leading/trailing spaces are left for normalizeUsername to trim on submit.
+ */
+export const sanitizeUsernameInput = (value: string | null | undefined): string => {
+  if (!value) return '';
+  return value.replace(/(?<=\S)\s+(?=\S)/g, '_').replace(/\s{2,}/g, '_');
+};
+
+/**
+ * Normalize username: trim and replace whitespace runs with underscore.
+ */
+export const normalizeUsername = (value: string | null | undefined): string => {
+  return sanitizeUsernameInput(trimValue(value));
+};
+
+/**
  * Format phone number
  */
 export const formatPhoneNumber = (phone: string): string => {

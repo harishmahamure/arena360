@@ -1,5 +1,5 @@
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
-import { useAsyncAction } from '@gaming-cafe/utils';
+import { USERNAME_HELPER_TEXT, useAsyncAction } from '@gaming-cafe/utils';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,16 +15,16 @@ const basePlayerFormFields: FieldConfig<CreatePlayerFormData>[] = [
   {
     name: 'username',
     label: 'Username',
-    type: 'text',
+    type: 'username',
     placeholder: 'e.g., johndoe',
     required: true,
     gridCols: 6,
-    helperText: '3-50 characters, must be unique',
+    helperText: USERNAME_HELPER_TEXT,
   },
   {
     name: 'phoneNumber',
     label: 'Phone Number',
-    type: 'text',
+    type: 'phone',
     placeholder: 'e.g., 9876543210',
     required: true,
     gridCols: 6,

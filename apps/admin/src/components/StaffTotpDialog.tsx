@@ -1,3 +1,5 @@
+import { OtpField } from '@gaming-cafe/ui';
+import { trimValue } from '@gaming-cafe/utils';
 import {
   Button,
   Dialog,
@@ -5,7 +7,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  TextField,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
@@ -40,7 +41,7 @@ export function StaffTotpDialog({
   }, [open]);
 
   const handleConfirm = () => {
-    const code = totp.trim();
+    const code = trimValue(totp);
     if (!code) return;
     void onConfirm(code);
   };
@@ -54,7 +55,7 @@ export function StaffTotpDialog({
       </DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>{description}</DialogContentText>
-        <TextField
+        <OtpField
           autoFocus
           fullWidth
           size="small"
@@ -63,7 +64,6 @@ export function StaffTotpDialog({
           helperText="Enter the code from your authenticator app"
           value={totp}
           onChange={(e) => setTotp(e.target.value)}
-          inputProps={{ autoComplete: 'one-time-code', inputMode: 'numeric' }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();

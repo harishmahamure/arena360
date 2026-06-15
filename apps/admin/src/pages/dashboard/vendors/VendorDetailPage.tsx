@@ -1,4 +1,5 @@
-import { toastUtils } from '@gaming-cafe/utils';
+import { PhoneField } from '@gaming-cafe/ui';
+import { digitsOnly, toastUtils, trimValue } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -71,12 +72,12 @@ export default function VendorDetailPage() {
     setError(undefined);
     try {
       await updateVendor(id, {
-        name: name.trim(),
-        contactPerson: contactPerson || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
-        address: address || undefined,
-        gstNumber: gstNumber || undefined,
+        name: trimValue(name),
+        contactPerson: trimValue(contactPerson) || undefined,
+        phone: digitsOnly(phone) || undefined,
+        email: trimValue(email) || undefined,
+        address: trimValue(address) || undefined,
+        gstNumber: trimValue(gstNumber) || undefined,
         isActive,
       });
       toastUtils.success('Vendor updated');
@@ -147,7 +148,7 @@ export default function VendorDetailPage() {
               onChange={(e) => setContactPerson(e.target.value)}
               fullWidth
             />
-            <TextField
+            <PhoneField
               label="Phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}

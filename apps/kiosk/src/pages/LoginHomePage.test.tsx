@@ -141,4 +141,22 @@ describe('LoginHomePage', () => {
     expect(clearError).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it('normalizes username and trims password on submit', async () => {
+    playerLogin.mockResolvedValueOnce(undefined);
+    render(<LoginHomePage />);
+
+    fireEvent.change(screen.getByLabelText(/^username$/i), {
+      target: { value: ' Yuvraj ' },
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: '  secret  ' },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+
+    expect(playerLogin).toHaveBeenCalledWith('Yuvraj', 'secret');
+  });
 });

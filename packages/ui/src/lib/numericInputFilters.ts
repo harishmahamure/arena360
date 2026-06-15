@@ -34,3 +34,23 @@ export function filterCurrencyInput(raw: string): string {
   }
   return filtered;
 }
+
+/** True while the user is mid-entry (e.g. "1." or "-"). */
+export function isIncompleteDecimalInput(value: string): boolean {
+  if (value === '' || value === '.' || value === '-') return true;
+  if (value.endsWith('.')) return true;
+  return false;
+}
+
+/** Parse a committed decimal field string to number or empty. */
+export function parseDecimalFieldValue(value: string): number | '' {
+  if (value === '' || value === '.' || value === '-') return '';
+  const num = Number(value);
+  return Number.isNaN(num) ? '' : num;
+}
+
+/** Format a stored number for display in a decimal input. */
+export function formatDecimalDisplay(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  return String(value);
+}

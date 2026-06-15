@@ -1,4 +1,10 @@
-import { ApiError, useAsyncAction } from '@gaming-cafe/utils';
+import {
+  ApiError,
+  normalizeUsername,
+  sanitizeUsernameInput,
+  trimValue,
+  useAsyncAction,
+} from '@gaming-cafe/utils';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
@@ -58,7 +64,9 @@ export function SetupPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      await adminLogin(username, password, undefined, { relaxLockdown: true });
+      await adminLogin(normalizeUsername(username), trimValue(password), undefined, {
+        relaxLockdown: true,
+      });
       setAuthenticated(true);
     } catch (err) {
       if (err instanceof ApiError && err.message === 'TOTP code is required') {
@@ -73,7 +81,9 @@ export function SetupPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      await adminLogin(username, password, totp.trim(), { relaxLockdown: true });
+      await adminLogin(normalizeUsername(username), trimValue(password), trimValue(totp), {
+        relaxLockdown: true,
+      });
       setAuthenticated(true);
     } catch {
       // context error
@@ -162,7 +172,11 @@ export function SetupPage() {
           <form className="setup-login-form" onSubmit={submitCredentials}>
             <label>
               Admin username
-              <input value={username} onChange={(e) => setUsername(e.target.value)} required />
+              <input
+                value={username}
+                onChange={(e) => setUsername(sanitizeUsernameInput(e.target.value))}
+                required
+              />
             </label>
             <label>
               Password

@@ -1,5 +1,5 @@
-import { CurrencyField, DecimalField } from '@gaming-cafe/ui';
-import { toastUtils } from '@gaming-cafe/utils';
+import { CurrencyField, DecimalField, PhoneField } from '@gaming-cafe/ui';
+import { digitsOnly, toastUtils, trimValue } from '@gaming-cafe/utils';
 import {
   Box,
   Button,
@@ -24,7 +24,7 @@ interface ConfigGroup {
   fields: {
     key: string;
     label: string;
-    type?: 'text' | 'number' | 'boolean';
+    type?: 'text' | 'number' | 'boolean' | 'phone';
     variant?: ConfigFieldVariant;
   }[];
 }
@@ -36,7 +36,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     fields: [
       { key: 'business.name', label: 'Business Name' },
       { key: 'business.address', label: 'Address' },
-      { key: 'business.phone', label: 'Phone' },
+      { key: 'business.phone', label: 'Phone', type: 'phone' },
       { key: 'business.email', label: 'Email' },
       { key: 'business.gst_number', label: 'GST Number' },
       { key: 'business.logo_url', label: 'Logo URL' },
@@ -96,7 +96,11 @@ function ConfigValueField({
     return <DecimalField {...common} />;
   }
 
-  return <TextField {...common} type={field.type === 'number' ? 'number' : 'text'} />;
+  if (field.type === 'phone') {
+    return <PhoneField {...common} />;
+  }
+
+  return <TextField {...common} type="text" />;
 }
 
 export default function SettingsPage() {
@@ -125,8 +129,12 @@ export default function SettingsPage() {
     let parsedValue: unknown = rawValue;
 
     const field = CONFIG_GROUPS.flatMap((g) => g.fields).find((f) => f.key === key);
-    if (field?.type === 'number') {
+    if (field?.type === 'phone') {
+      parsedValue = digitsOnly(trimValue(rawValue));
+    } else if (field?.type === 'number') {
       parsedValue = Number.parseFloat(rawValue) || 0;
+    } else if (field?.type !== 'boolean') {
+      parsedValue = trimValue(rawValue);
     }
 
     setSaving(key);

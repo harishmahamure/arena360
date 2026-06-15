@@ -1,5 +1,5 @@
-import { FormButton, FormPage } from '@gaming-cafe/ui';
-import { useAsyncAction } from '@gaming-cafe/utils';
+import { FormButton, FormPage, PhoneField } from '@gaming-cafe/ui';
+import { digitsOnly, trimValue, useAsyncAction } from '@gaming-cafe/utils';
 import {
   Alert,
   Box,
@@ -46,12 +46,12 @@ export default function VendorNewPage() {
 
     void run(async () => {
       await createVendor({
-        name: name.trim(),
-        contactPerson: contactPerson || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
-        address: address || undefined,
-        gstNumber: gstNumber || undefined,
+        name: trimValue(name),
+        contactPerson: trimValue(contactPerson) || undefined,
+        phone: digitsOnly(phone) || undefined,
+        email: trimValue(email) || undefined,
+        address: trimValue(address) || undefined,
+        gstNumber: trimValue(gstNumber) || undefined,
         isActive,
       });
       navigate('/vendors');
@@ -89,7 +89,7 @@ export default function VendorNewPage() {
           fullWidth
           helperText="Primary contact at the vendor (optional)"
         />
-        <TextField
+        <PhoneField
           label="Phone"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}

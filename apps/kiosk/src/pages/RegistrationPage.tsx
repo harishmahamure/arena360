@@ -1,5 +1,5 @@
 import { deviceSubTypeOptions, deviceTypeOptions } from '@gaming-cafe/contracts';
-import { ApiError } from '@gaming-cafe/utils';
+import { ApiError, normalizeUsername, sanitizeUsernameInput, trimValue } from '@gaming-cafe/utils';
 import { useEffect, useState } from 'react';
 import { useKiosk } from '../context/KioskProvider';
 import { totpInputProps } from '../lib/inputHints';
@@ -39,7 +39,7 @@ export function RegistrationPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      await adminLogin(username, password);
+      await adminLogin(normalizeUsername(username), trimValue(password));
       setStep('device');
     } catch (err) {
       if (err instanceof ApiError && err.message === 'TOTP code is required') {
@@ -54,7 +54,7 @@ export function RegistrationPage() {
     e.preventDefault();
     setBusy(true);
     try {
-      await adminLogin(username, password, totp.trim());
+      await adminLogin(normalizeUsername(username), trimValue(password), trimValue(totp));
       setStep('device');
     } catch {
       // surfaced via context error
@@ -91,7 +91,7 @@ export function RegistrationPage() {
             Admin username
             <input
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => setUsername(sanitizeUsernameInput(e.target.value))}
               autoComplete="off"
               required
             />

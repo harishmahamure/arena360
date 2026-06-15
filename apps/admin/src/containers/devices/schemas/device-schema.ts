@@ -4,7 +4,7 @@ import {
   DeviceStatus,
   deviceStatusOptions,
 } from '@gaming-cafe/contracts';
-import { validationMessages } from '@gaming-cafe/utils';
+import { trimmedOptionalString, trimmedString, validationMessages } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
 export {
@@ -20,23 +20,13 @@ export type DeviceStatusType = (typeof DeviceStatus)[keyof typeof DeviceStatus];
 export { deviceStatusOptions };
 
 export const createDeviceSchema = yup.object({
-  name: yup
-    .string()
-    .max(100, 'Name must not exceed 100 characters')
-    .required(validationMessages.required('Device Name')),
+  name: trimmedString('Device Name').max(100, 'Name must not exceed 100 characters'),
 
-  serialNumber: yup
-    .string()
-    .max(100, 'Serial number must not exceed 100 characters')
-    .optional()
-    .nullable(),
+  serialNumber: trimmedOptionalString().max(100, 'Serial number must not exceed 100 characters'),
 
-  localIpAddress: yup
-    .string()
+  localIpAddress: trimmedOptionalString()
     .max(100, 'IP address must not exceed 100 characters')
-    .matches(/^$|^(\d{1,3}\.){3}\d{1,3}$/, 'Please enter a valid IP address (e.g., 192.168.1.100)')
-    .optional()
-    .nullable(),
+    .matches(/^$|^(\d{1,3}\.){3}\d{1,3}$/, 'Please enter a valid IP address (e.g., 192.168.1.100)'),
 
   deviceType: yup
     .string()
@@ -48,7 +38,7 @@ export const createDeviceSchema = yup.object({
     .oneOf([...DEVICE_SUB_TYPE_VALUES], 'Please select a valid device sub type')
     .required(validationMessages.required('Device Sub Type')),
 
-  location: yup.string().max(200, 'Location must not exceed 200 characters').optional().nullable(),
+  location: trimmedOptionalString().max(200, 'Location must not exceed 200 characters'),
 
   status: yup
     .string()

@@ -66,6 +66,7 @@ const dynamicDeductionFields: FieldConfig<CreatePlanFormData>[] = [
     type: 'number',
     gridCols: 4,
     min: 1.01,
+    decimalPlaces: 2,
     visible: (values) => Boolean(values.dynamicDeductionEnabled),
     helperText: 'Wallet minutes consumed per wall minute',
   },
@@ -78,6 +79,7 @@ const dynamicDeductionFields: FieldConfig<CreatePlanFormData>[] = [
     gridCols: 4,
     min: 0.01,
     max: 0.99,
+    decimalPlaces: 2,
     visible: (values) => Boolean(values.dynamicDeductionEnabled),
   },
   {

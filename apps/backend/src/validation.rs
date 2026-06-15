@@ -16,6 +16,54 @@ pub fn require_non_empty(value: Option<String>, message: &str) -> Result<String,
     Ok(trimmed)
 }
 
+/// Trim optional strings; blank becomes `None`.
+pub fn trim_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Trim password and other secrets (leading/trailing whitespace only).
+pub fn trim_secret(value: &str) -> String {
+    value.trim().to_string()
+}
+
+/// Collapse whitespace runs to underscores after trim.
+pub fn normalize_username(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+fn username_has_invalid_chars(value: &str) -> bool {
+    !value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+}
+
+/// Validate normalized username for register/update/login.
+pub fn validate_username(value: &str) -> Result<String, AppError> {
+    let normalized = normalize_username(value);
+    if normalized.len() < 3 || normalized.len() > 50 {
+        return Err(AppError::BadRequest(
+            "Username must be between 3 and 50 characters".to_string(),
+        ));
+    }
+    if normalized.contains(char::is_whitespace) || username_has_invalid_chars(&normalized) {
+        return Err(AppError::BadRequest(
+            "Username can only contain letters, numbers, dots, hyphens, and underscores"
+                .to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+/// Digits-only phone after trim.
+pub fn normalize_phone_digits(value: &str) -> String {
+    value.chars().filter(|c| c.is_ascii_digit()).collect()
+}
+
 const PLAYSTATION_DEVICE_TYPES: &[&str] = &["PS5", "PS4"];
 
 pub fn is_playstation_device_type(device_type: &str) -> bool {
@@ -144,5 +192,32 @@ fn optional_enum(
         Some(s) => normalize(&s)
             .map(Some)
             .ok_or_else(|| AppError::BadRequest(error_message())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_phone_digits, normalize_username, trim_secret, validate_username};
+
+    #[test]
+    fn normalize_username_collapses_whitespace() {
+        assert_eq!(normalize_username(" Pranshu  Jha "), "Pranshu_Jha");
+        assert_eq!(normalize_username("Yuvraj "), "Yuvraj");
+    }
+
+    #[test]
+    fn validate_username_rejects_spaces_after_normalize() {
+        assert!(validate_username("ab").is_err());
+        assert!(validate_username("valid_user").is_ok());
+    }
+
+    #[test]
+    fn trim_secret_strips_edges() {
+        assert_eq!(trim_secret("  secret  "), "secret");
+    }
+
+    #[test]
+    fn normalize_phone_digits_strips_formatting() {
+        assert_eq!(normalize_phone_digits("98 7654 3210"), "9876543210");
     }
 }

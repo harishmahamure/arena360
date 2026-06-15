@@ -26,6 +26,7 @@ import {
   useForm,
 } from 'react-hook-form';
 import type * as yup from 'yup';
+import { parseDecimalFieldValue } from '../numericInputFilters';
 import CurrencyField from './forms/CurrencyField';
 import DecimalField from './forms/DecimalField';
 import FileUpload from './forms/FileUpload';
@@ -37,8 +38,11 @@ import FormSelect, { type FormSelectOption } from './forms/FormSelect';
 import FormSwitch from './forms/FormSwitch';
 import FormTextField from './forms/FormTextField';
 import IntegerField from './forms/IntegerField';
+import OtpField from './forms/OtpField';
 import PasswordField from './forms/PasswordField';
+import PhoneField from './forms/PhoneField';
 import { RHFSearchOnEnterAutocomplete, type SearchOption } from './forms/SearchInput';
+import UsernameField from './forms/UsernameField';
 
 export type FieldType =
   | 'text'
@@ -58,7 +62,10 @@ export type FieldType =
   | 'hidden'
   | 'custom'
   | 'search'
-  | 'multiselect';
+  | 'multiselect'
+  | 'phone'
+  | 'otp'
+  | 'username';
 
 export type FormMode = 'add' | 'edit' | 'view';
 
@@ -361,20 +368,16 @@ function FieldRenderer<T extends FieldValues>({
             case 'currency':
               return (
                 <CurrencyField
-                  {...field}
                   {...commonProps}
                   label=""
                   autoComplete="one-time-code"
                   InputLabelProps={{ shrink: true }}
+                  commitMode="blur"
+                  name={field.name}
                   value={field.value ?? ''}
+                  onBlur={field.onBlur}
                   onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === '' || value === '.') {
-                      field.onChange('');
-                      return;
-                    }
-                    const num = Number(value);
-                    field.onChange(Number.isNaN(num) ? '' : num);
+                    field.onChange(parseDecimalFieldValue(e.target.value));
                   }}
                 />
               );
@@ -403,22 +406,18 @@ function FieldRenderer<T extends FieldValues>({
 
               return (
                 <DecimalField
-                  {...field}
                   {...commonProps}
                   label=""
                   autoComplete="one-time-code"
                   InputLabelProps={{ shrink: true }}
                   decimalPlaces={decimalPlaces}
+                  commitMode="blur"
+                  name={field.name}
                   inputProps={{ min, max }}
                   value={numericValue}
+                  onBlur={field.onBlur}
                   onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === '' || value === '.') {
-                      field.onChange('');
-                      return;
-                    }
-                    const num = Number(value);
-                    field.onChange(Number.isNaN(num) ? '' : num);
+                    field.onChange(parseDecimalFieldValue(e.target.value));
                   }}
                 />
               );
@@ -449,6 +448,42 @@ function FieldRenderer<T extends FieldValues>({
                   inputProps={{
                     autoComplete: 'off',
                   }}
+                  InputLabelProps={{ shrink: true }}
+                />
+              );
+
+            case 'phone':
+              return (
+                <PhoneField
+                  {...field}
+                  {...commonProps}
+                  label=""
+                  required={required}
+                  value={field.value ?? ''}
+                  InputLabelProps={{ shrink: true }}
+                />
+              );
+
+            case 'otp':
+              return (
+                <OtpField
+                  {...field}
+                  {...commonProps}
+                  label=""
+                  required={required}
+                  value={field.value ?? ''}
+                  InputLabelProps={{ shrink: true }}
+                />
+              );
+
+            case 'username':
+              return (
+                <UsernameField
+                  {...field}
+                  {...commonProps}
+                  label=""
+                  required={required}
+                  value={field.value ?? ''}
                   InputLabelProps={{ shrink: true }}
                 />
               );

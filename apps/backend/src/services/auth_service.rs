@@ -17,8 +17,9 @@ use crate::dto::{
 use crate::error::AppError;
 use crate::models::{deduction_profile::DeductionProfile, Device, User};
 use crate::repositories::{SessionRepository, SsoRepository, UserRepository};
-use crate::services::session_service::display_remaining_for_session;
+use crate::validation::{normalize_username, trim_secret};
 use crate::services::totp_util::verify_totp_code;
+use crate::services::session_service::display_remaining_for_session;
 use crate::services::BalanceService;
 
 pub struct AuthService {
@@ -41,13 +42,17 @@ impl AuthService {
     }
 
     pub async fn login_admin(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
-        let user = self.authenticate_admin(&dto.username, &dto.password).await?;
+        let username = normalize_username(&dto.username);
+        let password = trim_secret(&dto.password);
+        let user = self.authenticate_admin(&username, &password).await?;
         Self::verify_totp_if_enabled(&user, dto.totp.as_deref())?;
         self.issue_auth_response(&user)
     }
 
     pub async fn login_staff(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
-        let user = match self.authenticate_staff(&dto.username, &dto.password).await {
+        let username = normalize_username(&dto.username);
+        let password = trim_secret(&dto.password);
+        let user = match self.authenticate_staff(&username, &password).await {
             Ok(u) => u,
             Err(e) => {
                 tracing::error!("authenticate_staff failed: {:?}", e);
@@ -83,7 +88,10 @@ impl AuthService {
         // before this call, using the optional fingerprint in PlayerLoginDto.
 
         let user = self
-            .authenticate_player(&dto.username, &dto.password)
+            .authenticate_player(
+                &normalize_username(&dto.username),
+                &trim_secret(&dto.password),
+            )
             .await?;
 
         let open_session = self
@@ -476,7 +484,7 @@ impl AuthService {
         }
 
         let totp_code = match totp {
-            Some(code) if !code.is_empty() => code,
+            Some(code) if !code.trim().is_empty() => code.trim(),
             _ => {
                 tracing::error!("TOTP code is required but not provided or empty");
                 return Err(AppError::BadRequest("TOTP code is required".to_string()));

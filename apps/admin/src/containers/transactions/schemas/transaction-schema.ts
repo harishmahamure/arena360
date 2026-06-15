@@ -6,7 +6,7 @@ import {
   TransactionType,
   transactionTypeOptions,
 } from '@gaming-cafe/contracts';
-import { validationMessages } from '@gaming-cafe/utils';
+import { trimmedOptionalString, validationMessages } from '@gaming-cafe/utils';
 import * as yup from 'yup';
 
 export const PaymentMethodValues = PaymentMethod;
@@ -62,7 +62,7 @@ export const createTransactionSchema = yup.object({
     .oneOf(Object.values(PaymentMethod), 'Please select a valid payment method')
     .required(validationMessages.required('Payment Method')),
 
-  notes: yup.string().max(500, 'Notes cannot exceed 500 characters').optional().nullable(),
+  notes: trimmedOptionalString().max(500, 'Notes cannot exceed 500 characters'),
 
   cashAmount: yup
     .number()
@@ -99,7 +99,7 @@ export const updateTransactionStatusSchema = yup.object({
     .oneOf(Object.values(PaymentStatus), 'Please select a valid payment status')
     .required(validationMessages.required('Payment Status')),
 
-  notes: yup.string().max(500, 'Notes cannot exceed 500 characters').optional().nullable(),
+  notes: trimmedOptionalString().max(500, 'Notes cannot exceed 500 characters'),
 });
 
 export type UpdateTransactionStatusFormData = yup.InferType<typeof updateTransactionStatusSchema>;
@@ -148,7 +148,7 @@ export const createPlanTransactionSchema = yup.object({
     .optional()
     .default(PaymentStatus.PENDING),
 
-  notes: yup.string().max(500, validationMessages.max('Notes', 500)).optional().nullable(),
+  notes: trimmedOptionalString().max(500, validationMessages.max('Notes', 500)),
 
   transactionDate: yup.date().optional().nullable(),
 });
@@ -159,7 +159,7 @@ export const updatePlanTransactionStatusSchema = yup.object({
     .oneOf(Object.values(PaymentStatus), 'Please select a valid payment status')
     .required(validationMessages.required('Payment Status')),
 
-  notes: yup.string().max(500, validationMessages.max('Notes', 500)).optional().nullable(),
+  notes: trimmedOptionalString().max(500, validationMessages.max('Notes', 500)),
 });
 
 export type CreatePlanTransactionFormData = yup.InferType<typeof createPlanTransactionSchema>;

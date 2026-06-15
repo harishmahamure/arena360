@@ -1,6 +1,6 @@
 import { permissionsForRole } from '@gaming-cafe/contracts';
-import { FormButton, FormTextField, PasswordField } from '@gaming-cafe/ui';
-import { local, toastUtils } from '@gaming-cafe/utils';
+import { FormButton, OtpField, PasswordField, UsernameField } from '@gaming-cafe/ui';
+import { local, normalizeUsername, toastUtils, trimValue } from '@gaming-cafe/utils';
 import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -49,11 +49,13 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      const totpCode = panelLoginStep === 2 ? totp : undefined;
+      const normalizedUsername = normalizeUsername(username);
+      const trimmedPassword = trimValue(password);
+      const totpCode = panelLoginStep === 2 ? trimValue(totp) : undefined;
       const response =
         loginMode === 'admin'
-          ? await loginAPI(username, password, totpCode)
-          : await loginStaffAPI(username, password, totpCode);
+          ? await loginAPI(normalizedUsername, trimmedPassword, totpCode)
+          : await loginStaffAPI(normalizedUsername, trimmedPassword, totpCode);
       completeLogin(response.accessToken, response.user);
     } catch (error: unknown) {
       const message =
@@ -98,11 +100,10 @@ export default function LoginPage() {
 
       {panelLoginStep === 1 && (
         <>
-          <FormTextField
+          <UsernameField
             fullWidth
             variant="outlined"
             label="Username"
-            type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             sx={{ mb: 2.5 }}
@@ -127,17 +128,13 @@ export default function LoginPage() {
       )}
 
       {panelLoginStep === 2 && (
-        <FormTextField
+        <OtpField
           fullWidth
           variant="outlined"
           label="TOTP Code"
-          type="text"
           value={totp}
-          onChange={(e) => setTotp(e.target.value.replace(/\s+/g, '').slice(0, 6))}
+          onChange={(e) => setTotp(e.target.value)}
           sx={{ mb: 1.5 }}
-          inputProps={{
-            autoComplete: 'one-time-code',
-          }}
         />
       )}
 

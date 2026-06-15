@@ -1,3 +1,4 @@
+import { normalizeUsername, sanitizeUsernameInput, trimValue } from '@gaming-cafe/utils';
 import { useEffect, useRef, useState } from 'react';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
@@ -107,7 +108,7 @@ export function LoginHomePage() {
     if (blocked) return;
     setBusy(true);
     try {
-      await playerLogin(username, password);
+      await playerLogin(normalizeUsername(username), trimValue(password));
       clearFailures();
     } catch {
       setLockout(recordFailure());
@@ -176,7 +177,7 @@ export function LoginHomePage() {
               <input
                 id="kiosk-username"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => setUsername(sanitizeUsernameInput(e.target.value))}
                 placeholder="Enter your username"
                 disabled={blocked}
                 {...usernameInputProps}
