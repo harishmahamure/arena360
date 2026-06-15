@@ -99,8 +99,7 @@ replacement, Run key) are in
   [KIOSK-WINDOWS-DEPLOYMENT.md § Layer 1](KIOSK-WINDOWS-DEPLOYMENT.md#layer-1--os-kiosk-shell-operator--it).
 - [ ] **Auto-logon:** Enable auto-logon for the kiosk user (Sysinternals Autologon or
   unattend XML). Never store passwords in git.
-- [ ] **Verify autostart:** After install, confirm `schtasks /Query /TN "Arena360 Kiosk"`
-  and that `Arena360 Station Management.exe` exists under the install directory.
+- [ ] **Verify autostart:** After install, run `scripts\verify-station-startup.ps1` (bundled under install dir) or confirm `schtasks /Query /TN "Arena360 Kiosk"` and that `Arena360 Station Management.exe` exists under the install directory.
 
 - [ ] **GPO hardening (recommended):** Applied by default at install (`DisableTaskMgr`,
   `DisableLockWorkstation`, `DisableChangePassword`, `NoRun`); pass `/NOHARDENING` to skip.
@@ -302,7 +301,7 @@ To re-register: clear app data or uninstall/reinstall (see Sideload install).
 | Symptom | PC kiosk | Console TV |
 |---------|----------|------------|
 | Cannot reach backend | Verify `VITE_API_URL` in build/CI; check firewall and DNS | Rebuild APK with correct `VITE_API_URL` in `.env.local` |
-| App not starting on boot | Verify **Arena360 Kiosk** scheduled task and auto-logon; re-run installer as kiosk user | Check TV OEM auto-start setting; confirm app not force-stopped |
+| App not starting on boot | Run `scripts\verify-station-startup.ps1 -Repair` (elevated); verify **Arena360 Kiosk** task user matches auto-logon | Check TV OEM auto-start setting; confirm app not force-stopped |
 | Stuck on registration | Confirm admin credentials and TOTP; check backend logs | Same; ensure device type is PS4/PS5 only |
 | Need to re-provision | Setup → Factory reset, or clear tokens via setup | Settings → Apps → Clear data, or `adb uninstall` |
 | Player cannot sign in | Check login lockout; staff **Ctrl+Shift+B** on login screen | N/A — no player login on TV |

@@ -32,10 +32,12 @@ Var ConfigureScriptPath
   StrCpy $R0 ""
   StrCpy $R1 ""
   StrCpy $R2 ""
+  StrCpy $R3 "0"
   ${GetParameters} $R0
   ${GetOptions} $R0 "/NOAUTOSTART" $R1
   ${IfNot} ${Errors}
     StrCpy $R2 "-SkipAutostart"
+    StrCpy $R3 "1"
   ${EndIf}
   ${GetOptions} $R0 "/NOHARDENING" $R1
   ${IfNot} ${Errors}
@@ -55,7 +57,13 @@ Var ConfigureScriptPath
   nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$ConfigureScriptPath" -InstallDir "$INSTDIR" -KioskUser "$KioskUserName" $R2'
   Pop $0
   ${If} $0 != 0
-    DetailPrint "Warning: configure-station.ps1 returned code $0"
+    DetailPrint "ERROR: configure-station.ps1 returned code $0"
+    ${If} $R3 == "0"
+      MessageBox MB_ICONSTOP "Arena360 could not register kiosk autostart at logon.$\n$\nRe-run the installer as the kiosk user or pass /KIOSKUSER=YourKioskAccount.$\n$\nYou can also repair with scripts\verify-station-startup.ps1 -Repair (elevated)."
+      Abort "Station autostart configuration failed"
+    ${Else}
+      DetailPrint "Warning: configure-station.ps1 returned code $0 (autostart was skipped via /NOAUTOSTART)"
+    ${EndIf}
   ${Else}
     DetailPrint "Arena360 station configuration applied"
   ${EndIf}

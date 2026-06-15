@@ -1618,7 +1618,7 @@ watchdog until installer automation ships.
 - **Plan / NFR refs**: REQUIREMENTS-KIOSK.md §6.6
 
 **Description** — NSIS installer checkbox (default on): register `HKLM\...\Run` or per-user
-Scheduled Task “At log on” for `Arena360 Kiosk.exe`. Uninstall removes registration.
+Scheduled Task “At log on” for `Arena360 Station Management.exe`. Uninstall removes registration.
 
 **Implementation notes** —
 - `tauri.conf.json` NSIS hooks or custom `installer-hooks.nsh`.

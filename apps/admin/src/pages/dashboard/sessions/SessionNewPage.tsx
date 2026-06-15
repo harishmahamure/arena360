@@ -3,7 +3,7 @@ import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import {
   type StartSessionFormData,
@@ -13,16 +13,31 @@ import {
 import { useEnrichedPlayerPlans } from '../../../hooks/useEnrichedSessions';
 import { DeviceStatus, getDevices } from '../../../services/devices/list';
 import { PlanType } from '../../../services/plans/list';
+import { getPlayerById } from '../../../services/players/getById';
 import { getPlayers } from '../../../services/players/list';
 import { startSession } from '../../../services/sessions/add';
 
 export default function NewSessionPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preselectedPlayerId = searchParams.get('playerId') ?? undefined;
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<SearchOption | null>(null);
   const [selectedBalanceId, setSelectedBalanceId] = useState<string | undefined>();
+
+  const { data: preselectedPlayer } = useQuery({
+    queryKey: ['player', preselectedPlayerId],
+    queryFn: () => getPlayerById(preselectedPlayerId as string),
+    enabled: !!preselectedPlayerId,
+  });
+
+  useEffect(() => {
+    if (preselectedPlayer) {
+      setSelectedPlayer({ id: preselectedPlayer.id, label: preselectedPlayer.username });
+    }
+  }, [preselectedPlayer]);
 
   const { data: enrichedPlayerPlans } = useEnrichedPlayerPlans(
     selectedPlayer ? String(selectedPlayer.id) : undefined,
@@ -50,7 +65,11 @@ export default function NewSessionPage() {
           pauseOnHover: true,
           draggable: true,
           onClick: () => {
-            navigate('/plan-transactions/new');
+            navigate(
+              preselectedPlayerId
+                ? `/plan-transactions/new?playerId=${preselectedPlayerId}`
+                : '/plan-transactions/new',
+            );
           },
         },
       );
@@ -198,9 +217,13 @@ export default function NewSessionPage() {
         backLabel="Back to sessions"
       >
         <FormBuilder<StartSessionFormData>
+          key={preselectedPlayerId ?? 'new-session'}
           fields={fields}
           schema={startSessionSchema}
-          defaultValues={startSessionDefaultValues}
+          defaultValues={{
+            ...startSessionDefaultValues,
+            playerId: preselectedPlayerId ?? startSessionDefaultValues.playerId,
+          }}
           mode="add"
           onSubmit={handleSubmit}
           onCancel={handleCancel}

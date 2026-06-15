@@ -33,7 +33,8 @@
     "active": true,
     "targets": ["nsis"],
     "resources": {
-      "../scripts/windows/configure-station.ps1": "scripts/configure-station.ps1"
+      "../scripts/windows/configure-station.ps1": "scripts/configure-station.ps1",
+      "../scripts/windows/verify-station-startup.ps1": "scripts/verify-station-startup.ps1"
     },
     "publisher": "Arena360",
     "category": "Game",

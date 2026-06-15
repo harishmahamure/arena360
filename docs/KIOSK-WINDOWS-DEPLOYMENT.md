@@ -124,13 +124,13 @@ Win32 path depending on Windows build; test on your exact Windows image.
 
 Replace `explorer.exe` with the kiosk for the kiosk user only.
 
-1. Install kiosk to e.g. `C:\Program Files\Arena360\kiosk\Arena360 Kiosk.exe`.
+1. Install kiosk to e.g. `C:\Program Files\Arena360\kiosk\Arena360 Station Management.exe`.
 2. Auto-logon `ArenaKiosk`.
 3. Set per-user shell (run as that user once, or load hive):
 
    ```reg
    [HKEY_CURRENT_USER\Software\Microsoft\Windows NT\CurrentVersion\Winlogon]
-   "Shell"="C:\\Program Files\\Arena360\\kiosk\\Arena360 Kiosk.exe"
+   "Shell"="C:\\Program Files\\Arena360\\kiosk\\Arena360 Station Management.exe"
    ```
 
 4. Keep a **break-glass** admin account; document restoring `"Shell"="explorer.exe"`.
@@ -146,7 +146,7 @@ Weakest shell; use only when A/B are not possible.
 2. Register run-at-logon:
 
    ```powershell
-   $exe = "C:\Program Files\Arena360\kiosk\Arena360 Kiosk.exe"
+   $exe = "C:\Program Files\Arena360\kiosk\Arena360 Station Management.exe"
    New-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run" `
      -Name "Arena360Kiosk" -Value "`"$exe`"" -PropertyType String -Force
    ```
@@ -251,6 +251,31 @@ as ADR-0028). Draft ADR if adding a privileged Windows Service or shell-wide pol
 
 ---
 
+## Troubleshooting autostart
+
+If auto-logon works but the kiosk does not appear after reboot:
+
+1. Wait **30 seconds** after the desktop appears (logon task has a built-in delay).
+2. Run the bundled diagnostic (elevated PowerShell):
+
+   ```powershell
+   & "C:\Program Files\Arena360\kiosk\scripts\verify-station-startup.ps1"
+   ```
+
+3. Repair in one step:
+
+   ```powershell
+   & "C:\Program Files\Arena360\kiosk\scripts\verify-station-startup.ps1" -Repair
+   ```
+
+   This re-registers the **Arena360 Kiosk** ONLOGON task for the auto-logon user.
+
+4. Reboot and confirm the kiosk launches without manual start (QA checklist items 18–19).
+
+Common causes: task registered for the wrong Windows user (install as admin without `/KIOSKUSER`), silent install with `/NOAUTOSTART`, or stale task action path after a manual move. The installer and NSIS updates re-run `configure-station.ps1`, which auto-corrects the kiosk user when auto-logon is already configured.
+
+---
+
 ## Manual setup now (fallback)
 
 Use this only when the NSIS installer cannot run post-install configuration (e.g. `/NOCONFIGURE`).
@@ -263,15 +288,15 @@ automatically unless `/NOCONFIGURE` is passed.
 4. Create a Scheduled Task (run as `ArenaKiosk`, highest available):
 
    - **Trigger:** At log on
-   - **Action:** Start `Arena360 Kiosk.exe`
+   - **Action:** Start `Arena360 Station Management.exe`
    - **Settings:** If the task fails, restart every 1 minute; stop if running &gt; 1 day
 
 5. For faster recovery, add a second task every 5 minutes:
 
    ```powershell
-   $name = "Arena360 Kiosk"
-   if (-not (Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-     Start-Process "C:\Program Files\Arena360\kiosk\Arena360 Kiosk.exe"
+   $exeName = "Arena360 Station Management"
+   if (-not (Get-Process -Name $exeName -ErrorAction SilentlyContinue)) {
+     Start-Process "C:\Program Files\Arena360\kiosk\Arena360 Station Management.exe"
    }
    ```
 

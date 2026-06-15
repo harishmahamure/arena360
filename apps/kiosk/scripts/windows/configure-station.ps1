@@ -25,6 +25,7 @@ param(
     [switch]$SkipWatchdog,
     [switch]$SkipHardening,
     [switch]$Uninstall,
+    [switch]$RefreshAutostartOnly,
     [ValidateSet('RunKey', 'ReplaceShell', 'None')]
     [string]$ShellMode = 'None'
 )
@@ -69,6 +70,44 @@ function Read-Marker {
 function Write-Marker($Data) {
     Ensure-MarkerDir
     $Data | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $MarkerPath -Encoding UTF8
+}
+
+function Get-AutoLogonUser {
+    if (-not (Test-Path -LiteralPath $WinlogonKey)) {
+        return $null
+    }
+    $props = Get-ItemProperty -LiteralPath $WinlogonKey
+    if ($props.AutoAdminLogon -ne '1') {
+        return $null
+    }
+    $name = [string]$props.DefaultUserName
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        return $null
+    }
+    return $name.Trim()
+}
+
+function Resolve-EffectiveKioskUser([string]$RequestedUser) {
+    if ([string]::IsNullOrWhiteSpace($RequestedUser)) {
+        $RequestedUser = $env:USERNAME
+    }
+
+    $autoLogonUser = Get-AutoLogonUser
+    if ($autoLogonUser -and ($RequestedUser -ne $autoLogonUser)) {
+        Write-Warn "KioskUser '$RequestedUser' does not match auto-logon user '$autoLogonUser'. Using auto-logon user for scheduled task."
+        return $autoLogonUser
+    }
+
+    $marker = Read-Marker
+    if ($marker -and $marker.autologon -and $marker.autologon.configured -and $marker.autologon.user) {
+        $markerUser = [string]$marker.autologon.user
+        if ($markerUser -and ($RequestedUser -ne $markerUser)) {
+            Write-Warn "KioskUser '$RequestedUser' does not match marker auto-logon user '$markerUser'. Using marker user for scheduled task."
+            return $markerUser
+        }
+    }
+
+    return $RequestedUser
 }
 
 function Resolve-KioskExe([string]$Dir) {
@@ -119,12 +158,10 @@ function Test-KioskLogonTaskInteractive {
 function Install-KioskLogonTask([string]$KioskExe, [string]$RunAsUser) {
     if (-not (Test-Path -LiteralPath $KioskExe)) {
         Write-Warn "Kiosk binary not found at $KioskExe; skipping scheduled task."
-        return
+        return $false
     }
 
-    if ([string]::IsNullOrWhiteSpace($RunAsUser)) {
-        $RunAsUser = $env:USERNAME
-    }
+    $RunAsUser = Resolve-EffectiveKioskUser $RunAsUser
 
     Remove-LegacyWatchdogTask
     Clear-LegacyWatchdogPause
@@ -160,12 +197,21 @@ function Install-KioskLogonTask([string]$KioskExe, [string]$RunAsUser) {
         $result = schtasks /Create /TN $KioskTaskName /TR $quoted /SC ONLOGON /RU $RunAsUser /IT /DELAY 0000:30 /RL LIMITED /F 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "Could not register kiosk logon task (exit $LASTEXITCODE): $result"
-            return
+            return $false
         }
     }
 
+    $marker = Read-Marker
+    if (-not $marker) {
+        $marker = [ordered]@{}
+    }
+    $marker.kioskUser = $RunAsUser
+    $marker.installDir = Split-Path -Parent $KioskExe
+    Write-Marker $marker
+
     Write-Info "Registered $KioskTaskName to start at logon."
     Test-KioskLogonTaskInteractive
+    return $true
 }
 
 function Remove-KioskLogonTask {
@@ -304,22 +350,45 @@ if ($Uninstall) {
     exit 0
 }
 
+if ($RefreshAutostartOnly) {
+    if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+        Write-Warn 'InstallDir not provided; cannot refresh autostart.'
+        exit 1
+    }
+    $kioskExe = Resolve-KioskExe $InstallDir
+    if (-not $kioskExe) {
+        Write-Warn "No kiosk binary under $InstallDir; cannot refresh autostart."
+        exit 1
+    }
+    $KioskUser = Resolve-EffectiveKioskUser $KioskUser
+    if (-not (Install-KioskLogonTask -KioskExe $kioskExe -RunAsUser $KioskUser)) {
+        exit 1
+    }
+    Write-Info 'Autostart task refreshed.'
+    exit 0
+}
+
 if ($ShellMode -eq 'ReplaceShell') {
     Write-Warn 'Shell replacement (-ShellMode ReplaceShell) is not automated; see KIOSK-WINDOWS-DEPLOYMENT.md Layer 1 Option B.'
 } elseif ($ShellMode -eq 'RunKey') {
     Write-Warn 'Run-key shell mode is optional; the Arena360 Kiosk scheduled task launches the app at logon.'
 }
 
+$effectiveKioskUser = Resolve-EffectiveKioskUser $KioskUser
+
 $skipStart = $SkipAutostart -or $SkipWatchdog
+$autostartRegistered = $true
 if (-not $skipStart) {
     if ([string]::IsNullOrWhiteSpace($InstallDir)) {
         Write-Warn 'InstallDir not provided; skipping kiosk logon task.'
+        $autostartRegistered = $false
     } else {
         $kioskExe = Resolve-KioskExe $InstallDir
         if ($kioskExe) {
-            Install-KioskLogonTask -KioskExe $kioskExe -RunAsUser $KioskUser
+            $autostartRegistered = Install-KioskLogonTask -KioskExe $kioskExe -RunAsUser $effectiveKioskUser
         } else {
             Write-Warn "No kiosk binary under $InstallDir; skipping scheduled task."
+            $autostartRegistered = $false
         }
     }
 }
@@ -329,14 +398,24 @@ if (-not $SkipHardening) {
 }
 
 if ($AutoLogonPassword) {
-    Install-AutoLogon -User $KioskUser -Password $AutoLogonPassword
+    Install-AutoLogon -User $effectiveKioskUser -Password $AutoLogonPassword
 } else {
     $prompted = Prompt-AutoLogonPassword
     if ($prompted) {
-        Install-AutoLogon -User $KioskUser -Password $prompted
+        Install-AutoLogon -User $effectiveKioskUser -Password $prompted
     } else {
-        Write-Warn "Auto-logon not configured. The kiosk will not start until a user logs on. Use Sysinternals Autologon, re-run with -AutoLogonPassword, or ensure the auto-logon user matches -KioskUser ($KioskUser)."
+        $autoLogonUser = Get-AutoLogonUser
+        if ($autoLogonUser) {
+            Write-Info "Auto-logon already configured for '$autoLogonUser'."
+        } else {
+            Write-Warn "Auto-logon not configured. The kiosk will not start until a user logs on. Use Sysinternals Autologon, re-run with -AutoLogonPassword, or ensure the auto-logon user matches -KioskUser ($effectiveKioskUser)."
+        }
     }
+}
+
+if (-not $skipStart -and -not $autostartRegistered) {
+    Write-Warn 'Failed to register kiosk logon autostart.'
+    exit 1
 }
 
 Write-Info 'Station configuration complete.'
