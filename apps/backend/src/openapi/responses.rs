@@ -209,6 +209,15 @@ success_envelope!(
     crate::models::PlayerCreditDetail
 );
 success_envelope!(CreditSettlementEnvelope, crate::models::CreditSettlement);
+success_envelope!(
+    CreditSettlementDetailEnvelope,
+    crate::models::CreditSettlementDetail
+);
+pagination_envelope!(
+    CreditSettlementPaginationEnvelope,
+    CreditSettlementPaginationPage,
+    crate::models::CreditSettlementListRow
+);
 pagination_envelope!(
     CreditPlayerPaginationEnvelope,
     CreditPlayerPaginationPage,

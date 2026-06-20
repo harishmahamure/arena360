@@ -59,7 +59,7 @@ export function StatCard({
           >
             {icon}
           </Box>
-          {change && (
+          {change && Number.isFinite(Number(change.value)) && (
             <Chip
               size="small"
               icon={change.positive ? <TrendingUp /> : <TrendingDown />}
@@ -75,7 +75,7 @@ export function StatCard({
           {title}
         </Typography>
         {subtitle && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
             {subtitle}
           </Typography>
         )}

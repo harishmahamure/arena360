@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
-use crate::middleware::{AdminOrStaff, AdminUser};
+use crate::middleware::{AdminOrStaff, AdminUser, StaffUser};
 use crate::models::{
     ClockInDto, ClockOutDto, CloseCashRegisterDto, InitiateDepositDto, Shift, ShiftCloseDto,
     ShiftCloseResponseDto, ShiftFilterDto, ShiftHandoverDto, ShiftHandoverResponseDto,
@@ -31,7 +31,7 @@ use crate::openapi::responses::{
     tag = "shifts"
 )]
 pub async fn clock_in(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<ClockInDto>,
 ) -> ApiResult<Shift> {
@@ -59,7 +59,7 @@ pub async fn clock_in(
     tag = "shifts"
 )]
 pub async fn clock_out(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<ClockOutDto>,
 ) -> ApiResult<Shift> {
@@ -84,7 +84,7 @@ pub async fn clock_out(
     tag = "shifts"
 )]
 pub async fn get_active_shift(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Option<Shift>> {
     let user_id: Uuid = claims
@@ -205,7 +205,7 @@ pub async fn force_close_shift(
     tag = "shifts"
 )]
 pub async fn handover_shift(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<ShiftHandoverDto>,
 ) -> ApiResult<ShiftHandoverResponseDto> {
@@ -346,7 +346,7 @@ pub async fn handover_shift(
     tag = "shifts"
 )]
 pub async fn close_shift(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<ShiftCloseDto>,
 ) -> ApiResult<ShiftCloseResponseDto> {

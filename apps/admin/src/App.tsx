@@ -1,21 +1,24 @@
 import { Permission } from '@gaming-cafe/contracts';
 import { Providers } from '@gaming-cafe/providers';
-import { local } from '@gaming-cafe/utils';
+import { local, toastUtils } from '@gaming-cafe/utils';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useReducer } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useNavigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import RequirePermission from './components/RequirePermission';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
+import { bootstrapAuthFromToken, registerAdminAuthSession } from './lib/authSession';
 import { RealtimeProvider } from './lib/realtime';
 import LoginPage from './pages/auth/LoginPage';
 import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
 import CashRegisterDetailPage from './pages/dashboard/cash-registers/CashRegisterDetailPage';
 import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
 import CreditPage from './pages/dashboard/credit/CreditPage';
+import CreditSettlementDetailPage from './pages/dashboard/credit/CreditSettlementDetailPage';
+import CreditSettlementsPage from './pages/dashboard/credit/CreditSettlementsPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import DeviceDetailPage from './pages/dashboard/devices/DeviceDetailPage';
 import DeviceNewPage from './pages/dashboard/devices/DeviceNewPage';
@@ -68,6 +71,20 @@ const queryClient = new QueryClient();
 
 function App() {
   const [state, dispatch] = useReducer(rootReducer, rootInitialState);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    registerAdminAuthSession({
+      onSessionExpired: () => {
+        dispatch({ type: 'Reset' });
+        toastUtils.warning('Session expired — please sign in again');
+        if (window.location.pathname !== '/login') {
+          navigate('/login', { replace: true });
+        }
+      },
+    });
+    bootstrapAuthFromToken(dispatch);
+  }, [navigate]);
 
   useEffect(() => {
     local.set(PERSIST_KEY, JSON.stringify(state));
@@ -170,6 +187,11 @@ function App() {
                     </Route>
                     <Route element={<RequirePermission permission={Permission.CreditRead} />}>
                       <Route path="/credit" element={<CreditPage />} />
+                      <Route path="/credit/settlements" element={<CreditSettlementsPage />} />
+                      <Route
+                        path="/credit/settlements/:id"
+                        element={<CreditSettlementDetailPage />}
+                      />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.ExpensesRead} />}>
                       <Route path="/expenses" element={<ExpensesPage />} />

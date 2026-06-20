@@ -6,6 +6,7 @@ import { Chip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { formatPaymentSplit } from '../../../containers/sales';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -88,6 +89,21 @@ const columns: Column<Transaction>[] = [
     minWidth: 100,
     hideOnMobile: true,
     format: (value) => getPaymentMethodLabel(value as PaymentMethodType),
+  },
+  {
+    id: 'cashAmount',
+    label: 'Payment split',
+    minWidth: 180,
+    hideOnMobile: true,
+    format: (_value, row) =>
+      row
+        ? formatPaymentSplit({
+            paymentMethod: row.paymentMethod,
+            amount: row.amount,
+            cashAmount: row.cashAmount,
+            onlineAmount: row.onlineAmount,
+          })
+        : '—',
   },
   {
     id: 'paymentStatus',

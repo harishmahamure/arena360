@@ -190,6 +190,7 @@ export default function CreditPage() {
       closeSettlement();
       refetch();
       queryClient.invalidateQueries({ queryKey: ['player-credit'] });
+      queryClient.invalidateQueries({ queryKey: ['credit-settlements'] });
     } catch (err) {
       setDialogError(err instanceof Error ? err.message : 'Settlement failed');
     } finally {
@@ -253,12 +254,19 @@ export default function CreditPage() {
 
   return (
     <Box sx={{ px: 4, py: 2 }}>
-      <Typography variant="h4" sx={{ mb: 0 }}>
-        Credit Members
-      </Typography>
-      <Typography variant="body1" sx={{ mb: 2 }}>
-        Members with outstanding credit (tab / khata)
-      </Typography>
+      <Box
+        sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}
+      >
+        <Box>
+          <Typography variant="h4" sx={{ mb: 0 }}>
+            Credit Members
+          </Typography>
+          <Typography variant="body1">Members with outstanding credit (tab / khata)</Typography>
+        </Box>
+        <Button variant="outlined" onClick={() => navigate('/credit/settlements')}>
+          Settlement history
+        </Button>
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>

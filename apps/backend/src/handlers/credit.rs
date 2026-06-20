@@ -8,14 +8,16 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::error::AppError;
-use crate::middleware::{AdminOrStaff, AdminUser};
+use crate::middleware::{require_staff_for_counter, AdminOrStaff, AdminUser};
 use crate::models::{
-    CreditAccountFilterDto, CreditPlayerRow, CreditSettlement, CreditSummary, PlayerCreditDetail,
-    SetCreditLimitDto, SettleCreditDto,
+    CreditAccountFilterDto, CreditPlayerRow, CreditSettlement, CreditSettlementDetail,
+    CreditSettlementFilterDto, CreditSummary, PlayerCreditDetail, SetCreditLimitDto,
+    SettleCreditDto,
 };
 use crate::openapi::responses::{
-    CreditPlayerPaginationEnvelope, CreditSettlementEnvelope, CreditSummaryEnvelope, ErrorEnvelope,
-    PlayerCreditDetailEnvelope,
+    CreditPlayerPaginationEnvelope, CreditSettlementDetailEnvelope,
+    CreditSettlementEnvelope, CreditSettlementPaginationEnvelope, CreditSummaryEnvelope,
+    ErrorEnvelope, PlayerCreditDetailEnvelope,
 };
 
 #[utoipa::path(
@@ -66,6 +68,53 @@ pub async fn get_player_credit(
 }
 
 #[utoipa::path(
+    get,
+    path = "/credit/settlements",
+    params(CreditSettlementFilterDto),
+    responses(
+        (status = 200, description = "List credit settlements", body = CreditSettlementPaginationEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "credit"
+)]
+pub async fn list_settlements(
+    AdminOrStaff(_claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Query(filters): Query<CreditSettlementFilterDto>,
+) -> ApiResult<crate::dto::PaginationResult<crate::models::CreditSettlementListRow>> {
+    let result = state.credit.list_settlements(filters).await?;
+    ok(result)
+}
+
+#[utoipa::path(
+    get,
+    path = "/credit/settlements/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Settlement ID"),
+    ),
+    responses(
+        (status = 200, description = "Credit settlement detail", body = CreditSettlementDetailEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "credit"
+)]
+pub async fn get_settlement(
+    AdminOrStaff(_claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<CreditSettlementDetail> {
+    let detail = state.credit.get_settlement(id).await?;
+    ok(detail)
+}
+
+#[utoipa::path(
     post,
     path = "/credit/settlements",
     request_body = SettleCreditDto,
@@ -87,6 +136,8 @@ pub async fn create_settlement(
     let user_id = claims
         .user_id_uuid()
         .ok_or_else(|| AppError::BadRequest("Invalid user ID in token".to_string()))?;
+
+    require_staff_for_counter(&claims)?;
 
     let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
         AppError::BadRequest("No active shift found for current user".to_string())

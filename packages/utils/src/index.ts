@@ -9,6 +9,7 @@ export type {
 } from './http';
 export {
   ApiError,
+  configureDefaultHttpClient,
   createHttpClient,
   http,
   isApiError,
@@ -17,10 +18,10 @@ export {
 
 // Forms
 export * from './lib/forms';
-// Hooks
-export * from './lib/hooks';
 // Helpers
 export * from './lib/helpers';
+// Hooks
+export * from './lib/hooks';
 // Logger
 export * from './lib/logger';
 // Session clock (shared admin + kiosk countdown)

@@ -1,4 +1,4 @@
-import { toastUtils } from '@gaming-cafe/utils';
+import { local, toastUtils } from '@gaming-cafe/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import { useSelector } from '../../hooks/store';
@@ -24,6 +24,7 @@ function getWsUrl(): string {
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const { id: userId, role } = useSelector((state) => state.auth);
+  const accessToken = local.get<string>('accessToken');
   const clientRef = useRef<RealtimeClient | null>(null);
 
   const contextValue = useMemo<RealtimeContextValue>(() => {
@@ -34,7 +35,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const client = clientRef.current;
-    if (!client) return;
+    if (!client || !accessToken) return;
 
     client.connect();
 
@@ -93,7 +94,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       unsubDevice();
       client.disconnect();
     };
-  }, [queryClient, userId, role]);
+  }, [queryClient, userId, role, accessToken]);
 
   return <RealtimeContext value={contextValue}>{children}</RealtimeContext>;
 }

@@ -6,6 +6,8 @@ import { Chip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { formatPaymentSplit } from '../../../containers/sales';
+import { PaymentMethodValues } from '../../../containers/transactions/schemas/transaction-schema';
 import { useEnrichedTransactions } from '../../../hooks/useEnrichedTransactions';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
@@ -33,7 +35,18 @@ const getStatusColor = (status: PaymentStatusValue) => {
 };
 
 const getPaymentMethodLabel = (method: PaymentMethod) => {
-  return capitalize(method);
+  switch (method) {
+    case PaymentMethodValues.CASH:
+      return 'Cash';
+    case PaymentMethodValues.ONLINE:
+      return 'Online';
+    case PaymentMethodValues.SPLIT_PAYMENT:
+      return 'Split Payment';
+    case PaymentMethodValues.CREDIT:
+      return 'Credit';
+    default:
+      return capitalize(method);
+  }
 };
 
 const formatPlanType = (type: string) => {
@@ -102,6 +115,21 @@ const columns: Column<TransactionResponse>[] = [
     minWidth: 100,
     hideOnMobile: true,
     format: (value) => getPaymentMethodLabel(value as PaymentMethod),
+  },
+  {
+    id: 'cashAmount',
+    label: 'Payment split',
+    minWidth: 180,
+    hideOnMobile: true,
+    format: (_value, row) =>
+      row
+        ? formatPaymentSplit({
+            paymentMethod: row.paymentMethod,
+            amount: row.amount,
+            cashAmount: row.cashAmount,
+            onlineAmount: row.onlineAmount,
+          })
+        : '—',
   },
   {
     id: 'paymentStatus',

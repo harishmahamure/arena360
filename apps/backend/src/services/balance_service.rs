@@ -162,6 +162,7 @@ impl BalanceService {
                     )
                     .await?;
 
+                let _ = cache::invalidate_stats(&*self.cache).await;
                 Ok(updated)
             }
             None => {
@@ -198,6 +199,7 @@ impl BalanceService {
                     )
                     .await?;
 
+                let _ = cache::invalidate_stats(&*self.cache).await;
                 Ok(balance)
             }
         }

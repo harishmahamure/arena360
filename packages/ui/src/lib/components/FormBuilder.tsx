@@ -752,6 +752,13 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     }
   }, [watchedValues, dirtyFields, onChange]);
 
+  // Async-loaded edit forms need reset when defaultValues arrive after mount.
+  useEffect(() => {
+    if ((isEditMode || isViewMode) && defaultValues) {
+      reset(defaultValues);
+    }
+  }, [defaultValues, reset, isEditMode, isViewMode]);
+
   // Combine fields from both flat and sections
   const allFields = useMemo(() => {
     if (sections.length > 0) {

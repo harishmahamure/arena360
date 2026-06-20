@@ -87,6 +87,10 @@ pub fn user_id(id: &uuid::Uuid) -> String {
     format!("user:id:{id}")
 }
 
+pub fn users_list(filter_hash: &str) -> String {
+    format!("users:list:{filter_hash}")
+}
+
 pub fn jwt_blacklist(jti: &str) -> String {
     format!("jwt:blacklist:{jti}")
 }
@@ -106,6 +110,24 @@ pub fn cash_register_totals(id: &uuid::Uuid) -> String {
 pub fn stock_level(location_id: &uuid::Uuid, product_id: &uuid::Uuid) -> String {
     format!("stock:level:{location_id}:{product_id}")
 }
+
+pub fn stats_dashboard(filter_hash: &str) -> String {
+    format!("stats:v5:dashboard:{filter_hash}")
+}
+
+pub fn stats_staff(filter_hash: &str) -> String {
+    format!("stats:v5:staff:{filter_hash}")
+}
+
+pub fn stats_revenue(filter_hash: &str) -> String {
+    format!("stats:v5:revenue:{filter_hash}")
+}
+
+pub fn stats_usage(filter_hash: &str) -> String {
+    format!("stats:v5:usage:{filter_hash}")
+}
+
+pub const STATS_PREFIX: &str = "stats:v5:";
 
 /// Stable hash for filter DTOs used in list cache keys.
 pub fn filter_hash(value: &impl serde::Serialize) -> String {

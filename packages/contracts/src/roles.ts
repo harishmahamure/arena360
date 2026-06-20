@@ -59,7 +59,7 @@ export enum Permission {
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  admin: Object.values(Permission),
+  admin: Object.values(Permission).filter((permission) => permission !== Permission.ShiftsWrite),
   staff: [
     Permission.StatsRead,
     Permission.GamesRead,

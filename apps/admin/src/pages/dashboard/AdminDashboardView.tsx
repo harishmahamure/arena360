@@ -1,11 +1,12 @@
 import { ErrorPanel, PageHeader, PageShell } from '@gaming-cafe/ui';
-import { round } from '@gaming-cafe/utils';
 import {
   AccessTime,
   AttachMoney,
+  CreditCard,
   Devices,
   MonetizationOn,
   People,
+  Receipt,
   ShoppingCart,
   SportsEsports,
 } from '@mui/icons-material';
@@ -26,6 +27,13 @@ import { StatCard, type StatTone } from '../../containers/stats/StatCard';
 import { TopPerformersList } from '../../containers/stats/TopPerformersList';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { formatStatsDate } from '../../services/stats/formatStatsDate';
+import {
+  calculatePeriodChange,
+  formatPaymentCountBreakdown,
+  formatTypePaymentSubtitle,
+  normalizeRevenue,
+} from '../../services/stats/statsHelpers';
+import type { RevenueByPaymentMethodDto } from '../../services/stats/types';
 import { endOfTodayIST, now, startOfTodayIST, toISTString } from '../../utils/date';
 
 type DateRange = 'today' | 'last 7 days' | 'month';
@@ -135,13 +143,10 @@ export default function AdminDashboardView() {
     }).format(amount);
   };
 
-  const calculateChange = (current: number, previous?: number) => {
-    const change = current - (previous ?? 0);
-    return {
-      value: round((change / (previous ?? 1)) * 100, 1),
-      positive: change >= 0,
-    };
-  };
+  const formatPaymentBreakdown = (revenue: RevenueByPaymentMethodDto) =>
+    `Cash: ${formatCurrency(revenue.cashRevenue)} | Online: ${formatCurrency(revenue.onlineRevenue)} | Credit: ${formatCurrency(revenue.creditRevenue)}`;
+
+  const calculateChange = calculatePeriodChange;
 
   if (isLoading) {
     return <AdminDashboardSkeleton />;
@@ -158,41 +163,57 @@ export default function AdminDashboardView() {
     );
   }
 
+  const currentRevenue = normalizeRevenue(dashboardStats.revenue.current);
+  const previousRevenue = normalizeRevenue(dashboardStats.revenue.previous);
+
   const stats = [
     {
       title: 'Total Revenue',
-      value: formatCurrency(dashboardStats.revenue.current.total),
-      change: calculateChange(
-        dashboardStats.revenue.current.total,
-        dashboardStats.revenue.previous.total,
-      ),
+      value: formatCurrency(currentRevenue.total),
+      change: calculateChange(currentRevenue.total, previousRevenue.total),
       icon: AttachMoney,
       tone: 'success' as StatTone,
-      subtitle: `Merchandise: ${formatCurrency(
-        dashboardStats.revenue.current.merchandise,
-      )} | Gaming: ${formatCurrency(dashboardStats.revenue.current.plan)}`,
+      subtitle: formatPaymentBreakdown(currentRevenue),
+    },
+    {
+      title: 'Plan Transactions',
+      value: formatCurrency(currentRevenue.plan),
+      change: calculateChange(currentRevenue.plan, previousRevenue.plan),
+      icon: Receipt,
+      tone: 'primary' as StatTone,
+      subtitle: formatTypePaymentSubtitle(currentRevenue, 'plan', formatCurrency),
+    },
+    {
+      title: 'Product Transactions',
+      value: formatCurrency(currentRevenue.merchandise),
+      change: calculateChange(currentRevenue.merchandise, previousRevenue.merchandise),
+      icon: ShoppingCart,
+      tone: 'info' as StatTone,
+      subtitle: formatTypePaymentSubtitle(currentRevenue, 'product', formatCurrency),
     },
     {
       title: 'Cash Revenue',
-      value: formatCurrency(dashboardStats.revenue.current.cashRevenue),
-      change: calculateChange(
-        dashboardStats.revenue.current.cashRevenue,
-        dashboardStats.revenue.previous.cashRevenue,
-      ),
-      subtitle: `Previous Period: ${formatCurrency(dashboardStats.revenue.previous.cashRevenue)}`,
+      value: formatCurrency(currentRevenue.cashRevenue),
+      change: calculateChange(currentRevenue.cashRevenue, previousRevenue.cashRevenue),
+      subtitle: `Previous Period: ${formatCurrency(previousRevenue.cashRevenue)}`,
       icon: MonetizationOn,
       tone: 'success' as StatTone,
     },
     {
       title: 'Online Revenue',
-      value: formatCurrency(dashboardStats.revenue.current.onlineRevenue),
-      change: calculateChange(
-        dashboardStats.revenue.current.onlineRevenue,
-        dashboardStats.revenue.previous.onlineRevenue,
-      ),
-      subtitle: `Previous Period: ${formatCurrency(dashboardStats.revenue.previous.onlineRevenue)}`,
+      value: formatCurrency(currentRevenue.onlineRevenue),
+      change: calculateChange(currentRevenue.onlineRevenue, previousRevenue.onlineRevenue),
+      subtitle: `Previous Period: ${formatCurrency(previousRevenue.onlineRevenue)}`,
       icon: MonetizationOn,
       tone: 'success' as StatTone,
+    },
+    {
+      title: 'Credit Revenue',
+      value: formatCurrency(currentRevenue.creditRevenue),
+      change: calculateChange(currentRevenue.creditRevenue, previousRevenue.creditRevenue),
+      subtitle: `Previous Period: ${formatCurrency(previousRevenue.creditRevenue)}`,
+      icon: CreditCard,
+      tone: 'warning' as StatTone,
     },
     {
       title: 'Total Transactions',
@@ -203,7 +224,7 @@ export default function AdminDashboardView() {
       ),
       icon: ShoppingCart,
       tone: 'info' as StatTone,
-      subtitle: `Avg: ${formatCurrency(dashboardStats.transactions.current.averageTransactionAmount)}`,
+      subtitle: `Avg: ${formatCurrency(dashboardStats.transactions.current.averageTransactionAmount)}\n${formatPaymentCountBreakdown(currentRevenue)}`,
     },
     {
       title: 'Active Players',

@@ -355,3 +355,8 @@ pub async fn invalidate(cache: &dyn CacheService, keys: &[String]) -> Result<(),
     cache.publish_invalidation(keys).await?;
     Ok(())
 }
+
+/// Bust all dashboard stats snapshots (keyed under `stats:`).
+pub async fn invalidate_stats(cache: &dyn CacheService) -> Result<(), AppError> {
+    cache.invalidate_prefix(crate::cache::keys::STATS_PREFIX).await
+}

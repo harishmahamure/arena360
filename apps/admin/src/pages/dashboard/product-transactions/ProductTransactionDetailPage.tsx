@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import { formatPaymentSplit } from '../../../containers/sales';
 import { getTransactionById } from '../../../services/transaction/list';
 
 export default function ProductTransactionDetailPage() {
@@ -119,22 +120,19 @@ export default function ProductTransactionDetailPage() {
               </Typography>
               <Typography variant="body2">{data.paymentMethod}</Typography>
             </Box>
-            {data.cashAmount != null && (
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Cash Amount
-                </Typography>
-                <Typography variant="body2">{formatCurrency(data.cashAmount, 'INR')}</Typography>
-              </Box>
-            )}
-            {data.onlineAmount != null && (
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Online Amount
-                </Typography>
-                <Typography variant="body2">{formatCurrency(data.onlineAmount, 'INR')}</Typography>
-              </Box>
-            )}
+            <Box sx={{ gridColumn: '1 / -1' }}>
+              <Typography variant="caption" color="text.secondary">
+                Payment Split
+              </Typography>
+              <Typography variant="body2">
+                {formatPaymentSplit({
+                  paymentMethod: data.paymentMethod,
+                  amount: data.amount,
+                  cashAmount: data.cashAmount,
+                  onlineAmount: data.onlineAmount,
+                })}
+              </Typography>
+            </Box>
             {data.notes && (
               <Box sx={{ gridColumn: '1 / -1' }}>
                 <Typography variant="caption" color="text.secondary">

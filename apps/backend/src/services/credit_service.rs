@@ -6,7 +6,8 @@ use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{
     compute_available, validate_settlement_items, CreditAccountFilterDto, CreditPlayerRow,
-    CreditSettlement, CreditSummary, PlayerCreditDetail, SetCreditLimitDto, SettleCreditDto,
+    CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto, CreditSettlementListRow,
+    CreditSummary, PlayerCreditDetail, SetCreditLimitDto, SettleCreditDto,
 };
 use crate::repositories::CreditRepository;
 use crate::services::CashRegisterService;
@@ -101,6 +102,17 @@ impl CreditService {
         })
     }
 
+    pub async fn list_settlements(
+        &self,
+        filters: CreditSettlementFilterDto,
+    ) -> Result<crate::dto::PaginationResult<CreditSettlementListRow>, AppError> {
+        self.repo.list_settlements(&filters).await
+    }
+
+    pub async fn get_settlement(&self, id: Uuid) -> Result<CreditSettlementDetail, AppError> {
+        self.repo.get_settlement_by_id(id).await
+    }
+
     pub async fn settle(
         &self,
         dto: SettleCreditDto,
@@ -156,6 +168,7 @@ impl CreditService {
                 .await?;
         }
 
+        let _ = cache::invalidate_stats(&*self.cache).await;
         Ok(settlement)
     }
 

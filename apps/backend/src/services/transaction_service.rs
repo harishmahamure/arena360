@@ -3,6 +3,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, CacheService};
 use crate::error::AppError;
 use crate::models::{
     CreateLineItemDto, CreateTransactionDto, PurchaseBalanceDto, Transaction, TransactionFilterDto,
@@ -25,6 +26,7 @@ pub struct TransactionService {
     events: EventService,
     outbox: OutboxService,
     cafe_timezone: String,
+    cache: Arc<dyn CacheService>,
 }
 
 impl TransactionService {
@@ -35,6 +37,7 @@ impl TransactionService {
         events: EventService,
         outbox: OutboxService,
         cafe_timezone: String,
+        cache: Arc<dyn CacheService>,
     ) -> Self {
         Self {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
@@ -45,7 +48,12 @@ impl TransactionService {
             events,
             outbox,
             cafe_timezone,
+            cache,
         }
+    }
+
+    async fn invalidate_stats_cache(&self) {
+        let _ = cache::invalidate_stats(&*self.cache).await;
     }
 
     pub async fn list(
@@ -79,6 +87,28 @@ impl TransactionService {
             "cash" => cash_amount.unwrap_or(amount),
             "split_payment" => cash_amount.unwrap_or(0.0),
             _ => 0.0,
+        }
+    }
+
+    /// Derive `cashAmount` / `onlineAmount` columns from payment method when the client omits them.
+    fn populate_payment_amounts(dto: &mut CreateTransactionDto, amount: f64) {
+        match dto.payment_method.as_str() {
+            "cash" => {
+                dto.cash_amount = Some(dto.cash_amount.unwrap_or(amount));
+                dto.online_amount = Some(dto.online_amount.unwrap_or(0.0));
+            }
+            "online" => {
+                dto.cash_amount = Some(dto.cash_amount.unwrap_or(0.0));
+                dto.online_amount = Some(dto.online_amount.unwrap_or(amount));
+            }
+            "split_payment" => {
+                dto.cash_amount = Some(dto.cash_amount.unwrap_or(0.0));
+                dto.online_amount = Some(dto.online_amount.unwrap_or(0.0));
+            }
+            _ => {
+                dto.cash_amount = Some(0.0);
+                dto.online_amount = Some(0.0);
+            }
         }
     }
 
@@ -203,6 +233,7 @@ impl TransactionService {
 
         let mut dto_for_insert = dto;
         dto_for_insert.amount = Some(server_total);
+        Self::populate_payment_amounts(&mut dto_for_insert, server_total);
 
         let transaction = TransactionRepository::create_in_tx(
             &mut db_tx,
@@ -279,6 +310,7 @@ impl TransactionService {
                 .await;
         }
 
+        self.invalidate_stats_cache().await;
         Ok(transaction)
     }
 
@@ -392,6 +424,8 @@ impl TransactionService {
         };
         let transaction_date = dto.transaction_date.unwrap_or_else(Utc::now);
 
+        Self::populate_payment_amounts(&mut dto, amount);
+
         let transaction = self
             .repo
             .create(&dto, amount, transaction_date, &payment_status, actor_id)
@@ -443,6 +477,7 @@ impl TransactionService {
                 .await;
         }
 
+        self.invalidate_stats_cache().await;
         Ok(transaction)
     }
 
@@ -552,6 +587,7 @@ impl TransactionService {
             }
         }
 
+        self.invalidate_stats_cache().await;
         Ok(updated)
     }
 }

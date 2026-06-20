@@ -14,15 +14,23 @@ export default function CreditEligibilityAlert({
   paymentMethod,
   purchaseAmount = 0,
 }: CreditEligibilityAlertProps) {
-  const isCredit = paymentMethod === PaymentMethodValues.CREDIT && !!playerId;
+  const isCreditPayment = paymentMethod === PaymentMethodValues.CREDIT;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['player-credit', playerId],
     queryFn: () => getPlayerCredit(playerId as string),
-    enabled: isCredit,
+    enabled: isCreditPayment && !!playerId,
   });
 
-  if (!isCredit) return null;
+  if (!isCreditPayment) return null;
+
+  if (!playerId) {
+    return (
+      <Alert severity="warning" sx={{ mb: 2 }}>
+        Select a player to check credit eligibility.
+      </Alert>
+    );
+  }
 
   if (isLoading) {
     return (

@@ -73,6 +73,24 @@ pub fn require_admin_or_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
     }
 }
 
+pub fn require_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
+    if claims.is_staff() {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden("Shifts are staff-only".to_string()))
+    }
+}
+
+pub fn require_staff_for_counter(claims: &JwtUserClaims) -> Result<(), AppError> {
+    if claims.is_staff() {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "Staff login required for counter operations".to_string(),
+        ))
+    }
+}
+
 pub fn require_device(claims: &JwtUserClaims) -> Result<(), AppError> {
     if claims.is_device() {
         Ok(())
@@ -179,6 +197,28 @@ where
             .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
         require_admin_or_staff(&claims)?;
         Ok(AdminOrStaff(claims))
+    }
+}
+
+pub struct StaffUser(pub JwtUserClaims);
+
+impl<S> axum::extract::FromRequestParts<S> for StaffUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let claims = parts
+            .extensions
+            .get::<JwtUserClaims>()
+            .cloned()
+            .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
+        require_staff(&claims)?;
+        Ok(StaffUser(claims))
     }
 }
 

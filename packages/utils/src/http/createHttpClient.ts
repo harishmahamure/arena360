@@ -104,9 +104,15 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
           body && typeof body === 'object' && 'message' in body
             ? String((body as { message: unknown }).message)
             : undefined;
+        const headers = error.config?.headers;
+        const authHeader =
+          headers && typeof headers.get === 'function'
+            ? (headers.get('Authorization') as string | undefined)
+            : (headers as Record<string, string> | undefined)?.Authorization;
         onUnauthorized?.({
           url: error.config?.url,
           message,
+          authHeader: typeof authHeader === 'string' ? authHeader : undefined,
         });
       }
 

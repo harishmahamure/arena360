@@ -1,6 +1,7 @@
 import { Alert, Box, Button, CircularProgress } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { usePermissions } from '../hooks/usePermissions';
 import { getActiveShift } from '../services/shifts';
 
 interface ActiveShiftGuardProps {
@@ -8,6 +9,8 @@ interface ActiveShiftGuardProps {
 }
 
 export function ActiveShiftGuard({ children }: ActiveShiftGuardProps) {
+  const { isStaff, isAdmin } = usePermissions();
+
   const {
     data: activeShift,
     isLoading,
@@ -16,7 +19,21 @@ export function ActiveShiftGuard({ children }: ActiveShiftGuardProps) {
     queryKey: ['activeShift'],
     queryFn: getActiveShift,
     retry: false,
+    enabled: isStaff,
   });
+
+  if (isAdmin && !isStaff) {
+    return (
+      <Box sx={{ px: 4, py: 3, maxWidth: 560 }}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Counter operations require Staff login. Sign out and use the Staff tab on the login page.
+        </Alert>
+        <Button component={Link} to="/" variant="contained">
+          Go to dashboard
+        </Button>
+      </Box>
+    );
+  }
 
   if (isLoading) {
     return (

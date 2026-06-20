@@ -379,9 +379,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["list_settlements"];
         put?: never;
         post: operations["create_settlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/credit/settlements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_settlement"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2383,12 +2399,115 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        CreditSettlementDetail: {
+            /** Format: double */
+            amount: number;
+            /** Format: double */
+            cashAmount?: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            items: components["schemas"]["CreditSettlementItemRow"][];
+            notes?: string | null;
+            /** Format: double */
+            onlineAmount?: number | null;
+            paymentMethod: string;
+            /** Format: uuid */
+            playerId: string;
+            playerUsername: string;
+            /** Format: date-time */
+            settledAt: string;
+            /** Format: uuid */
+            settledBy: string;
+            settledByUsername: string;
+            /** Format: uuid */
+            shiftId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreditSettlementDetailEnvelope: {
+            data: components["schemas"]["CreditSettlementDetail"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         CreditSettlementEnvelope: {
             data: components["schemas"]["CreditSettlement"];
             /** Format: int32 */
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        CreditSettlementFilterDto: {
+            endDate?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            paymentMethod?: string | null;
+            /** Format: uuid */
+            playerId?: string | null;
+            search?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
+            startDate?: string | null;
+        };
+        CreditSettlementItemRow: {
+            /** Format: double */
+            amountApplied: number;
+            /** Format: double */
+            originalAmount: number;
+            /** Format: double */
+            remainingAfter: number;
+            /** Format: date-time */
+            transactionDate: string;
+            /** Format: uuid */
+            transactionId: string;
+            transactionType: string;
+        };
+        CreditSettlementListRow: {
+            /** Format: double */
+            amount: number;
+            /** Format: double */
+            cashAmount?: number | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            itemCount: number;
+            notes?: string | null;
+            /** Format: double */
+            onlineAmount?: number | null;
+            paymentMethod: string;
+            /** Format: uuid */
+            playerId: string;
+            playerUsername: string;
+            /** Format: date-time */
+            settledAt: string;
+            /** Format: uuid */
+            settledBy: string;
+            settledByUsername: string;
+            /** Format: uuid */
+            shiftId: string;
+        };
+        CreditSettlementPaginationEnvelope: {
+            data: components["schemas"]["CreditSettlementPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        CreditSettlementPaginationPage: {
+            data: components["schemas"]["CreditSettlementListRow"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
         };
         CreditSummary: {
             /** Format: double */
@@ -2901,6 +3020,7 @@ export interface components {
         };
         LiveHealthData: {
             db: string;
+            redis: string;
             status: string;
             timestamp: string;
         };
@@ -2997,27 +3117,87 @@ export interface components {
         PeriodPair_RevenueByPaymentMethodDto: {
             current: {
                 /** Format: double */
-                cashRevenue: number;
+                cashRevenue?: number;
                 /** Format: double */
-                merchandise: number;
+                creditRevenue?: number;
                 /** Format: double */
-                onlineRevenue: number;
+                merchandise?: number;
                 /** Format: double */
-                plan: number;
+                onlineRevenue?: number;
                 /** Format: double */
-                total: number;
+                plan?: number;
+                /** Format: int64 */
+                planCashCount?: number;
+                /** Format: double */
+                planCashRevenue?: number;
+                /** Format: int64 */
+                planCreditCount?: number;
+                /** Format: double */
+                planCreditRevenue?: number;
+                /** Format: int64 */
+                planOnlineCount?: number;
+                /** Format: double */
+                planOnlineRevenue?: number;
+                /** Format: int64 */
+                planTransactionCount?: number;
+                /** Format: int64 */
+                productCashCount?: number;
+                /** Format: double */
+                productCashRevenue?: number;
+                /** Format: int64 */
+                productCreditCount?: number;
+                /** Format: double */
+                productCreditRevenue?: number;
+                /** Format: int64 */
+                productOnlineCount?: number;
+                /** Format: double */
+                productOnlineRevenue?: number;
+                /** Format: int64 */
+                productTransactionCount?: number;
+                /** Format: double */
+                total?: number;
             };
             previous: {
                 /** Format: double */
-                cashRevenue: number;
+                cashRevenue?: number;
                 /** Format: double */
-                merchandise: number;
+                creditRevenue?: number;
                 /** Format: double */
-                onlineRevenue: number;
+                merchandise?: number;
                 /** Format: double */
-                plan: number;
+                onlineRevenue?: number;
                 /** Format: double */
-                total: number;
+                plan?: number;
+                /** Format: int64 */
+                planCashCount?: number;
+                /** Format: double */
+                planCashRevenue?: number;
+                /** Format: int64 */
+                planCreditCount?: number;
+                /** Format: double */
+                planCreditRevenue?: number;
+                /** Format: int64 */
+                planOnlineCount?: number;
+                /** Format: double */
+                planOnlineRevenue?: number;
+                /** Format: int64 */
+                planTransactionCount?: number;
+                /** Format: int64 */
+                productCashCount?: number;
+                /** Format: double */
+                productCashRevenue?: number;
+                /** Format: int64 */
+                productCreditCount?: number;
+                /** Format: double */
+                productCreditRevenue?: number;
+                /** Format: int64 */
+                productOnlineCount?: number;
+                /** Format: double */
+                productOnlineRevenue?: number;
+                /** Format: int64 */
+                productTransactionCount?: number;
+                /** Format: double */
+                total?: number;
             };
         };
         PeriodPair_TransactionStatsDto: {
@@ -3579,15 +3759,45 @@ export interface components {
         };
         RevenueByPaymentMethodDto: {
             /** Format: double */
-            cashRevenue: number;
+            cashRevenue?: number;
             /** Format: double */
-            merchandise: number;
+            creditRevenue?: number;
             /** Format: double */
-            onlineRevenue: number;
+            merchandise?: number;
             /** Format: double */
-            plan: number;
+            onlineRevenue?: number;
             /** Format: double */
-            total: number;
+            plan?: number;
+            /** Format: int64 */
+            planCashCount?: number;
+            /** Format: double */
+            planCashRevenue?: number;
+            /** Format: int64 */
+            planCreditCount?: number;
+            /** Format: double */
+            planCreditRevenue?: number;
+            /** Format: int64 */
+            planOnlineCount?: number;
+            /** Format: double */
+            planOnlineRevenue?: number;
+            /** Format: int64 */
+            planTransactionCount?: number;
+            /** Format: int64 */
+            productCashCount?: number;
+            /** Format: double */
+            productCashRevenue?: number;
+            /** Format: int64 */
+            productCreditCount?: number;
+            /** Format: double */
+            productCreditRevenue?: number;
+            /** Format: int64 */
+            productOnlineCount?: number;
+            /** Format: double */
+            productOnlineRevenue?: number;
+            /** Format: int64 */
+            productTransactionCount?: number;
+            /** Format: double */
+            total?: number;
         };
         RevenueByPaymentMethodEnvelope: {
             data: components["schemas"]["PeriodPairRevenueByPaymentMethod"];
@@ -6345,6 +6555,63 @@ export interface operations {
             };
         };
     };
+    list_settlements: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                playerId?: string | null;
+                paymentMethod?: string | null;
+                startDate?: string | null;
+                endDate?: string | null;
+                page?: number | null;
+                limit?: number | null;
+                sortBy?: string | null;
+                sortOrder?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List credit settlements */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditSettlementPaginationEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     create_settlement: {
         parameters: {
             query?: never;
@@ -6387,6 +6654,65 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_settlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Settlement ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credit settlement detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditSettlementDetailEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

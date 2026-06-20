@@ -30,7 +30,7 @@ pub struct AppState {
     pub settings: Arc<Settings>,
     pub auth: AuthService,
     pub config: ConfigService,
-    pub users: UserService,
+    pub users: Arc<UserService>,
     pub devices: DeviceService,
     pub plans: PlanService,
     pub player_plans: Arc<PlayerPlanService>,
@@ -73,7 +73,7 @@ pub async fn build_state() -> Arc<AppState> {
         tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
     > = Arc::new(tokio::sync::RwLock::new(Vec::new()));
 
-    let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
+    let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone(), cache.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
     let balances = Arc::new(BalanceService::new(pool.clone(), cache.clone()));
     let balances_for_auth = balances.clone();
@@ -85,10 +85,17 @@ pub async fn build_state() -> Arc<AppState> {
     let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
     tokio::spawn(dispatcher.run());
 
+    let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
+
     Arc::new(AppState {
-        auth: AuthService::new(pool.clone(), settings.clone(), balances_for_auth),
+        auth: AuthService::new(
+            pool.clone(),
+            settings.clone(),
+            balances_for_auth,
+            users.clone(),
+        ),
         config: ConfigService::new(pool.clone(), cache.clone()),
-        users: UserService::new(pool.clone(), cache.clone()),
+        users,
         devices: devices.clone(),
         plans: PlanService::new(pool.clone(), cache.clone()),
         player_plans: player_plans.clone(),
@@ -117,6 +124,7 @@ pub async fn build_state() -> Arc<AppState> {
             events.clone(),
             outbox.clone(),
             settings.cafe_timezone.clone(),
+            cache.clone(),
         ),
         credit,
         products: ProductService::new(pool.clone(), cache.clone()),
@@ -136,7 +144,7 @@ pub async fn build_state() -> Arc<AppState> {
             outbox.clone(),
             cache.clone(),
         ),
-        stats: StatsService::new(pool.clone()),
+        stats: StatsService::new(pool.clone(), cache.clone()),
         outbox,
         rooms,
         ws_connections,
@@ -484,7 +492,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/credit/settlements",
-            post(handlers::credit::create_settlement),
+            get(handlers::credit::list_settlements).post(handlers::credit::create_settlement),
+        )
+        .route(
+            "/credit/settlements/{id}",
+            get(handlers::credit::get_settlement),
         )
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
         .route(

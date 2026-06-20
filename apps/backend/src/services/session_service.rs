@@ -142,6 +142,10 @@ impl SessionService {
         cache::invalidate(&*self.cache, &keys_to_drop).await
     }
 
+    async fn invalidate_stats_cache(&self) {
+        let _ = cache::invalidate_stats(&*self.cache).await;
+    }
+
     async fn find_open_session_for_device_cached(
         &self,
         device_id: Uuid,
@@ -383,6 +387,7 @@ impl SessionService {
             )
             .await;
 
+        self.invalidate_stats_cache().await;
         Ok(session)
     }
 
@@ -726,6 +731,7 @@ impl SessionService {
                 .await;
         }
 
+        self.invalidate_stats_cache().await;
         Ok(updated)
     }
 

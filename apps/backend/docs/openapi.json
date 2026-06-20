@@ -2157,6 +2157,163 @@
       }
     },
     "/credit/settlements": {
+      "get": {
+        "tags": [
+          "credit"
+        ],
+        "operationId": "list_settlements",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "playerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "paymentMethod",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List credit settlements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditSettlementPaginationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "credit"
@@ -2205,6 +2362,83 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/credit/settlements/{id}": {
+      "get": {
+        "tags": [
+          "credit"
+        ],
+        "operationId": "get_settlement",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Settlement ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credit settlement detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditSettlementDetailEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -13031,6 +13265,117 @@
           }
         }
       },
+      "CreditSettlementDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "playerUsername",
+          "shiftId",
+          "settledBy",
+          "settledByUsername",
+          "amount",
+          "paymentMethod",
+          "settledAt",
+          "createdAt",
+          "updatedAt",
+          "items"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "cashAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditSettlementItemRow"
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onlineAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerUsername": {
+            "type": "string"
+          },
+          "settledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "settledBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "settledByUsername": {
+            "type": "string"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreditSettlementDetailEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreditSettlementDetail"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "CreditSettlementEnvelope": {
         "type": "object",
         "required": [
@@ -13053,6 +13398,237 @@
           },
           "timestamp": {
             "type": "string"
+          }
+        }
+      },
+      "CreditSettlementFilterDto": {
+        "type": "object",
+        "properties": {
+          "endDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "paymentMethod": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "playerId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortOrder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CreditSettlementItemRow": {
+        "type": "object",
+        "required": [
+          "transactionId",
+          "transactionType",
+          "transactionDate",
+          "originalAmount",
+          "amountApplied",
+          "remainingAfter"
+        ],
+        "properties": {
+          "amountApplied": {
+            "type": "number",
+            "format": "double"
+          },
+          "originalAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "remainingAfter": {
+            "type": "number",
+            "format": "double"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transactionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transactionType": {
+            "type": "string"
+          }
+        }
+      },
+      "CreditSettlementListRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "playerUsername",
+          "shiftId",
+          "settledBy",
+          "settledByUsername",
+          "amount",
+          "paymentMethod",
+          "settledAt",
+          "itemCount"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "cashAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onlineAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerUsername": {
+            "type": "string"
+          },
+          "settledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "settledBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "settledByUsername": {
+            "type": "string"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CreditSettlementPaginationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreditSettlementPaginationPage"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "CreditSettlementPaginationPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditSettlementListRow"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -14827,10 +15403,14 @@
         "required": [
           "status",
           "timestamp",
-          "db"
+          "db",
+          "redis"
         ],
         "properties": {
           "db": {
+            "type": "string"
+          },
+          "redis": {
             "type": "string"
           },
           "status": {
@@ -15149,15 +15729,12 @@
         "properties": {
           "current": {
             "type": "object",
-            "required": [
-              "plan",
-              "merchandise",
-              "total",
-              "cashRevenue",
-              "onlineRevenue"
-            ],
             "properties": {
               "cashRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "creditRevenue": {
                 "type": "number",
                 "format": "double"
               },
@@ -15172,6 +15749,62 @@
               "plan": {
                 "type": "number",
                 "format": "double"
+              },
+              "planCashCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "planCashRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "planCreditCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "planCreditRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "planOnlineCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "planOnlineRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "planTransactionCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productCashCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productCashRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "productCreditCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productCreditRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "productOnlineCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productOnlineRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "productTransactionCount": {
+                "type": "integer",
+                "format": "int64"
               },
               "total": {
                 "type": "number",
@@ -15181,15 +15814,12 @@
           },
           "previous": {
             "type": "object",
-            "required": [
-              "plan",
-              "merchandise",
-              "total",
-              "cashRevenue",
-              "onlineRevenue"
-            ],
             "properties": {
               "cashRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "creditRevenue": {
                 "type": "number",
                 "format": "double"
               },
@@ -15204,6 +15834,62 @@
               "plan": {
                 "type": "number",
                 "format": "double"
+              },
+              "planCashCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "planCashRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "planCreditCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "planCreditRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "planOnlineCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "planOnlineRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "planTransactionCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productCashCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productCashRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "productCreditCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productCreditRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "productOnlineCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "productOnlineRevenue": {
+                "type": "number",
+                "format": "double"
+              },
+              "productTransactionCount": {
+                "type": "integer",
+                "format": "int64"
               },
               "total": {
                 "type": "number",
@@ -17125,15 +17811,12 @@
       },
       "RevenueByPaymentMethodDto": {
         "type": "object",
-        "required": [
-          "plan",
-          "merchandise",
-          "total",
-          "cashRevenue",
-          "onlineRevenue"
-        ],
         "properties": {
           "cashRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "creditRevenue": {
             "type": "number",
             "format": "double"
           },
@@ -17148,6 +17831,62 @@
           "plan": {
             "type": "number",
             "format": "double"
+          },
+          "planCashCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "planCashRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "planCreditCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "planCreditRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "planOnlineCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "planOnlineRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "planTransactionCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "productCashCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "productCashRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "productCreditCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "productCreditRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "productOnlineCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "productOnlineRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "productTransactionCount": {
+            "type": "integer",
+            "format": "int64"
           },
           "total": {
             "type": "number",

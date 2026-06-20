@@ -98,6 +98,69 @@ pub struct CreditAccountFilterDto {
     pub sort_order: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditSettlementFilterDto {
+    pub search: Option<String>,
+    pub player_id: Option<Uuid>,
+    pub payment_method: Option<String>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditSettlementListRow {
+    pub id: Uuid,
+    pub player_id: Uuid,
+    pub player_username: String,
+    pub shift_id: Uuid,
+    pub settled_by: Uuid,
+    pub settled_by_username: String,
+    pub amount: f64,
+    pub payment_method: String,
+    pub cash_amount: Option<f64>,
+    pub online_amount: Option<f64>,
+    pub notes: Option<String>,
+    pub settled_at: DateTime<Utc>,
+    pub item_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditSettlementItemRow {
+    pub transaction_id: Uuid,
+    pub transaction_type: String,
+    pub transaction_date: DateTime<Utc>,
+    pub original_amount: f64,
+    pub amount_applied: f64,
+    pub remaining_after: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditSettlementDetail {
+    pub id: Uuid,
+    pub player_id: Uuid,
+    pub player_username: String,
+    pub shift_id: Uuid,
+    pub settled_by: Uuid,
+    pub settled_by_username: String,
+    pub amount: f64,
+    pub payment_method: String,
+    pub cash_amount: Option<f64>,
+    pub online_amount: Option<f64>,
+    pub notes: Option<String>,
+    pub settled_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub items: Vec<CreditSettlementItemRow>,
+}
+
 /// Pure helper: available credit headroom.
 pub fn compute_available(credit_limit: f64, outstanding: f64) -> f64 {
     (credit_limit - outstanding).max(0.0)

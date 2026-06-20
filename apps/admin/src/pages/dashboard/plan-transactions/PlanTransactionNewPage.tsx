@@ -24,11 +24,14 @@ import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
 import { PlanDeductionSummary } from '../../../containers/plans/PlanDeductionSummary';
 import {
   CounterSaleLayout,
+  evaluateCreditBlocked,
   PlanSaleCard,
   PosPaymentTiles,
   type PosPlayer,
   PosPlayerPicker,
   PosSplitAmountFields,
+  posSaleSuccessLabel,
+  validateSplitPaymentAmounts,
 } from '../../../containers/sales';
 import {
   type PaymentMethodType,
@@ -105,18 +108,16 @@ export default function AddNewPlanTransactionPage() {
   const purchaseAmount = selectedPlan ? parseFloat(selectedPlan.price) : 0;
   const isCredit = paymentMethod === PaymentMethodValues.CREDIT;
 
-  const { data: creditDetail } = useQuery({
+  const { data: creditDetail, isFetching: creditLoading } = useQuery({
     queryKey: ['player-credit', selectedPlayer?.id],
     queryFn: () => getPlayerCredit(selectedPlayer?.id as string),
     enabled: isCredit && !!selectedPlayer?.id,
   });
 
-  const creditBlocked = useMemo(() => {
-    if (!isCredit || !creditDetail?.summary) return isCredit;
-    const s = creditDetail.summary;
-    if (!s.creditEnabled || s.creditLimit <= 0) return true;
-    return purchaseAmount > s.available + 0.001;
-  }, [isCredit, creditDetail, purchaseAmount]);
+  const creditBlocked = useMemo(
+    () => evaluateCreditBlocked(isCredit, purchaseAmount, creditDetail, creditLoading),
+    [isCredit, purchaseAmount, creditDetail, creditLoading],
+  );
 
   const handleSubmit = () => {
     setError(undefined);
@@ -131,9 +132,12 @@ export default function AddNewPlanTransactionPage() {
       return;
     }
 
-    if (paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (!cashAmount || !onlineAmount)) {
-      setError('Please enter both cash and online amounts for split payment');
-      return;
+    if (paymentMethod === PaymentMethodValues.SPLIT_PAYMENT) {
+      const splitError = validateSplitPaymentAmounts(purchaseAmount, cashAmount, onlineAmount);
+      if (splitError) {
+        setError(splitError);
+        return;
+      }
     }
 
     if (isCredit && creditBlocked) {
@@ -153,11 +157,17 @@ export default function AddNewPlanTransactionPage() {
             : PaymentStatus.COMPLETED,
         notes: notes || undefined,
         cashAmount:
-          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? parseFloat(cashAmount) : undefined,
+          paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+            ? parseFloat(cashAmount)
+            : paymentMethod === PaymentMethodValues.CASH
+              ? purchaseAmount
+              : undefined,
         onlineAmount:
           paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
             ? parseFloat(onlineAmount)
-            : undefined,
+            : paymentMethod === PaymentMethodValues.ONLINE
+              ? purchaseAmount
+              : undefined,
       };
 
       try {
@@ -317,6 +327,7 @@ export default function AddNewPlanTransactionPage() {
               onlineAmount={onlineAmount}
               onCashChange={setCashAmount}
               onOnlineChange={setOnlineAmount}
+              totalAmount={purchaseAmount}
             />
           )}
 
@@ -341,7 +352,7 @@ export default function AddNewPlanTransactionPage() {
               onClick={handleSubmit}
               loading={submitting}
               success={succeeded}
-              successLabel="Sale complete"
+              successLabel={posSaleSuccessLabel(paymentMethod)}
               error={failed}
               errorLabel={errorMessage ?? 'Failed to create transaction'}
               disabled={!selectedPlayer || !selectedPlan || creditBlocked || submitDisabled}

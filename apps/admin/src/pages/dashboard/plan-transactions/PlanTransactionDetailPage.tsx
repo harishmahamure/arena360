@@ -15,6 +15,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { formatPaymentSplit } from '../../../containers/sales';
 import {
   type UpdatePlanTransactionStatusFormData,
   updatePlanTransactionStatusSchema,
@@ -182,6 +183,21 @@ export default function ViewPlanTransactionPage() {
                   Payment Method
                 </Typography>
                 <Typography variant="body1">{paymentMethod?.toUpperCase() || 'N/A'}</Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Payment Split
+                </Typography>
+                <Typography variant="body1">
+                  {transaction
+                    ? formatPaymentSplit({
+                        paymentMethod: transaction.paymentMethod,
+                        amount: transaction.amount,
+                        cashAmount: transaction.cashAmount,
+                        onlineAmount: transaction.onlineAmount,
+                      })
+                    : 'N/A'}
+                </Typography>
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary">

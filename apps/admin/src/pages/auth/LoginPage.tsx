@@ -2,7 +2,7 @@ import { permissionsForRole } from '@gaming-cafe/contracts';
 import { FormButton, OtpField, PasswordField, UsernameField } from '@gaming-cafe/ui';
 import { local, normalizeUsername, toastUtils, trimValue } from '@gaming-cafe/utils';
 import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../../hooks/store';
 import type { Permission } from '../../hooks/usePermissions';
@@ -25,6 +25,12 @@ export default function LoginPage() {
   const [panelLoginStep, setPanelLoginStep] = useState<1 | 2>(1);
   const [submitting, setSubmitting] = useState(false);
   const dispatch = useDispatch();
+
+  useEffect(() => {
+    if (!local.get('accessToken')) {
+      dispatch({ type: 'Reset' });
+    }
+  }, [dispatch]);
 
   const completeLogin = (accessToken: string, user: VerifyOtpResponseUser) => {
     if (!isPanelRole(user.role)) {
@@ -97,6 +103,10 @@ export default function LoginPage() {
         <ToggleButton value="admin">Admin</ToggleButton>
         <ToggleButton value="staff">Staff</ToggleButton>
       </ToggleButtonGroup>
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+        Staff login starts your shift and unlocks POS and counter tools.
+      </Typography>
 
       {panelLoginStep === 1 && (
         <>

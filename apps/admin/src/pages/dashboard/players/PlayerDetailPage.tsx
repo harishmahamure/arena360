@@ -162,6 +162,18 @@ export default function PlayerDetailPage() {
     }
   }, [player?.creditLimit]);
 
+  const editFormDefaultValues = useMemo<UpdatePlayerFormData>(
+    () => ({
+      username: player?.username ?? '',
+      phoneNumber: player?.phoneNumber ?? '',
+      firstName: player?.firstName ?? '',
+      lastName: player?.lastName ?? '',
+      role: player?.role ?? 'player',
+      isActive: player?.isActive ?? true,
+    }),
+    [player],
+  );
+
   const displayName =
     player?.firstName && player?.lastName
       ? `${player.firstName} ${player.lastName}`
@@ -527,30 +539,26 @@ export default function PlayerDetailPage() {
           </Typography>
         </Box>
 
-        <FormBuilder<UpdatePlayerFormData>
-          fields={editPlayerFormFields}
-          schema={updatePlayerSchema}
-          defaultValues={{
-            username: player?.username || '',
-            phoneNumber: player?.phoneNumber || '',
-            firstName: player?.firstName || '',
-            lastName: player?.lastName || '',
-            role: player?.role || 'player',
-            isActive: player?.isActive ?? true,
-          }}
-          mode={canWrite ? 'edit' : 'view'}
-          onSubmit={handleSubmit}
-          onCancel={() => navigate('/players')}
-          loading={isSubmitting}
-          error={formError}
-          success={undefined}
-          showCancel={canWrite}
-          showReset={canWrite}
-          submitLabel="Update Player"
-          cancelLabel="Back to list"
-          buttonAlign="right"
-          spacing={3}
-        />
+        {player ? (
+          <FormBuilder<UpdatePlayerFormData>
+            key={player.id}
+            fields={editPlayerFormFields}
+            schema={updatePlayerSchema}
+            defaultValues={editFormDefaultValues}
+            mode={canWrite ? 'edit' : 'view'}
+            onSubmit={handleSubmit}
+            onCancel={() => navigate('/players')}
+            loading={isSubmitting}
+            error={formError}
+            success={undefined}
+            showCancel={canWrite}
+            showReset={canWrite}
+            submitLabel="Update Player"
+            cancelLabel="Back to list"
+            buttonAlign="right"
+            spacing={3}
+          />
+        ) : null}
 
         {canSetCreditLimit && player?.role === 'player' && (
           <Box sx={{ mt: 4 }}>

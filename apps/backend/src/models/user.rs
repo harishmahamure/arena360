@@ -73,7 +73,7 @@ pub struct UpdateUserDto {
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct UserFilterDto {
     pub username: Option<String>,

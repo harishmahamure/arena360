@@ -92,6 +92,10 @@ export const adminNavItems: AdminNavItem[] = [
     icon: <CreditCard />,
     section: 'Operations',
     requiredPermission: Permission.CreditRead,
+    children: [
+      { title: 'Outstanding', path: '/credit' },
+      { title: 'Settlement history', path: '/credit/settlements' },
+    ],
   },
   {
     title: 'Players',

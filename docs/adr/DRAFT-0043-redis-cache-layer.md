@@ -83,6 +83,8 @@ Rejected: admin API is authenticated; not suitable for shared edge cache.
 - Serialization: JSON via `serde_json` for debug visibility.
 - Helm: single-node Redis StatefulSet with AOF persistence.
 - Local: `docker-compose.yml` with Postgres, PgBouncer (transaction mode), Redis.
+- User cache keys: `user:username:*` stores the auth profile (bcrypt hash, TOTP secret); `user:id:*` stores the public profile (secrets nulled); `users:list:*` stores paginated admin search results. There is no full-table mirror of `users` in Redis.
+- Stats cache keys: `stats:dashboard:*`, `stats:staff:*`, `stats:revenue:*`, `stats:usage:*` store aggregate dashboard snapshots keyed by resolved date ranges (and `shiftStart` for staff). Invalidated via `invalidate_prefix("stats:")` on transaction, session, user register, balance purchase, and credit settlement writes. TTL: 2 hr (`AGGREGATE`).
 
 ## References
 

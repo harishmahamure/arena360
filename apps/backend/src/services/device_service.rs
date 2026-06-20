@@ -1,6 +1,8 @@
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, keys, CacheService};
 use crate::dto::{DeviceFingerprintDto, ProvisionDeviceDto};
 use crate::error::AppError;
 use crate::models::{
@@ -19,15 +21,26 @@ pub struct DeviceService {
     repo: DeviceRepository,
     events: EventService,
     outbox: OutboxService,
+    cache: Arc<dyn CacheService>,
 }
 
 impl DeviceService {
-    pub fn new(pool: PgPool, events: EventService, outbox: OutboxService) -> Self {
+    pub fn new(pool: PgPool, events: EventService, outbox: OutboxService, cache: Arc<dyn CacheService>) -> Self {
         Self {
             repo: DeviceRepository::new(pool),
             events,
             outbox,
+            cache,
         }
+    }
+
+    async fn invalidate_device_cache(&self, device_id: &Uuid) {
+        let _ = cache::invalidate(
+            &*self.cache,
+            &[keys::session_device(device_id)],
+        )
+        .await;
+        let _ = cache::invalidate_stats(&*self.cache).await;
     }
 
     pub async fn list(
@@ -60,6 +73,7 @@ impl DeviceService {
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;
+        self.invalidate_device_cache(&device.id).await;
         Ok(device)
     }
 
@@ -105,6 +119,7 @@ impl DeviceService {
                 self.events
                     .publish_device_status(&device.id.to_string(), &device.status);
                 self.publish_device_ws(&device).await;
+                self.invalidate_device_cache(&device.id).await;
                 Ok(device)
             }
             Err(AppError::Database(e)) => Err(map_device_unique_violation(e)),
@@ -151,6 +166,7 @@ impl DeviceService {
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;
+        self.invalidate_device_cache(&device.id).await;
         Ok(device)
     }
 
@@ -187,6 +203,7 @@ impl DeviceService {
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;
+        self.invalidate_device_cache(&device.id).await;
         Ok(device)
     }
 
@@ -199,11 +216,14 @@ impl DeviceService {
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;
+        self.invalidate_device_cache(&device.id).await;
         Ok(device)
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        self.repo.soft_delete(id).await
+        self.repo.soft_delete(id).await?;
+        self.invalidate_device_cache(&id).await;
+        Ok(())
     }
 
     /// Enforce the fingerprint drift policy (ADR-0017, US-KREG-002/003):

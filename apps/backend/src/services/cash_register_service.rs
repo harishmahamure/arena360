@@ -70,7 +70,9 @@ impl CashRegisterService {
             ));
         }
 
-        self.repo.close_register(id, &dto, actor_id).await
+        let result = self.repo.close_register(id, &dto, actor_id).await?;
+        self.invalidate_register(id).await?;
+        Ok(result)
     }
 
     pub async fn reconcile(
@@ -112,9 +114,12 @@ impl CashRegisterService {
             ));
         }
 
-        self.repo
+        let result = self
+            .repo
             .update_opening_balance(id, dto.opening_balance, dto.opening_denominations, actor_id)
-            .await
+            .await?;
+        self.invalidate_register(id).await?;
+        Ok(result)
     }
 
     pub async fn add_entry(

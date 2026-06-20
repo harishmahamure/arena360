@@ -1,5 +1,5 @@
 use axum::extract::{Query, State};
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -10,7 +10,7 @@ use crate::openapi::responses::{
     DashboardStatsEnvelope, ErrorEnvelope, RevenueByPaymentMethodEnvelope,
     StaffDashboardStatsEnvelope, UsageStatsEnvelope,
 };
-use crate::services::stats_service::{PeriodPair, RevenueByPaymentMethodDto, UsageStatsDto};
+use crate::services::stats_service::{PeriodPair, RevenueByPaymentMethodDto, StatsService, UsageStatsDto};
 
 #[derive(serde::Deserialize, Default, ToSchema, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
@@ -98,17 +98,7 @@ pub async fn revenue_by_payment_method(
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<PeriodPair<RevenueByPaymentMethodDto>> {
-    let now = Utc::now();
-    let start = query
-        .start_date
-        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
-        .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
-        .unwrap_or_else(|| now - Duration::days(30));
-    let end = query
-        .end_date
-        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
-        .map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc())
-        .unwrap_or(now);
+    let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
     let diff = (end - start).num_days().max(1);
     let prev_start = start - Duration::days(diff);
     let prev_end = end - Duration::days(diff);
@@ -139,17 +129,7 @@ pub async fn usage_stats(
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<PeriodPair<UsageStatsDto>> {
-    let now = Utc::now();
-    let start = query
-        .start_date
-        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
-        .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc())
-        .unwrap_or_else(|| now - Duration::days(30));
-    let end = query
-        .end_date
-        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
-        .map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc())
-        .unwrap_or(now);
+    let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
     let diff = (end - start).num_days().max(1);
     let prev_start = start - Duration::days(diff);
     let prev_end = end - Duration::days(diff);

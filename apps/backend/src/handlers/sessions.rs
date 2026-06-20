@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::AdminOrStaff;
+use crate::middleware::{require_staff_for_counter, AdminOrStaff};
 use crate::models::{
     CreateSessionDto, EndSessionDto, SessionFilterDto, UsageSession, UsageSessionResponse,
 };
@@ -97,6 +97,8 @@ pub async fn create_session(
     let user_id = claims.user_id_uuid().ok_or_else(|| {
         crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
     })?;
+
+    require_staff_for_counter(&claims)?;
 
     // Enforce active shift
     let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {

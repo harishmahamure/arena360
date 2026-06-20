@@ -16,6 +16,8 @@ export interface TransactionResponse {
   transactionType: TransactionTypeValue;
   planId?: string;
   amount: number;
+  cashAmount?: number | null;
+  onlineAmount?: number | null;
   paymentMethod: PaymentMethodValue;
   paymentStatus: PaymentStatusValue;
   notes?: string;

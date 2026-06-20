@@ -12,6 +12,7 @@ import { useDispatch, useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
 import { useEnrichedSessions } from '../hooks/useEnrichedSessions';
 import { usePermissions } from '../hooks/usePermissions';
+import { clearAdminSession } from '../lib/authSession';
 import { getSessions } from '../services/sessions/list';
 import { getActiveShift } from '../services/shifts';
 import { formatDuration, now } from '../utils/date';
@@ -45,7 +46,7 @@ export default function DashboardLayout() {
     queryKey: ['activeShift'],
     queryFn: getActiveShift,
     retry: false,
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && isStaff,
   });
 
   const enrichedSessions = useEnrichedSessions(data?.data);
@@ -87,7 +88,7 @@ export default function DashboardLayout() {
   }, [outletKey]);
 
   const handleAdminLogout = () => {
-    local.remove('accessToken');
+    clearAdminSession();
     dispatch({ type: 'Reset' });
     navigate('/login');
   };
@@ -114,12 +115,12 @@ export default function DashboardLayout() {
 
   const appBarQuickActions = useMemo(
     () => ({
-      showPos: can(Permission.TransactionsWrite),
-      showPlan: can(Permission.PlayerPlansWrite),
+      showPos: isStaff && can(Permission.TransactionsWrite),
+      showPlan: isStaff && can(Permission.PlayerPlansWrite),
       onPosClick: () => requireShiftForQuickAction('/product-transactions/new'),
       onPlanClick: () => requireShiftForQuickAction('/plan-transactions/new'),
     }),
-    [can, requireShiftForQuickAction],
+    [can, isStaff, requireShiftForQuickAction],
   );
 
   const pageTitle = getRouteTitle(location.pathname);

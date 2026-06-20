@@ -31,11 +31,15 @@ import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
 import {
   CounterSaleLayout,
+  evaluateCreditBlocked,
+  isPosPaymentSuccessful,
   PosPaymentTiles,
   type PosPlayer,
   PosPlayerPicker,
   PosSplitAmountFields,
   PosStoreToolbar,
+  posSaleSuccessLabel,
+  validateSplitPaymentAmounts,
 } from '../../../containers/sales';
 import {
   type PaymentMethodType,
@@ -298,7 +302,7 @@ export default function CreateProductTransactionPage() {
   const total = subtotal;
 
   const isCredit = paymentMethod === PaymentMethodValues.CREDIT;
-  const { data: creditDetail } = useQuery({
+  const { data: creditDetail, isFetching: creditLoading } = useQuery({
     queryKey: ['player-credit', selectedPlayer?.id],
     queryFn: () => {
       if (!selectedPlayer) throw new Error('No player selected');
@@ -307,12 +311,10 @@ export default function CreateProductTransactionPage() {
     enabled: isCredit && !!selectedPlayer,
   });
 
-  const creditBlocked = useMemo(() => {
-    if (!isCredit || !creditDetail?.summary) return isCredit;
-    const s = creditDetail.summary;
-    if (!s.creditEnabled || s.creditLimit <= 0) return true;
-    return total > s.available + 0.001;
-  }, [isCredit, creditDetail, total]);
+  const creditBlocked = useMemo(
+    () => evaluateCreditBlocked(isCredit, total, creditDetail, creditLoading),
+    [isCredit, total, creditDetail, creditLoading],
+  );
 
   const handleSubmit = () => {
     setError(undefined);
@@ -327,9 +329,12 @@ export default function CreateProductTransactionPage() {
       return;
     }
 
-    if (paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (!cashAmount || !onlineAmount)) {
-      setError('Please enter both cash and online amounts for split payment');
-      return;
+    if (paymentMethod === PaymentMethodValues.SPLIT_PAYMENT) {
+      const splitError = validateSplitPaymentAmounts(total, cashAmount, onlineAmount);
+      if (splitError) {
+        setError(splitError);
+        return;
+      }
     }
 
     if (isCredit && creditBlocked) {
@@ -374,7 +379,7 @@ export default function CreateProductTransactionPage() {
           })),
         });
 
-        if (response.paymentStatus !== PaymentStatus.COMPLETED) {
+        if (!isPosPaymentSuccessful(response.paymentStatus)) {
           throw new Error('Payment not completed');
         }
 
@@ -599,6 +604,7 @@ export default function CreateProductTransactionPage() {
               onlineAmount={onlineAmount}
               onCashChange={setCashAmount}
               onOnlineChange={setOnlineAmount}
+              totalAmount={total}
             />
           )}
 
@@ -623,7 +629,7 @@ export default function CreateProductTransactionPage() {
               onClick={handleSubmit}
               loading={submitting}
               success={succeeded}
-              successLabel="Sale complete"
+              successLabel={posSaleSuccessLabel(paymentMethod)}
               error={failed}
               errorLabel={errorMessage ?? 'Failed to create transaction'}
               disabled={!selectedPlayer || cart.length === 0 || creditBlocked || submitDisabled}

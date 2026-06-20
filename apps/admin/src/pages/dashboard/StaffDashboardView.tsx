@@ -27,6 +27,7 @@ import { useStaffDashboardStats } from '../../hooks/useStaffDashboardStats';
 import type { SessionResponse } from '../../services/sessions/list';
 import { getSessions } from '../../services/sessions/list';
 import { clockIn } from '../../services/shifts';
+import { formatTypePaymentSubtitle, normalizeRevenue } from '../../services/stats/statsHelpers';
 import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
 
 const ENDING_SOON_MINUTES = 15;
@@ -89,7 +90,7 @@ function StaffDashboardSkeleton() {
       </Box>
       <Skeleton variant="text" width={200} height={28} sx={{ mb: 2 }} />
       <Grid container spacing={3}>
-        {['stat-1', 'stat-2', 'stat-3', 'stat-4', 'stat-5'].map((id) => (
+        {['stat-1', 'stat-2', 'stat-3', 'stat-4', 'stat-5', 'stat-6'].map((id) => (
           <Grid key={id} size={{ xs: 12, sm: 6, md: 4 }}>
             <Skeleton variant="rounded" height={160} />
           </Grid>
@@ -155,6 +156,13 @@ export default function StaffDashboardView() {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
+  const formatPaymentBreakdown = (revenue?: {
+    cashRevenue?: number;
+    onlineRevenue?: number;
+    creditRevenue?: number;
+  }) =>
+    `Cash: ${formatCurrency(revenue?.cashRevenue ?? 0)} | Online: ${formatCurrency(revenue?.onlineRevenue ?? 0)} | Credit: ${formatCurrency(revenue?.creditRevenue ?? 0)}`;
+
   const shiftDuration = useMemo(() => {
     if (!stats?.shift?.startDate) return null;
     const start = new Date(stats.shift.startDate);
@@ -177,6 +185,8 @@ export default function StaffDashboardView() {
     );
   }
 
+  const shiftRevenue = normalizeRevenue(stats.shiftRevenue ?? undefined);
+
   const collectionCards: Array<{
     title: string;
     value: string;
@@ -186,15 +196,22 @@ export default function StaffDashboardView() {
   }> = [
     {
       title: 'Collections This Shift',
-      value: formatCurrency(stats.shiftRevenue?.total ?? 0),
-      subtitle: `Cash: ${formatCurrency(stats.shiftRevenue?.cashRevenue ?? 0)} | Online: ${formatCurrency(stats.shiftRevenue?.onlineRevenue ?? 0)}`,
+      value: formatCurrency(shiftRevenue.total),
+      subtitle: formatPaymentBreakdown(shiftRevenue),
       icon: PointOfSale,
       tone: 'success',
     },
     {
-      title: 'Transactions',
-      value: stats.transactions.totalTransactions.toLocaleString(),
-      subtitle: `Completed: ${stats.transactions.completedTransactions} | Pending: ${stats.transactions.pendingTransactions}`,
+      title: 'Plan Transactions',
+      value: formatCurrency(shiftRevenue.plan),
+      subtitle: formatTypePaymentSubtitle(shiftRevenue, 'plan', formatCurrency),
+      icon: Receipt,
+      tone: 'primary',
+    },
+    {
+      title: 'Product Transactions',
+      value: formatCurrency(shiftRevenue.merchandise),
+      subtitle: formatTypePaymentSubtitle(shiftRevenue, 'product', formatCurrency),
       icon: ShoppingCart,
       tone: 'info',
     },
@@ -255,10 +272,18 @@ export default function StaffDashboardView() {
               {stats.shift ? (
                 <>
                   <Typography variant="h4" fontWeight={700} color="success.main" sx={{ mt: 0.5 }}>
-                    {formatCurrency(stats.shiftRevenue?.total ?? 0)}
+                    {formatCurrency(shiftRevenue.total)}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" display="block">
                     Collected this shift
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    sx={{ mt: 0.5 }}
+                  >
+                    {formatPaymentBreakdown(shiftRevenue)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                     Started {formatDisplayDateTime(stats.shift.startDate)}

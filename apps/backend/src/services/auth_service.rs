@@ -16,14 +16,14 @@ use crate::dto::{
 };
 use crate::error::AppError;
 use crate::models::{deduction_profile::DeductionProfile, Device, User};
-use crate::repositories::{SessionRepository, SsoRepository, UserRepository};
+use crate::repositories::{SessionRepository, SsoRepository};
+use crate::services::session_service::display_remaining_for_session;
+use crate::services::{BalanceService, UserService};
 use crate::validation::{normalize_username, trim_secret};
 use crate::services::totp_util::verify_totp_code;
-use crate::services::session_service::display_remaining_for_session;
-use crate::services::BalanceService;
 
 pub struct AuthService {
-    user_repo: UserRepository,
+    users: Arc<UserService>,
     session_repo: SessionRepository,
     sso_repo: SsoRepository,
     balances: Arc<BalanceService>,
@@ -31,9 +31,14 @@ pub struct AuthService {
 }
 
 impl AuthService {
-    pub fn new(pool: PgPool, settings: Arc<Settings>, balances: Arc<BalanceService>) -> Self {
+    pub fn new(
+        pool: PgPool,
+        settings: Arc<Settings>,
+        balances: Arc<BalanceService>,
+        users: Arc<UserService>,
+    ) -> Self {
         Self {
-            user_repo: UserRepository::new(pool.clone()),
+            users,
             session_repo: SessionRepository::new(pool.clone()),
             sso_repo: SsoRepository::new(pool),
             balances,
@@ -173,8 +178,8 @@ impl AuthService {
         password: &str,
     ) -> Result<User, AppError> {
         let user = self
-            .user_repo
-            .find_by_username_with_password(username)
+            .users
+            .find_by_username_for_auth(username)
             .await?
             .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
 
@@ -262,10 +267,10 @@ impl AuthService {
             .created_by
             .ok_or_else(|| AppError::Internal("SSO token missing creator".to_string()))?;
         let user = self
-            .user_repo
-            .find_by_id(staff_id)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("SSO creator not found".to_string()))?;
+            .users
+            .get_by_id(staff_id)
+            .await
+            .map_err(|_| AppError::Unauthorized("SSO creator not found".to_string()))?;
 
         if !user.role.as_deref().is_some_and(|r| r == "admin" || r == "staff") {
             return Err(AppError::Forbidden("SSO creator is not staff".to_string()));
@@ -384,8 +389,8 @@ impl AuthService {
         password: &str,
     ) -> Result<User, AppError> {
         let user = self
-            .user_repo
-            .find_by_username_with_password(username)
+            .users
+            .find_by_username_for_auth(username)
             .await?
             .ok_or_else(|| {
                 tracing::error!(
@@ -463,8 +468,8 @@ impl AuthService {
         password: &str,
     ) -> Result<User, AppError> {
         let user = self
-            .user_repo
-            .find_by_username_with_password(username)
+            .users
+            .find_by_username_for_auth(username)
             .await?
             .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
 
@@ -549,11 +554,7 @@ impl AuthService {
     fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
         let role = user.role.clone().unwrap_or_else(|| "player".to_string());
         let now = Utc::now();
-        let exp_duration = if role == "admin" {
-            Duration::minutes(15)
-        } else {
-            parse_duration(&self.settings.jwt_access_expiration)
-        };
+        let exp_duration = parse_duration(&self.settings.jwt_access_expiration);
 
         let claims = JwtUserClaims {
             sub: user.id.to_string(),
@@ -678,5 +679,96 @@ mod admin_totp_tests {
         let code = totp.generate_current().expect("current code");
 
         AuthService::verify_totp_if_enabled(&user, Some(&code)).expect("valid admin totp");
+    }
+}
+
+#[cfg(test)]
+mod access_token_tests {
+    use super::*;
+    use jsonwebtoken::{decode, DecodingKey, Validation};
+    use std::sync::Arc;
+
+    use crate::cache::NoopCache;
+    use crate::config::Settings;
+    use crate::services::BalanceService;
+
+    fn test_settings(jwt_access_expiration: &str) -> Arc<Settings> {
+        Arc::new(Settings {
+            database_url: "postgres://localhost:5432/test".to_string(),
+            database_max_connections: 1,
+            redis_url: None,
+            jwt_secret: "your-jwt-secret-change-this-my-secret-sova".to_string(),
+            jwt_access_expiration: jwt_access_expiration.to_string(),
+            jwt_player_expiration: "24h".to_string(),
+            jwt_device_expiration: "365d".to_string(),
+            bcrypt_salt_rounds: 10,
+            port: 3000,
+            cafe_timezone: "UTC".to_string(),
+            zeptomail_token: None,
+        })
+    }
+
+    fn test_auth_service(settings: Arc<Settings>) -> AuthService {
+        let pool = PgPool::connect_lazy("postgres://localhost:5432/test").expect("lazy pool");
+        let cache = Arc::new(NoopCache);
+        let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
+        let balances = Arc::new(BalanceService::new(pool.clone(), cache));
+        AuthService::new(pool, settings, balances, users)
+    }
+
+    fn test_user() -> User {
+        let now = Utc::now();
+        User {
+            id: Uuid::new_v4(),
+            email: None,
+            username: "admin".to_string(),
+            password_hash: None,
+            is_active: true,
+            first_name: None,
+            last_name: None,
+            phone_number: None,
+            role: Some("admin".to_string()),
+            credit_limit: 0.0,
+            session_otp_id: None,
+            session_otp: None,
+            totp_secret: None,
+            totp_enabled: false,
+            created_by: None,
+            updated_by: None,
+            created_at: now,
+            updated_at: now,
+            deleted_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn admin_token_ttl_follows_jwt_access_expiration_setting() {
+        let settings = test_settings("7d");
+        let auth = test_auth_service(settings);
+        let user = test_user();
+
+        let token = auth.generate_access_token(&user).expect("token");
+        let mut validation = Validation::default();
+        validation.validate_exp = false;
+        validation.set_audience(&["gamezone"]);
+        validation.set_issuer(&["gamezone"]);
+
+        let claims = decode::<JwtUserClaims>(
+            &token,
+            &DecodingKey::from_secret("your-jwt-secret-change-this-my-secret-sova".as_bytes()),
+            &validation,
+        )
+        .expect("decode")
+        .claims;
+
+        let iat = claims.iat.expect("iat");
+        let exp = claims.exp.expect("exp");
+        let ttl_secs = exp - iat;
+        let seven_days_secs = 7 * 24 * 60 * 60;
+        assert!(
+            ttl_secs >= seven_days_secs - 60,
+            "expected ~7d TTL, got {ttl_secs}s"
+        );
+        assert!(ttl_secs > 15 * 60, "admin must not use hardcoded 15m TTL");
     }
 }

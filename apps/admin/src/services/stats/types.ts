@@ -27,6 +27,21 @@ export interface RevenueByPaymentMethodDto {
   total: number;
   cashRevenue: number;
   onlineRevenue: number;
+  creditRevenue: number;
+  planTransactionCount: number;
+  productTransactionCount: number;
+  planCashRevenue: number;
+  planOnlineRevenue: number;
+  planCreditRevenue: number;
+  productCashRevenue: number;
+  productOnlineRevenue: number;
+  productCreditRevenue: number;
+  planCashCount: number;
+  planOnlineCount: number;
+  planCreditCount: number;
+  productCashCount: number;
+  productOnlineCount: number;
+  productCreditCount: number;
 }
 
 /**
