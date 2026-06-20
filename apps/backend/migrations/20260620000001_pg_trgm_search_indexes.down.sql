@@ -1,0 +1,9 @@
+DROP INDEX IF EXISTS idx_devices_location_trgm;
+DROP INDEX IF EXISTS idx_devices_name_trgm;
+DROP INDEX IF EXISTS idx_products_name_trgm;
+DROP INDEX IF EXISTS idx_plans_description_trgm;
+DROP INDEX IF EXISTS idx_plans_name_trgm;
+DROP INDEX IF EXISTS idx_users_last_name_trgm;
+DROP INDEX IF EXISTS idx_users_first_name_trgm;
+DROP INDEX IF EXISTS idx_users_phone_trgm;
+DROP INDEX IF EXISTS idx_users_username_trgm;
