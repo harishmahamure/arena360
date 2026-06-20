@@ -48,7 +48,7 @@ pub struct UpdateGameDto {
     pub sort_order: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct GameFilterDto {
     pub is_active: Option<bool>,

@@ -1,6 +1,8 @@
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{CreateProductDto, Product, ProductFilterDto, UpdateProductDto};
 use crate::repositories::ProductRepository;
@@ -8,27 +10,48 @@ use crate::validation::{optional_product_category, require_product_category};
 
 pub struct ProductService {
     repo: ProductRepository,
+    cache: Arc<dyn CacheService>,
 }
 
 impl ProductService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
             repo: ProductRepository::new(pool),
+            cache,
         }
+    }
+
+    async fn invalidate_products(&self, id: Option<Uuid>) -> Result<(), AppError> {
+        let mut cache_keys = Vec::new();
+        if let Some(id) = id {
+            cache_keys.push(keys::product(&id));
+        }
+        if !cache_keys.is_empty() {
+            cache::invalidate(&*self.cache, &cache_keys).await?;
+        }
+        self.cache.invalidate_prefix("products:list:").await
     }
 
     pub async fn list(
         &self,
         filters: ProductFilterDto,
     ) -> Result<crate::dto::PaginationResult<Product>, AppError> {
-        self.repo.list(&filters).await
+        let cache_key = keys::products_list(&keys::filter_hash(&filters));
+        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
+            self.repo.list(&filters).await
+        })
+        .await
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Product, AppError> {
-        self.repo
-            .find_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Product with ID {id} not found")))
+        let cache_key = keys::product(&id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
+            self.repo
+                .find_by_id(id)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Product with ID {id} not found")))
+        })
+        .await
     }
 
     pub async fn create(
@@ -89,7 +112,9 @@ impl ProductService {
 
         let mut dto = dto;
         dto.category = Some(require_product_category(dto.category)?);
-        self.repo.create(&dto, actor_id).await
+        let product = self.repo.create(&dto, actor_id).await?;
+        self.invalidate_products(Some(product.id)).await?;
+        Ok(product)
     }
 
     pub async fn update(
@@ -153,10 +178,14 @@ impl ProductService {
 
         let mut dto = dto;
         dto.category = optional_product_category(dto.category)?;
-        self.repo.update(id, &dto, actor_id).await
+        let product = self.repo.update(id, &dto, actor_id).await?;
+        self.invalidate_products(Some(id)).await?;
+        Ok(product)
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<Product, AppError> {
-        self.repo.deactivate(id).await
+        let product = self.repo.deactivate(id).await?;
+        self.invalidate_products(Some(id)).await?;
+        Ok(product)
     }
 }

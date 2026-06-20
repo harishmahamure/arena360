@@ -7,6 +7,34 @@ use crate::models::{
     CreditAccountFilterDto, CreditPlayerRow, CreditSettlement, OutstandingTxnRow, SettleItemDto,
 };
 
+#[derive(sqlx::FromRow)]
+struct CreditPlayerRowWithTotal {
+    player_id: Uuid,
+    username: String,
+    first_name: Option<String>,
+    last_name: Option<String>,
+    phone_number: Option<String>,
+    credit_limit: f64,
+    outstanding: f64,
+    available: f64,
+    total_count: i64,
+}
+
+impl From<CreditPlayerRowWithTotal> for CreditPlayerRow {
+    fn from(row: CreditPlayerRowWithTotal) -> Self {
+        Self {
+            player_id: row.player_id,
+            username: row.username,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            phone_number: row.phone_number,
+            credit_limit: row.credit_limit,
+            outstanding: row.outstanding,
+            available: row.available,
+        }
+    }
+}
+
 pub struct CreditRepository {
     pool: PgPool,
 }
@@ -84,7 +112,8 @@ impl CreditRepository {
                    u."phoneNumber" as phone_number,
                    u."creditLimit"::float8 as credit_limit,
                    COALESCE(SUM(t.amount - t."paidAmount"), 0)::float8 as outstanding,
-                   GREATEST(u."creditLimit" - COALESCE(SUM(t.amount - t."paidAmount"), 0), 0)::float8 as available
+                   GREATEST(u."creditLimit" - COALESCE(SUM(t.amount - t."paidAmount"), 0), 0)::float8 as available,
+                   COUNT(*) OVER() as total_count
             FROM users u
             INNER JOIN transactions t ON t."playerId" = u.id
                 AND t."paymentMethod" = 'credit'
@@ -128,42 +157,14 @@ impl CreditRepository {
         builder.push_bind(offset);
 
         let rows = builder
-            .build_query_as::<CreditPlayerRow>()
+            .build_query_as::<CreditPlayerRowWithTotal>()
             .fetch_all(&self.pool)
             .await?;
 
-        let mut count_builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"
-            SELECT COUNT(*) FROM (
-                SELECT u.id
-                FROM users u
-                INNER JOIN transactions t ON t."playerId" = u.id
-                    AND t."paymentMethod" = 'credit'
-                    AND t."paymentStatus" = 'credit'
-                    AND t."deletedAt" IS NULL
-                WHERE u."deletedAt" IS NULL AND u.role = 'player'
-            "#,
-        );
+        let total = rows.first().map(|r| r.total_count).unwrap_or(0);
+        let items: Vec<CreditPlayerRow> = rows.into_iter().map(Into::into).collect();
 
-        if let Some(search) = filters.search.as_ref().filter(|s| !s.is_empty()) {
-            let pattern = format!("%{search}%");
-            count_builder.push(" AND (u.username ILIKE ");
-            count_builder.push_bind(pattern.clone());
-            count_builder.push(" OR u.\"firstName\" ILIKE ");
-            count_builder.push_bind(pattern.clone());
-            count_builder.push(" OR u.\"lastName\" ILIKE ");
-            count_builder.push_bind(pattern.clone());
-            count_builder.push(" OR u.\"phoneNumber\" ILIKE ");
-            count_builder.push_bind(pattern);
-            count_builder.push(")");
-        }
-
-        count_builder
-            .push(" GROUP BY u.id HAVING COALESCE(SUM(t.amount - t.\"paidAmount\"), 0) > 0) sub");
-
-        let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
-
-        Ok(PaginationResult::new(rows, total.0, page, limit))
+        Ok(PaginationResult::new(items, total, page, limit))
     }
 
     pub async fn list_outstanding_txns(
@@ -193,30 +194,6 @@ impl CreditRepository {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
-    }
-
-    pub async fn get_txn_remaining(
-        &self,
-        transaction_id: Uuid,
-        player_id: Uuid,
-    ) -> Result<Option<(f64, f64)>, AppError> {
-        let row: Option<(f64, f64)> = sqlx::query_as(
-            r#"
-            SELECT amount::float8, "paidAmount"::float8
-            FROM transactions
-            WHERE id = $1
-              AND "playerId" = $2
-              AND "paymentMethod" = 'credit'
-              AND "paymentStatus" = 'credit'
-              AND "deletedAt" IS NULL
-            FOR UPDATE
-            "#,
-        )
-        .bind(transaction_id)
-        .bind(player_id)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row)
     }
 
     pub async fn create_settlement(

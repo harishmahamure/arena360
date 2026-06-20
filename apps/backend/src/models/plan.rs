@@ -73,7 +73,7 @@ pub struct UpdatePlanDto {
     pub deduction_profile: Option<Value>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanFilterDto {
     pub search: Option<String>,

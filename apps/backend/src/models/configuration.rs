@@ -25,7 +25,7 @@ pub struct UpsertConfigDto {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFilterDto {
     pub category: Option<String>,

@@ -42,7 +42,7 @@ pub struct UpdateExpenseCategoryDto {
     pub budget_period: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ExpenseCategoryFilterDto {
     pub name: Option<String>,

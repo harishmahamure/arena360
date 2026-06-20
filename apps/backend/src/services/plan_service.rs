@@ -1,7 +1,9 @@
 use serde_json::Value;
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{
     parse_deduction_profile, parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto,
@@ -21,31 +23,56 @@ const VALID_DAYS: &[&str] = &[
 
 pub struct PlanService {
     repo: PlanRepository,
+    cache: Arc<dyn CacheService>,
 }
 
 impl PlanService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
             repo: PlanRepository::new(pool),
+            cache,
         }
+    }
+
+    async fn invalidate_plans(&self, id: Option<Uuid>) -> Result<(), AppError> {
+        let mut cache_keys = vec![keys::plans_active().to_string()];
+        if let Some(id) = id {
+            cache_keys.push(keys::plan(&id));
+        }
+        cache::invalidate(&*self.cache, &cache_keys).await?;
+        self.cache.invalidate_prefix("plans:list:").await
     }
 
     pub async fn list(
         &self,
         filters: PlanFilterDto,
     ) -> Result<crate::dto::PaginationResult<Plan>, AppError> {
-        self.repo.list(&filters).await
+        let cache_key = keys::plans_list(&keys::filter_hash(&filters));
+        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
+            self.repo.list(&filters).await
+        })
+        .await
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Plan, AppError> {
-        self.repo
-            .find_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Plan with ID {id} not found")))
+        let cache_key = keys::plan(&id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
+            self.repo
+                .find_by_id(id)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Plan with ID {id} not found")))
+        })
+        .await
     }
 
     pub async fn get_active(&self) -> Result<Vec<Plan>, AppError> {
-        self.repo.find_active().await
+        get_or_set(
+            &*self.cache,
+            keys::plans_active(),
+            keys::ttl::LOOKUP,
+            || async { self.repo.find_active().await },
+        )
+        .await
     }
 
     pub async fn create(
@@ -67,7 +94,8 @@ impl PlanService {
         let (dynamic_deduction_enabled, deduction_profile) =
             Self::resolve_deduction_fields(&dto.dynamic_deduction_enabled, dto.deduction_profile.as_ref())?;
 
-        self.repo
+        let plan = self
+            .repo
             .create(
                 PlanCreateValues {
                     dto: &dto,
@@ -80,7 +108,9 @@ impl PlanService {
                 },
                 actor_id,
             )
-            .await
+            .await?;
+        self.invalidate_plans(Some(plan.id)).await?;
+        Ok(plan)
     }
 
     pub async fn update(
@@ -156,7 +186,8 @@ impl PlanService {
             profile_value,
         )?;
 
-        self.repo
+        let plan = self
+            .repo
             .update(
                 id,
                 &dto,
@@ -168,12 +199,15 @@ impl PlanService {
                 deduction_profile.as_ref(),
                 actor_id,
             )
-            .await
+            .await?;
+        self.invalidate_plans(Some(id)).await?;
+        Ok(plan)
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         self.get_by_id(id).await?;
-        self.repo.deactivate(id).await
+        self.repo.deactivate(id).await?;
+        self.invalidate_plans(Some(id)).await
     }
 
     fn validate_create(&self, dto: &CreatePlanDto) -> Result<(), AppError> {

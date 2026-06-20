@@ -36,3 +36,21 @@ CREATE INDEX idx_devices_name_trgm
 CREATE INDEX idx_devices_location_trgm
   ON devices USING gin (location gin_trgm_ops)
   WHERE "deletedAt" IS NULL;
+
+-- games, units, vendors, expense categories, configurations (extended coverage)
+CREATE INDEX idx_games_name_trgm
+  ON games USING gin (name gin_trgm_ops)
+  WHERE "deletedAt" IS NULL;
+
+CREATE INDEX idx_units_name_trgm
+  ON units USING gin (name gin_trgm_ops)
+  WHERE "deletedAt" IS NULL;
+
+CREATE INDEX idx_vendors_name_trgm
+  ON vendors USING gin (name gin_trgm_ops);
+
+CREATE INDEX idx_expense_categories_name_trgm
+  ON expense_categories USING gin (name gin_trgm_ops);
+
+CREATE INDEX idx_configurations_key_trgm
+  ON configurations USING gin (key gin_trgm_ops);

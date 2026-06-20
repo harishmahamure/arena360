@@ -1,6 +1,8 @@
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{
     compute_available, validate_settlement_items, CreditAccountFilterDto, CreditPlayerRow,
@@ -11,13 +13,31 @@ use crate::services::CashRegisterService;
 
 pub struct CreditService {
     repo: CreditRepository,
+    cache: Arc<dyn CacheService>,
 }
 
 impl CreditService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
             repo: CreditRepository::new(pool),
+            cache,
         }
+    }
+
+    async fn invalidate_credit(&self, player_id: Uuid) -> Result<(), AppError> {
+        cache::invalidate(
+            &*self.cache,
+            &[keys::credit_outstanding(&player_id)],
+        )
+        .await
+    }
+
+    async fn sum_outstanding_cached(&self, player_id: Uuid) -> Result<f64, AppError> {
+        let cache_key = keys::credit_outstanding(&player_id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            self.repo.sum_outstanding(player_id).await
+        })
+        .await
     }
 
     pub async fn validate_eligibility(
@@ -33,7 +53,7 @@ impl CreditService {
             ));
         }
 
-        let outstanding = self.repo.sum_outstanding(player_id).await?;
+        let outstanding = self.sum_outstanding_cached(player_id).await?;
         let available = compute_available(credit_limit, outstanding);
 
         if amount > available + 0.001 {
@@ -53,7 +73,7 @@ impl CreditService {
 
     pub async fn summary(&self, player_id: Uuid) -> Result<CreditSummary, AppError> {
         let (credit_enabled, credit_limit) = self.repo.is_eligible_player(player_id).await?;
-        let outstanding = self.repo.sum_outstanding(player_id).await?;
+        let outstanding = self.sum_outstanding_cached(player_id).await?;
         let available = compute_available(credit_limit, outstanding);
 
         Ok(CreditSummary {
@@ -111,6 +131,8 @@ impl CreditService {
             )
             .await?;
 
+        self.invalidate_credit(dto.player_id).await?;
+
         let cash_portion = match dto.payment_method.as_str() {
             "cash" => dto.cash_amount.unwrap_or(total),
             "split_payment" => dto.cash_amount.unwrap_or(0.0),
@@ -153,6 +175,11 @@ impl CreditService {
             .set_credit_limit(player_id, dto.credit_limit, actor_id)
             .await?;
 
+        self.invalidate_credit(player_id).await?;
         self.summary(player_id).await
+    }
+
+    pub async fn invalidate_player_credit(&self, player_id: Uuid) -> Result<(), AppError> {
+        self.invalidate_credit(player_id).await
     }
 }

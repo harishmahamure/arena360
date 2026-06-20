@@ -1,0 +1,48 @@
+redis:
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: false
+    existingSecret: arena360-redis-secrets
+    passwordKey: redis-password
+  service:
+    type: ClusterIP
+    port: 6379
+  persistence:
+    enabled: true
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+  config:
+    maxmemory: "256mb"
+    maxmemoryPolicy: allkeys-lru
+    appendonly: "yes"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+secret:
+  create: false
+  name: arena360-redis-secrets
+  redisUrl: ""
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+imagePullSecrets:
+  - name: dockerhub-secret

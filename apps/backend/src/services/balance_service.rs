@@ -1,7 +1,9 @@
 use chrono::{DateTime, Datelike, Duration, Utc};
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{
     balance_status, ledger_reason, plan_kind, BalanceFilterDto, BalanceValidationResult, Device,
@@ -13,6 +15,7 @@ pub struct BalanceService {
     repo: BalanceRepository,
     ledger: LedgerRepository,
     plan_repo: PlanRepository,
+    cache: Arc<dyn CacheService>,
 }
 
 fn plan_kind_from_plan(plan: &Plan) -> &'static str {
@@ -29,12 +32,38 @@ fn should_carry_forward_minutes(balance: &PlayerPlanBalance, now: DateTime<Utc>)
 }
 
 impl BalanceService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
             repo: BalanceRepository::new(pool.clone()),
             ledger: LedgerRepository::new(pool.clone()),
             plan_repo: PlanRepository::new(pool),
+            cache,
         }
+    }
+
+    async fn invalidate_balance(&self, balance: &PlayerPlanBalance) -> Result<(), AppError> {
+        let scope = format!(
+            "{}:{}:{}",
+            balance.device_type.as_deref().unwrap_or("null"),
+            balance.device_sub_type.as_deref().unwrap_or("null"),
+            balance.kind
+        );
+        cache::invalidate(
+            &*self.cache,
+            &[keys::balance_active(&balance.player_id, &scope)],
+        )
+        .await
+    }
+
+    pub async fn get_raw(&self, id: Uuid) -> Result<PlayerPlanBalance, AppError> {
+        let cache_key = format!("balance:raw:{id}");
+        get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION, || async {
+            self.repo
+                .find_by_id(id)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))
+        })
+        .await
     }
 
     pub async fn list(
@@ -49,13 +78,6 @@ impl BalanceService {
     pub async fn get_by_id(&self, id: Uuid) -> Result<PlayerPlanBalanceResponse, AppError> {
         self.repo
             .find_enriched_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))
-    }
-
-    pub async fn get_raw(&self, id: Uuid) -> Result<PlayerPlanBalance, AppError> {
-        self.repo
-            .find_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))
     }
@@ -301,6 +323,10 @@ impl BalanceService {
         session_id: Option<Uuid>,
     ) -> Result<PlayerPlanBalance, AppError> {
         let updated = self.repo.deduct_minutes(balance_id, minutes).await?;
+
+        self.invalidate_balance(&updated).await?;
+        let cache_key = format!("balance:raw:{balance_id}");
+        let _ = self.cache.delete(&[&cache_key]).await;
 
         self.ledger
             .append(

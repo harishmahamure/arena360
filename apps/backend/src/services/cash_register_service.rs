@@ -1,6 +1,8 @@
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{
@@ -12,14 +14,24 @@ use crate::repositories::CashRegisterRepository;
 pub struct CashRegisterService {
     repo: CashRegisterRepository,
     pool: PgPool,
+    cache: Arc<dyn CacheService>,
 }
 
 impl CashRegisterService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
             repo: CashRegisterRepository::new(pool.clone()),
             pool,
+            cache,
         }
+    }
+
+    async fn invalidate_register(&self, register_id: Uuid) -> Result<(), AppError> {
+        cache::invalidate(
+            &*self.cache,
+            &[keys::cash_register_totals(&register_id)],
+        )
+        .await
     }
 
     pub async fn open(
@@ -121,7 +133,9 @@ impl CashRegisterService {
             ));
         }
 
-        self.repo.add_entry(register_id, &dto, actor_id).await
+        let entry = self.repo.add_entry(register_id, &dto, actor_id).await?;
+        self.invalidate_register(register_id).await?;
+        Ok(entry)
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<CashRegisterWithEntries, AppError> {
@@ -153,7 +167,11 @@ impl CashRegisterService {
     }
 
     pub async fn get_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
-        self.repo.get_expected_closing(register_id).await
+        let cache_key = keys::cash_register_totals(&register_id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            self.repo.get_expected_closing(register_id).await
+        })
+        .await
     }
 
     pub async fn carry_forward_balance(

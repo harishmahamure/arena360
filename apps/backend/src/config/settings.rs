@@ -2,6 +2,7 @@
 pub struct Settings {
     pub database_url: String,
     pub database_max_connections: u32,
+    pub redis_url: Option<String>,
     pub jwt_secret: String,
     pub jwt_access_expiration: String,
     pub jwt_player_expiration: String,
@@ -27,6 +28,7 @@ impl Settings {
                 .unwrap_or_else(|_| "10".to_string())
                 .parse()
                 .expect("DATABASE_MAX_CONNECTIONS must be a number"),
+            redis_url: std::env::var("REDIS_URL").ok().filter(|v| !v.is_empty()),
             jwt_secret,
             jwt_access_expiration: std::env::var("JWT_ACCESS_EXPIRATION")
                 .unwrap_or_else(|_| "15m".to_string()),

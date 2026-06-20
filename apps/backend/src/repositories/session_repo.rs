@@ -276,11 +276,11 @@ impl SessionRepository {
         }
         if let Some(player_id) = filters.player_id {
             builder.push(format!(
-                " AND {} IN (SELECT id FROM player_plan_balances WHERE \"playerId\" = ",
+                " AND EXISTS (SELECT 1 FROM player_plan_balances ppb WHERE ppb.id = {} AND ppb.\"playerId\" = ",
                 col("balanceId")
             ));
             builder.push_bind(player_id);
-            builder.push(" AND \"deletedAt\" IS NULL)");
+            builder.push(" AND ppb.\"deletedAt\" IS NULL)");
         }
         if let Some(is_active) = filters.is_active {
             if is_active == 1 {

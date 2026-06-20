@@ -92,8 +92,8 @@ impl BalanceRepository {
                    "deletedAt" as deleted_at
             FROM player_plan_balances
             WHERE "playerId" = $1
-              AND COALESCE("deviceType"::text, '__null__') = COALESCE($2, '__null__')
-              AND COALESCE("deviceSubType"::text, '__null__') = COALESCE($3, '__null__')
+              AND "deviceType" IS NOT DISTINCT FROM $2::plans_devicetype_enum
+              AND "deviceSubType" IS NOT DISTINCT FROM $3::plans_devicesubtype_enum
               AND kind::text = $4
               AND status::text = 'active'
               AND "deletedAt" IS NULL
@@ -132,8 +132,8 @@ impl BalanceRepository {
                    "deletedAt" as deleted_at
             FROM player_plan_balances
             WHERE "playerId" = $1
-              AND COALESCE("deviceType"::text, '__null__') = COALESCE($2, '__null__')
-              AND COALESCE("deviceSubType"::text, '__null__') = COALESCE($3, '__null__')
+              AND "deviceType" IS NOT DISTINCT FROM $2::plans_devicetype_enum
+              AND "deviceSubType" IS NOT DISTINCT FROM $3::plans_devicesubtype_enum
               AND kind::text = $4
               AND "deletedAt" IS NULL
             ORDER BY "createdAt" DESC

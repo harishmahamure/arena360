@@ -83,6 +83,7 @@ env:
   PORT: "3000"
   RUST_ENV: production
   DATABASE_MAX_CONNECTIONS: "10"
+  REDIS_URL: "redis://arena360-redis:6379"
   JWT_ACCESS_EXPIRATION: 15m
   JWT_PLAYER_EXPIRATION: 24h
   JWT_DEVICE_EXPIRATION: 365d
@@ -95,6 +96,10 @@ envFromSecrets:
   - envName: DATABASE_URL
     name: arena360-backend-secrets
     key: DATABASE_URL
+  - envName: REDIS_URL
+    name: arena360-redis-secrets
+    key: REDIS_URL
+    optional: true
   - envName: JWT_SECRET
     name: arena360-backend-secrets
     key: JWT_SECRET

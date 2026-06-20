@@ -21,8 +21,8 @@ Repositories affected in the first pass:
 - `product_repo.rs` — `name`
 - `device_repo.rs` — `name`, `location`
 
-Games, units, vendors, expense categories, and configurations use the same
-`ILIKE` pattern but are deferred to a follow-up migration.
+Games, units, vendors, expense categories, and configurations are included in the
+same migration (extended coverage).
 
 ## Decision
 
@@ -82,6 +82,10 @@ Down migration drops indexes only; the `pg_trgm` extension remains installed.
 
 Verify with `EXPLAIN (ANALYZE, BUFFERS)` on representative `ILIKE` queries;
 expect `Bitmap Index Scan` on `*_trgm` indexes for terms of length ≥ 3.
+
+Companion migration `20260620000002_query_perf_indexes.sql` adds six composite/partial
+B-tree indexes for credit lookups, open sessions, cash register aggregates,
+transaction listing, OTP auth, and kiosk admin bootstrap queries.
 
 ## References
 

@@ -57,11 +57,10 @@ pgbouncer:
     existingSecret: arena360-postgresql-secrets
     userlistKey: pgbouncer-users.txt
   config:
-    poolMode: session
+    poolMode: transaction
     maxClientConn: 200
     defaultPoolSize: 25
     reservePoolSize: 5
-    serverResetQuery: DISCARD ALL
   resources:
     requests:
       cpu: 50m

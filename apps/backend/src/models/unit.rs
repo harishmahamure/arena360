@@ -40,7 +40,7 @@ pub struct UpdateUnitDto {
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct UnitFilterDto {
     pub name: Option<String>,

@@ -1,6 +1,8 @@
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::dto::{JwtUserClaims, PaginationResult, RegisterDto, RegisterResponseDto};
 use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
@@ -12,13 +14,26 @@ use crate::validation::{
 
 pub struct UserService {
     repo: UserRepository,
+    cache: Arc<dyn CacheService>,
 }
 
 impl UserService {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
             repo: UserRepository::new(pool),
+            cache,
         }
+    }
+
+    async fn invalidate_user(&self, user: &User) -> Result<(), AppError> {
+        cache::invalidate(
+            &*self.cache,
+            &[
+                keys::user_id(&user.id),
+                keys::user_username(&user.username),
+            ],
+        )
+        .await
     }
 
     pub async fn list(&self, filters: UserFilterDto) -> Result<PaginationResult<User>, AppError> {
@@ -26,10 +41,14 @@ impl UserService {
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<User, AppError> {
-        self.repo
-            .find_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("User with ID {id} not found")))
+        let cache_key = keys::user_id(&id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AUTH, || async {
+            self.repo
+                .find_by_id(id)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("User with ID {id} not found")))
+        })
+        .await
     }
 
     pub async fn update(
@@ -53,7 +72,9 @@ impl UserService {
         }
         dto.first_name = trim_optional_string(dto.first_name);
         dto.last_name = trim_optional_string(dto.last_name);
-        self.repo.update(id, &dto, actor_id).await
+        let user = self.repo.update(id, &dto, actor_id).await?;
+        self.invalidate_user(&user).await?;
+        Ok(user)
     }
 
     pub async fn register(

@@ -245,6 +245,13 @@ impl TransactionService {
 
         db_tx.commit().await?;
 
+        if is_credit {
+            let _ = self
+                .credit
+                .invalidate_player_credit(transaction.player_id)
+                .await;
+        }
+
         self.apply_cash_register_effects(&transaction, actor_id, cash_registers)
             .await?;
 

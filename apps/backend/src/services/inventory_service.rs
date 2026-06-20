@@ -1,8 +1,10 @@
 use chrono::{DateTime, Timelike, Utc};
 use chrono_tz::Tz;
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cache::{get_or_set, keys, CacheService};
 use crate::dto::{PaginationResult, WasteSummaryFilterDto};
 use crate::error::AppError;
 use crate::models::{
@@ -22,15 +24,40 @@ pub struct InventoryService {
     repo: InventoryRepository,
     cafe_timezone: String,
     outbox: OutboxService,
+    cache: Arc<dyn CacheService>,
 }
 
 impl InventoryService {
-    pub fn new(pool: PgPool, cafe_timezone: String, outbox: OutboxService) -> Self {
+    pub fn new(
+        pool: PgPool,
+        cafe_timezone: String,
+        outbox: OutboxService,
+        cache: Arc<dyn CacheService>,
+    ) -> Self {
         Self {
             repo: InventoryRepository::new(pool),
             cafe_timezone,
             outbox,
+            cache,
         }
+    }
+
+    async fn invalidate_location_stock(&self, location_id: Uuid) -> Result<(), AppError> {
+        self.cache
+            .invalidate_prefix(&format!("stock:level:{location_id}:"))
+            .await
+    }
+
+    pub async fn stock_quantity_at(
+        &self,
+        location_id: Uuid,
+        product_id: Uuid,
+    ) -> Result<i32, AppError> {
+        let cache_key = keys::stock_level(&location_id, &product_id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            self.repo.stock_quantity_at(location_id, product_id).await
+        })
+        .await
     }
 
     pub fn cafe_timezone(&self) -> &str {
@@ -153,6 +180,7 @@ impl InventoryService {
         }
 
         let (receipt, lines) = self.repo.create_receipt(&dto, created_by).await?;
+        self.invalidate_location_stock(dto.location_id).await?;
         Ok(StockReceiptWithLines { receipt, lines })
     }
 
@@ -208,7 +236,6 @@ impl InventoryService {
             let mut any = false;
             for line in &dto.lines {
                 let current = self
-                    .repo
                     .stock_quantity_at(dto.location_id, line.product_id)
                     .await?;
                 if line.counted_pieces != current {
@@ -225,6 +252,7 @@ impl InventoryService {
         }
 
         let (adjustment, lines) = self.repo.create_adjustment(&dto, created_by).await?;
+        self.invalidate_location_stock(dto.location_id).await?;
         Ok(StockAdjustmentWithLines { adjustment, lines })
     }
 
@@ -371,7 +399,10 @@ impl InventoryService {
         id: Uuid,
         fulfilled_by: Uuid,
     ) -> Result<StockTransferRequest, AppError> {
-        self.repo.fulfill_transfer(id, fulfilled_by).await
+        let transfer = self.repo.fulfill_transfer(id, fulfilled_by).await?;
+        self.invalidate_location_stock(transfer.from_location_id).await?;
+        self.invalidate_location_stock(transfer.to_location_id).await?;
+        Ok(transfer)
     }
 
     pub async fn create_waste_event(
@@ -454,6 +485,7 @@ impl InventoryService {
         approved_by: Uuid,
     ) -> Result<StockWasteEvent, AppError> {
         let event = self.repo.approve_waste(id, approved_by).await?;
+        self.invalidate_location_stock(event.location_id).await?;
 
         if let Some(created_by) = event.created_by {
             let payload = serde_json::json!({

@@ -14,6 +14,7 @@ use crate::realtime::OutboxService;
 
 /// Device-channel `session.ended` must be durable so kiosks replay missed force-ends on reconnect.
 const DEVICE_SESSION_ENDED_DURABLE: bool = true;
+use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::repositories::SessionRepository;
 use crate::services::deduction_profile::{
     wall_minutes_between, weighted_minutes_between,
@@ -42,6 +43,7 @@ pub struct SessionService {
     events: EventService,
     outbox: OutboxService,
     cafe_timezone: String,
+    cache: Arc<dyn CacheService>,
 }
 
 fn elapsed_minutes_between(start_time: DateTime<Utc>, end_time: DateTime<Utc>) -> i32 {
@@ -119,6 +121,7 @@ impl SessionService {
         events: EventService,
         outbox: OutboxService,
         cafe_timezone: String,
+        cache: Arc<dyn CacheService>,
     ) -> Self {
         Self {
             repo: SessionRepository::new(pool),
@@ -127,7 +130,27 @@ impl SessionService {
             events,
             outbox,
             cafe_timezone,
+            cache,
         }
+    }
+
+    async fn invalidate_session(&self, session: &UsageSession) -> Result<(), AppError> {
+        let keys_to_drop = vec![
+            keys::session_enriched(&session.id),
+            keys::session_device(&session.device_id),
+        ];
+        cache::invalidate(&*self.cache, &keys_to_drop).await
+    }
+
+    async fn find_open_session_for_device_cached(
+        &self,
+        device_id: Uuid,
+    ) -> Result<Option<UsageSession>, AppError> {
+        let cache_key = keys::session_device(&device_id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION, || async {
+            self.repo.find_open_session_for_device(device_id).await
+        })
+        .await
     }
 
     fn kiosk_session_start(
@@ -258,11 +281,15 @@ impl SessionService {
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<UsageSessionResponse, AppError> {
-        self.repo
-            .find_enriched_by_id(id)
-            .await?
-            .map(|s| with_cafe_timezone(s, self.cafe_timezone.as_str()))
-            .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
+        let cache_key = keys::session_enriched(&id);
+        get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION_ENRICHED, || async {
+            self.repo
+                .find_enriched_by_id(id)
+                .await?
+                .map(|s| with_cafe_timezone(s, self.cafe_timezone.as_str()))
+                .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
+        })
+        .await
     }
 
     pub async fn start(
@@ -302,6 +329,7 @@ impl SessionService {
         }
 
         let session = self.repo.create(&dto, start_time, actor_id).await?;
+        let _ = self.invalidate_session(&session).await;
 
         let _ = self
             .devices
@@ -630,6 +658,7 @@ impl SessionService {
             .repo
             .end(id, end_time, duration_minutes, Some(time_used), actor_id)
             .await?;
+        let _ = self.invalidate_session(&updated).await;
 
         let remaining_minutes = final_balance.remaining_minutes;
         let player_id = Some(final_balance.player_id);
@@ -707,8 +736,7 @@ impl SessionService {
         crate::validation::require_playstation_device_type(Some(device.device_type.clone()))?;
 
         let Some(session) = self
-            .repo
-            .find_open_session_for_device(device.id)
+            .find_open_session_for_device_cached(device.id)
             .await?
         else {
             return Ok(None);

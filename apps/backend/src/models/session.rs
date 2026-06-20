@@ -65,7 +65,7 @@ pub struct SessionFilterDto {
     pub sort_order: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDeviceSummary {
     pub id: Uuid,
@@ -76,7 +76,7 @@ pub struct SessionDeviceSummary {
     pub status: String,
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionPlayerSummary {
     pub id: Uuid,
@@ -87,7 +87,7 @@ pub struct SessionPlayerSummary {
     pub last_name: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionPlanSummary {
     pub id: Uuid,
@@ -96,7 +96,7 @@ pub struct SessionPlanSummary {
     pub time_credits: i32,
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionBalanceSummary {
     pub id: Uuid,
@@ -113,7 +113,7 @@ pub struct SessionBalanceSummary {
     pub expiry_date: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSessionResponse {
     pub id: Uuid,

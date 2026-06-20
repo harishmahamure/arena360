@@ -298,10 +298,24 @@ impl CashRegisterRepository {
                       cr."updatedBy" as updated_by,
                       cr."createdAt" as created_at,
                       cr."updatedAt" as updated_at,
-                      (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_in')::float8 as total_cash_in,
-                      (SELECT COALESCE(SUM(amount::float8), 0) FROM cash_register_entries WHERE "cashRegisterId" = cr.id AND "entryType" = 'cash_out')::float8 as total_cash_out,
-                      (SELECT COALESCE(SUM(e.amount::float8), 0) FROM cash_register_entries e JOIN cash_deposits d ON d.id = e."referenceId" WHERE e."cashRegisterId" = cr.id AND e."entryType" = 'cash_out' AND e."referenceType" = 'cash_deposit' AND d.status = 'approved')::float8 as total_deposited
-               FROM cash_registers cr WHERE 1=1"#,
+                      COALESCE(agg.total_cash_in, 0)::float8 as total_cash_in,
+                      COALESCE(agg.total_cash_out, 0)::float8 as total_cash_out,
+                      COALESCE(agg.total_deposited, 0)::float8 as total_deposited
+               FROM cash_registers cr
+               LEFT JOIN (
+                   SELECT e."cashRegisterId",
+                          SUM(e.amount::float8) FILTER (WHERE e."entryType" = 'cash_in') AS total_cash_in,
+                          SUM(e.amount::float8) FILTER (WHERE e."entryType" = 'cash_out') AS total_cash_out,
+                          SUM(e.amount::float8) FILTER (
+                              WHERE e."entryType" = 'cash_out'
+                                AND e."referenceType" = 'cash_deposit'
+                                AND d.status = 'approved'
+                          ) AS total_deposited
+                   FROM cash_register_entries e
+                   LEFT JOIN cash_deposits d ON d.id = e."referenceId"
+                   GROUP BY e."cashRegisterId"
+               ) agg ON agg."cashRegisterId" = cr.id
+               WHERE 1=1"#,
         );
 
         Self::apply_filters(&mut builder, filters);

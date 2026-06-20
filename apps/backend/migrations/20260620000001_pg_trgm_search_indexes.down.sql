@@ -1,3 +1,8 @@
+DROP INDEX IF EXISTS idx_configurations_key_trgm;
+DROP INDEX IF EXISTS idx_expense_categories_name_trgm;
+DROP INDEX IF EXISTS idx_vendors_name_trgm;
+DROP INDEX IF EXISTS idx_units_name_trgm;
+DROP INDEX IF EXISTS idx_games_name_trgm;
 DROP INDEX IF EXISTS idx_devices_location_trgm;
 DROP INDEX IF EXISTS idx_devices_name_trgm;
 DROP INDEX IF EXISTS idx_products_name_trgm;

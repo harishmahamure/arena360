@@ -1,0 +1,25 @@
+redis:
+  persistence:
+    enabled: true
+    storageClassName: ""
+    size: 5Gi
+  config:
+    maxmemory: "512mb"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+
+secret:
+  create: false
+  name: arena360-redis-secrets
+
+imagePullSecrets:
+  - name: dockerhub-secret
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

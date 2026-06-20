@@ -1,0 +1,6 @@
+apiVersion: v2
+name: arena360-redis
+description: Arena360 Redis cache layer
+type: application
+version: 0.1.0
+appVersion: "7"

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 
 use crate::config::{create_pool, load_dotenv, Settings};
+use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
 use crate::handlers;
 use crate::middleware::auth_middleware;
 use crate::openapi::ApiDoc;
@@ -25,6 +26,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 pub struct AppState {
     pub db: PgPool,
+    pub cache: Arc<dyn CacheService>,
     pub settings: Arc<Settings>,
     pub auth: AuthService,
     pub config: ConfigService,
@@ -60,6 +62,8 @@ pub async fn build_state() -> Arc<AppState> {
     load_dotenv();
     let settings = Arc::new(Settings::from_env());
     let pool = create_pool(settings.as_ref()).await;
+    let cache = create_cache(settings.redis_url.as_deref()).await;
+    spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);
 
@@ -71,10 +75,11 @@ pub async fn build_state() -> Arc<AppState> {
 
     let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone());
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
-    let balances = Arc::new(BalanceService::new(pool.clone()));
+    let balances = Arc::new(BalanceService::new(pool.clone(), cache.clone()));
     let balances_for_auth = balances.clone();
 
-    let credit = Arc::new(CreditService::new(pool.clone()));
+    let credit = Arc::new(CreditService::new(pool.clone(), cache.clone()));
+    let cash_registers = Arc::new(CashRegisterService::new(pool.clone(), cache.clone()));
 
     // Spawn the realtime dispatcher
     let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
@@ -82,13 +87,13 @@ pub async fn build_state() -> Arc<AppState> {
 
     Arc::new(AppState {
         auth: AuthService::new(pool.clone(), settings.clone(), balances_for_auth),
-        config: ConfigService::new(pool.clone()),
-        users: UserService::new(pool.clone()),
+        config: ConfigService::new(pool.clone(), cache.clone()),
+        users: UserService::new(pool.clone(), cache.clone()),
         devices: devices.clone(),
-        plans: PlanService::new(pool.clone()),
+        plans: PlanService::new(pool.clone(), cache.clone()),
         player_plans: player_plans.clone(),
         balances: balances.clone(),
-        units: UnitService::new(pool.clone()),
+        units: UnitService::new(pool.clone(), cache.clone()),
         sessions: SessionService::new(
             pool.clone(),
             devices,
@@ -96,14 +101,14 @@ pub async fn build_state() -> Arc<AppState> {
             events.clone(),
             outbox.clone(),
             settings.cafe_timezone.clone(),
+            cache.clone(),
         ),
         shifts: {
-            let cash_reg = Arc::new(CashRegisterService::new(pool.clone()));
             let mut s = ShiftService::new(pool.clone());
-            s.set_cash_registers(cash_reg);
+            s.set_cash_registers(cash_registers.clone());
             s
         },
-        cash_registers: Arc::new(CashRegisterService::new(pool.clone())),
+        cash_registers,
         cash_deposits: CashDepositService::new(pool.clone(), outbox.clone()),
         transactions: TransactionService::new(
             pool.clone(),
@@ -114,14 +119,14 @@ pub async fn build_state() -> Arc<AppState> {
             settings.cafe_timezone.clone(),
         ),
         credit,
-        products: ProductService::new(pool.clone()),
-        games: GameService::new(pool.clone()),
+        products: ProductService::new(pool.clone(), cache.clone()),
+        games: GameService::new(pool.clone(), cache.clone()),
         storage: StorageService::new(StorageConfig::from_env()),
-        expense_categories: ExpenseCategoryService::new(pool.clone()),
+        expense_categories: ExpenseCategoryService::new(pool.clone(), cache.clone()),
         vendors: VendorService::new(pool.clone()),
         expenses: ExpenseService::new(
             pool.clone(),
-            CashRegisterService::new(pool.clone()),
+            CashRegisterService::new(pool.clone(), cache.clone()),
             ShiftService::new(pool.clone()),
             outbox.clone(),
         ),
@@ -129,12 +134,14 @@ pub async fn build_state() -> Arc<AppState> {
             pool.clone(),
             settings.cafe_timezone.clone(),
             outbox.clone(),
+            cache.clone(),
         ),
         stats: StatsService::new(pool.clone()),
         outbox,
         rooms,
         ws_connections,
         db: pool,
+        cache,
         settings,
         events,
     })

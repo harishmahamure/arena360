@@ -1,0 +1,63 @@
+name: Deploy Redis to Production
+
+on:
+  workflow_dispatch:
+
+env:
+  RELEASE_NAME: arena360-redis
+  NAMESPACE: default
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.28.0
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.0
+
+      - name: Upsert Redis secret
+        env:
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+        run: |
+          # Default in-cluster URL when REDIS_URL is not configured in GitHub secrets.
+          URL="${REDIS_URL:-redis://arena360-redis.${{ env.NAMESPACE }}.svc.cluster.local:6379}"
+
+          kubectl create secret generic arena360-redis-secrets \
+            --namespace "${{ env.NAMESPACE }}" \
+            --from-literal=REDIS_URL="$URL" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Redis
+        run: |
+          helm upgrade --install "${{ env.RELEASE_NAME }}" ./infra/helm/redis \
+            --values ./infra/helm/redis/values-prod.yaml \
+            --namespace "${{ env.NAMESPACE }}" \
+            --create-namespace \
+            --wait \
+            --timeout 5m
+
+      - name: Deployment summary
+        run: |
+          echo "## Redis Production Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release: \`${{ env.RELEASE_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Service (in-cluster): \`arena360-redis.${{ env.NAMESPACE }}.svc.cluster.local:6379\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Secret: \`arena360-redis-secrets\` (key \`REDIS_URL\`)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
