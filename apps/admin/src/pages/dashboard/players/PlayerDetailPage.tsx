@@ -30,8 +30,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import TotpQrCode from '../../../components/TotpQrCode';
@@ -47,6 +47,8 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { usePlayerProfile } from '../../../hooks/usePlayerProfile';
 import { setCreditLimit } from '../../../services/players/setCreditLimit';
 import { changePlayerPassword, updatePlayer } from '../../../services/players/update';
+import { getStaffGamingAllowance } from '../../../services/staff/getStaffGamingAllowance';
+import { setStaffGamingAllowance } from '../../../services/staff/setStaffGamingAllowance';
 import { disableTotp, setupTotp, verifyTotpSetup } from '../../../services/users/totp';
 import { formatDisplayDate, formatDisplayDateTime, formatDuration } from '../../../utils/date';
 
@@ -61,6 +63,7 @@ export default function PlayerDetailPage() {
   const { can, isAdmin } = usePermissions();
   const canWrite = can(Permission.PlayersWrite);
   const canSetCreditLimit = can(Permission.CreditLimitWrite);
+  const canManageStaffAllowance = isAdmin;
   const canBuyPlan = can(Permission.PlayerPlansWrite);
   const canStartSession = can(Permission.SessionsWrite);
   const roleOptions = isAdmin ? userRoleOptions : adminCreateRoleOptions;
@@ -149,6 +152,38 @@ export default function PlayerDetailPage() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [creditLimitInput, setCreditLimitInput] = useState('');
   const [creditLimitLoading, setCreditLimitLoading] = useState(false);
+  const [allowanceHoursInput, setAllowanceHoursInput] = useState('');
+  const [allowanceLoading, setAllowanceLoading] = useState(false);
+
+  const isStaff = player?.role === 'staff';
+
+  const staffAllowanceQuery = useQuery({
+    queryKey: ['staff-gaming-allowance', id],
+    queryFn: () => getStaffGamingAllowance(id as string),
+    enabled: Boolean(id && isStaff && canManageStaffAllowance),
+    staleTime: 1000 * 30,
+  });
+
+  const handleGrantStaffAllowance = useCallback(async () => {
+    if (!id) return;
+    const hours = Number.parseFloat(allowanceHoursInput);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      setFormError('Enter a positive number of hours');
+      return;
+    }
+    setAllowanceLoading(true);
+    setFormError(undefined);
+    try {
+      await setStaffGamingAllowance(id, hours);
+      await queryClient.invalidateQueries({ queryKey: ['staff-gaming-allowance', id] });
+      setAllowanceHoursInput('');
+      setSuccess('Gaming allowance updated');
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Failed to update allowance');
+    } finally {
+      setAllowanceLoading(false);
+    }
+  }, [allowanceHoursInput, id, queryClient]);
 
   useEffect(() => {
     if (player?.totpEnabled !== undefined) {
@@ -411,6 +446,110 @@ export default function PlayerDetailPage() {
       });
     }
 
+    if (isStaff && canManageStaffAllowance) {
+      const allowance = staffAllowanceQuery.data;
+      const statusLabel =
+        allowance?.status === 'active'
+          ? 'Active'
+          : allowance?.status === 'expired'
+            ? 'Expired'
+            : allowance?.status === 'exhausted'
+              ? 'Exhausted'
+              : 'Not configured';
+      const statusColor =
+        allowance?.status === 'active'
+          ? 'success'
+          : allowance?.status === 'none'
+            ? 'default'
+            : 'warning';
+
+      result.push({
+        title: 'Gaming allowance (30 days)',
+        description: 'Off-shift kiosk play time. Unused hours expire at period end.',
+        content: (
+          <Card variant="outlined">
+            <CardContent>
+              {staffAllowanceQuery.isLoading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Loading allowance…
+                </Typography>
+              ) : staffAllowanceQuery.error ? (
+                <Alert severity="error">
+                  {staffAllowanceQuery.error instanceof Error
+                    ? staffAllowanceQuery.error.message
+                    : 'Failed to load allowance'}
+                </Alert>
+              ) : (
+                <>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                    <Chip label={statusLabel} size="small" color={statusColor} />
+                    {allowance?.periodEnd && (
+                      <Typography variant="body2" color="text.secondary">
+                        Period ends {formatDisplayDate(allowance.periodEnd)}
+                      </Typography>
+                    )}
+                  </Stack>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Allotted
+                      </Typography>
+                      <Typography variant="h6">
+                        {allowance && allowance.status !== 'none'
+                          ? formatDuration(allowance.allottedMinutes)
+                          : '—'}
+                      </Typography>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Used
+                      </Typography>
+                      <Typography variant="h6">
+                        {allowance && allowance.status !== 'none'
+                          ? formatDuration(allowance.usedMinutes)
+                          : '—'}
+                      </Typography>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 4 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Remaining
+                      </Typography>
+                      <Typography variant="h6">
+                        {allowance && allowance.status !== 'none'
+                          ? formatDuration(allowance.remainingMinutes)
+                          : '—'}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                  {canManageStaffAllowance && id && (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 3 }}>
+                      <TextField
+                        label="Grant hours"
+                        type="number"
+                        size="small"
+                        value={allowanceHoursInput}
+                        onChange={(e) => setAllowanceHoursInput(e.target.value)}
+                        inputProps={{ min: 0.5, step: 0.5 }}
+                        helperText="Fixed 30-day period from grant date"
+                        sx={{ maxWidth: 220 }}
+                      />
+                      <Button
+                        variant="contained"
+                        disabled={allowanceLoading || !allowanceHoursInput.trim()}
+                        onClick={() => void handleGrantStaffAllowance()}
+                      >
+                        {allowance?.status === 'none' ? 'Grant allowance' : 'Renew allowance'}
+                      </Button>
+                    </Stack>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        ),
+      });
+    }
+
     if (isMember && canReadSessions && recentSessions.length > 0) {
       result.push({
         title: 'Recent sessions',
@@ -461,6 +600,8 @@ export default function PlayerDetailPage() {
   }, [
     player,
     isMember,
+    isStaff,
+    canManageStaffAllowance,
     canReadPlans,
     canReadCredit,
     canReadSessions,
@@ -468,6 +609,13 @@ export default function PlayerDetailPage() {
     exhaustedPlans,
     credit,
     recentSessions,
+    staffAllowanceQuery.data,
+    staffAllowanceQuery.error,
+    staffAllowanceQuery.isLoading,
+    allowanceHoursInput,
+    allowanceLoading,
+    handleGrantStaffAllowance,
+    id,
   ]);
 
   const profileActions =

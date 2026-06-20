@@ -233,6 +233,11 @@ fn ledger_reason_constants() {
     assert_eq!(ledger_reason::EXPIRY, "expiry");
     assert_eq!(ledger_reason::ADJUSTMENT, "adjustment");
     assert_eq!(ledger_reason::MIGRATION, "migration");
+    assert_eq!(ledger_reason::STAFF_ALLOWANCE_GRANT, "staff_allowance_grant");
+    assert_eq!(
+        ledger_reason::STAFF_ALLOWANCE_RENEWAL,
+        "staff_allowance_renewal"
+    );
 }
 
 #[test]
@@ -450,4 +455,36 @@ fn active_balance_with_remaining_time_carries_forward() {
         now + Duration::days(3),
         now,
     ));
+}
+
+#[test]
+fn staff_allowance_matches_any_device_scope() {
+    let device = sample_device();
+    let mut balance = make_balance(120, balance_status::ACTIVE, 24, None);
+    balance.kind = plan_kind::STAFF_ALLOWANCE.to_string();
+    balance.device_type = None;
+    balance.device_sub_type = None;
+
+    assert!(BalanceService::device_scope_matches(&balance, &device));
+    let validation = BalanceService::validate_balance(&balance, Some(&device), None);
+    assert!(validation.valid, "{:?}", validation.reason);
+}
+
+#[test]
+fn staff_allowance_validation_failure_codes() {
+    let mut balance = make_balance(0, balance_status::ACTIVE, 24, None);
+    balance.kind = plan_kind::STAFF_ALLOWANCE.to_string();
+    let result = BalanceValidationResult {
+        valid: false,
+        reason: Some("No minutes remaining".to_string()),
+    };
+    assert_eq!(
+        BalanceService::validation_failure_code_for_balance(&balance, &result),
+        "STAFF_ALLOWANCE_EXHAUSTED"
+    );
+}
+
+#[test]
+fn staff_allowance_plan_kind_constant() {
+    assert_eq!(plan_kind::STAFF_ALLOWANCE, "staff_allowance");
 }

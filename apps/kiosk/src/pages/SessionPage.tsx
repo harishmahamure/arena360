@@ -29,6 +29,7 @@ function formatGrace(ms: number): string {
 export function SessionPage() {
   const {
     playerName,
+    playerRole,
     deviceName,
     activeSession,
     online,
@@ -188,6 +189,7 @@ export function SessionPage() {
     <div className="a360-session">
       <SessionNav
         playerName={playerName}
+        playerRole={playerRole}
         remainingMinutes={displayRemaining ?? undefined}
         deductionProfile={activeSession?.deductionProfile}
         cafeTimezone={activeSession?.cafeTimezone}

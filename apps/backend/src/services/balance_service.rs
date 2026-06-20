@@ -215,8 +215,11 @@ impl BalanceService {
         Ok(Self::validate_balance(&balance, device, current_time))
     }
 
-    /// Whether balance purchase scope matches this kiosk device (exact type/subtype; NULL scope does not match).
+    /// Whether balance purchase scope matches this kiosk device (exact type/subtype; NULL scope does not match except staff_allowance).
     pub fn device_scope_matches(balance: &PlayerPlanBalance, device: &Device) -> bool {
+        if balance.kind == plan_kind::STAFF_ALLOWANCE {
+            return true;
+        }
         match (&balance.device_type, &balance.device_sub_type) {
             (Some(dt), Some(dst)) => dt == &device.device_type && dst == &device.device_sub_type,
             _ => false,
@@ -225,6 +228,34 @@ impl BalanceService {
 
     /// Maps a failed validation to a contract `ErrorCode` string for `AppError::forbidden_code`.
     pub fn validation_failure_code(result: &BalanceValidationResult) -> &'static str {
+        Self::validation_failure_code_for_kind(None, result)
+    }
+
+    pub fn validation_failure_code_for_balance(
+        balance: &PlayerPlanBalance,
+        result: &BalanceValidationResult,
+    ) -> &'static str {
+        Self::validation_failure_code_for_kind(Some(balance.kind.as_str()), result)
+    }
+
+    fn validation_failure_code_for_kind(
+        kind: Option<&str>,
+        result: &BalanceValidationResult,
+    ) -> &'static str {
+        if kind == Some(plan_kind::STAFF_ALLOWANCE) {
+            let reason = result.reason.as_deref().unwrap_or("");
+            if reason.contains("expired") || reason.contains("Expired") {
+                return "STAFF_ALLOWANCE_EXPIRED";
+            }
+            if reason.contains("exhausted")
+                || reason.contains("No minutes")
+                || reason.contains("Insufficient")
+            {
+                return "STAFF_ALLOWANCE_EXHAUSTED";
+            }
+            return "STAFF_ALLOWANCE_NONE";
+        }
+
         let reason = result.reason.as_deref().unwrap_or("");
         if reason.contains("expired") || reason.contains("Expired") {
             return "PLAN_EXPIRED";
@@ -259,6 +290,38 @@ impl BalanceService {
         AppError::forbidden_code(Self::validation_failure_code(&result))
     }
 
+    pub fn validation_to_app_error_for_balance(
+        balance: &PlayerPlanBalance,
+        result: BalanceValidationResult,
+    ) -> AppError {
+        AppError::forbidden_code(Self::validation_failure_code_for_balance(
+            balance,
+            &result,
+        ))
+    }
+
+    pub async fn require_staff_allowance_for_device(
+        &self,
+        staff_id: Uuid,
+        device: &Device,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let balance = self
+            .repo
+            .find_active_staff_allowance(staff_id)
+            .await?
+            .ok_or_else(|| AppError::forbidden_code("STAFF_ALLOWANCE_NONE"))?;
+
+        let validation = Self::validate_balance(&balance, Some(device), None);
+        if validation.valid {
+            return Ok(balance);
+        }
+
+        Err(Self::validation_to_app_error_for_balance(
+            &balance,
+            validation,
+        ))
+    }
+
     pub async fn find_usable_for_device(
         &self,
         player_id: Uuid,
@@ -283,7 +346,7 @@ impl BalanceService {
             .await?;
 
         let mut best: Option<(PlayerPlanBalance, i32)> = None;
-        let mut last_failure: Option<BalanceValidationResult> = None;
+        let mut last_failure: Option<(String, BalanceValidationResult)> = None;
         let mut had_scope_match = false;
 
         for row in result.data {
@@ -299,7 +362,7 @@ impl BalanceService {
                     best = Some((balance, minutes));
                 }
             } else {
-                last_failure = Some(validation);
+                last_failure = Some((balance.kind.clone(), validation));
             }
         }
 
@@ -311,8 +374,9 @@ impl BalanceService {
             return Err(AppError::forbidden_code("DEVICE_TYPE_NOT_ALLOWED"));
         }
 
-        if let Some(failure) = last_failure {
-            return Err(Self::validation_to_app_error(failure));
+        if let Some((kind, failure)) = last_failure {
+            let code = Self::validation_failure_code_for_kind(Some(kind.as_str()), &failure);
+            return Err(AppError::forbidden_code(code));
         }
 
         Err(AppError::forbidden_code("PLAN_NOT_ACTIVATED"))

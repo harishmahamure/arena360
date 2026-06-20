@@ -143,6 +143,7 @@ interface KioskContextValue {
   deviceId: string | null;
   deviceName: string | null;
   playerName: string | null;
+  playerRole: string | null;
   activeSession: ActiveSession | null;
   wsConnected: boolean;
   lastEvent: string | null;
@@ -232,6 +233,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [deviceName, setDeviceName] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState<string | null>(null);
+  const [playerRole, setPlayerRole] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<string | null>(null);
@@ -329,6 +331,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       setActiveSession(null);
       await clearPlayerSession();
       setPlayerName(null);
+      setPlayerRole(null);
       clearPlayerPersistedState();
       if (opts?.staffEnded) {
         setLoginNotice('Your session was ended by staff.');
@@ -479,6 +482,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     storeDeviceName(null);
     clearPlayerPersistedState();
     setPlayerName(null);
+    setPlayerRole(null);
     setActiveSession(null);
     setConflictDevice(null);
     setPhase('register');
@@ -787,12 +791,13 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       try {
         const res = await http.post<{
           accessToken: string;
-          user: { id: string; username: string };
+          user: { id: string; username: string; role: string };
           activeSession?: LoginActiveSessionResponse | null;
         }>('/auth/login/player', { username, password });
 
         await persistPlayerToken(res.accessToken);
         setPlayerName(res.user.username);
+        setPlayerRole(res.user.role);
         storePlayerName(res.user.username);
 
         if (res.activeSession) {
@@ -831,6 +836,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const playerLogout = useCallback(async () => {
     await clearPlayerSession();
     setPlayerName(null);
+    setPlayerRole(null);
     clearPlayerPersistedState();
     setActiveSession(null);
     setPhase('login');
@@ -896,6 +902,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const dismissConflict = useCallback(() => {
     setConflictDevice(null);
     setPlayerName(null);
+    setPlayerRole(null);
     clearPlayerPersistedState();
     void clearPlayerSession();
     setPhase('login');
@@ -923,6 +930,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       storeDeviceName(null);
       clearPlayerPersistedState();
       setPlayerName(null);
+      setPlayerRole(null);
       setActiveSession(null);
       setPhase('register');
       await setLockdownState('Locked');
@@ -936,6 +944,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     deviceId,
     deviceName,
     playerName,
+    playerRole,
     activeSession,
     wsConnected,
     lastEvent,

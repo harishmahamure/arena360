@@ -17,7 +17,7 @@ use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService,     ExpenseCategoryService, ExpenseService,
     GameService, InventoryService, PlanService, PlayerPlanService, ProductService, SessionService,
-    ShiftService, StatsService, StorageConfig, StorageService, TransactionService, UnitService,
+    ShiftService, StaffGamingAllowanceService, StatsService, StorageConfig, StorageService, TransactionService, UnitService,
     UserService, VendorService,
 };
 use crate::sse::Broadcaster;
@@ -50,6 +50,7 @@ pub struct AppState {
     pub inventory: InventoryService,
     pub stats: StatsService,
     pub credit: Arc<CreditService>,
+    pub staff_gaming_allowances: StaffGamingAllowanceService,
     pub events: EventService,
     pub outbox: OutboxService,
     pub rooms: RoomService,
@@ -95,7 +96,7 @@ pub async fn build_state() -> Arc<AppState> {
             users.clone(),
         ),
         config: ConfigService::new(pool.clone(), cache.clone()),
-        users,
+        users: users.clone(),
         devices: devices.clone(),
         plans: PlanService::new(pool.clone(), cache.clone()),
         player_plans: player_plans.clone(),
@@ -127,6 +128,11 @@ pub async fn build_state() -> Arc<AppState> {
             cache.clone(),
         ),
         credit,
+        staff_gaming_allowances: StaffGamingAllowanceService::new(
+            pool.clone(),
+            users.clone(),
+            cache.clone(),
+        ),
         products: ProductService::new(pool.clone(), cache.clone()),
         games: GameService::new(pool.clone(), cache.clone()),
         storage: StorageService::new(StorageConfig::from_env()),
@@ -481,6 +487,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/users/{id}/credit-limit",
             patch(handlers::credit::update_credit_limit),
+        )
+        .route(
+            "/users/{id}/staff-gaming-allowance",
+            get(handlers::staff_gaming_allowance::get_staff_gaming_allowance)
+                .patch(handlers::staff_gaming_allowance::update_staff_gaming_allowance),
         )
         .route(
             "/credit/accounts",

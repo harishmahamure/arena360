@@ -301,6 +301,101 @@ impl BalanceRepository {
         Ok(())
     }
 
+    pub async fn find_latest_staff_allowance(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<PlayerPlanBalance>, AppError> {
+        let row = sqlx::query_as::<_, PlayerPlanBalance>(
+            r#"SELECT id, "playerId" as player_id,
+                   "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                   kind::text as kind, "remainingMinutes" as remaining_minutes,
+                   "expiryDate" as expiry_date, "windowStart" as window_start,
+                   "windowEnd" as window_end, status::text as status,
+                   "sourcePlanId" as source_plan_id,
+                   "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
+                   "createdAt" as created_at, "updatedAt" as updated_at,
+                   "deletedAt" as deleted_at
+            FROM player_plan_balances
+            WHERE "playerId" = $1
+              AND kind::text = 'staff_allowance'
+              AND "deletedAt" IS NULL
+            ORDER BY "createdAt" DESC
+            LIMIT 1"#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn find_active_staff_allowance(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<PlayerPlanBalance>, AppError> {
+        let row = sqlx::query_as::<_, PlayerPlanBalance>(
+            r#"SELECT id, "playerId" as player_id,
+                   "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                   kind::text as kind, "remainingMinutes" as remaining_minutes,
+                   "expiryDate" as expiry_date, "windowStart" as window_start,
+                   "windowEnd" as window_end, status::text as status,
+                   "sourcePlanId" as source_plan_id,
+                   "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
+                   "createdAt" as created_at, "updatedAt" as updated_at,
+                   "deletedAt" as deleted_at
+            FROM player_plan_balances
+            WHERE "playerId" = $1
+              AND kind::text = 'staff_allowance'
+              AND status::text = 'active'
+              AND "deletedAt" IS NULL
+            ORDER BY "createdAt" DESC
+            LIMIT 1"#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn create_staff_allowance(
+        &self,
+        user_id: Uuid,
+        remaining_minutes: i32,
+        expiry_date: DateTime<Utc>,
+        actor_id: Option<Uuid>,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let balance = sqlx::query_as::<_, PlayerPlanBalance>(
+            r#"INSERT INTO player_plan_balances (
+                   "playerId", "deviceType", "deviceSubType", kind,
+                   "remainingMinutes", "expiryDate", status,
+                   "createdBy", "updatedBy"
+               )
+               VALUES ($1, NULL, NULL, 'staff_allowance'::plan_kind, $2, $3,
+                       'active'::balance_status, $4, $4)
+               RETURNING id, "playerId" as player_id,
+                   "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
+                   kind::text as kind, "remainingMinutes" as remaining_minutes,
+                   "expiryDate" as expiry_date, "windowStart" as window_start,
+                   "windowEnd" as window_end, status::text as status,
+                   "sourcePlanId" as source_plan_id,
+                   "allowedDays" as allowed_days, "allowedMonths" as allowed_months,
+                   "deductionProfile" as deduction_profile,
+                   "createdBy" as created_by, "updatedBy" as updated_by,
+                   "createdAt" as created_at, "updatedAt" as updated_at,
+                   "deletedAt" as deleted_at"#,
+        )
+        .bind(user_id)
+        .bind(remaining_minutes)
+        .bind(expiry_date)
+        .bind(actor_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(balance)
+    }
+
     pub async fn expire_stale(&self) -> Result<u64, AppError> {
         let result = sqlx::query(
             r#"UPDATE player_plan_balances SET

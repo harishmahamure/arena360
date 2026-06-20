@@ -15,6 +15,7 @@ pub mod balance_status {
 pub mod plan_kind {
     pub const TIME: &str = "time";
     pub const HAPPY_HOURS: &str = "happy_hours";
+    pub const STAFF_ALLOWANCE: &str = "staff_allowance";
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]

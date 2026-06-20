@@ -11,6 +11,8 @@ pub mod ledger_reason {
     pub const EXPIRY: &str = "expiry";
     pub const ADJUSTMENT: &str = "adjustment";
     pub const MIGRATION: &str = "migration";
+    pub const STAFF_ALLOWANCE_GRANT: &str = "staff_allowance_grant";
+    pub const STAFF_ALLOWANCE_RENEWAL: &str = "staff_allowance_renewal";
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, ToSchema)]

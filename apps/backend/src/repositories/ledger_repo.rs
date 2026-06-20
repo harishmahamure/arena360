@@ -72,4 +72,21 @@ impl LedgerRepository {
         .await?;
         Ok(entries)
     }
+
+    pub async fn find_grant_delta_for_balance(
+        &self,
+        balance_id: Uuid,
+    ) -> Result<Option<i32>, AppError> {
+        let row = sqlx::query_as::<_, (i32,)>(
+            r#"SELECT "deltaMinutes" FROM player_plan_ledger
+               WHERE "balanceId" = $1
+                 AND reason::text IN ('staff_allowance_grant', 'staff_allowance_renewal')
+               ORDER BY "createdAt" ASC
+               LIMIT 1"#,
+        )
+        .bind(balance_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(delta,)| delta))
+    }
 }

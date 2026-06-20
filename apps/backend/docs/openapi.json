@@ -10130,6 +10130,188 @@
         ]
       }
     },
+    "/users/{id}/staff-gaming-allowance": {
+      "get": {
+        "tags": [
+          "staff-gaming-allowance"
+        ],
+        "operationId": "get_staff_gaming_allowance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Staff user ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Staff gaming allowance summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffGamingAllowanceSummaryEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "staff-gaming-allowance"
+        ],
+        "operationId": "update_staff_gaming_allowance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Staff user ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStaffGamingAllowanceDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Staff gaming allowance granted or renewed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffGamingAllowanceSummaryEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/users/{id}/totp": {
       "delete": {
         "tags": [
@@ -18333,6 +18515,18 @@
           }
         }
       },
+      "SetStaffGamingAllowanceDto": {
+        "type": "object",
+        "required": [
+          "allottedHours"
+        ],
+        "properties": {
+          "allottedHours": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "SettleCreditDto": {
         "type": "object",
         "required": [
@@ -18918,6 +19112,92 @@
           "total": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "StaffGamingAllowanceStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "expired",
+          "exhausted",
+          "none"
+        ]
+      },
+      "StaffGamingAllowanceSummary": {
+        "type": "object",
+        "required": [
+          "userId",
+          "status",
+          "allottedMinutes",
+          "remainingMinutes",
+          "usedMinutes"
+        ],
+        "properties": {
+          "allottedMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "balanceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "periodEnd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "periodStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StaffGamingAllowanceStatus"
+          },
+          "usedMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "StaffGamingAllowanceSummaryEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StaffGamingAllowanceSummary"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
           }
         }
       },

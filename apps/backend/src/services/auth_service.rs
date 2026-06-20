@@ -16,7 +16,7 @@ use crate::dto::{
 };
 use crate::error::AppError;
 use crate::models::{deduction_profile::DeductionProfile, Device, User};
-use crate::repositories::{SessionRepository, SsoRepository};
+use crate::repositories::{SessionRepository, ShiftRepository, SsoRepository};
 use crate::services::session_service::display_remaining_for_session;
 use crate::services::{BalanceService, UserService};
 use crate::validation::{normalize_username, trim_secret};
@@ -25,6 +25,7 @@ use crate::services::totp_util::verify_totp_code;
 pub struct AuthService {
     users: Arc<UserService>,
     session_repo: SessionRepository,
+    shift_repo: ShiftRepository,
     sso_repo: SsoRepository,
     balances: Arc<BalanceService>,
     settings: Arc<Settings>,
@@ -40,6 +41,7 @@ impl AuthService {
         Self {
             users,
             session_repo: SessionRepository::new(pool.clone()),
+            shift_repo: ShiftRepository::new(pool.clone()),
             sso_repo: SsoRepository::new(pool),
             balances,
             settings,
@@ -93,11 +95,22 @@ impl AuthService {
         // before this call, using the optional fingerprint in PlayerLoginDto.
 
         let user = self
-            .authenticate_player(
+            .authenticate_kiosk_user(
                 &normalize_username(&dto.username),
                 &trim_secret(&dto.password),
             )
             .await?;
+
+        let is_staff = user.role.as_deref() == Some("staff");
+        if is_staff
+            && self
+                .shift_repo
+                .find_active_by_user(user.id)
+                .await?
+                .is_some()
+        {
+            return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
+        }
 
         let open_session = self
             .session_repo
@@ -122,7 +135,11 @@ impl AuthService {
                 .validate_access(session.balance_id, Some(device), None)
                 .await?;
             if !validation.valid {
-                return Err(BalanceService::validation_to_app_error(validation));
+                let balance = self.balances.get_raw(session.balance_id).await?;
+                return Err(BalanceService::validation_to_app_error_for_balance(
+                    &balance,
+                    validation,
+                ));
             }
 
             let balance = self.balances.get_raw(session.balance_id).await?;
@@ -155,6 +172,11 @@ impl AuthService {
                 ),
                 expiryDate: balance.expiry_date,
             })
+        } else if is_staff {
+            self.balances
+                .require_staff_allowance_for_device(user.id, device)
+                .await?;
+            None
         } else {
             self.balances
                 .require_usable_for_device(user.id, device)
@@ -177,13 +199,26 @@ impl AuthService {
         username: &str,
         password: &str,
     ) -> Result<User, AppError> {
+        let user = self.authenticate_kiosk_user(username, password).await?;
+        if user.role.as_deref() != Some("player") {
+            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
+        }
+        Ok(user)
+    }
+
+    async fn authenticate_kiosk_user(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<User, AppError> {
         let user = self
             .users
             .find_by_username_for_auth(username)
             .await?
             .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
 
-        if user.role.as_deref() != Some("player") {
+        let role = user.role.as_deref();
+        if role != Some("player") && role != Some("staff") {
             return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
         }
 
@@ -357,6 +392,7 @@ impl AuthService {
     pub fn generate_player_token(&self, user: &User, device_id: Uuid) -> Result<String, AppError> {
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_player_expiration);
+        let role = user.role.clone().unwrap_or_else(|| "player".to_string());
 
         let claims = JwtUserClaims {
             sub: user.id.to_string(),
@@ -369,7 +405,7 @@ impl AuthService {
             exp: Some((now + exp_duration).timestamp()),
             userId: user.id.to_string(),
             tenantId: "dualshock-arena".to_string(),
-            roles: vec!["player".to_string()],
+            roles: vec![role],
             appId: "game-zone-kiosk".to_string(),
             orgIds: vec![],
             deviceId: Some(device_id.to_string()),

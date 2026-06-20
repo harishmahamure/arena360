@@ -1636,6 +1636,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/{id}/staff-gaming-allowance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_staff_gaming_allowance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_staff_gaming_allowance"];
+        trace?: never;
+    };
     "/users/{id}/totp": {
         parameters: {
             query?: never;
@@ -3923,6 +3939,10 @@ export interface components {
             /** Format: double */
             creditLimit: number;
         };
+        SetStaffGamingAllowanceDto: {
+            /** Format: double */
+            allottedHours: number;
+        };
         SettleCreditDto: {
             /** Format: double */
             cashAmount?: number | null;
@@ -4075,6 +4095,32 @@ export interface components {
             inUse: number;
             /** Format: int64 */
             total: number;
+        };
+        /** @enum {string} */
+        StaffGamingAllowanceStatus: "active" | "expired" | "exhausted" | "none";
+        StaffGamingAllowanceSummary: {
+            /** Format: int32 */
+            allottedMinutes: number;
+            /** Format: uuid */
+            balanceId?: string | null;
+            /** Format: date-time */
+            periodEnd?: string | null;
+            /** Format: date-time */
+            periodStart?: string | null;
+            /** Format: int32 */
+            remainingMinutes: number;
+            status: components["schemas"]["StaffGamingAllowanceStatus"];
+            /** Format: int32 */
+            usedMinutes: number;
+            /** Format: uuid */
+            userId: string;
+        };
+        StaffGamingAllowanceSummaryEnvelope: {
+            data: components["schemas"]["StaffGamingAllowanceSummary"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         StaffLoginDto: {
             password: string;
@@ -12630,6 +12676,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_staff_gaming_allowance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Staff user ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Staff gaming allowance summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGamingAllowanceSummaryEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_staff_gaming_allowance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Staff user ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStaffGamingAllowanceDto"];
+            };
+        };
+        responses: {
+            /** @description Staff gaming allowance granted or renewed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffGamingAllowanceSummaryEnvelope"];
                 };
             };
             /** @description Bad request */

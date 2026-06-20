@@ -52,6 +52,12 @@ export enum ErrorCode {
   AUTH_INSUFFICIENT_PERMISSIONS = 'AUTH_INSUFFICIENT_PERMISSIONS',
   AUTH_EMAIL_ALREADY_EXISTS = 'AUTH_EMAIL_ALREADY_EXISTS',
   AUTH_WEAK_PASSWORD = 'AUTH_WEAK_PASSWORD',
+
+  // Staff gaming allowance
+  STAFF_SHIFT_ACTIVE = 'STAFF_SHIFT_ACTIVE',
+  STAFF_ALLOWANCE_NONE = 'STAFF_ALLOWANCE_NONE',
+  STAFF_ALLOWANCE_EXPIRED = 'STAFF_ALLOWANCE_EXPIRED',
+  STAFF_ALLOWANCE_EXHAUSTED = 'STAFF_ALLOWANCE_EXHAUSTED',
 }
 
 export const ErrorMessages: Record<ErrorCode, string> = {
@@ -99,6 +105,15 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS]: 'Insufficient permissions to access this resource',
   [ErrorCode.AUTH_EMAIL_ALREADY_EXISTS]: 'An account with this email already exists',
   [ErrorCode.AUTH_WEAK_PASSWORD]: 'Password does not meet security requirements',
+
+  [ErrorCode.STAFF_SHIFT_ACTIVE]:
+    'You are on an active shift. Clock out before playing on the kiosk.',
+  [ErrorCode.STAFF_ALLOWANCE_NONE]:
+    'No gaming allowance configured for your account. Contact an admin.',
+  [ErrorCode.STAFF_ALLOWANCE_EXPIRED]:
+    'Your gaming allowance period has expired. Contact an admin.',
+  [ErrorCode.STAFF_ALLOWANCE_EXHAUSTED]:
+    'Your gaming allowance has been fully used. Contact an admin.',
 };
 
 /**

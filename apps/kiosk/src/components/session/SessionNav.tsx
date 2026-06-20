@@ -11,6 +11,7 @@ export type SessionView = 'home' | 'library' | 'settings';
 
 interface SessionNavProps {
   playerName: string | null;
+  playerRole?: string | null;
   deviceName?: string | null;
   /** Authoritative remaining minutes from the active session, if any. */
   remainingMinutes?: number;
@@ -46,6 +47,7 @@ function readVolume(): number {
  */
 export function SessionNav({
   playerName,
+  playerRole,
   deviceName,
   remainingMinutes,
   deductionProfile,
@@ -212,6 +214,12 @@ export function SessionNav({
                 <span className="kiosk-profile-label">Time remaining</span>
                 <span className="kiosk-profile-strong">{remainingLabel}</span>
               </div>
+              {playerRole === 'staff' ? (
+                <div className="kiosk-profile-row">
+                  <span className="kiosk-profile-label">Plan</span>
+                  <span>Staff allowance</span>
+                </div>
+              ) : null}
               {deviceName ? (
                 <div className="kiosk-profile-row">
                   <span className="kiosk-profile-label">Station</span>

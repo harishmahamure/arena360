@@ -41,6 +41,8 @@ export enum Permission {
   CreditRead = 'credit:read',
   CreditWrite = 'credit:write',
   CreditLimitWrite = 'credit-limit:write',
+  StaffGamingAllowanceRead = 'staff-gaming-allowance:read',
+  StaffGamingAllowanceWrite = 'staff-gaming-allowance:write',
   ExpensesRead = 'expenses:read',
   ExpensesWrite = 'expenses:write',
   ExpensesApprove = 'expenses:approve',

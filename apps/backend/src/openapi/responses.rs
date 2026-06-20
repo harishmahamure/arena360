@@ -205,6 +205,10 @@ pagination_envelope!(
 
 success_envelope!(CreditSummaryEnvelope, crate::models::CreditSummary);
 success_envelope!(
+    StaffGamingAllowanceSummaryEnvelope,
+    crate::models::StaffGamingAllowanceSummary
+);
+success_envelope!(
     PlayerCreditDetailEnvelope,
     crate::models::PlayerCreditDetail
 );

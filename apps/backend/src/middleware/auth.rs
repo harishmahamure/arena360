@@ -303,8 +303,10 @@ where
 
         let player_claims = decode_token(&app_state, player_token)?;
 
-        if !player_claims.roles.iter().any(|r| r == "player") {
-            return Err(AppError::Forbidden("Player access required".to_string()));
+        if !player_claims.roles.iter().any(|r| r == "player" || r == "staff") {
+            return Err(AppError::Forbidden(
+                "Player or staff access required".to_string(),
+            ));
         }
 
         let player_device = player_claims

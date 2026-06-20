@@ -18,6 +18,7 @@ pub mod products;
 pub mod realtime_rooms;
 pub mod sessions;
 pub mod shifts;
+pub mod staff_gaming_allowance;
 pub mod stats;
 pub mod transactions;
 pub mod units;
