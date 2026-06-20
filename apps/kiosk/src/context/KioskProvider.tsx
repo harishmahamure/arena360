@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react';
 import { SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
-import { registerAuthSessionHandlers } from '../lib/authSession';
+import { isTokenAuthFailure, registerAuthSessionHandlers } from '../lib/authSession';
 import { applyBalanceUpdated } from '../lib/balanceUpdated';
 import { SESSION_RECONCILE_MS } from '../lib/config';
 import {
@@ -33,6 +33,13 @@ import {
   shouldRunWsFailPoll,
   staffEndedFromPayload,
 } from '../lib/remoteSessionEnd';
+import {
+  clearPlayerPersistedState,
+  readSessionSnapshot,
+  readStoredPlayerName,
+  storePlayerName,
+  storeSessionSnapshot,
+} from '../lib/sessionPersist';
 import { prepareSessionSounds } from '../lib/sessionSounds';
 import { resolveSetupShortcutAction } from '../lib/setupShortcut';
 import {
@@ -210,6 +217,15 @@ function toErrorMessage(e: unknown, fallback: string): string {
   return fallback;
 }
 
+function playerIdFromToken(token: string): string | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1] ?? '')) as { userId?: string };
+    return typeof payload.userId === 'string' ? payload.userId : null;
+  } catch {
+    return null;
+  }
+}
+
 export function KioskProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<AppPhase>('loading');
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -250,6 +266,12 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
+  }, [activeSession]);
+
+  useEffect(() => {
+    if (activeSession) {
+      storeSessionSnapshot(activeSession);
+    }
   }, [activeSession]);
 
   useEffect(() => {
@@ -303,6 +325,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       setActiveSession(null);
       await clearPlayerSession();
       setPlayerName(null);
+      clearPlayerPersistedState();
       if (opts?.staffEnded) {
         setLoginNotice('Your session was ended by staff.');
       }
@@ -450,6 +473,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setDeviceId(null);
     setDeviceName(null);
     storeDeviceName(null);
+    clearPlayerPersistedState();
     setPlayerName(null);
     setActiveSession(null);
     setConflictDevice(null);
@@ -469,6 +493,56 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     });
   }, [handleDeviceAuthExpired, handlePlayerAuthExpired, phase]);
 
+  const tryRestorePlayerSession = useCallback(
+    async (deviceId: string): Promise<boolean> => {
+      if (!tokenCache.player) return false;
+
+      const playerId = playerIdFromToken(tokenCache.player);
+      if (!playerId) {
+        await clearPlayerSession();
+        clearPlayerPersistedState();
+        return false;
+      }
+
+      setPlayerName(readStoredPlayerName());
+
+      const http = getHttpClient();
+      try {
+        const res = await http.get<KioskSessionResponse | null>('/kiosk/sessions/current');
+        setOnline(true);
+        await flushEndIntents();
+        if (!res) {
+          await clearPlayerSession();
+          clearPlayerPersistedState();
+          return false;
+        }
+        setActiveSession(sessionFromResponse(res));
+        prepareSessionSounds();
+        setPhase('session');
+        connectWs(deviceId, playerId);
+        return true;
+      } catch (e) {
+        if (e instanceof ApiError && isTokenAuthFailure(e.message)) {
+          await clearPlayerSession();
+          clearPlayerPersistedState();
+          return false;
+        }
+
+        const cached = readSessionSnapshot();
+        if (cached) {
+          setActiveSession(cached);
+          prepareSessionSounds();
+          setPhase('session');
+          setOnline(false);
+          connectWs(deviceId, playerId);
+          return true;
+        }
+        return false;
+      }
+    },
+    [connectWs, flushEndIntents],
+  );
+
   const refresh = useCallback(async () => {
     setError(null);
     await loadTokensIntoCache();
@@ -477,19 +551,29 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       await setLockdownState('Locked');
       return;
     }
-    setPhase('login');
-    await setLockdownState('Locked');
     setDeviceName(readStoredDeviceName());
-    // Device id from JWT payload (base64 middle segment)
+    let deviceId: string | null = null;
     try {
       const payload = JSON.parse(atob(tokenCache.device.split('.')[1] ?? ''));
-      const id = payload.userId as string;
-      setDeviceId(id);
-      connectWs(id);
+      deviceId = payload.userId as string;
+      setDeviceId(deviceId);
     } catch {
       setDeviceId(null);
     }
-  }, [connectWs]);
+
+    if (tokenCache.player && deviceId) {
+      const restored = await tryRestorePlayerSession(deviceId);
+      if (restored) {
+        await setLockdownState('Locked');
+        return;
+      }
+    } else if (deviceId) {
+      connectWs(deviceId);
+    }
+
+    setPhase('login');
+    await setLockdownState('Locked');
+  }, [connectWs, tryRestorePlayerSession]);
 
   useEffect(() => {
     void refresh();
@@ -698,6 +782,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
         await persistPlayerToken(res.accessToken);
         setPlayerName(res.user.username);
+        storePlayerName(res.user.username);
 
         if (res.activeSession) {
           setActiveSession(activeSessionFromLogin(res.activeSession));
@@ -735,6 +820,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const playerLogout = useCallback(async () => {
     await clearPlayerSession();
     setPlayerName(null);
+    clearPlayerPersistedState();
     setActiveSession(null);
     setPhase('login');
     if (deviceId) connectWs(deviceId);
@@ -799,6 +885,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const dismissConflict = useCallback(() => {
     setConflictDevice(null);
     setPlayerName(null);
+    clearPlayerPersistedState();
     void clearPlayerSession();
     setPhase('login');
     if (deviceId) connectWs(deviceId);
@@ -823,6 +910,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       setDeviceId(null);
       setDeviceName(null);
       storeDeviceName(null);
+      clearPlayerPersistedState();
+      setPlayerName(null);
+      setActiveSession(null);
       setPhase('register');
       await setLockdownState('Locked');
     } finally {
