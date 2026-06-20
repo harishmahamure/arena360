@@ -74,7 +74,11 @@ This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bund
 
 - **NSIS** (`nsis/*-setup.exe`) — per-machine install (`installMode: perMachine`). For SCCM/Intune, deploy silently (`/S`).
 
-**Post-install flags** (see [KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)): `/NOCONFIGURE`, `/NOAUTOSTART`, `/NOHARDENING`, `/KIOSKUSER=Name` (optional). Default install path: `C:\Program Files\Arena360 Station Management\`. The bundled `configure-station.ps1` registers the **Arena360 Kiosk** logon scheduled task for the installing/console Windows user, applies HKLM hardening by default, and optionally configures auto-logon. If autostart fails after a silent install, run `scripts\verify-station-startup.ps1 -Repair` (elevated; path auto-detected).
+**Post-install:** the NSIS installer does **not** run PowerShell. Default install path:
+`C:\Program Files\Arena360 Station Management\`. After install, IT runs
+[`configure-station.ps1`](scripts/windows/configure-station.ps1) from the repo to register the
+**Arena360 Kiosk** logon task (optional HKLM hardening and auto-logon). See
+[KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md).
 
 ### WebView2 runtime (Windows 10)
 
@@ -103,10 +107,10 @@ Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user mod
 For a hardened station, also apply at the OS level:
 
 - Assigned Access / kiosk account, or group policy `DisableLockWorkstation` and
-  `DisableTaskMgr` (applied by default via post-install script; pass `/NOHARDENING` to skip).
-- Auto-login of the kiosk account; the installer runs **configure-station.ps1** (Arena360 Kiosk
-  logon task, optional auto-logon prompt). Pass `/NOAUTOSTART` or `/NOCONFIGURE` to skip parts.
-  This registers startup at logon only — it does **not** replace `explorer.exe` as the shell.
+  `DisableTaskMgr` (optional — via `configure-station.ps1 -SkipAutostart` or GPO).
+- Auto-login and logon autostart: run [`configure-station.ps1`](scripts/windows/configure-station.ps1)
+  after install (not invoked by the installer). This registers the **Arena360 Kiosk**
+  ONLOGON task only — it does **not** replace `explorer.exe` as the shell.
 
 **Full roadmap:** [docs/KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)
 (Assigned Access, shell replacement, logon autostart, fleet rollout).

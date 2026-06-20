@@ -73,7 +73,18 @@ jobs:
           sqlx migrate run --source apps/backend/migrations
           echo "Database migrations completed"
 
+      - name: Verify cluster prerequisites
+        run: |
+          echo "Checking in-cluster dependencies..."
+          kubectl get svc arena360-redis -n "${{ env.NAMESPACE }}" || {
+            echo "::warning::arena360-redis service not found — deploy Redis first or set REDIS_URL secret"
+          }
+          kubectl get secret dockerhub-secret -n "${{ env.NAMESPACE }}" || {
+            echo "::warning::dockerhub-secret not found — private image pulls may fail"
+          }
+
       - name: Deploy backend
+        id: deploy
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
@@ -86,46 +97,100 @@ jobs:
           STORAGE_PUBLIC_URL: ${{ secrets.STORAGE_PUBLIC_URL }}
           IMAGE_REPOSITORY: ${{ env.DOCKER_REPO }}
           IMAGE_TAG: backend-prod-${{ steps.vars.outputs.short_sha }}
+          NAMESPACE: ${{ env.NAMESPACE }}
+          RELEASE_NAME: ${{ env.RELEASE_NAME }}
         run: |
+          set -euo pipefail
+
           # Secrets must not be interpolated into the script body — newlines or
           # quotes in DATABASE_URL break shell parsing and helm loses RELEASE/CHART.
           strip_cr() { printf '%s' "$1" | tr -d '\r\n'; }
 
-          REDIS_URL="${REDIS_URL:-redis://arena360-redis.${{ env.NAMESPACE }}.svc.cluster.local:6379}"
+          REDIS_URL="${REDIS_URL:-redis://arena360-redis.${NAMESPACE}.svc.cluster.local:6379}"
 
-          INLINE_SECRETS=$(jq -n \
-            --arg DATABASE_URL "$(strip_cr "$DATABASE_URL")" \
+          db_url="$(strip_cr "$DATABASE_URL")"
+          jwt_secret="$(strip_cr "$JWT_SECRET")"
+          if [ -z "$db_url" ]; then
+            echo "::error::DATABASE_URL secret is empty"
+            exit 1
+          fi
+          if [ -z "$jwt_secret" ]; then
+            echo "::error::JWT_SECRET secret is empty"
+            exit 1
+          fi
+          if [ "${#jwt_secret}" -lt 32 ]; then
+            echo "::error::JWT_SECRET must be at least 32 characters"
+            exit 1
+          fi
+
+          # Build Helm overrides as a file — avoids shell-quoting bugs with --set-json.
+          jq -n \
+            --arg DATABASE_URL "$db_url" \
             --arg REDIS_URL "$(strip_cr "$REDIS_URL")" \
-            --arg JWT_SECRET "$(strip_cr "$JWT_SECRET")" \
+            --arg JWT_SECRET "$jwt_secret" \
             --arg ZEPTOMAIL_TOKEN "$(strip_cr "$ZEPTOMAIL_TOKEN")" \
             --arg STORAGE_ENDPOINT "$(strip_cr "$STORAGE_ENDPOINT")" \
             --arg STORAGE_BUCKET "$(strip_cr "$STORAGE_BUCKET")" \
             --arg STORAGE_ACCESS_KEY "$(strip_cr "$STORAGE_ACCESS_KEY")" \
             --arg STORAGE_SECRET_KEY "$(strip_cr "$STORAGE_SECRET_KEY")" \
             --arg STORAGE_PUBLIC_URL "$(strip_cr "$STORAGE_PUBLIC_URL")" \
+            --arg IMAGE_REPOSITORY "$IMAGE_REPOSITORY" \
+            --arg IMAGE_TAG "$IMAGE_TAG" \
             '{
-              DATABASE_URL: $DATABASE_URL,
-              REDIS_URL: $REDIS_URL,
-              JWT_SECRET: $JWT_SECRET,
-              ZEPTOMAIL_TOKEN: $ZEPTOMAIL_TOKEN,
-              STORAGE_ENDPOINT: $STORAGE_ENDPOINT,
-              STORAGE_BUCKET: $STORAGE_BUCKET,
-              STORAGE_ACCESS_KEY: $STORAGE_ACCESS_KEY,
-              STORAGE_SECRET_KEY: $STORAGE_SECRET_KEY,
-              STORAGE_PUBLIC_URL: $STORAGE_PUBLIC_URL
-            }')
+              image: { repository: $IMAGE_REPOSITORY, tag: $IMAGE_TAG },
+              inlineSecretEnv: (
+                {
+                  DATABASE_URL: $DATABASE_URL,
+                  REDIS_URL: $REDIS_URL,
+                  JWT_SECRET: $JWT_SECRET,
+                  ZEPTOMAIL_TOKEN: $ZEPTOMAIL_TOKEN,
+                  STORAGE_ENDPOINT: $STORAGE_ENDPOINT,
+                  STORAGE_BUCKET: $STORAGE_BUCKET,
+                  STORAGE_ACCESS_KEY: $STORAGE_ACCESS_KEY,
+                  STORAGE_SECRET_KEY: $STORAGE_SECRET_KEY,
+                  STORAGE_PUBLIC_URL: $STORAGE_PUBLIC_URL
+                }
+                | with_entries(select(.value != ""))
+              )
+            }' > /tmp/helm-backend-overrides.json
 
-          helm upgrade --install "${{ env.RELEASE_NAME }}" ./infra/helm/backend \
+          jq empty /tmp/helm-backend-overrides.json
+          echo "Helm override keys: $(jq -r '.inlineSecretEnv | keys | join(", ")' /tmp/helm-backend-overrides.json)"
+
+          helm upgrade --install "$RELEASE_NAME" ./infra/helm/backend \
             --values ./infra/helm/backend/values-prod.yaml \
-            --set-string image.repository="$IMAGE_REPOSITORY" \
-            --set-string image.tag="$IMAGE_TAG" \
-            --set-json inlineSecretEnv="$INLINE_SECRETS" \
-            --namespace "${{ env.NAMESPACE }}" \
+            --values /tmp/helm-backend-overrides.json \
+            --namespace "$NAMESPACE" \
             --create-namespace \
+            --atomic \
             --wait \
-            --timeout 5m
+            --timeout 10m
+
+      - name: Collect rollout diagnostics
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          echo "## Rollout diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```'
+            kubectl get pods,svc,ingress -n "${{ env.NAMESPACE }}" -l app.kubernetes.io/name=arena360-backend -o wide || true
+            echo '---'
+            kubectl describe deployment "${{ env.RELEASE_NAME }}" -n "${{ env.NAMESPACE }}" || true
+            echo '---'
+            kubectl get rs -n "${{ env.NAMESPACE }}" -l app.kubernetes.io/name=arena360-backend || true
+            echo '---'
+            for pod in $(kubectl get pods -n "${{ env.NAMESPACE }}" -l app.kubernetes.io/name=arena360-backend -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+              echo "### Pod: $pod"
+              kubectl describe pod "$pod" -n "${{ env.NAMESPACE }}" || true
+              echo "--- logs (last 80 lines) ---"
+              kubectl logs "$pod" -n "${{ env.NAMESPACE }}" --tail=80 || true
+              echo "--- previous logs ---"
+              kubectl logs "$pod" -n "${{ env.NAMESPACE }}" --previous --tail=80 || true
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Deployment summary
+        if: success()
         run: |
           echo "## Backend Production Deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

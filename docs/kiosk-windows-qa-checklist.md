@@ -60,7 +60,7 @@ Requires NSIS install with autostart (default). Run installer logged in as the k
 | 18 | Log off and log on again (or reboot with auto-logon) | Kiosk starts automatically | |
 | 19 | Reboot station with auto-logon configured | **Arena360 Kiosk** task runs; kiosk appears without manual launch | |
 | 20 | Uninstall kiosk | `Arena360 Kiosk` task removed (legacy `Arena360 Watchdog` too) | |
-| 21 | Run `scripts\verify-station-startup.ps1` after install | Reports no issues; `-Repair` fixes user/path mismatch | |
+| 21 | Run `verify-station-startup.ps1` from repo after configure | Reports no issues; `-Repair` fixes user/path mismatch | |
 
 ## Sign-off
 

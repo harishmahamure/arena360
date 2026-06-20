@@ -35,6 +35,28 @@ env:
   CAFE_TZ: Asia/Kolkata
   STORAGE_REGION: us-east-1
   STORAGE_PRESIGN_EXPIRY_SECS: "900"
+  # Non-secret fallback; overridden by inlineSecretEnv REDIS_URL at deploy time.
+  REDIS_URL: "redis://arena360-redis.default.svc.cluster.local:6379"
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 36
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
 
 # Production uses GitHub Actions secrets inlined at deploy time (ADR-0026).
 envFromSecrets: []

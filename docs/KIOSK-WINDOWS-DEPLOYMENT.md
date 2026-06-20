@@ -18,9 +18,9 @@
 | Setup escape (`Ctrl+Shift+A` → admin login) | **Shipped** | `SetupRelaxed` allows close and non-allow-listed launches |
 | Windows installer (NSIS `perMachine`) | **Shipped** | [ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md) |
 | Idle auto-update | **Shipped** | On registration, setup, and login/attract screens (no active session) |
-| Boot auto-start (logon task) | **Shipped** | NSIS post-install `configure-station.ps1` registers **Arena360 Kiosk** at logon (skip with `/NOAUTOSTART`) |
+| Boot auto-start (logon task) | **IT manual** | Run [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) after install, or create the **Arena360 Kiosk** ONLOGON task |
 | Auto-reopen after crash/kill | **Not shipped** | Kiosk relaunches on next user logon only ([ADR-0041](adr/0041-remove-watchdog-logon-autostart.md)) |
-| Post-install station config | **Shipped** | `configure-station.ps1`: logon task, HKLM hardening, optional auto-logon (skip with `/NOCONFIGURE`) |
+| Post-install station config | **Not in installer** | Optional IT scripts in repo: logon task, HKLM hardening, auto-logon |
 
 **Gap (remaining):** Assigned Access / shell replacement (Layer 1 Options A/B) is still IT manual.
 **Exit to desktop** closes the kiosk; it returns on the next user logon (no pause-file IPC).
@@ -60,9 +60,9 @@ Windows shell; the kiosk launches on top after logon. Post-install config does *
 |------|-----|--------|
 | 1 | IT | Log in as the account that will run the kiosk daily |
 | 2 | IT | Run NSIS installer (UAC elevation OK). Silent: `Arena360-setup.exe /S` |
-| 3 | Installer | Runs [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) unless `/NOCONFIGURE` — registers logon task for the installing/console user |
-| 4 | IT | Optional: enable auto-logon for that same account (installer prompt, Sysinternals Autologon, or `-AutoLogonPassword` when re-running the script) |
-| 5 | Reboot | User logs on (manually or auto-logon) → Arena360 Kiosk task → kiosk fullscreen (`Locked`) |
+| 3 | IT | Configure logon autostart (see **Manual station setup** below) — installer does not run PowerShell |
+| 4 | IT | Optional: enable auto-logon for that same account (Sysinternals Autologon or `-AutoLogonPassword` on the configure script) |
+| 5 | Reboot | User logs on (manually or auto-logon) → kiosk starts (if logon task configured) |
 | 6 | Operator | **RegistrationPage**: sign in with Arena360 admin credentials → name and register device |
 | 7 | Operator | **SetupPage** opens automatically (`SetupRelaxed`) → curate software allow-list (no second admin login) |
 | 8 | Operator | **Done — re-lock** → player login/attract screen |
@@ -71,32 +71,19 @@ First-time device registration runs under **`Locked`** until provisioning comple
 then transitions to **`SetupRelaxed`** for allow-list curation. Use setup mode after
 registration to install games and edit the allow-list.
 
-### Installer flags
-
-Pass on the NSIS command line (silent: `setup.exe /S`):
-
-| Flag | Effect |
-|------|--------|
-| `/NOCONFIGURE` | Skip post-install `configure-station.ps1` entirely |
-| `/NOAUTOSTART` | Skip kiosk logon scheduled task (still runs script for hardening unless `/NOCONFIGURE`) |
-| `/NOHARDENING` | Skip HKLM policy registry keys (`DisableTaskMgr`, etc.) |
-| `/KIOSKUSER=Name` | Optional override for logon task user (default: installing/console user) |
-
 ### Silent fleet example
 
 ```text
-# Install while logged in as the account that will run the kiosk:
+# Install only — no post-install scripts:
 Arena360-setup.exe /S
 
-# Optional explicit user override (same account, explicit name):
-Arena360-setup.exe /S /KIOSKUSER=Administrator
-
-# If autostart failed silently, repair without reinstalling:
-powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Arena360 Station Management\scripts\verify-station-startup.ps1" -Repair
+# Then configure autostart once (elevated PowerShell, from repo clone or release artifact):
+powershell -NoProfile -ExecutionPolicy Bypass -File .\configure-station.ps1 `
+  -InstallDir "C:\Program Files\Arena360 Station Management" `
+  -KioskUser $env:USERNAME
 ```
 
-Uninstall removes the **Arena360 Kiosk** task (and legacy **Arena360 Watchdog** if present)
-and registry values recorded in `%ProgramData%\Arena360\registry-hardening.json`.
+Uninstall removes the **Arena360 Kiosk** and legacy **Arena360 Watchdog** scheduled tasks via NSIS hooks. IT-managed registry hardening from a prior `configure-station.ps1` run is not removed automatically — re-run the script with `-Uninstall` if needed.
 
 ---
 
@@ -179,7 +166,9 @@ returns on the next user logon.
 
 ### Shipped: **Arena360 Kiosk** scheduled task
 
-[`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) registers:
+### Logon autostart (IT manual)
+
+[`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) (repo only — not bundled in the installer) registers:
 
 | Component | Role |
 |-----------|------|
@@ -188,11 +177,9 @@ returns on the next user logon.
 
 **Installer behavior** ([apps/kiosk/src-tauri/windows/hooks.nsh](../apps/kiosk/src-tauri/windows/hooks.nsh)):
 
-1. Registers **`Arena360 Kiosk`** at **logon** for the installing/console Windows user.
-2. Deletes legacy **`Arena360 Watchdog`** task if present (migration).
-3. Silent opt-out: pass **`/NOAUTOSTART`** to the NSIS installer.
-4. In-app updates (`/UPDATE`): refreshes task exe path only via `-RefreshAutostartOnly`.
-4. Uninstall removes both task names.
+1. **No post-install PowerShell** — install/uninstall only copies binaries and shortcuts.
+2. **Uninstall** deletes **Arena360 Kiosk** and legacy **Arena360 Watchdog** scheduled tasks.
+3. **In-app updates** replace binaries only; they do not run station scripts.
 
 **Single-instance:** the main process acquires `Global\Arena360KioskInstance` mutex at
 startup to avoid duplicate instances if the task fires twice.
@@ -228,14 +215,13 @@ launch). No pause file.
 |------|-------|--------|
 | 1 | Engineering | Publish signed NSIS + `latest.json` ([kiosk-release.yml](../.github/workflows/kiosk-release.yml)) |
 | 2 | IT | Golden image: Windows + GPU drivers + games + WebView2 |
-| 3 | IT | Install kiosk while logged in as the station account; optional auto-logon; Assigned Access or shell |
+| 3 | IT | Install kiosk; run `configure-station.ps1` or create ONLOGON task; optional auto-logon |
 | 4 | Operator | First boot → `Ctrl+Shift+A` → register device, allow-list |
 | 5 | IT | GPO export for `DisableTaskMgr`, firewall, Windows Update window |
-| 6 | Engineering | Installer registers logon task; optional `/NOAUTOSTART`; updates refresh task path only |
 
-**SCCM / Intune:** Deploy NSIS silently (`/S`) while the target user is logged in, or pass
-`/KIOSKUSER=` with the station account name. If autostart fails, run
-`verify-station-startup.ps1 -Repair` (bundled under install dir).
+**SCCM / Intune:** Deploy NSIS silently (`/S`). Configure autostart separately with
+[`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) or
+[`verify-station-startup.ps1 -Repair`](../apps/kiosk/scripts/windows/verify-station-startup.ps1).
 
 ---
 
@@ -244,9 +230,9 @@ launch). No pause file.
 | Task ID | Title | Priority | Delivers |
 |---------|-------|----------|----------|
 | `kiosk-deploy-guide` | Operator deployment guide + GPO checklist | Should | This doc + README link; PowerShell samples |
-| `kiosk-startup-task` | NSIS logon scheduled task at logon | Should | **Done** — `hooks.nsh`; `/NOAUTOSTART` opt-out |
+| `kiosk-startup-task` | Logon scheduled task | Should | **IT manual** — `configure-station.ps1` |
 | `kiosk-watchdog` | Watchdog sidecar + pause file + mutex | Should | **Removed** — [ADR-0041](adr/0041-remove-watchdog-logon-autostart.md) |
-| `kiosk-installer-fleet` | Silent install + `configure-station.ps1` | Should | **Done** — bundled in NSIS; `/NOCONFIGURE` opt-out |
+| `kiosk-installer-fleet` | Silent NSIS install | Should | **Done** — no post-install scripts |
 | `kiosk-deploy-adr` | DRAFT ADR only if Windows Service chosen | Conditional | Per [20-adr-discipline](../.cursor/rules/20-adr-discipline.mdc) |
 
 **Suggested order:** `kiosk-deploy-guide` (done — this file) → `kiosk-startup-task` →
@@ -261,53 +247,41 @@ as ADR-0028). Draft ADR if adding a privileged Windows Service or shell-wide pol
 
 If the kiosk does not appear after reboot:
 
-1. Wait **30 seconds** after the desktop appears (logon task has a built-in delay).
-2. Run the bundled diagnostic (elevated PowerShell — install path is auto-detected):
+1. Confirm a logon task exists: `schtasks /Query /TN "Arena360 Kiosk" /V /FO LIST`
+2. Run the diagnostic from the repo (elevated PowerShell):
 
    ```powershell
-   & "C:\Program Files\Arena360 Station Management\scripts\verify-station-startup.ps1"
+   & "path\to\repo\apps\kiosk\scripts\windows\verify-station-startup.ps1"
    ```
 
 3. Repair in one step:
 
    ```powershell
-   & "C:\Program Files\Arena360 Station Management\scripts\verify-station-startup.ps1" -Repair
+   & "path\to\repo\apps\kiosk\scripts\windows\verify-station-startup.ps1" -Repair
    ```
 
-   This re-registers the **Arena360 Kiosk** ONLOGON task for the installing/console user.
+4. Reboot and confirm the kiosk launches ~30s after logon (QA checklist items 18–19).
 
-4. Reboot and confirm the kiosk launches without manual start (QA checklist items 18–19).
-
-Common causes: silent install deployed as `SYSTEM` with no console user logged in, silent install with `/NOAUTOSTART`, or stale task action path after a manual move. **In-app updates** refresh only the task exe path (`/UPDATE`); they do not re-run hardening or auto-logon. Fresh installs and `-Repair` run full `configure-station.ps1`.
+Common causes: autostart never configured after install, task registered for the wrong Windows user, or stale task action path after a manual move. Re-run `configure-station.ps1` with `-InstallDir` pointing at the install folder.
 
 ---
 
-## Manual setup now (fallback)
+## Manual station setup
 
-Use this only when the NSIS installer cannot run post-install configuration (e.g. `/NOCONFIGURE`).
-Fresh installs from GitHub Releases run [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1)
-automatically unless `/NOCONFIGURE` is passed.
+After install, configure autostart once with [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1):
 
-1. Install kiosk from the latest GitHub Release.
-2. Log in as the Windows account that will run the kiosk; run configure script manually if `/NOCONFIGURE` was used.
-3. Pick Option A, B, or C above for shell.
-4. Create a Scheduled Task (run as the installing user, interactive):
-
-   - **Trigger:** At log on
-   - **Action:** Start `Arena360 Station Management.exe` from the install directory
-   - **Settings:** If the task fails, restart every 1 minute; stop if running &gt; 1 day
-
-5. For faster recovery, add a second task every 5 minutes:
+1. Install kiosk from the latest GitHub Release (`Arena360-setup.exe /S`).
+2. Log in as the Windows account that will run the kiosk.
+3. Elevated PowerShell:
 
    ```powershell
-   $exeName = "Arena360 Station Management"
-   if (-not (Get-Process -Name $exeName -ErrorAction SilentlyContinue)) {
-     Start-Process "C:\Program Files\Arena360 Station Management\Arena360 Station Management.exe"
-   }
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\configure-station.ps1 `
+     -InstallDir "C:\Program Files\Arena360 Station Management" `
+     -KioskUser $env:USERNAME
    ```
 
-6. Test: kill the process from Task Manager (setup mode) — confirm relaunch within 1 min.
-7. Test: `Ctrl+Shift+A` setup logout — confirm lockdown returns.
+4. Optional: pick Option A, B, or C above for OS shell hardening.
+5. Reboot and verify the kiosk starts at logon.
 
 ---
 

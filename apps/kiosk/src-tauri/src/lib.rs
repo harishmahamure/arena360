@@ -11,12 +11,14 @@ mod scan;
 mod storage;
 mod update;
 
-use instance_mutex::init_instance_mutex;
+use instance_mutex::ensure_single_instance;
 use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
 use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    ensure_single_instance();
+
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init());
@@ -51,7 +53,6 @@ pub fn run() {
         .setup(|app| {
             register_keyboard_app(app.handle().clone());
             init_locked_on_startup(app.handle());
-            init_instance_mutex();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

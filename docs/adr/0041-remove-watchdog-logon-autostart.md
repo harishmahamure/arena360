@@ -28,7 +28,7 @@ Operators requested **simple autolaunch on Windows login** without crash-relaunc
 2. **Register** scheduled task **Arena360 Kiosk** at **ONLOGON** to run the main kiosk
    executable directly (e.g. `Arena360 Station Management.exe`).
 3. **Keep** optional auto-logon in `configure-station.ps1` (installer prompt / `-AutoLogonPassword`).
-4. **Keep** HKLM hardening and NSIS post-install flow (`/NOCONFIGURE`, `/NOAUTOSTART`, `/KIOSKUSER`).
+4. **Keep** optional HKLM hardening and logon-task setup via manual `configure-station.ps1` (not in NSIS).
 5. **Keep** kiosk single-instance mutex (`Global\Arena360KioskInstance`) in the main process.
 6. **Migrate** on install: delete legacy **Arena360 Watchdog** task if present.
 

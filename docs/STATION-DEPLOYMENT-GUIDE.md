@@ -89,9 +89,9 @@ replacement, Run key) are in
   (embedded by NSIS installer on Win10; pre-install for fully offline imaging — see
   [apps/kiosk/README.md](../apps/kiosk/README.md)).
 - [ ] **Install kiosk:** Download latest NSIS `perMachine` installer from GitHub Release
-  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). Log in as the Windows
-  account that will run the kiosk, then install (silent: `Arena360-setup.exe /S`). The installer
-  registers an **Arena360 Kiosk** scheduled task at logon for that account (skip with `/NOAUTOSTART`).
+  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). Silent: `Arena360-setup.exe /S`.
+- [ ] **Configure autostart:** Run [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1)
+  (elevated) with `-InstallDir` set to the install folder, or create the **Arena360 Kiosk** ONLOGON task manually.
 - [ ] **Install location:** Default path is `C:\Program Files\Arena360 Station Management\`.
 - [ ] **Shell strategy:** Choose one (recommend **Option A — Assigned Access** on
   Windows Pro/Enterprise). See
@@ -99,7 +99,8 @@ replacement, Run key) are in
 - [ ] **Auto-logon (optional):** Enable auto-logon for the same Windows account if you want
   unattended reboot (Sysinternals Autologon or unattend XML). Not required if someone logs in
   manually after reboot. Never store passwords in git.
-- [ ] **Verify autostart:** After install, run `scripts\verify-station-startup.ps1` (bundled under install dir) or confirm `schtasks /Query /TN "Arena360 Kiosk"` and that `Arena360 Station Management.exe` exists under the install directory.
+- [ ] **Verify autostart:** `schtasks /Query /TN "Arena360 Kiosk"` or run
+  [`verify-station-startup.ps1`](../apps/kiosk/scripts/windows/verify-station-startup.ps1) from the repo.
 
 - [ ] **GPO hardening (recommended):** Applied by default at install (`DisableTaskMgr`,
   `DisableLockWorkstation`, `DisableChangePassword`, `NoRun`); pass `/NOHARDENING` to skip.
@@ -137,7 +138,7 @@ Arena360 PC lockdown has two layers. **Both** are required for a hardened public
 - Assigned Access / shell replacement (Layer 1 Options A/B — manual)
 - Auto-logon password in fully silent `/S` installs (run `configure-station.ps1` with `-AutoLogonPassword` after install, or use Sysinternals Autologon)
 
-Post-install logon task, HKLM hardening, and interactive auto-logon: [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) (bundled in NSIS; `/NOCONFIGURE` opt-out). See [KIOSK-WINDOWS-DEPLOYMENT.md § Single-user post-logon provisioning](KIOSK-WINDOWS-DEPLOYMENT.md#single-user-post-logon-provisioning-recommended).
+Post-install logon task and HKLM hardening: run [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) manually after install (not bundled in NSIS). See [KIOSK-WINDOWS-DEPLOYMENT.md § Single-account post-logon provisioning](KIOSK-WINDOWS-DEPLOYMENT.md#single-account-post-logon-provisioning-recommended).
 
 Manual Scheduled Task fallback: [KIOSK-WINDOWS-DEPLOYMENT.md § Manual setup now](KIOSK-WINDOWS-DEPLOYMENT.md#manual-setup-now-fallback).
 

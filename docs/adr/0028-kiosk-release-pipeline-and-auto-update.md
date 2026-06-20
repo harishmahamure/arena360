@@ -5,10 +5,13 @@
 **Deciders**: Platform team
 **Relates to**: [ADR-0002](0002-kiosk-tauri-canonical.md), [ADR-0016](0016-kiosk-monorepo-reintroduce.md), [ADR-0003](0003-secrets-management.md), [ADR-0020](0020-kiosk-windows-lockdown.md)
 
-## Amendment 2026-06-15: post-install station configuration
+## Amendment 2026-06-15: post-install station configuration (superseded 2026-06-20)
 
-The NSIS installer ships [`configure-station.ps1`](../../apps/kiosk/scripts/windows/configure-station.ps1)
-and runs it post-install (unless `/NOCONFIGURE`):
+> **Superseded** by amendment 2026-06-20 below. The installer no longer ships or runs
+> `configure-station.ps1`; IT runs it manually from the repo when needed.
+
+The NSIS installer previously shipped [`configure-station.ps1`](../../apps/kiosk/scripts/windows/configure-station.ps1)
+and ran it post-install (unless `/NOCONFIGURE`):
 
 | Default action | Opt-out flag |
 |----------------|--------------|
@@ -148,17 +151,11 @@ simply have no update endpoint (checks no-op).
 
 ## Amendment 2026-06-20: install/update hook behaviour
 
-- **Fresh install** (`NSIS_HOOK_POSTINSTALL` without `/UPDATE`): runs full
-  `configure-station.ps1` (logon task, optional hardening, optional auto-logon prompt).
-  Silent `/S` installs **do not abort** on autostart failure — binaries remain on disk;
-  repair via `verify-station-startup.ps1 -Repair`.
-- **In-app update** (installer invoked with `/UPDATE`): runs
-  `-RefreshAutostartOnly` only — refreshes the scheduled task exe path; skips hardening
-  and auto-logon prompts.
-- **User resolution**: autostart binds to the installing/console Windows account by default;
-  `/KIOSKUSER=` remains an optional override.
-- **Pre-update**: `prepare_for_update` Tauri command clears legacy `watchdog.pause` before
-  `downloadAndInstall`; updater aborts if phase leaves idle during download.
+- **Fresh install**: NSIS copies binaries only; **no post-install PowerShell**.
+- **Uninstall**: NSIS hooks delete **Arena360 Kiosk** and legacy **Arena360 Watchdog** tasks.
+- **In-app update**: binary replace only; no station scripts.
+- **Autostart / hardening / auto-logon**: IT runs [`configure-station.ps1`](../../apps/kiosk/scripts/windows/configure-station.ps1) from the repo after install (optional).
+- **Pre-update**: `prepare_for_update` still clears legacy `watchdog.pause`; updater aborts if phase leaves idle.
 
 ## Alternatives considered
 
