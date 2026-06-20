@@ -9,7 +9,7 @@ import {
   KIOSK_LOGO_URL,
   LOGIN_BACKGROUND_VIDEO_URL,
 } from '../lib/config';
-import { currentPasswordInputProps, usernameInputProps } from '../lib/inputHints';
+import { playerLoginPasswordInputProps, playerLoginUsernameInputProps } from '../lib/inputHints';
 import { clearFailures, getLockout, recordFailure } from '../lib/loginLockout';
 import { cachedAssetSrc } from '../lib/tauriCommands';
 
@@ -21,13 +21,14 @@ function formatRetry(retryAt: number): string {
 /**
  * Arena360 cinematic logged-out home: looped background video with radial scrim,
  * centered glass sign-in card, and station controls. All auth logic (lockout,
- * maintenance/offline gating, player login) is preserved. Setup is reached via
- * Ctrl+Shift+A (handled globally in KioskProvider). Staff can clear login lockout
- * with Ctrl+Shift+B (handled globally in KioskProvider).
+ * maintenance/offline gating, player login) is preserved. Staff setup is reached
+ * via Ctrl+Shift+A (handled globally in KioskProvider) or the Staff login button.
+ * Staff can clear login lockout with Ctrl+Shift+B (handled globally in KioskProvider).
  */
 export function LoginHomePage() {
   const {
     playerLogin,
+    enterSetup,
     error,
     clearError,
     online,
@@ -168,7 +169,7 @@ export function LoginHomePage() {
           </div>
         ) : null}
 
-        <form className="a360-form" onSubmit={onSubmit}>
+        <form className="a360-form" autoComplete="off" onSubmit={onSubmit}>
           <div className="a360-field">
             <label className="a360-field-label" htmlFor="kiosk-username">
               Username
@@ -180,7 +181,7 @@ export function LoginHomePage() {
                 onChange={(e) => setUsername(sanitizeUsernameInput(e.target.value))}
                 placeholder="Enter your username"
                 disabled={blocked}
-                {...usernameInputProps}
+                {...playerLoginUsernameInputProps}
                 required
               />
             </div>
@@ -198,7 +199,7 @@ export function LoginHomePage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 disabled={blocked}
-                {...currentPasswordInputProps}
+                {...playerLoginPasswordInputProps}
                 required
               />
               <button
@@ -248,10 +249,15 @@ export function LoginHomePage() {
 
         <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
 
-        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: version line exposes build label to screen readers */}
-        <p className="a360-login-version" aria-label={`App version ${KIOSK_APP_VERSION}`}>
-          v{KIOSK_APP_VERSION}
-        </p>
+        <footer className="a360-login-footer">
+          <button type="button" className="link a360-staff-login" onClick={() => void enterSetup()}>
+            Staff login
+          </button>
+          {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: version line exposes build label to screen readers */}
+          <p className="a360-login-version" aria-label={`App version ${KIOSK_APP_VERSION}`}>
+            v{KIOSK_APP_VERSION}
+          </p>
+        </footer>
       </main>
     </div>
   );

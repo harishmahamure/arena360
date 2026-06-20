@@ -56,7 +56,7 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
         }
         LockdownState::SetupRelaxed => {
             foreground::stop_foreground_guard();
-            keyboard::remove_hook();
+            keyboard::set_staff_combo_only();
             shell::restore_shell_chrome();
             window.set_closable(true).map_err(|e| e.to_string())?;
             window.set_minimizable(true).map_err(|e| e.to_string())?;

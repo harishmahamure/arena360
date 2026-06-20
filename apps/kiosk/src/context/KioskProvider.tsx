@@ -1,5 +1,6 @@
 import type { DeductionProfile } from '@gaming-cafe/contracts';
 import { ApiError } from '@gaming-cafe/utils';
+import { listen } from '@tauri-apps/api/event';
 import {
   createContext,
   type ReactNode,
@@ -244,6 +245,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const setupRelaxedRef = useRef(false);
   const activeSessionRef = useRef<ActiveSession | null>(null);
   const cleanupInFlightRef = useRef(false);
+  const lastEnterSetupAtRef = useRef(0);
+  const lastClearLockoutAtRef = useRef(0);
+  const SETUP_SHORTCUT_DEBOUNCE_MS = 400;
   // Short-lived admin token captured during first-time provisioning (in memory only).
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [setupAuthenticated, setSetupAuthenticated] = useState(false);
@@ -675,12 +679,19 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const enterSetup = useCallback(async () => {
     setError(null);
+    await focusKiosk().catch(() => {
+      // Non-fatal when running outside Tauri (browser dev).
+    });
     // Stay Locked until an admin authenticates (ADR-0020): the setup gesture
     // only reveals the login form, it does not relax lockdown.
     setPhase('setup');
   }, []);
 
   const requestEnterSetup = useCallback(() => {
+    const now = Date.now();
+    if (now - lastEnterSetupAtRef.current < SETUP_SHORTCUT_DEBOUNCE_MS) return;
+    lastEnterSetupAtRef.current = now;
+
     switch (resolveSetupShortcutAction(phaseRef.current)) {
       case 'noop':
         return;
@@ -696,6 +707,10 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   }, [enterSetup]);
 
   const requestClearLoginLockout = useCallback(() => {
+    const now = Date.now();
+    if (now - lastClearLockoutAtRef.current < SETUP_SHORTCUT_DEBOUNCE_MS) return;
+    lastClearLockoutAtRef.current = now;
+
     if (phaseRef.current !== 'login') return;
     resetLoginLockoutByStaff();
     setStaffLockoutClearTick((tick) => tick + 1);
@@ -719,16 +734,14 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   // in the native keyboard hook (`enter-setup` event) when the webview lacks focus.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    void import('@tauri-apps/api/event').then(({ listen }) =>
-      listen('enter-setup', () => {
-        requestEnterSetup();
-      }).then((fn) => {
-        unlisten = fn;
-      }),
-    );
+    void listen('enter-setup', () => {
+      requestEnterSetup();
+    }).then((fn) => {
+      unlisten = fn;
+    });
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyA') {
         e.preventDefault();
         requestEnterSetup();
       }
@@ -744,16 +757,14 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   // `clear-login-lockout` when the webview lacks focus under lockdown.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    void import('@tauri-apps/api/event').then(({ listen }) =>
-      listen('clear-login-lockout', () => {
-        requestClearLoginLockout();
-      }).then((fn) => {
-        unlisten = fn;
-      }),
-    );
+    void listen('clear-login-lockout', () => {
+      requestClearLoginLockout();
+    }).then((fn) => {
+      unlisten = fn;
+    });
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyB') {
         e.preventDefault();
         requestClearLoginLockout();
       }

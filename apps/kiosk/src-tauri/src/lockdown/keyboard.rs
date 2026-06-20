@@ -44,6 +44,9 @@ mod win {
 
     static HOOK: Mutex<Option<HookHandle>> = Mutex::new(None);
     static ENABLED: AtomicBool = AtomicBool::new(false);
+    /// When true, shell shortcuts (Win key, Alt+F4, etc.) are swallowed. When false,
+    /// the hook stays installed but only staff combos (Ctrl+Shift+A/B/H) are handled.
+    static FULL_BLOCK: AtomicBool = AtomicBool::new(false);
     static ALT_REHIDE_RUNNING: AtomicBool = AtomicBool::new(false);
     static APP: OnceLock<AppHandle> = OnceLock::new();
 
@@ -147,8 +150,9 @@ mod win {
             let is_keydown =
                 wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
             let is_keyup = wparam.0 == WM_KEYUP as usize || wparam.0 == WM_SYSKEYUP as usize;
+            let full_block = FULL_BLOCK.load(Ordering::SeqCst);
 
-            if is_keyup && kb.vkCode == VK_MENU.0 as u32 {
+            if full_block && is_keyup && kb.vkCode == VK_MENU.0 as u32 {
                 crate::lockdown::shell::hide_shell_chrome();
                 if let Some(app) = APP.get() {
                     crate::lockdown::foreground::capture_allowed_foreground(app);
@@ -176,12 +180,14 @@ mod win {
                     }
                     return LRESULT(1);
                 }
-                if should_block(kb.vkCode) {
-                    return LRESULT(1);
-                }
-                if is_alt_tab(kb.vkCode) {
-                    crate::lockdown::shell::hide_shell_chrome();
-                    start_alt_rehide_burst();
+                if full_block {
+                    if should_block(kb.vkCode) {
+                        return LRESULT(1);
+                    }
+                    if is_alt_tab(kb.vkCode) {
+                        crate::lockdown::shell::hide_shell_chrome();
+                        start_alt_rehide_burst();
+                    }
                 }
             }
         }
@@ -189,10 +195,8 @@ mod win {
         CallNextHookEx(next_hook_handle(), code, wparam, lparam)
     }
 
-    pub fn install() {
-        if ENABLED.swap(true, Ordering::SeqCst) {
-            return;
-        }
+    fn ensure_hook_installed() {
+        ENABLED.store(true, Ordering::SeqCst);
         let Ok(mut guard) = HOOK.lock() else {
             ENABLED.store(false, Ordering::SeqCst);
             return;
@@ -208,7 +212,18 @@ mod win {
         }
     }
 
+    pub fn install() {
+        FULL_BLOCK.store(true, Ordering::SeqCst);
+        ensure_hook_installed();
+    }
+
+    pub fn set_staff_combo_only() {
+        FULL_BLOCK.store(false, Ordering::SeqCst);
+        ensure_hook_installed();
+    }
+
     pub fn remove() {
+        FULL_BLOCK.store(false, Ordering::SeqCst);
         ENABLED.store(false, Ordering::SeqCst);
         let Ok(mut guard) = HOOK.lock() else {
             return;
@@ -228,6 +243,14 @@ pub fn set_app_handle(app: tauri::AppHandle) {
 
 #[cfg(not(target_os = "windows"))]
 pub fn set_app_handle(_app: tauri::AppHandle) {}
+
+#[cfg(target_os = "windows")]
+pub fn set_staff_combo_only() {
+    win::set_staff_combo_only();
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn set_staff_combo_only() {}
 
 #[cfg(target_os = "windows")]
 pub fn install_hook() {
