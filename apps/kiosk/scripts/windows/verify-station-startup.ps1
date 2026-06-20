@@ -4,19 +4,19 @@
   Diagnose and optionally repair Arena360 kiosk logon autostart.
 
 .DESCRIPTION
-  Checks auto-logon user, the Arena360 Kiosk scheduled task, executable path, and
-  legacy watchdog.pause. With -Repair, re-registers the logon task via configure-station.ps1.
+  Checks the Arena360 Kiosk scheduled task, executable path, and legacy watchdog.pause.
+  With -Repair, re-registers the logon task via configure-station.ps1.
 
 .PARAMETER Repair
   Re-register the logon scheduled task for the effective kiosk user.
 
 .PARAMETER InstallDir
-  Kiosk install directory (default: C:\Program Files\Arena360\kiosk).
+  Kiosk install directory. When omitted, resolved from marker, uninstall registry, or known paths.
 #>
 [CmdletBinding()]
 param(
     [switch]$Repair,
-    [string]$InstallDir = 'C:\Program Files\Arena360\kiosk'
+    [string]$InstallDir
 )
 
 Set-StrictMode -Version Latest
@@ -25,8 +25,8 @@ $ErrorActionPreference = 'Stop'
 $KioskTaskName = 'Arena360 Kiosk'
 $WinlogonKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 $MarkerDir = Join-Path $env:ProgramData 'Arena360'
+$MarkerPath = Join-Path $MarkerDir 'registry-hardening.json'
 $PausePath = Join-Path $MarkerDir 'watchdog.pause'
-$ConfigureScript = Join-Path $InstallDir 'scripts\configure-station.ps1'
 
 function Write-Info([string]$Message) {
     Write-Host "[Arena360 verify] $Message"
@@ -37,9 +37,110 @@ function Write-Issue([string]$Message) {
     $script:Issues += $Message
 }
 
+function Get-SamAccountName([string]$QualifiedName) {
+    if ([string]::IsNullOrWhiteSpace($QualifiedName)) {
+        return $null
+    }
+    $name = $QualifiedName.Trim()
+    if ($name -match '\\') {
+        return $name.Split('\')[-1]
+    }
+    return $name
+}
+
+function Get-ConsoleLoggedOnUser {
+    try {
+        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        if ($cs.UserName) {
+            return Get-SamAccountName $cs.UserName
+        }
+    } catch {
+        return $null
+    }
+    return $null
+}
+
+function Resolve-InstallDir([string]$RequestedDir) {
+    if (-not [string]::IsNullOrWhiteSpace($RequestedDir) -and (Test-Path -LiteralPath $RequestedDir)) {
+        return $RequestedDir
+    }
+
+    if (Test-Path -LiteralPath $MarkerPath) {
+        try {
+            $marker = Get-Content -LiteralPath $MarkerPath -Raw | ConvertFrom-Json
+            if ($marker.installDir -and (Test-Path -LiteralPath $marker.installDir)) {
+                return [string]$marker.installDir
+            }
+        } catch {
+            Write-Info 'Could not read installDir from marker file.'
+        }
+    }
+
+    $uninstallRoots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($root in $uninstallRoots) {
+        $matches = Get-ItemProperty $root -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like 'Arena360*' -and $_.InstallLocation }
+        foreach ($entry in $matches) {
+            $loc = [string]$entry.InstallLocation
+            if ($loc) {
+                $loc = $loc.TrimEnd('\')
+            }
+            if ($loc -and (Test-Path -LiteralPath $loc)) {
+                return $loc
+            }
+        }
+    }
+
+    $candidates = @(
+        'C:\Program Files\Arena360 Station Management',
+        'C:\Program Files\Arena360\kiosk'
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedDir)) {
+        return $RequestedDir
+    }
+    return 'C:\Program Files\Arena360 Station Management'
+}
+
+function Resolve-RepairUser {
+    if (Test-Path -LiteralPath $MarkerPath) {
+        try {
+            $marker = Get-Content -LiteralPath $MarkerPath -Raw | ConvertFrom-Json
+            if ($marker.kioskUser) {
+                return [string]$marker.kioskUser
+            }
+        } catch { }
+    }
+
+    $consoleUser = Get-ConsoleLoggedOnUser
+    if ($consoleUser) {
+        return $consoleUser
+    }
+
+    if (Test-Path -LiteralPath $WinlogonKey) {
+        $winlogon = Get-ItemProperty -LiteralPath $WinlogonKey
+        if ($winlogon.AutoAdminLogon -eq '1' -and $winlogon.DefaultUserName) {
+            return [string]$winlogon.DefaultUserName
+        }
+    }
+
+    return $env:USERNAME
+}
+
 $Issues = @()
+$InstallDir = Resolve-InstallDir $InstallDir
+$ConfigureScript = Join-Path $InstallDir 'scripts\configure-station.ps1'
 
 Write-Info '--- Arena360 kiosk startup diagnosis ---'
+Write-Info "Resolved install directory: $InstallDir"
 
 $autoLogonEnabled = $false
 $autoLogonUser = $null
@@ -52,14 +153,14 @@ Write-Info "Auto-logon enabled: $autoLogonEnabled"
 Write-Info "Auto-logon user: $(if ($autoLogonUser) { $autoLogonUser } else { '(none)' })"
 
 if (-not $autoLogonEnabled -or [string]::IsNullOrWhiteSpace($autoLogonUser)) {
-    Write-Issue 'Auto-logon is not configured. The kiosk only starts after a user logs on.'
+    Write-Info 'Auto-logon is not configured. The kiosk starts after the installing user logs on.'
 }
 
 $preferredExe = Join-Path $InstallDir 'Arena360 Station Management.exe'
 $kioskExe = $null
 if (Test-Path -LiteralPath $preferredExe) {
     $kioskExe = $preferredExe
-} else {
+} elseif (Test-Path -LiteralPath $InstallDir) {
     $match = Get-ChildItem -LiteralPath $InstallDir -Filter '*.exe' -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -notlike 'arena360-watchdog*' -and $_.Name -notlike 'uninstall*' } |
         Select-Object -First 1
@@ -80,7 +181,6 @@ $taskQuery = schtasks /Query /TN $KioskTaskName /V /FO LIST 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Issue "Scheduled task '$KioskTaskName' is missing"
 } else {
-    $taskText = ($taskQuery | Out-String)
     Write-Info "Scheduled task '$KioskTaskName' exists"
 
     $runAsUser = ($taskQuery | Where-Object { $_ -match 'Run As User' }) -replace '^\s*Run As User:\s*', ''
@@ -114,7 +214,7 @@ if ($Repair) {
     if (-not (Test-Path -LiteralPath $ConfigureScript)) {
         Write-Issue "Cannot repair: $ConfigureScript not found"
     } else {
-        $kioskUser = if ($autoLogonUser) { $autoLogonUser } else { $env:USERNAME }
+        $kioskUser = Resolve-RepairUser
         Write-Info "Repairing autostart for user '$kioskUser'..."
         & powershell -NoProfile -ExecutionPolicy Bypass -File $ConfigureScript `
             -InstallDir $InstallDir `
@@ -130,7 +230,7 @@ if ($Repair) {
 
 Write-Info '--- Summary ---'
 if ($Issues.Count -eq 0) {
-    Write-Info 'No issues detected. After reboot, kiosk should launch ~30s after auto-logon.'
+    Write-Info 'No issues detected. After reboot, kiosk should launch ~30s after the user logs on.'
     exit 0
 }
 

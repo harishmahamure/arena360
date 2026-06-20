@@ -74,7 +74,7 @@ This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bund
 
 - **NSIS** (`nsis/*-setup.exe`) — per-machine install (`installMode: perMachine`). For SCCM/Intune, deploy silently (`/S`).
 
-**Post-install flags** (see [KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)): `/NOCONFIGURE`, `/NOAUTOSTART`, `/NOHARDENING`, `/KIOSKUSER=Name`. The bundled `configure-station.ps1` registers the **Arena360 Kiosk** logon scheduled task, applies HKLM hardening by default, and optionally configures auto-logon for a single Windows user. If autostart fails after install, run `scripts\verify-station-startup.ps1 -Repair` from the install directory (elevated).
+**Post-install flags** (see [KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)): `/NOCONFIGURE`, `/NOAUTOSTART`, `/NOHARDENING`, `/KIOSKUSER=Name` (optional). Default install path: `C:\Program Files\Arena360 Station Management\`. The bundled `configure-station.ps1` registers the **Arena360 Kiosk** logon scheduled task for the installing/console Windows user, applies HKLM hardening by default, and optionally configures auto-logon. If autostart fails after a silent install, run `scripts\verify-station-startup.ps1 -Repair` (elevated; path auto-detected).
 
 ### WebView2 runtime (Windows 10)
 

@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
 import type { AppPhase } from '../context/KioskProvider';
@@ -22,14 +23,40 @@ export function isIdleUpdatePhase(phase: AppPhase): phase is IdleUpdatePhase {
  * interrupts play (ADR-0020 lockdown).
  */
 let inFlight = false;
+let cancelRequested = false;
+let trackedPhase: AppPhase | null = null;
 
-export async function checkForUpdateWhenIdle(): Promise<void> {
+/** Keep phase in sync so an in-progress download can abort if play starts. */
+export function setUpdatePhase(phase: AppPhase): void {
+  trackedPhase = phase;
+  if (!isIdleUpdatePhase(phase)) {
+    cancelRequested = true;
+  }
+}
+
+function shouldContinueUpdate(phase: AppPhase): boolean {
+  return !cancelRequested && isIdleUpdatePhase(trackedPhase ?? phase);
+}
+
+export async function checkForUpdateWhenIdle(phase: AppPhase): Promise<void> {
   if (inFlight) return;
+  if (!isIdleUpdatePhase(phase)) return;
+
   inFlight = true;
+  cancelRequested = false;
+  trackedPhase = phase;
+
   try {
     const update = await check();
     if (!update) return;
+    if (!shouldContinueUpdate(phase)) return;
+
+    await invoke('prepare_for_update');
+    if (!shouldContinueUpdate(phase)) return;
+
     await update.downloadAndInstall();
+    if (!shouldContinueUpdate(phase)) return;
+
     await relaunch();
   } catch (err) {
     // Offline, not-yet-configured, or running outside Tauri (browser dev): all

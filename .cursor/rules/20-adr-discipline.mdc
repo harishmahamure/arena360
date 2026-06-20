@@ -24,7 +24,9 @@ Before any architectural change, check the accepted ADRs in `docs/adr/`. If your
 | 0017 | Kiosk player and device JWT authentication |
 | 0018 | Kiosk WebSocket ACL for device tokens |
 | 0019 | Kiosk device launch allow-list (client-side) |
-| 0020 | Kiosk Windows lockdown and process APIs |
+| 0020 | Kiosk Windows lockdown |
+| 0028 | Kiosk release pipeline and auto-update |
+| 0041 | Remove watchdog — logon task autostart |
 
 ## What counts as an architectural change
 

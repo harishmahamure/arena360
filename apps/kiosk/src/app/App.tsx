@@ -21,8 +21,9 @@ function KioskShell() {
   // is not pulled into browser/test bundles.
   useEffect(() => {
     void import('../lib/updater').then((m) => {
+      m.setUpdatePhase(phase);
       if (m.isIdleUpdatePhase(phase)) {
-        void m.checkForUpdateWhenIdle();
+        void m.checkForUpdateWhenIdle(phase);
       }
     });
   }, [phase]);

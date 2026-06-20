@@ -27,7 +27,7 @@ flowchart TB
   subgraph pc [PC gaming stations]
     installKiosk[Install NSIS from GitHub Release]
     shell[Assigned Access or shell replacement]
-    autologon[Auto-logon ArenaKiosk user]
+    autologon[Optional auto-logon same user]
     autostart[Scheduled Task at logon]
     provisionPC[Ctrl+Shift+A register + allow-list]
   end
@@ -88,17 +88,17 @@ replacement, Run key) are in
 - [ ] **Golden image:** Windows 10/11, GPU drivers, games, Microsoft Edge WebView2 runtime
   (embedded by NSIS installer on Win10; pre-install for fully offline imaging — see
   [apps/kiosk/README.md](../apps/kiosk/README.md)).
-- [ ] **Dedicated local user:** Create `ArenaKiosk` (or venue-specific name) with **no**
-  administrator rights.
 - [ ] **Install kiosk:** Download latest NSIS `perMachine` installer from GitHub Release
-  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). The installer registers
-  an **Arena360 Kiosk** scheduled task at logon (main exe; skip with `/NOAUTOSTART`). Run
-  the installer logged in as `ArenaKiosk` when possible so the task applies to the kiosk user.
+  ([ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md)). Log in as the Windows
+  account that will run the kiosk, then install (silent: `Arena360-setup.exe /S`). The installer
+  registers an **Arena360 Kiosk** scheduled task at logon for that account (skip with `/NOAUTOSTART`).
+- [ ] **Install location:** Default path is `C:\Program Files\Arena360 Station Management\`.
 - [ ] **Shell strategy:** Choose one (recommend **Option A — Assigned Access** on
   Windows Pro/Enterprise). See
   [KIOSK-WINDOWS-DEPLOYMENT.md § Layer 1](KIOSK-WINDOWS-DEPLOYMENT.md#layer-1--os-kiosk-shell-operator--it).
-- [ ] **Auto-logon:** Enable auto-logon for the kiosk user (Sysinternals Autologon or
-  unattend XML). Never store passwords in git.
+- [ ] **Auto-logon (optional):** Enable auto-logon for the same Windows account if you want
+  unattended reboot (Sysinternals Autologon or unattend XML). Not required if someone logs in
+  manually after reboot. Never store passwords in git.
 - [ ] **Verify autostart:** After install, run `scripts\verify-station-startup.ps1` (bundled under install dir) or confirm `schtasks /Query /TN "Arena360 Kiosk"` and that `Arena360 Station Management.exe` exists under the install directory.
 
 - [ ] **GPO hardening (recommended):** Applied by default at install (`DisableTaskMgr`,

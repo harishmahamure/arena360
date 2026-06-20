@@ -17,6 +17,7 @@
 [CmdletBinding()]
 param(
     [string]$KioskUser = $env:USERNAME,
+    [switch]$KioskUserExplicit,
     [Parameter(Mandatory = $false)]
     [string]$InstallDir,
     [SecureString]$AutoLogonPassword,
@@ -72,6 +73,93 @@ function Write-Marker($Data) {
     $Data | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $MarkerPath -Encoding UTF8
 }
 
+function Get-SamAccountName([string]$QualifiedName) {
+    if ([string]::IsNullOrWhiteSpace($QualifiedName)) {
+        return $null
+    }
+    $name = $QualifiedName.Trim()
+    if ($name -match '\\') {
+        return $name.Split('\')[-1]
+    }
+    return $name
+}
+
+function Test-IsServiceAccount([string]$User) {
+    if ([string]::IsNullOrWhiteSpace($User)) {
+        return $true
+    }
+    $normalized = $User.Trim().ToUpperInvariant()
+    return $normalized -eq 'SYSTEM' -or $normalized -eq 'LOCAL SERVICE' -or $normalized -eq 'NETWORK SERVICE' -or $normalized.EndsWith('$')
+}
+
+function Get-ConsoleLoggedOnUser {
+    try {
+        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        if ($cs.UserName) {
+            $sam = Get-SamAccountName $cs.UserName
+            if ($sam) {
+                return $sam
+            }
+        }
+    } catch {
+        Write-Warn "Win32_ComputerSystem query failed: $_"
+    }
+
+    try {
+        $output = @(query user 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $output.Count -gt 1) {
+            foreach ($line in $output | Select-Object -Skip 1) {
+                if ($line -match '^\s*(\S+)\s+\S+\s+\d+\s+(\S+)') {
+                    if ($matches[2] -eq 'Active') {
+                        $sam = Get-SamAccountName $matches[1]
+                        if ($sam) {
+                            return $sam
+                        }
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Warn "query user failed: $_"
+    }
+
+    return $null
+}
+
+function Test-LocalUserExists([string]$User) {
+    if ([string]::IsNullOrWhiteSpace($User)) {
+        return $false
+    }
+    try {
+        $null = Get-LocalUser -Name $User -ErrorAction Stop
+        return $true
+    } catch {
+        try {
+            $principal = New-Object System.Security.Principal.NTAccount('.', $User)
+            $null = $principal.Translate([System.Security.Principal.SecurityIdentifier])
+            return $true
+        } catch {
+            try {
+                $principal = New-Object System.Security.Principal.NTAccount($User)
+                $null = $principal.Translate([System.Security.Principal.SecurityIdentifier])
+                return $true
+            } catch {
+                return $false
+            }
+        }
+    }
+}
+
+function Write-InstallNeedsRepair([string]$Reason) {
+    Ensure-MarkerDir
+    $repairPath = Join-Path $MarkerDir 'install-needs-repair.json'
+    [ordered]@{
+        reason = $Reason
+        at     = (Get-Date).ToString('o')
+    } | ConvertTo-Json | Set-Content -LiteralPath $repairPath -Encoding UTF8
+    Write-Warn "Wrote repair marker to $repairPath"
+}
+
 function Get-AutoLogonUser {
     if (-not (Test-Path -LiteralPath $WinlogonKey)) {
         return $null
@@ -87,27 +175,51 @@ function Get-AutoLogonUser {
     return $name.Trim()
 }
 
-function Resolve-EffectiveKioskUser([string]$RequestedUser) {
-    if ([string]::IsNullOrWhiteSpace($RequestedUser)) {
-        $RequestedUser = $env:USERNAME
+function Resolve-EffectiveKioskUser([string]$RequestedUser, [switch]$ExplicitRequest) {
+    $resolved = $RequestedUser
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        $resolved = $env:USERNAME
     }
 
-    $autoLogonUser = Get-AutoLogonUser
-    if ($autoLogonUser -and ($RequestedUser -ne $autoLogonUser)) {
-        Write-Warn "KioskUser '$RequestedUser' does not match auto-logon user '$autoLogonUser'. Using auto-logon user for scheduled task."
-        return $autoLogonUser
-    }
-
-    $marker = Read-Marker
-    if ($marker -and $marker.autologon -and $marker.autologon.configured -and $marker.autologon.user) {
-        $markerUser = [string]$marker.autologon.user
-        if ($markerUser -and ($RequestedUser -ne $markerUser)) {
-            Write-Warn "KioskUser '$RequestedUser' does not match marker auto-logon user '$markerUser'. Using marker user for scheduled task."
-            return $markerUser
+    if (-not $ExplicitRequest) {
+        if (Test-IsServiceAccount $resolved) {
+            $consoleUser = Get-ConsoleLoggedOnUser
+            if ($consoleUser) {
+                Write-Info "Using console logged-on user '$consoleUser' (install context was '$resolved')."
+                $resolved = $consoleUser
+            }
+        } elseif (Test-IsServiceAccount $env:USERNAME) {
+            $consoleUser = Get-ConsoleLoggedOnUser
+            if ($consoleUser -and ($resolved -ne $consoleUser)) {
+                Write-Info "Using console logged-on user '$consoleUser' instead of deploy account '$resolved'."
+                $resolved = $consoleUser
+            }
         }
     }
 
-    return $RequestedUser
+    if (Test-IsServiceAccount $resolved) {
+        $marker = Read-Marker
+        if ($marker -and $marker.kioskUser) {
+            $markerUser = [string]$marker.kioskUser
+            if ($markerUser) {
+                Write-Info "Using marker kiosk user '$markerUser'."
+                $resolved = $markerUser
+            }
+        }
+    }
+
+    if (-not $ExplicitRequest) {
+        $autoLogonUser = Get-AutoLogonUser
+        if ($autoLogonUser -and ($resolved -ne $autoLogonUser)) {
+            $marker = Read-Marker
+            if ($marker -and $marker.autologon -and $marker.autologon.configured) {
+                Write-Warn "Using Arena360-configured auto-logon user '$autoLogonUser' for scheduled task."
+                return $autoLogonUser
+            }
+        }
+    }
+
+    return $resolved
 }
 
 function Resolve-KioskExe([string]$Dir) {
@@ -161,7 +273,12 @@ function Install-KioskLogonTask([string]$KioskExe, [string]$RunAsUser) {
         return $false
     }
 
-    $RunAsUser = Resolve-EffectiveKioskUser $RunAsUser
+    $RunAsUser = Resolve-EffectiveKioskUser $RunAsUser -ExplicitRequest:$KioskUserExplicit
+
+    if (-not (Test-LocalUserExists $RunAsUser)) {
+        Write-Warn "Windows account '$RunAsUser' was not found; cannot register logon task."
+        return $false
+    }
 
     Remove-LegacyWatchdogTask
     Clear-LegacyWatchdogPause
@@ -360,7 +477,7 @@ if ($RefreshAutostartOnly) {
         Write-Warn "No kiosk binary under $InstallDir; cannot refresh autostart."
         exit 1
     }
-    $KioskUser = Resolve-EffectiveKioskUser $KioskUser
+    $KioskUser = Resolve-EffectiveKioskUser $KioskUser -ExplicitRequest:$KioskUserExplicit
     if (-not (Install-KioskLogonTask -KioskExe $kioskExe -RunAsUser $KioskUser)) {
         exit 1
     }
@@ -374,7 +491,7 @@ if ($ShellMode -eq 'ReplaceShell') {
     Write-Warn 'Run-key shell mode is optional; the Arena360 Kiosk scheduled task launches the app at logon.'
 }
 
-$effectiveKioskUser = Resolve-EffectiveKioskUser $KioskUser
+$effectiveKioskUser = Resolve-EffectiveKioskUser $KioskUser -ExplicitRequest:$KioskUserExplicit
 
 $skipStart = $SkipAutostart -or $SkipWatchdog
 $autostartRegistered = $true
@@ -394,7 +511,11 @@ if (-not $skipStart) {
 }
 
 if (-not $SkipHardening) {
-    Install-Hardening
+    try {
+        Install-Hardening
+    } catch {
+        Write-Warn "HKLM hardening failed (non-fatal): $_"
+    }
 }
 
 if ($AutoLogonPassword) {
@@ -415,6 +536,7 @@ if ($AutoLogonPassword) {
 
 if (-not $skipStart -and -not $autostartRegistered) {
     Write-Warn 'Failed to register kiosk logon autostart.'
+    Write-InstallNeedsRepair 'Failed to register kiosk logon autostart.'
     exit 1
 }
 

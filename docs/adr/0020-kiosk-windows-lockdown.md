@@ -10,7 +10,7 @@
 ## Amendment 2026-06-17: superseded by DRAFT-0041
 
 The **2026-06-15 watchdog pause IPC** amendment below is **superseded** by
-[DRAFT-0041](DRAFT-0041-remove-watchdog-logon-autostart.md). Windows autostart is now a
+[ADR-0041](0041-remove-watchdog-logon-autostart.md). Windows autostart is now a
 single **Arena360 Kiosk** ONLOGON scheduled task; pause-file IPC and `arena360-watchdog.exe`
 are removed.
 

@@ -1,6 +1,6 @@
-# DRAFT-0041: Remove watchdog sidecar — logon scheduled task autostart
+# ADR-0041: Remove watchdog sidecar — logon scheduled task autostart
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-06-17
 **Deciders**: Platform team
 
@@ -17,7 +17,7 @@ prevented relaunch during setup, exit-to-desktop, updates, and power handoff.
 After PC restart, stations often failed to start because:
 
 - Stale `watchdog.pause` (e.g. maintenance/setup before reboot) blocked spawn for up to 15 min
-- `schtasks` registration failed for the wrong `/KIOSKUSER`
+- `schtasks` registration failed for the wrong Windows user during silent deploy
 - The sidecar added operational complexity without matching fleet needs
 
 Operators requested **simple autolaunch on Windows login** without crash-relaunch monitoring.
@@ -36,7 +36,7 @@ Operators requested **simple autolaunch on Windows login** without crash-relaunc
 
 ### Positive
 
-- Reboot → auto-logon → kiosk starts without pause-file failure modes
+- Reboot → user logon → kiosk starts without pause-file failure modes
 - Simpler bundle (one exe), faster builds, less Rust surface area
 - Exit to desktop and setup no longer require watchdog coordination
 
@@ -44,7 +44,7 @@ Operators requested **simple autolaunch on Windows login** without crash-relaunc
 
 - **No crash/kill auto-relaunch** — kiosk stays down until next user logon or manual start
 - Auto-update no longer pauses a watchdog; perMachine NSIS replace may race if process
-  does not exit cleanly (mitigated: kiosk exits before `downloadAndInstall`)
+  does not exit cleanly (mitigated: `prepare_for_update` + idle-phase gate before `downloadAndInstall`)
 
 ## Alternatives Considered
 
@@ -54,7 +54,7 @@ Rejected: treats symptom; sidecar complexity remains.
 
 ### HKLM Run key instead of scheduled task
 
-Rejected: less explicit per-user binding; scheduled task already works with `/KIOSKUSER`.
+Rejected: less explicit per-user binding; scheduled task already works with explicit user resolution.
 
 ### Windows Service
 

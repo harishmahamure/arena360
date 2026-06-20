@@ -146,6 +146,20 @@ simply have no update endpoint (checks no-op).
 - Revisit `perUser` install or an elevated update service if UAC prompts prove
   unworkable on locked stations.
 
+## Amendment 2026-06-20: install/update hook behaviour
+
+- **Fresh install** (`NSIS_HOOK_POSTINSTALL` without `/UPDATE`): runs full
+  `configure-station.ps1` (logon task, optional hardening, optional auto-logon prompt).
+  Silent `/S` installs **do not abort** on autostart failure — binaries remain on disk;
+  repair via `verify-station-startup.ps1 -Repair`.
+- **In-app update** (installer invoked with `/UPDATE`): runs
+  `-RefreshAutostartOnly` only — refreshes the scheduled task exe path; skips hardening
+  and auto-logon prompts.
+- **User resolution**: autostart binds to the installing/console Windows account by default;
+  `/KIOSKUSER=` remains an optional override.
+- **Pre-update**: `prepare_for_update` Tauri command clears legacy `watchdog.pause` before
+  `downloadAndInstall`; updater aborts if phase leaves idle during download.
+
 ## Alternatives considered
 
 ### Build + publish installer only, keep auto-update OFF — no ADR needed

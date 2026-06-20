@@ -1,5 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { isIdleUpdatePhase } from './updater';
+import { describe, expect, it, vi } from 'vitest';
+import { isIdleUpdatePhase, setUpdatePhase } from './updater';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/plugin-process', () => ({
+  relaunch: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/plugin-updater', () => ({
+  check: vi.fn(),
+}));
 
 describe('isIdleUpdatePhase', () => {
   it('returns true for register, setup, and login', () => {
@@ -12,5 +24,11 @@ describe('isIdleUpdatePhase', () => {
     expect(isIdleUpdatePhase('loading')).toBe(false);
     expect(isIdleUpdatePhase('session')).toBe(false);
     expect(isIdleUpdatePhase('already-in-session')).toBe(false);
+  });
+
+  it('marks non-idle phases for update cancellation', () => {
+    setUpdatePhase('login');
+    setUpdatePhase('session');
+    expect(isIdleUpdatePhase('session')).toBe(false);
   });
 });

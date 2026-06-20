@@ -9,6 +9,7 @@ mod power;
 mod process;
 mod scan;
 mod storage;
+mod update;
 
 use instance_mutex::init_instance_mutex;
 use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
@@ -78,6 +79,7 @@ pub fn run() {
             boost::set_game_boost_config,
             boost::get_game_boost_config,
             cache::cache_asset,
+            update::prepare_for_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
