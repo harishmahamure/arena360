@@ -40,6 +40,10 @@ pub async fn clock_in(
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
     let shift = state.shifts.clock_in(user_id, dto, user_id).await?;
+    state
+        .cash_registers
+        .carry_forward_balance(user_id, shift.id, user_id)
+        .await?;
     created(shift)
 }
 
@@ -307,10 +311,15 @@ pub async fn handover_shift(
         )
         .await?;
 
-    let opening_balance = closed_register
-        .as_ref()
-        .and_then(|register| register.closing_balance)
-        .unwrap_or(0.0);
+    let opening_balance = match closed_register.as_ref() {
+        Some(register) => {
+            state
+                .cash_registers
+                .compute_carry_forward_opening(register)
+                .await?
+        }
+        None => 0.0,
+    };
 
     let _ = state
         .cash_registers

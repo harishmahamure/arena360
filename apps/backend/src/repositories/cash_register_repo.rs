@@ -495,6 +495,25 @@ impl CashRegisterRepository {
         Ok(row.0.unwrap_or(0.0))
     }
 
+    /// Sum of all deposit cash_out entries (pending + approved) on a register.
+    /// Used for carry-forward: closing balance is counted before deposit removal.
+    pub async fn sum_all_deposit_cash_out(&self, register_id: Uuid) -> Result<f64, AppError> {
+        let row: (Option<f64>,) = sqlx::query_as(
+            r#"
+            SELECT COALESCE(SUM(e.amount::float8), 0.0)
+            FROM cash_register_entries e
+            WHERE e."cashRegisterId" = $1
+              AND e."entryType" = 'cash_out'
+              AND e."referenceType" = 'cash_deposit'
+            "#,
+        )
+        .bind(register_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0.unwrap_or(0.0))
+    }
+
     pub async fn get_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
         self.calculate_expected_closing(register_id).await
     }

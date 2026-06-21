@@ -11,7 +11,6 @@ use crate::dto::{
 use crate::validation::{is_playstation_device_type, require_playstation_device_type};
 use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, DeviceUser};
-use crate::models::ClockInDto;
 use crate::openapi::responses::{
     AuthResponseEnvelope, ErrorEnvelope, RegisterResponseEnvelope,
 };
@@ -59,30 +58,15 @@ pub async fn login_staff(
         .parse()
         .map_err(|_| AppError::Internal("Invalid user ID".to_string()))?;
 
-    let shift = match state
+    let shift = state
         .shifts
-        .clock_in(
-            user_id,
-            ClockInDto {
-                notes: Some("Auto-started on login".to_string()),
-            },
-            user_id,
-        )
-        .await
-    {
-        Ok(shift) => shift,
-        Err(AppError::Conflict(_)) => state
-            .shifts
-            .get_active(user_id)
-            .await?
-            .ok_or_else(|| AppError::Internal("Active shift conflict".to_string()))?,
-        Err(error) => return Err(error),
-    };
+        .ensure_shift_for_staff_login(user_id, user_id)
+        .await?;
 
-    let _ = state
+    state
         .cash_registers
         .carry_forward_balance(user_id, shift.id, user_id)
-        .await;
+        .await?;
 
     result.shiftId = Some(shift.id.to_string());
     ok(result)

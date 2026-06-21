@@ -179,6 +179,27 @@ impl CashRegisterService {
         .await
     }
 
+    pub async fn find_register_by_shift(
+        &self,
+        shift_id: Uuid,
+    ) -> Result<Option<CashRegister>, AppError> {
+        self.repo.find_by_shift(shift_id).await
+    }
+
+    /// Opening float after a closed shift: pre-deposit closing count minus all deposit withdrawals.
+    pub fn opening_from_closing_and_deposits(closing: f64, deposit_cash_out_total: f64) -> f64 {
+        closing - deposit_cash_out_total
+    }
+
+    pub async fn compute_carry_forward_opening(
+        &self,
+        register: &CashRegister,
+    ) -> Result<f64, AppError> {
+        let closing = register.closing_balance.unwrap_or(0.0);
+        let withdrawn = self.repo.sum_all_deposit_cash_out(register.id).await?;
+        Ok(Self::opening_from_closing_and_deposits(closing, withdrawn))
+    }
+
     pub async fn carry_forward_balance(
         &self,
         user_id: Uuid,
@@ -187,11 +208,7 @@ impl CashRegisterService {
     ) -> Result<CashRegister, AppError> {
         let last_register = self.repo.find_last_closed_by_user(user_id).await?;
         let opening = match last_register {
-            Some(ref r) => {
-                let closing = r.closing_balance.unwrap_or(0.0);
-                let deposited = self.repo.sum_deposit_entries(r.id).await?;
-                closing - deposited
-            }
+            Some(ref r) => self.compute_carry_forward_opening(r).await?,
             None => 0.0,
         };
         self.ensure_open_for_shift(new_shift_id, actor_id, opening)

@@ -40,6 +40,59 @@ impl ShiftService {
         self.repo.create(user_id, dto.notes, actor_id).await
     }
 
+    /// Starts a shift on staff login, recovering from a stale active shift when its register is already closed.
+    pub async fn ensure_shift_for_staff_login(
+        &self,
+        user_id: Uuid,
+        actor_id: Uuid,
+    ) -> Result<Shift, AppError> {
+        let login_notes = Some("Auto-started on login".to_string());
+        match self
+            .clock_in(
+                user_id,
+                ClockInDto {
+                    notes: login_notes.clone(),
+                },
+                actor_id,
+            )
+            .await
+        {
+            Ok(shift) => Ok(shift),
+            Err(AppError::Conflict(_)) => {
+                let active = self.get_active(user_id).await?.ok_or_else(|| {
+                    AppError::Internal("Active shift conflict without active shift".to_string())
+                })?;
+
+                let Some(cash_registers) = &self.cash_registers else {
+                    return Ok(active);
+                };
+
+                if let Some(register) = cash_registers.find_register_by_shift(active.id).await? {
+                    if register.status == "closed" {
+                        self.clock_out(
+                            user_id,
+                            ClockOutDto {
+                                notes: Some("Auto-closed stale shift on login".to_string()),
+                            },
+                            actor_id,
+                        )
+                        .await?;
+                        return self
+                            .clock_in(
+                                user_id,
+                                ClockInDto { notes: login_notes },
+                                actor_id,
+                            )
+                            .await;
+                    }
+                }
+
+                Ok(active)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     pub async fn clock_out(
         &self,
         user_id: Uuid,
