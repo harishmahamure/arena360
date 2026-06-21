@@ -1,5 +1,6 @@
 use sqlx::PgPool;
 use uuid::Uuid;
+use serde_json::json;
 
 use crate::dto::PaginationResult;
 use crate::error::AppError;
@@ -8,19 +9,24 @@ use crate::models::{
 };
 use crate::realtime::OutboxService;
 use crate::repositories::{CashDepositRepository, CashRegisterRepository};
+use crate::services::NotificationService;
+use crate::models::activity_kind;
+use crate::services::{RecordNotification, Recipients};
 
 pub struct CashDepositService {
     repo: CashDepositRepository,
     cash_register_repo: CashRegisterRepository,
     outbox: OutboxService,
+    notifications: NotificationService,
 }
 
 impl CashDepositService {
-    pub fn new(pool: PgPool, outbox: OutboxService) -> Self {
+    pub fn new(pool: PgPool, outbox: OutboxService, notifications: NotificationService) -> Self {
         Self {
             repo: CashDepositRepository::new(pool.clone()),
             cash_register_repo: CashRegisterRepository::new(pool),
             outbox,
+            notifications,
         }
     }
 
@@ -71,11 +77,37 @@ impl CashDepositService {
             .publish(
                 "admin",
                 "approval.requested",
-                payload,
+                payload.clone(),
                 Some("admin"),
                 None,
                 true,
             )
+            .await;
+        let _ = self
+            .notifications
+            .record_approval_requested(
+                "cash_deposit",
+                deposit.id,
+                &format!("Cash deposit approval: ₹{:.2}", deposit.amount),
+                payload,
+                Some(staff_id),
+            )
+            .await;
+        let _ = self
+            .notifications
+            .record(RecordNotification {
+                kind: activity_kind::CASH_DEPOSIT_INITIATED.to_string(),
+                title: format!("Cash deposit initiated: ₹{:.2}", deposit.amount),
+                summary: Some("Pending admin approval".to_string()),
+                payload: json!({
+                    "depositId": deposit.id.to_string(),
+                    "amount": deposit.amount,
+                }),
+                actor_user_id: Some(staff_id),
+                entity_type: Some("cash_deposit".to_string()),
+                entity_id: Some(deposit.id),
+                recipients: Recipients::Users(vec![staff_id]),
+            })
             .await;
 
         let entry = CreateCashRegisterEntryDto {
@@ -128,10 +160,22 @@ impl CashDepositService {
             .publish(
                 "admin",
                 "cash_deposit.status_changed",
-                payload,
+                payload.clone(),
                 Some("admin"),
                 None,
                 true,
+            )
+            .await;
+        let _ = self
+            .notifications
+            .record_approval_decided(
+                "cash_deposit",
+                deposit.id,
+                "approved",
+                "Cash deposit approved",
+                payload,
+                deposit.initiated_by,
+                Some(admin_id),
             )
             .await;
 
@@ -174,10 +218,22 @@ impl CashDepositService {
                 .publish(
                     "admin",
                     "cash_deposit.status_changed",
-                    payload,
+                    payload.clone(),
                     Some("admin"),
                     None,
                     true,
+                )
+                .await;
+            let _ = self
+                .notifications
+                .record_approval_decided(
+                    "cash_deposit",
+                    deposit.id,
+                    "rejected",
+                    "Cash deposit rejected",
+                    payload,
+                    deposit.initiated_by,
+                    Some(admin_id),
                 )
                 .await;
         }

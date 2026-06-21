@@ -11,6 +11,7 @@ pub mod ttl {
     pub const AUTH: Duration = Duration::from_secs(12 * 60 * 60);
     pub const AGGREGATE: Duration = Duration::from_secs(2 * 60 * 60);
     pub const OTP_RATE_LIMIT: Duration = Duration::from_secs(60);
+    pub const NOTIFICATIONS: Duration = Duration::from_secs(5 * 60);
 }
 
 pub const INVALIDATION_CHANNEL: &str = "cache:invalidate";
@@ -132,6 +133,22 @@ pub fn stats_usage(filter_hash: &str) -> String {
 }
 
 pub const STATS_PREFIX: &str = "stats:v5:";
+
+pub const NOTIFICATIONS_PREFIX: &str = "notifications:";
+
+pub const MAX_INBOX_NOTIFICATIONS: i64 = 10;
+
+pub fn notifications_user_prefix(user_id: &uuid::Uuid) -> String {
+    format!("notifications:{user_id}:")
+}
+
+pub fn notifications_inbox(user_id: &uuid::Uuid, filter_hash: &str) -> String {
+    format!("notifications:{user_id}:inbox:{filter_hash}")
+}
+
+pub fn notifications_unread(user_id: &uuid::Uuid) -> String {
+    format!("notifications:{user_id}:unread")
+}
 
 /// Stable hash for filter DTOs used in list cache keys.
 pub fn filter_hash(value: &impl serde::Serialize) -> String {

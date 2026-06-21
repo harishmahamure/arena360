@@ -11,6 +11,7 @@ use crate::realtime::OutboxService;
 use crate::repositories::{ExpenseCategoryRepository, ExpenseRepository, VendorRepository};
 use crate::services::cash_register_service::CashRegisterService;
 use crate::services::shift_service::ShiftService;
+use crate::services::NotificationService;
 
 pub struct ExpenseService {
     repo: ExpenseRepository,
@@ -19,6 +20,7 @@ pub struct ExpenseService {
     cash_register_service: CashRegisterService,
     shift_service: ShiftService,
     outbox: OutboxService,
+    notifications: NotificationService,
 }
 
 impl ExpenseService {
@@ -27,6 +29,7 @@ impl ExpenseService {
         cash_register_service: CashRegisterService,
         shift_service: ShiftService,
         outbox: OutboxService,
+        notifications: NotificationService,
     ) -> Self {
         Self {
             repo: ExpenseRepository::new(pool.clone()),
@@ -35,6 +38,7 @@ impl ExpenseService {
             cash_register_service,
             shift_service,
             outbox,
+            notifications,
         }
     }
 
@@ -95,10 +99,20 @@ impl ExpenseService {
                 .publish(
                     "admin",
                     "approval.requested",
-                    payload,
+                    payload.clone(),
                     Some("admin"),
                     None,
                     true,
+                )
+                .await;
+            let _ = self
+                .notifications
+                .record_approval_requested(
+                    "expense",
+                    expense.id,
+                    &format!("Expense approval: ₹{:.2}", expense.amount),
+                    payload,
+                    created_by,
                 )
                 .await;
         }
@@ -230,12 +244,26 @@ impl ExpenseService {
                 .publish(
                     "admin",
                     "expense.status_changed",
-                    payload,
+                    payload.clone(),
                     Some("admin"),
                     None,
                     true,
                 )
                 .await;
+            if let Some(created_by) = expense.created_by {
+                let _ = self
+                    .notifications
+                    .record_approval_decided(
+                        "expense",
+                        expense.id,
+                        "approved",
+                        "Expense approved",
+                        payload,
+                        created_by,
+                        Some(approved_by),
+                    )
+                    .await;
+            }
         }
 
         Ok(expense)
@@ -285,12 +313,26 @@ impl ExpenseService {
                 .publish(
                     "admin",
                     "expense.status_changed",
-                    payload,
+                    payload.clone(),
                     Some("admin"),
                     None,
                     true,
                 )
                 .await;
+            if let Some(created_by) = expense.created_by {
+                let _ = self
+                    .notifications
+                    .record_approval_decided(
+                        "expense",
+                        expense.id,
+                        "rejected",
+                        "Expense rejected",
+                        payload,
+                        created_by,
+                        Some(rejected_by),
+                    )
+                    .await;
+            }
         }
 
         Ok(expense)

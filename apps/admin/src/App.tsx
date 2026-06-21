@@ -13,6 +13,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import { bootstrapAuthFromToken, registerAdminAuthSession } from './lib/authSession';
 import { RealtimeProvider } from './lib/realtime';
 import LoginPage from './pages/auth/LoginPage';
+import ActivityLogPage from './pages/dashboard/ActivityLogPage';
 import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
 import CashRegisterDetailPage from './pages/dashboard/cash-registers/CashRegisterDetailPage';
 import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
@@ -226,6 +227,9 @@ function App() {
                         path="/inventory/waste/report"
                         element={<InventoryWasteReportPage />}
                       />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.StatsRead} />}>
+                      <Route path="/activity-log" element={<ActivityLogPage />} />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
                       <Route path="/settings" element={<SettingsPage />} />

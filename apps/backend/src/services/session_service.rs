@@ -19,7 +19,8 @@ use crate::repositories::SessionRepository;
 use crate::services::deduction_profile::{
     wall_minutes_between, weighted_minutes_between,
 };
-use crate::services::{BalanceService, DeviceService, EventService};
+use crate::services::{BalanceService, DeviceService, EventService, NotificationService, RecordNotification, Recipients};
+use crate::models::activity_kind;
 
 /// Result of starting (or resuming) a kiosk session for a player.
 pub struct KioskSessionStart {
@@ -42,6 +43,7 @@ pub struct SessionService {
     balances: Arc<BalanceService>,
     events: EventService,
     outbox: OutboxService,
+    notifications: NotificationService,
     cafe_timezone: String,
     cache: Arc<dyn CacheService>,
 }
@@ -120,6 +122,7 @@ impl SessionService {
         balances: Arc<BalanceService>,
         events: EventService,
         outbox: OutboxService,
+        notifications: NotificationService,
         cafe_timezone: String,
         cache: Arc<dyn CacheService>,
     ) -> Self {
@@ -129,6 +132,7 @@ impl SessionService {
             balances,
             events,
             outbox,
+            notifications,
             cafe_timezone,
             cache,
         }
@@ -341,11 +345,24 @@ impl SessionService {
             .publish(
                 &device_channel,
                 "session.started",
-                payload,
+                payload.clone(),
                 None,
                 None,
                 false,
             )
+            .await;
+        let _ = self
+            .notifications
+            .record(RecordNotification {
+                kind: activity_kind::SESSION_STARTED.to_string(),
+                title: "Session started".to_string(),
+                summary: Some(format!("Player session on device {}", dto.device_id)),
+                payload: payload.clone(),
+                actor_user_id: None,
+                entity_type: Some("session".to_string()),
+                entity_id: Some(session.id),
+                recipients: Recipients::AllStaff,
+            })
             .await;
 
         self.invalidate_stats_cache().await;
@@ -665,11 +682,24 @@ impl SessionService {
             .publish(
                 &device_channel,
                 "session.ended",
-                payload,
+                payload.clone(),
                 None,
                 None,
                 DEVICE_SESSION_ENDED_DURABLE,
             )
+            .await;
+        let _ = self
+            .notifications
+            .record(RecordNotification {
+                kind: activity_kind::SESSION_ENDED.to_string(),
+                title: "Session ended".to_string(),
+                summary: reason.clone().or_else(|| Some(format!("Session on device {}", session.device_id))),
+                payload: payload.clone(),
+                actor_user_id: None,
+                entity_type: Some("session".to_string()),
+                entity_id: Some(updated.id),
+                recipients: Recipients::AllStaff,
+            })
             .await;
         if let Some(player_id) = player_id {
             let user_channel = format!("user:{player_id}");

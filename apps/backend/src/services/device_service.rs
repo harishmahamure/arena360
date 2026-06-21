@@ -10,7 +10,8 @@ use crate::models::{
 };
 use crate::realtime::OutboxService;
 use crate::repositories::DeviceRepository;
-use crate::services::EventService;
+use crate::services::{EventService, NotificationService, RecordNotification, Recipients};
+use crate::models::activity_kind;
 use crate::validation::{
     optional_device_status, optional_device_sub_type, optional_device_type,
     require_device_sub_type, require_device_type,
@@ -21,15 +22,23 @@ pub struct DeviceService {
     repo: DeviceRepository,
     events: EventService,
     outbox: OutboxService,
+    notifications: NotificationService,
     cache: Arc<dyn CacheService>,
 }
 
 impl DeviceService {
-    pub fn new(pool: PgPool, events: EventService, outbox: OutboxService, cache: Arc<dyn CacheService>) -> Self {
+    pub fn new(
+        pool: PgPool,
+        events: EventService,
+        outbox: OutboxService,
+        notifications: NotificationService,
+        cache: Arc<dyn CacheService>,
+    ) -> Self {
         Self {
             repo: DeviceRepository::new(pool),
             events,
             outbox,
+            notifications,
             cache,
         }
     }
@@ -282,11 +291,24 @@ impl DeviceService {
             .publish(
                 &channel,
                 "device.status_changed",
-                payload,
+                payload.clone(),
                 None,
                 None,
                 false,
             )
+            .await;
+        let _ = self
+            .notifications
+            .record(RecordNotification {
+                kind: activity_kind::DEVICE_STATUS_CHANGED.to_string(),
+                title: format!("Device status: {}", device.status),
+                summary: Some(format!("{} is now {}", device.name, device.status)),
+                payload: payload.clone(),
+                actor_user_id: None,
+                entity_type: Some("device".to_string()),
+                entity_id: Some(device.id),
+                recipients: Recipients::AllStaff,
+            })
             .await;
     }
 }

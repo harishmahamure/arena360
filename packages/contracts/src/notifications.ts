@@ -1,0 +1,45 @@
+/**
+ * Activity kinds for persisted notifications — keep aligned with Postgres activity_kind enum.
+ */
+
+export const ActivityKind = {
+  TRANSACTION_SALE: 'transaction_sale',
+  PLAN_SALE: 'plan_sale',
+  CREDIT_SETTLEMENT: 'credit_settlement',
+  APPROVAL_REQUESTED: 'approval_requested',
+  APPROVAL_DECIDED: 'approval_decided',
+  SESSION_STARTED: 'session_started',
+  SESSION_ENDED: 'session_ended',
+  DEVICE_STATUS_CHANGED: 'device_status_changed',
+  SHIFT_CLOCK_IN: 'shift_clock_in',
+  SHIFT_CLOCK_OUT: 'shift_clock_out',
+  SHIFT_HANDOVER: 'shift_handover',
+  CASH_REGISTER_OPENED: 'cash_register_opened',
+  CASH_REGISTER_CLOSED: 'cash_register_closed',
+  CASH_DEPOSIT_INITIATED: 'cash_deposit_initiated',
+  INVENTORY_TRANSFER_REQUESTED: 'inventory_transfer_requested',
+  INVENTORY_WASTE_RECORDED: 'inventory_waste_recorded',
+} as const;
+
+export type ActivityKindValue = (typeof ActivityKind)[keyof typeof ActivityKind];
+
+export const ACTIVITY_KIND_VALUES = Object.values(ActivityKind);
+
+export const activityKindLabels: Record<ActivityKindValue, string> = {
+  [ActivityKind.TRANSACTION_SALE]: 'Product sale',
+  [ActivityKind.PLAN_SALE]: 'Plan sale',
+  [ActivityKind.CREDIT_SETTLEMENT]: 'Credit settlement',
+  [ActivityKind.APPROVAL_REQUESTED]: 'Approval requested',
+  [ActivityKind.APPROVAL_DECIDED]: 'Approval decided',
+  [ActivityKind.SESSION_STARTED]: 'Session started',
+  [ActivityKind.SESSION_ENDED]: 'Session ended',
+  [ActivityKind.DEVICE_STATUS_CHANGED]: 'Device status',
+  [ActivityKind.SHIFT_CLOCK_IN]: 'Shift clock-in',
+  [ActivityKind.SHIFT_CLOCK_OUT]: 'Shift clock-out',
+  [ActivityKind.SHIFT_HANDOVER]: 'Shift handover',
+  [ActivityKind.CASH_REGISTER_OPENED]: 'Register opened',
+  [ActivityKind.CASH_REGISTER_CLOSED]: 'Register closed',
+  [ActivityKind.CASH_DEPOSIT_INITIATED]: 'Cash deposit',
+  [ActivityKind.INVENTORY_TRANSFER_REQUESTED]: 'Stock transfer',
+  [ActivityKind.INVENTORY_WASTE_RECORDED]: 'Stock waste',
+};

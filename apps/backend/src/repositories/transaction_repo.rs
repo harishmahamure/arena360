@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::dto::PaginationResult;
 use crate::error::AppError;
-use crate::models::{CreateTransactionDto, Transaction, TransactionFilterDto};
+use crate::models::{CreateTransactionDto, Transaction, TransactionFilterDto, TransactionRow};
 
 pub struct TransactionRepository {
     pub(crate) pool: PgPool,
@@ -49,29 +49,50 @@ impl TransactionRepository {
     pub async fn list(
         &self,
         filters: &TransactionFilterDto,
-    ) -> Result<PaginationResult<Transaction>, AppError> {
+    ) -> Result<PaginationResult<crate::models::TransactionResponse>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, \"playerId\" as player_id, \"transactionType\"::text as transaction_type, \
-             \"planId\" as plan_id, \"shiftId\" as shift_id, amount::float8 as amount, \"paidAmount\"::float8 as paid_amount, \"cashAmount\"::float8 as cash_amount, \
-             \"onlineAmount\"::float8 as online_amount, \"paymentMethod\"::text as payment_method, \
-             \"paymentStatus\"::text as payment_status, notes, \"transactionDate\" as transaction_date, \
-             \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
-             \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
-             FROM transactions WHERE \"deletedAt\" IS NULL",
+            r#"SELECT t.id,
+                      t."playerId" as player_id,
+                      t."transactionType"::text as transaction_type,
+                      t."planId" as plan_id,
+                      t."shiftId" as shift_id,
+                      t.amount::float8 as amount,
+                      t."paidAmount"::float8 as paid_amount,
+                      t."cashAmount"::float8 as cash_amount,
+                      t."onlineAmount"::float8 as online_amount,
+                      t."paymentMethod"::text as payment_method,
+                      t."paymentStatus"::text as payment_status,
+                      t.notes,
+                      t."transactionDate" as transaction_date,
+                      t."createdBy" as created_by,
+                      t."updatedBy" as updated_by,
+                      t."createdAt" as created_at,
+                      t."updatedAt" as updated_at,
+                      t."deletedAt" as deleted_at,
+                      u.username as player_username,
+                      u."firstName" as player_first_name,
+                      u."lastName" as player_last_name,
+                      p.name as plan_name,
+                      p."planType"::text as plan_type,
+                      p.price::float8 as plan_price
+               FROM transactions t
+               LEFT JOIN users u ON u.id = t."playerId" AND u."deletedAt" IS NULL
+               LEFT JOIN plans p ON p.id = t."planId" AND p."deletedAt" IS NULL
+               WHERE t."deletedAt" IS NULL"#,
         );
 
-        Self::apply_filters(&mut builder, filters);
+        Self::apply_filters(&mut builder, filters, "t");
 
         let sort_by = filters.sort_by.as_deref().unwrap_or("transactionDate");
         let sort_col = match sort_by {
-            "amount" => "amount",
-            "paymentStatus" => "\"paymentStatus\"",
-            "createdAt" => "\"createdAt\"",
-            _ => "\"transactionDate\"",
+            "amount" => "t.amount",
+            "paymentStatus" => r#"t."paymentStatus""#,
+            "createdAt" => r#"t."createdAt""#,
+            _ => r#"t."transactionDate""#,
         };
         let sort_order = if filters.sort_order.as_deref() == Some("ASC") {
             "ASC"
@@ -83,59 +104,66 @@ impl TransactionRepository {
         builder.push(" OFFSET ");
         builder.push_bind(offset);
 
-        let transactions = builder
-            .build_query_as::<Transaction>()
+        let rows = builder
+            .build_query_as::<TransactionRow>()
             .fetch_all(&self.pool)
             .await?;
 
+        let transactions: Vec<crate::models::TransactionResponse> =
+            rows.into_iter().map(|row| row.into_response()).collect();
+
         let mut count_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM transactions WHERE \"deletedAt\" IS NULL");
-        Self::apply_filters(&mut count_builder, filters);
+            QueryBuilder::new(r#"SELECT COUNT(*) FROM transactions t WHERE t."deletedAt" IS NULL"#);
+        Self::apply_filters(&mut count_builder, filters, "t");
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
 
         Ok(PaginationResult::new(transactions, total.0, page, limit))
     }
 
-    fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &TransactionFilterDto) {
+    fn apply_filters(
+        builder: &mut QueryBuilder<Postgres>,
+        filters: &TransactionFilterDto,
+        table_alias: &str,
+    ) {
         if let Some(player_id) = filters.player_id {
-            builder.push(" AND \"playerId\" = ");
+            builder.push(format!(r#" AND {table_alias}."playerId" = "#));
             builder.push_bind(player_id);
         }
         if let Some(transaction_type) = filters.transaction_type.clone() {
-            builder.push(" AND \"transactionType\"::text = ");
+            builder.push(format!(r#" AND {table_alias}."transactionType"::text = "#));
             builder.push_bind(transaction_type);
         }
         if let Some(plan_id) = filters.plan_id {
-            builder.push(" AND \"planId\" = ");
+            builder.push(format!(r#" AND {table_alias}."planId" = "#));
             builder.push_bind(plan_id);
         }
         if let Some(shift_id) = filters.shift_id {
-            builder.push(" AND \"shiftId\" = ");
+            builder.push(format!(r#" AND {table_alias}."shiftId" = "#));
             builder.push_bind(shift_id);
         }
         if let Some(payment_method) = filters.payment_method.clone() {
-            builder.push(" AND \"paymentMethod\"::text = ");
+            builder.push(format!(r#" AND {table_alias}."paymentMethod"::text = "#));
             builder.push_bind(payment_method);
         }
         if let Some(payment_status) = filters.payment_status.clone() {
-            builder.push(" AND \"paymentStatus\"::text = ");
+            builder.push(format!(r#" AND {table_alias}."paymentStatus"::text = "#));
             builder.push_bind(payment_status);
         }
         if let Some(from) = filters.transaction_date_from {
-            builder.push(" AND \"transactionDate\" >= ");
+            builder.push(format!(r#" AND {table_alias}."transactionDate" >= "#));
             builder.push_bind(from);
         }
         if let Some(to) = filters.transaction_date_to {
-            builder.push(" AND \"transactionDate\" <= ");
+            builder.push(format!(r#" AND {table_alias}."transactionDate" <= "#));
             builder.push_bind(to);
         }
         if let Some(min_amount) = filters.min_amount {
-            builder.push(" AND amount >= ");
+            builder.push(format!(" AND {table_alias}.amount >= "));
             builder.push_bind(min_amount);
         }
         if let Some(max_amount) = filters.max_amount {
-            builder.push(" AND amount <= ");
+            builder.push(format!(" AND {table_alias}.amount <= "));
             builder.push_bind(max_amount);
         }
     }

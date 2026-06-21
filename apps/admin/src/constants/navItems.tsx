@@ -5,6 +5,7 @@ import {
   CreditCard,
   Dashboard,
   Devices,
+  History,
   Inventory,
   Inventory2,
   MoneyOff,
@@ -266,6 +267,13 @@ export const adminNavItems: AdminNavItem[] = [
     icon: <Store />,
     section: 'Finance',
     requiredPermission: Permission.VendorsRead,
+  },
+  {
+    title: 'Activity log',
+    path: '/activity-log',
+    icon: <History />,
+    section: 'System',
+    requiredPermission: Permission.StatsRead,
   },
   {
     title: 'Settings',

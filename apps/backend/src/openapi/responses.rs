@@ -146,7 +146,7 @@ pagination_envelope!(
 pagination_envelope!(
     TransactionPaginationEnvelope,
     TransactionPaginationPage,
-    Transaction
+    crate::models::TransactionResponse
 );
 pagination_envelope!(ProductPaginationEnvelope, ProductPaginationPage, Product);
 pagination_envelope!(UserPaginationEnvelope, UserPaginationPage, User);
@@ -274,3 +274,14 @@ pagination_envelope!(
     StockWasteEvent
 );
 success_envelope!(StockWasteSummaryListEnvelope, Vec<WasteSummaryRow>);
+success_envelope!(UnreadCountEnvelope, crate::models::UnreadCountDto);
+pagination_envelope!(
+    NotificationPaginationEnvelope,
+    NotificationPaginationPage,
+    crate::models::NotificationItem
+);
+pagination_envelope!(
+    ActivityLogPaginationEnvelope,
+    ActivityLogPaginationPage,
+    crate::models::ActivityLog
+);

@@ -35,6 +35,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/vendors': 'Vendors',
   '/vendors/new': 'Add vendor',
   '/settings': 'Settings',
+  '/activity-log': 'Activity log',
 };
 
 const DETAIL_TITLES: Array<{ prefix: string; title: string }> = [

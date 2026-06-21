@@ -14,5 +14,6 @@
 export * from './deductionProfile.js';
 export * from './enums.js';
 export * from './errors.js';
+export * from './notifications.js';
 export * from './pagination.js';
 export * from './roles.js';

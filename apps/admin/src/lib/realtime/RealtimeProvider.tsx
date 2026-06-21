@@ -61,6 +61,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       toastUtils.info(`New ${entity} awaiting approval`);
       queryClient.invalidateQueries({ queryKey: ['cash-deposits'] });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
     });
 
     const unsubApprovalDec = client.on('approval.decided', (frame: ServerFrame) => {
@@ -90,6 +91,15 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
     });
 
+    const unsubNotification = client.on('notification.created', (frame: ServerFrame) => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-log'] });
+      const title = frame.payload?.title as string | undefined;
+      if (title) {
+        toastUtils.info(title);
+      }
+    });
+
     return () => {
       unsubSale();
       unsubApprovalReq();
@@ -98,6 +108,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       unsubSessionEnd();
       unsubBalance();
       unsubDevice();
+      unsubNotification();
       client.disconnect();
     };
   }, [queryClient, userId, role, accessToken]);

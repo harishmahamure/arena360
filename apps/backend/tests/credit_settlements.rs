@@ -63,13 +63,13 @@ async fn revenue_stats_includes_settlement_collections_for_period() {
     let now = chrono::Utc::now();
     let start = now - chrono::Duration::days(30);
     let end = now + chrono::Duration::hours(1);
+    let diff = (end - start).num_days().max(1);
+    let prev_start = start - chrono::Duration::days(diff);
+    let prev_end = end - chrono::Duration::days(diff);
 
     let revenue = state
         .stats
-        .get_revenue_by_payment_method(
-            Some(start.to_rfc3339()),
-            Some(end.to_rfc3339()),
-        )
+        .get_revenue_by_payment_method(start, end, prev_start, prev_end)
         .await
         .expect("revenue stats");
 

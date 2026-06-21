@@ -19,6 +19,7 @@ export interface DashboardLayoutProps {
   settingsPath?: string;
   pageTitle?: string;
   shiftBadge?: ShiftBadgeProps;
+  notificationSlot?: React.ReactNode;
   user?: {
     name: string;
     email: string;
@@ -37,6 +38,7 @@ export default function DashboardLayout({
   settingsPath,
   pageTitle,
   shiftBadge,
+  notificationSlot,
   user,
 }: DashboardLayoutProps) {
   const theme = useTheme();
@@ -83,6 +85,7 @@ export default function DashboardLayout({
         settingsPath={settingsPath}
         pageTitle={pageTitle}
         shiftBadge={shiftBadge}
+        notificationSlot={notificationSlot}
         user={user ? { name: user.name, email: user.email, avatar: user.avatar } : undefined}
       />
 

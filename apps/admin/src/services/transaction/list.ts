@@ -34,26 +34,20 @@ export interface Transaction {
   notes?: string | null;
   transactionDate: string;
   transactionProducts?: TransactionProduct[];
-  player?: Player;
-  plan?: null;
+  player?: {
+    id: string;
+    username: string;
+    name?: string;
+  };
+  plan?: {
+    id: string;
+    name: string;
+    planType: string;
+    price: number;
+  } | null;
 }
 
 export type TransactionResponse = Transaction;
-
-interface Player {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: null;
-  username: string;
-  phoneNumber?: string | null;
-  isActive: boolean;
-  firstName: string;
-  lastName: string;
-  role: string;
-  sessionOtpId: null;
-  sessionOtp: string;
-}
 
 export interface TransactionProduct {
   id: string;

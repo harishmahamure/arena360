@@ -12,6 +12,7 @@ pub mod games;
 pub mod health;
 pub mod inventory;
 pub mod kiosk;
+pub mod notifications;
 pub mod plans;
 pub mod player_plans;
 pub mod products;

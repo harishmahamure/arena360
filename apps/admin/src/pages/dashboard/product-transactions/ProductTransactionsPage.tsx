@@ -73,7 +73,7 @@ const columns: Column<Transaction>[] = [
     minWidth: 150,
     format: (value) => {
       const player = value as Transaction['player'];
-      return player?.username || 'N/A';
+      return player?.username || player?.name || 'N/A';
     },
   },
   {

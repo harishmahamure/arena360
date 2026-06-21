@@ -16,7 +16,7 @@ use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService,     ExpenseCategoryService, ExpenseService,
-    GameService, InventoryService, PlanService, PlayerPlanService, ProductService, SessionService,
+    GameService, InventoryService, NotificationService, PlanService, PlayerPlanService, ProductService, SessionService,
     ShiftService, StaffGamingAllowanceService, StatsService, StorageConfig, StorageService, TransactionService, UnitService,
     UserService, VendorService,
 };
@@ -52,6 +52,7 @@ pub struct AppState {
     pub credit: Arc<CreditService>,
     pub staff_gaming_allowances: StaffGamingAllowanceService,
     pub events: EventService,
+    pub notifications: NotificationService,
     pub outbox: OutboxService,
     pub rooms: RoomService,
     pub ws_connections: Arc<
@@ -69,24 +70,41 @@ pub async fn build_state() -> Arc<AppState> {
     let events = EventService::new(broadcaster);
 
     let outbox = OutboxService::new(pool.clone());
+    let notifications = NotificationService::new(pool.clone(), outbox.clone(), cache.clone());
     let rooms = RoomService::new(pool.clone());
     let ws_connections: Arc<
         tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
     > = Arc::new(tokio::sync::RwLock::new(Vec::new()));
 
-    let devices = DeviceService::new(pool.clone(), events.clone(), outbox.clone(), cache.clone());
+    let devices = DeviceService::new(
+        pool.clone(),
+        events.clone(),
+        outbox.clone(),
+        notifications.clone(),
+        cache.clone(),
+    );
     let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
     let balances = Arc::new(BalanceService::new(pool.clone(), cache.clone()));
     let balances_for_auth = balances.clone();
 
-    let credit = Arc::new(CreditService::new(pool.clone(), cache.clone()));
-    let cash_registers = Arc::new(CashRegisterService::new(pool.clone(), cache.clone()));
+    let cash_registers = Arc::new(
+        CashRegisterService::new(pool.clone(), cache.clone())
+            .with_notifications(notifications.clone()),
+    );
+
+    let credit = Arc::new(
+        CreditService::new(pool.clone(), cache.clone()).with_notifications(notifications.clone()),
+    );
 
     // Spawn the realtime dispatcher
     let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
     tokio::spawn(dispatcher.run());
 
     let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
+
+    let mut shifts = ShiftService::new(pool.clone());
+    shifts.set_cash_registers(cash_registers.clone());
+    shifts.set_notifications(notifications.clone());
 
     Arc::new(AppState {
         auth: AuthService::new(
@@ -108,22 +126,24 @@ pub async fn build_state() -> Arc<AppState> {
             balances.clone(),
             events.clone(),
             outbox.clone(),
+            notifications.clone(),
             settings.cafe_timezone.clone(),
             cache.clone(),
         ),
-        shifts: {
-            let mut s = ShiftService::new(pool.clone());
-            s.set_cash_registers(cash_registers.clone());
-            s
-        },
-        cash_registers,
-        cash_deposits: CashDepositService::new(pool.clone(), outbox.clone()),
+        shifts,
+        cash_registers: cash_registers.clone(),
+        cash_deposits: CashDepositService::new(
+            pool.clone(),
+            outbox.clone(),
+            notifications.clone(),
+        ),
         transactions: TransactionService::new(
             pool.clone(),
             balances,
             credit.clone(),
             events.clone(),
             outbox.clone(),
+            notifications.clone(),
             settings.cafe_timezone.clone(),
             cache.clone(),
         ),
@@ -143,14 +163,17 @@ pub async fn build_state() -> Arc<AppState> {
             CashRegisterService::new(pool.clone(), cache.clone()),
             ShiftService::new(pool.clone()),
             outbox.clone(),
+            notifications.clone(),
         ),
         inventory: InventoryService::new(
             pool.clone(),
             settings.cafe_timezone.clone(),
             outbox.clone(),
+            notifications.clone(),
             cache.clone(),
         ),
         stats: StatsService::new(pool.clone(), cache.clone()),
+        notifications,
         outbox,
         rooms,
         ws_connections,
@@ -509,6 +532,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/credit/settlements/{id}",
             get(handlers::credit::get_settlement),
         )
+        .route("/notifications", get(handlers::notifications::list_notifications))
+        .route(
+            "/notifications/unread-count",
+            get(handlers::notifications::unread_count),
+        )
+        .route(
+            "/notifications/read-all",
+            post(handlers::notifications::mark_all_read),
+        )
+        .route(
+            "/notifications/{id}/read",
+            patch(handlers::notifications::mark_read),
+        )
+        .route("/activity-log", get(handlers::notifications::list_activity_log))
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
         .route(
             "/realtime/rooms",

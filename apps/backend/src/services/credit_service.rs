@@ -11,10 +11,13 @@ use crate::models::{
 };
 use crate::repositories::CreditRepository;
 use crate::services::CashRegisterService;
+use crate::services::{NotificationService, RecordNotification, Recipients};
+use crate::models::activity_kind;
 
 pub struct CreditService {
     repo: CreditRepository,
     cache: Arc<dyn CacheService>,
+    notifications: Option<NotificationService>,
 }
 
 impl CreditService {
@@ -22,7 +25,13 @@ impl CreditService {
         Self {
             repo: CreditRepository::new(pool),
             cache,
+            notifications: None,
         }
+    }
+
+    pub fn with_notifications(mut self, notifications: NotificationService) -> Self {
+        self.notifications = Some(notifications);
+        self
     }
 
     async fn invalidate_credit(&self, player_id: Uuid) -> Result<(), AppError> {
@@ -169,6 +178,28 @@ impl CreditService {
         }
 
         let _ = cache::invalidate_stats(&*self.cache).await;
+
+        if let Some(ref notifications) = self.notifications {
+            let payload = serde_json::json!({
+                "settlementId": settlement.id.to_string(),
+                "playerId": dto.player_id.to_string(),
+                "amount": total,
+                "paymentMethod": dto.payment_method,
+            });
+            let _ = notifications
+                .record(RecordNotification {
+                    kind: activity_kind::CREDIT_SETTLEMENT.to_string(),
+                    title: format!("Credit settlement: ₹{total:.2}"),
+                    summary: dto.notes.clone(),
+                    payload,
+                    actor_user_id: Some(actor_id),
+                    entity_type: Some("credit_settlement".to_string()),
+                    entity_id: Some(settlement.id),
+                    recipients: Recipients::AdminAndUsers(vec![actor_id]),
+                })
+                .await;
+        }
+
         Ok(settlement)
     }
 

@@ -33,12 +33,14 @@ use crate::models::{
     StockWasteFilterDto,
     ShiftCloseDto, ShiftCloseResponseDto, ShiftFilterDto, ShiftHandoverDto,
     ShiftHandoverResponseDto, TotpSetupResponseDto, Transaction, TransactionFilterDto,
+    TransactionResponse,
     TransactionProductResponse, TransactionWithLineItems, Unit, UnitFilterDto, UpdateDeviceDto,
     UpdateDeviceStatusDto,     UpdateExpenseCategoryDto, UpdateExpenseDto, UpdateInventoryLocationDto,
     UpdateOpeningBalanceDto, UpdatePlanDto, UpdateProductDto, UpdateTransactionDto, UpdateUnitDto,
     UpdateUserDto,
     UpdateVendorDto, UpsertConfigDto, UsageSession, UsageSessionResponse, User, UserFilterDto,
     ValidationResult, Vendor, VendorFilterDto, VerifyTotpSetupDto, WasteSummaryRow,
+    ActivityLog, ActivityLogFilterDto, NotificationFilterDto, NotificationItem, UnreadCountDto,
 };
 use crate::openapi::responses::*;
 use crate::realtime::rooms::{AddMemberDto, CreateRoomDto, Room};
@@ -226,6 +228,11 @@ impl Modify for SecurityAddon {
         handlers::inventory::approve_waste_event,
         handlers::inventory::reject_waste_event,
         handlers::inventory::waste_summary,
+        handlers::notifications::list_notifications,
+        handlers::notifications::unread_count,
+        handlers::notifications::mark_read,
+        handlers::notifications::mark_all_read,
+        handlers::notifications::list_activity_log,
     ),
     components(
         schemas(
@@ -335,6 +342,7 @@ impl Modify for SecurityAddon {
             SessionPaginationEnvelope,
             SessionPaginationPage,
             Transaction,
+            TransactionResponse,
             TransactionFilterDto,
             CreateTransactionDto,
             UpdateTransactionDto,
@@ -518,6 +526,16 @@ impl Modify for SecurityAddon {
             WasteSummaryFilterDto,
             ApproveInventoryActionDto,
             StockWasteSummaryListEnvelope,
+            NotificationItem,
+            NotificationFilterDto,
+            UnreadCountDto,
+            UnreadCountEnvelope,
+            NotificationPaginationEnvelope,
+            NotificationPaginationPage,
+            ActivityLog,
+            ActivityLogFilterDto,
+            ActivityLogPaginationEnvelope,
+            ActivityLogPaginationPage,
         )
     ),
     modifiers(&SecurityAddon),
@@ -545,6 +563,7 @@ impl Modify for SecurityAddon {
         (name = "expenses", description = "Expense tracking and approval"),
         (name = "realtime", description = "Realtime WebSocket and room management"),
         (name = "inventory", description = "Inventory locations, stock, transfers, and waste"),
+        (name = "notifications", description = "Persisted notifications and activity log"),
     )
 )]
 pub struct ApiDoc;

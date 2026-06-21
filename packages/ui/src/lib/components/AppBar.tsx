@@ -54,6 +54,7 @@ export interface AppBarProps {
   settingsPath?: string;
   pageTitle?: string;
   shiftBadge?: ShiftBadgeProps;
+  notificationSlot?: React.ReactNode;
   user?: {
     name: string;
     email: string;
@@ -76,6 +77,7 @@ export default function AppBar({
   settingsPath,
   pageTitle,
   shiftBadge,
+  notificationSlot,
   user = { name: 'John Doe', email: 'john.doe@example.com' },
 }: AppBarProps) {
   const navigate = useNavigate();
@@ -214,6 +216,8 @@ export default function AppBar({
               </IconButton>
             </Tooltip>
           )}
+
+          {notificationSlot}
 
           <IconButton onClick={handleProfileMenu} sx={{ p: 0, ml: 1 }}>
             <Avatar

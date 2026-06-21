@@ -32,7 +32,7 @@ use crate::openapi::responses::{
 pub async fn list_transactions(
     State(state): State<Arc<AppState>>,
     Query(filters): Query<TransactionFilterDto>,
-) -> ApiResult<crate::dto::PaginationResult<Transaction>> {
+) -> ApiResult<crate::dto::PaginationResult<crate::models::TransactionResponse>> {
     let result = state.transactions.list(filters).await?;
     ok(result)
 }

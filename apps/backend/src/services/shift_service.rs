@@ -7,10 +7,13 @@ use crate::error::AppError;
 use crate::models::{ClockInDto, ClockOutDto, CloseCashRegisterDto, Shift, ShiftFilterDto};
 use crate::repositories::ShiftRepository;
 use crate::services::CashRegisterService;
+use crate::services::{NotificationService, RecordNotification, Recipients};
+use crate::models::activity_kind;
 
 pub struct ShiftService {
     repo: ShiftRepository,
     cash_registers: Option<Arc<CashRegisterService>>,
+    notifications: Option<NotificationService>,
 }
 
 impl ShiftService {
@@ -18,11 +21,16 @@ impl ShiftService {
         Self {
             repo: ShiftRepository::new(pool),
             cash_registers: None,
+            notifications: None,
         }
     }
 
     pub fn set_cash_registers(&mut self, cash_registers: Arc<CashRegisterService>) {
         self.cash_registers = Some(cash_registers);
+    }
+
+    pub fn set_notifications(&mut self, notifications: NotificationService) {
+        self.notifications = Some(notifications);
     }
 
     pub async fn clock_in(
@@ -37,7 +45,23 @@ impl ShiftService {
                 active.id
             )));
         }
-        self.repo.create(user_id, dto.notes, actor_id).await
+        let notes = dto.notes.clone();
+        let shift = self.repo.create(user_id, notes.clone(), actor_id).await?;
+        if let Some(ref notifications) = self.notifications {
+            let _ = notifications
+                .record(RecordNotification {
+                    kind: activity_kind::SHIFT_CLOCK_IN.to_string(),
+                    title: "Shift started".to_string(),
+                    summary: notes,
+                    payload: serde_json::json!({ "shiftId": shift.id.to_string() }),
+                    actor_user_id: Some(actor_id),
+                    entity_type: Some("shift".to_string()),
+                    entity_id: Some(shift.id),
+                    recipients: Recipients::Users(vec![user_id]),
+                })
+                .await;
+        }
+        Ok(shift)
     }
 
     /// Starts a shift on staff login, recovering from a stale active shift when its register is already closed.
@@ -107,7 +131,22 @@ impl ShiftService {
 
         self.auto_close_register(active.id, actor_id).await;
 
-        self.repo.close(active.id, dto.notes, actor_id).await
+        let shift = self.repo.close(active.id, dto.notes.clone(), actor_id).await?;
+        if let Some(ref notifications) = self.notifications {
+            let _ = notifications
+                .record(RecordNotification {
+                    kind: activity_kind::SHIFT_CLOCK_OUT.to_string(),
+                    title: "Shift ended".to_string(),
+                    summary: dto.notes.clone(),
+                    payload: serde_json::json!({ "shiftId": shift.id.to_string() }),
+                    actor_user_id: Some(actor_id),
+                    entity_type: Some("shift".to_string()),
+                    entity_id: Some(shift.id),
+                    recipients: Recipients::Users(vec![user_id]),
+                })
+                .await;
+        }
+        Ok(shift)
     }
 
     pub async fn get_active(&self, user_id: Uuid) -> Result<Option<Shift>, AppError> {

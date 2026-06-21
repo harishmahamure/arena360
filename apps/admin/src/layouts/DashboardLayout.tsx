@@ -6,6 +6,7 @@ import Box from '@mui/material/Box';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import NotificationBell from '../components/notifications/NotificationBell';
 import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
 import { useDispatch, useSelector } from '../hooks/store';
@@ -167,6 +168,7 @@ export default function DashboardLayout() {
         onLogout={handleLogout}
         appBarQuickActions={appBarQuickActions}
         settingsPath={isAdmin && can(Permission.ConfigRead) ? '/settings' : undefined}
+        notificationSlot={<NotificationBell />}
       >
         <Outlet key={outletKey} />
       </BaseDashboardLayout>

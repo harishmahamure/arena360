@@ -329,6 +329,25 @@ pub async fn handover_shift(
     let mut auth_response = state.auth.issue_auth_response(&validator)?;
     auth_response.shiftId = Some(new_shift.id.to_string());
 
+    let _ = state
+        .notifications
+        .record(crate::services::RecordNotification {
+            kind: crate::models::activity_kind::SHIFT_HANDOVER.to_string(),
+            title: "Shift handover completed".to_string(),
+            summary: dto.notes.clone(),
+            payload: serde_json::json!({
+                "closedShiftId": closed_shift.id.to_string(),
+                "newShiftId": new_shift.id.to_string(),
+                "fromStaffId": staff_a_id.to_string(),
+                "toStaffId": validator.id.to_string(),
+            }),
+            actor_user_id: Some(staff_a_id),
+            entity_type: Some("shift".to_string()),
+            entity_id: Some(closed_shift.id),
+            recipients: crate::services::Recipients::Users(vec![staff_a_id, validator.id]),
+        })
+        .await;
+
     ok(ShiftHandoverResponseDto {
         closedShift: closed_shift,
         cashRegister: closed_register,

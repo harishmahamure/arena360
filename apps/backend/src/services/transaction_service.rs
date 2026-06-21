@@ -7,11 +7,11 @@ use crate::cache::{self, CacheService};
 use crate::error::AppError;
 use crate::models::{
     CreateLineItemDto, CreateTransactionDto, PurchaseBalanceDto, Transaction, TransactionFilterDto,
-    TransactionWithLineItems, UpdateTransactionDto,
+    TransactionResponse, TransactionWithLineItems, UpdateTransactionDto,
 };
 use crate::realtime::{publish_balance_updated_for_player, OutboxService};
 use crate::repositories::{InventoryRepository, TransactionProductRepository, TransactionRepository};
-use crate::services::{BalanceService, CreditService, EventService, InventoryService};
+use crate::services::{BalanceService, CreditService, EventService, InventoryService, NotificationService};
 use crate::validation::{
     optional_payment_status, require_payment_method, require_payment_status,
     require_transaction_type,
@@ -25,6 +25,7 @@ pub struct TransactionService {
     credit: Arc<CreditService>,
     events: EventService,
     outbox: OutboxService,
+    notifications: NotificationService,
     cafe_timezone: String,
     cache: Arc<dyn CacheService>,
 }
@@ -36,6 +37,7 @@ impl TransactionService {
         credit: Arc<CreditService>,
         events: EventService,
         outbox: OutboxService,
+        notifications: NotificationService,
         cafe_timezone: String,
         cache: Arc<dyn CacheService>,
     ) -> Self {
@@ -47,6 +49,7 @@ impl TransactionService {
             credit,
             events,
             outbox,
+            notifications,
             cafe_timezone,
             cache,
         }
@@ -59,7 +62,7 @@ impl TransactionService {
     pub async fn list(
         &self,
         filters: TransactionFilterDto,
-    ) -> Result<crate::dto::PaginationResult<Transaction>, AppError> {
+    ) -> Result<crate::dto::PaginationResult<TransactionResponse>, AppError> {
         self.repo.list(&filters).await
     }
 
@@ -302,12 +305,18 @@ impl TransactionService {
                 .publish(
                     "admin",
                     "transaction.sale_completed",
-                    payload,
+                    payload.clone(),
                     Some("admin"),
                     None,
                     true,
                 )
                 .await;
+            if let Some(actor) = actor_id {
+                let _ = self
+                    .notifications
+                    .record_staff_sale(&transaction, actor)
+                    .await;
+            }
         }
 
         self.invalidate_stats_cache().await;
@@ -475,12 +484,18 @@ impl TransactionService {
                 .publish(
                     "admin",
                     "transaction.sale_completed",
-                    payload,
+                    payload.clone(),
                     Some("admin"),
                     None,
                     true,
                 )
                 .await;
+            if let Some(actor) = actor_id {
+                let _ = self
+                    .notifications
+                    .record_staff_sale(&transaction, actor)
+                    .await;
+            }
         }
 
         self.invalidate_stats_cache().await;

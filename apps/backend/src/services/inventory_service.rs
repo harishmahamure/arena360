@@ -19,11 +19,15 @@ use crate::models::{
 };
 use crate::realtime::OutboxService;
 use crate::repositories::InventoryRepository;
+use crate::services::NotificationService;
+use crate::models::activity_kind;
+use crate::services::{RecordNotification, Recipients};
 
 pub struct InventoryService {
     repo: InventoryRepository,
     cafe_timezone: String,
     outbox: OutboxService,
+    notifications: NotificationService,
     cache: Arc<dyn CacheService>,
 }
 
@@ -32,12 +36,14 @@ impl InventoryService {
         pool: PgPool,
         cafe_timezone: String,
         outbox: OutboxService,
+        notifications: NotificationService,
         cache: Arc<dyn CacheService>,
     ) -> Self {
         Self {
             repo: InventoryRepository::new(pool),
             cafe_timezone,
             outbox,
+            notifications,
             cache,
         }
     }
@@ -339,12 +345,37 @@ impl InventoryService {
             .publish(
                 "admin",
                 "approval.requested",
-                payload,
+                payload.clone(),
                 Some("admin"),
                 None,
                 true,
             )
             .await;
+        if let Some(requested_by) = requested_by {
+            let _ = self
+                .notifications
+                .record_approval_requested(
+                    "stock_transfer_request",
+                    request.id,
+                    "Stock transfer awaiting approval",
+                    payload.clone(),
+                    Some(requested_by),
+                )
+                .await;
+            let _ = self
+                .notifications
+                .record(RecordNotification {
+                    kind: activity_kind::INVENTORY_TRANSFER_REQUESTED.to_string(),
+                    title: "Stock transfer submitted".to_string(),
+                    summary: Some("Awaiting admin approval".to_string()),
+                    payload,
+                    actor_user_id: Some(requested_by),
+                    entity_type: Some("stock_transfer_request".to_string()),
+                    entity_id: Some(request.id),
+                    recipients: Recipients::Users(vec![requested_by]),
+                })
+                .await;
+        }
 
         Ok(StockTransferRequestWithLines {
             request,
@@ -377,7 +408,28 @@ impl InventoryService {
         id: Uuid,
         approved_by: Uuid,
     ) -> Result<StockTransferRequest, AppError> {
-        self.repo.approve_transfer(id, approved_by).await
+        let existing = self.get_transfer_request(id).await?;
+        let transfer = self.repo.approve_transfer(id, approved_by).await?;
+        if let Some(requested_by) = existing.request.requested_by {
+            let payload = serde_json::json!({
+                "transfer_request_id": transfer.id.to_string(),
+                "status": "approved",
+                "entity_type": "stock_transfer_request",
+            });
+            let _ = self
+                .notifications
+                .record_approval_decided(
+                    "stock_transfer_request",
+                    transfer.id,
+                    "approved",
+                    "Stock transfer approved",
+                    payload,
+                    requested_by,
+                    Some(approved_by),
+                )
+                .await;
+        }
+        Ok(transfer)
     }
 
     pub async fn reject_transfer(
@@ -391,7 +443,28 @@ impl InventoryService {
                 "rejectionReason is required".to_string(),
             ));
         }
-        self.repo.reject_transfer(id, rejection_reason, rejected_by).await
+        let existing = self.get_transfer_request(id).await?;
+        let transfer = self.repo.reject_transfer(id, rejection_reason, rejected_by).await?;
+        if let Some(requested_by) = existing.request.requested_by {
+            let payload = serde_json::json!({
+                "transfer_request_id": transfer.id.to_string(),
+                "status": "rejected",
+                "entity_type": "stock_transfer_request",
+            });
+            let _ = self
+                .notifications
+                .record_approval_decided(
+                    "stock_transfer_request",
+                    transfer.id,
+                    "rejected",
+                    "Stock transfer rejected",
+                    payload,
+                    requested_by,
+                    Some(rejected_by),
+                )
+                .await;
+        }
+        Ok(transfer)
     }
 
     pub async fn fulfill_transfer(
@@ -428,12 +501,37 @@ impl InventoryService {
             .publish(
                 "admin",
                 "approval.requested",
-                payload,
+                payload.clone(),
                 Some("admin"),
                 None,
                 true,
             )
             .await;
+        if let Some(actor) = created_by {
+            let _ = self
+                .notifications
+                .record_approval_requested(
+                    "stock_waste_event",
+                    event.id,
+                    "Stock waste awaiting approval",
+                    payload.clone(),
+                    Some(actor),
+                )
+                .await;
+            let _ = self
+                .notifications
+                .record(RecordNotification {
+                    kind: activity_kind::INVENTORY_WASTE_RECORDED.to_string(),
+                    title: "Stock waste recorded".to_string(),
+                    summary: Some("Awaiting admin approval".to_string()),
+                    payload,
+                    actor_user_id: Some(actor),
+                    entity_type: Some("stock_waste_event".to_string()),
+                    entity_id: Some(event.id),
+                    recipients: Recipients::Users(vec![actor]),
+                })
+                .await;
+        }
 
         Ok(StockWasteEventWithLines { event, lines })
     }
@@ -498,10 +596,22 @@ impl InventoryService {
                 .publish(
                     &format!("user:{created_by}"),
                     "approval.decided",
-                    payload,
+                    payload.clone(),
                     None,
                     Some(created_by),
                     true,
+                )
+                .await;
+            let _ = self
+                .notifications
+                .record_approval_decided(
+                    "stock_waste_event",
+                    event.id,
+                    "approved",
+                    "Stock waste approved",
+                    payload,
+                    created_by,
+                    Some(approved_by),
                 )
                 .await;
         }
@@ -533,10 +643,22 @@ impl InventoryService {
                 .publish(
                     &format!("user:{created_by}"),
                     "approval.decided",
-                    payload,
+                    payload.clone(),
                     None,
                     Some(created_by),
                     true,
+                )
+                .await;
+            let _ = self
+                .notifications
+                .record_approval_decided(
+                    "stock_waste_event",
+                    event.id,
+                    "rejected",
+                    "Stock waste rejected",
+                    payload,
+                    created_by,
+                    Some(rejected_by),
                 )
                 .await;
         }

@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS user_notifications CASCADE;
+DROP TABLE IF EXISTS activity_log CASCADE;
+DROP TYPE IF EXISTS activity_kind;

@@ -20,7 +20,14 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatPaymentSplit } from '../../../containers/sales';
-import { getTransactionById } from '../../../services/transaction/list';
+import { getPlanById } from '../../../services/plans/getById';
+import { getTransactionById, TransactionType } from '../../../services/transaction/list';
+
+const formatPlanType = (type: string) =>
+  type
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 
 export default function ProductTransactionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +37,14 @@ export default function ProductTransactionDetailPage() {
     queryKey: ['transaction', id],
     queryFn: () => getTransactionById(id as string),
     enabled: !!id,
+  });
+
+  const isPlanPurchase = data?.transactionType === TransactionType.PLAN_PURCHASE;
+
+  const { data: plan, isLoading: planLoading } = useQuery({
+    queryKey: ['plan', data?.planId],
+    queryFn: () => getPlanById(data?.planId as string),
+    enabled: isPlanPurchase && !!data?.planId,
   });
 
   if (isLoading) {
@@ -57,15 +72,14 @@ export default function ProductTransactionDetailPage() {
 
   const lineItems = data.lineItems || [];
   const lineItemsTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  const planPrice = plan ? parseFloat(plan.price) : data.amount;
+  const backPath = isPlanPurchase ? '/plan-transactions' : '/product-transactions';
+  const backLabel = isPlanPurchase ? 'Back to Plan Transactions' : 'Back to Transactions';
 
   return (
     <Box sx={{ p: 3, maxWidth: 900, mx: 'auto' }}>
-      <Button
-        startIcon={<BackIcon />}
-        onClick={() => navigate('/product-transactions')}
-        sx={{ mb: 3 }}
-      >
-        Back to Transactions
+      <Button startIcon={<BackIcon />} onClick={() => navigate(backPath)} sx={{ mb: 3 }}>
+        {backLabel}
       </Button>
 
       <Card sx={{ mb: 3 }}>
@@ -148,10 +162,51 @@ export default function ProductTransactionDetailPage() {
       <Card>
         <CardContent>
           <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-            Line Items ({lineItems.length})
+            Line Items ({isPlanPurchase ? (plan ? 1 : 0) : lineItems.length})
           </Typography>
 
-          {lineItems.length === 0 ? (
+          {isPlanPurchase ? (
+            planLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : plan ? (
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Plan</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell align="right">Unit Price</TableCell>
+                      <TableCell align="right">Qty</TableCell>
+                      <TableCell align="right">Subtotal</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>{plan.name}</TableCell>
+                      <TableCell>{formatPlanType(plan.planType)}</TableCell>
+                      <TableCell align="right">{formatCurrency(planPrice, 'INR')}</TableCell>
+                      <TableCell align="right">1</TableCell>
+                      <TableCell align="right">{formatCurrency(planPrice, 'INR')}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell colSpan={4} align="right">
+                        <Typography fontWeight={600}>Total</Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography fontWeight={600}>{formatCurrency(planPrice, 'INR')}</Typography>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Plan details are unavailable for this transaction.
+              </Typography>
+            )
+          ) : lineItems.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               No line items recorded for this transaction (created before line item tracking was
               enabled).

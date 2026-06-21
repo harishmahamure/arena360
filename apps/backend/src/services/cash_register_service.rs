@@ -10,11 +10,14 @@ use crate::models::{
     CloseCashRegisterDto, CreateCashRegisterEntryDto, OpenCashRegisterDto,
 };
 use crate::repositories::CashRegisterRepository;
+use crate::services::{NotificationService, RecordNotification, Recipients};
+use crate::models::activity_kind;
 
 pub struct CashRegisterService {
     repo: CashRegisterRepository,
     pool: PgPool,
     cache: Arc<dyn CacheService>,
+    notifications: Option<NotificationService>,
 }
 
 impl CashRegisterService {
@@ -23,7 +26,13 @@ impl CashRegisterService {
             repo: CashRegisterRepository::new(pool.clone()),
             pool,
             cache,
+            notifications: None,
         }
+    }
+
+    pub fn with_notifications(mut self, notifications: NotificationService) -> Self {
+        self.notifications = Some(notifications);
+        self
     }
 
     async fn invalidate_register(&self, register_id: Uuid) -> Result<(), AppError> {
@@ -50,7 +59,25 @@ impl CashRegisterService {
             }
         }
 
-        self.repo.open_register(&dto, actor_id).await
+        let result = self.repo.open_register(&dto, actor_id).await?;
+        if let Some(ref notifications) = self.notifications {
+            let _ = notifications
+                .record(RecordNotification {
+                    kind: activity_kind::CASH_REGISTER_OPENED.to_string(),
+                    title: "Cash register opened".to_string(),
+                    summary: None,
+                    payload: serde_json::json!({
+                        "registerId": result.id.to_string(),
+                        "shiftId": dto.shift_id.to_string(),
+                    }),
+                    actor_user_id: Some(actor_id),
+                    entity_type: Some("cash_register".to_string()),
+                    entity_id: Some(result.id),
+                    recipients: Recipients::AdminAndUsers(vec![actor_id]),
+                })
+                .await;
+        }
+        Ok(result)
     }
 
     pub async fn close(
@@ -72,6 +99,23 @@ impl CashRegisterService {
 
         let result = self.repo.close_register(id, &dto, actor_id).await?;
         self.invalidate_register(id).await?;
+        if let Some(ref notifications) = self.notifications {
+            let _ = notifications
+                .record(RecordNotification {
+                    kind: activity_kind::CASH_REGISTER_CLOSED.to_string(),
+                    title: "Cash register closed".to_string(),
+                    summary: dto.notes.clone(),
+                    payload: serde_json::json!({
+                        "registerId": result.id.to_string(),
+                        "shiftId": result.shift_id.to_string(),
+                    }),
+                    actor_user_id: Some(actor_id),
+                    entity_type: Some("cash_register".to_string()),
+                    entity_id: Some(result.id),
+                    recipients: Recipients::AdminAndUsers(vec![actor_id]),
+                })
+                .await;
+        }
         Ok(result)
     }
 
