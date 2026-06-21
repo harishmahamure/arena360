@@ -13,7 +13,7 @@ import {
 } from 'react';
 import { SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
 import { isTokenAuthFailure, registerAuthSessionHandlers } from '../lib/authSession';
-import { applyBalanceUpdated } from '../lib/balanceUpdated';
+import { applyBalanceUpdated, mergeReconciledSession } from '../lib/balanceUpdated';
 import { SESSION_RECONCILE_MS } from '../lib/config';
 import {
   clearPlayerSession,
@@ -369,7 +369,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           await handleRemoteSessionEnd({ staffEnded: opts?.staffEndedOnRemoteEnd ?? false });
           return;
         }
-        setActiveSession(sessionFromResponse(res));
+        setActiveSession((prev) => mergeReconciledSession(sessionFromResponse(res), prev));
       } catch {
         setOnline(false);
       }

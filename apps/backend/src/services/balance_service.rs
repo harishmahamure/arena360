@@ -55,8 +55,12 @@ impl BalanceService {
         .await
     }
 
+    async fn invalidate_balance_raw(&self, balance_id: Uuid) -> Result<(), AppError> {
+        cache::invalidate(&*self.cache, &[keys::balance_raw(&balance_id)]).await
+    }
+
     pub async fn get_raw(&self, id: Uuid) -> Result<PlayerPlanBalance, AppError> {
-        let cache_key = format!("balance:raw:{id}");
+        let cache_key = keys::balance_raw(&id);
         get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION, || async {
             self.repo
                 .find_by_id(id)
@@ -162,6 +166,7 @@ impl BalanceService {
                     )
                     .await?;
 
+                self.invalidate_balance_raw(updated.id).await?;
                 let _ = cache::invalidate_stats(&*self.cache).await;
                 Ok(updated)
             }
@@ -199,6 +204,7 @@ impl BalanceService {
                     )
                     .await?;
 
+                self.invalidate_balance_raw(balance.id).await?;
                 let _ = cache::invalidate_stats(&*self.cache).await;
                 Ok(balance)
             }
@@ -391,8 +397,7 @@ impl BalanceService {
         let updated = self.repo.deduct_minutes(balance_id, minutes).await?;
 
         self.invalidate_balance(&updated).await?;
-        let cache_key = format!("balance:raw:{balance_id}");
-        let _ = self.cache.delete(&[&cache_key]).await;
+        self.invalidate_balance_raw(balance_id).await?;
 
         self.ledger
             .append(

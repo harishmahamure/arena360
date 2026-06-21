@@ -10,7 +10,7 @@ use crate::models::{
     CreateSessionDto, Device, EndSessionDto, PlayerPlanBalance, SessionFilterDto,
     UpdateDeviceStatusDto, UsageSession, UsageSessionResponse, SESSION_END_REASONS,
 };
-use crate::realtime::OutboxService;
+use crate::realtime::{publish_balance_updated_for_session, OutboxService};
 
 /// Device-channel `session.ended` must be durable so kiosks replay missed force-ends on reconnect.
 const DEVICE_SESSION_ENDED_DURABLE: bool = true;
@@ -210,45 +210,6 @@ impl SessionService {
             .update_time_credits_consumed(session.id, total)
             .await?;
         Ok((total, updated))
-    }
-
-    async fn publish_balance_updated(
-        &self,
-        player_id: Uuid,
-        device_id: Uuid,
-        session_id: Uuid,
-        balance: &PlayerPlanBalance,
-    ) {
-        let payload = serde_json::json!({
-            "balanceId": balance.id.to_string(),
-            "remainingMinutes": balance.remaining_minutes,
-            "playerId": player_id.to_string(),
-            "sessionId": session_id.to_string(),
-        });
-        let device_channel = format!("device:{device_id}");
-        let user_channel = format!("user:{player_id}");
-        let _ = self
-            .outbox
-            .publish(
-                &device_channel,
-                "balance.updated",
-                payload.clone(),
-                None,
-                None,
-                false,
-            )
-            .await;
-        let _ = self
-            .outbox
-            .publish(
-                &user_channel,
-                "balance.updated",
-                payload,
-                None,
-                Some(player_id),
-                false,
-            )
-            .await;
     }
 
     pub async fn list(
@@ -579,11 +540,13 @@ impl SessionService {
             .find_by_id(session_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Session with ID {session_id} not found")))?;
+        let _ = self.invalidate_session(&session).await;
         if updated_balance.remaining_minutes <= 0 {
             self.auto_end_expired(session_id).await?;
         }
 
-        self.publish_balance_updated(
+        publish_balance_updated_for_session(
+            &self.outbox,
             player_id,
             device_id,
             session_id,

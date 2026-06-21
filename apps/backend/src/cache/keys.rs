@@ -79,6 +79,10 @@ pub fn balance_active(player_id: &uuid::Uuid, scope: &str) -> String {
     format!("balance:active:{player_id}:{scope}")
 }
 
+pub fn balance_raw(id: &uuid::Uuid) -> String {
+    format!("balance:raw:{id}")
+}
+
 pub fn user_username(username: &str) -> String {
     format!("user:username:{}", username.to_lowercase())
 }

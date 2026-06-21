@@ -38,3 +38,18 @@ export function applyBalanceUpdated<T extends SessionSnapshot>(
     walletBalanceMinutes: payload.remainingMinutes,
   };
 }
+
+/**
+ * Merge a poll/reconcile response with the current session.
+ * Preserves the higher raw wallet minutes so a stale cache read cannot
+ * regress a mid-session recharge applied via WebSocket.
+ */
+export function mergeReconciledSession<T extends SessionSnapshot>(polled: T, current: T | null): T {
+  if (!current || current.id !== polled.id) {
+    return polled;
+  }
+  return {
+    ...polled,
+    walletBalanceMinutes: Math.max(polled.walletBalanceMinutes, current.walletBalanceMinutes),
+  };
+}

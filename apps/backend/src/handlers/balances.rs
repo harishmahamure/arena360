@@ -16,6 +16,7 @@ use crate::openapi::responses::{
     BalanceEnvelope, BalanceFlatEnvelope, BalancePaginationEnvelope, BalanceValidationEnvelope,
     ErrorEnvelope,
 };
+use crate::realtime::publish_balance_updated_for_player;
 use crate::services::BalanceService;
 
 #[utoipa::path(
@@ -107,10 +108,12 @@ pub async fn purchase_balance(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<PurchaseBalanceDto>,
 ) -> ApiResult<PlayerPlanBalance> {
+    let player_id = dto.player_id;
     let balance = state
         .balances
         .purchase_or_recharge(dto, claims.user_id_uuid())
         .await?;
+    publish_balance_updated_for_player(&state.db, &state.outbox, player_id, &balance).await;
     created(balance)
 }
 

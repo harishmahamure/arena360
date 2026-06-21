@@ -81,6 +81,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
     });
 
+    const unsubBalance = client.on('balance.updated', () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['player-plans'] });
+    });
+
     const unsubDevice = client.on('device.status_changed', () => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
     });
@@ -91,6 +96,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       unsubApprovalDec();
       unsubSession();
       unsubSessionEnd();
+      unsubBalance();
       unsubDevice();
       client.disconnect();
     };
