@@ -366,7 +366,7 @@ pub fn is_pid_tracked(pid: u32) -> bool {
         .lock()
         .map(|tracked| {
             tracked.iter().any(|e| {
-                e.root_pid == pid || e.descendant_pids.iter().any(|&p| p == pid)
+                e.root_pid == pid || e.descendant_pids.contains(&pid)
             })
         })
         .unwrap_or(false)
@@ -1182,7 +1182,7 @@ fn start_monitor_if_needed(app: AppHandle) {
                 }
                 #[cfg(not(windows))]
                 {
-                    tracked.retain(|entry| entry_has_live_process(entry));
+                    tracked.retain(entry_has_live_process);
                 }
                 tracked.is_empty()
             };
@@ -1308,7 +1308,7 @@ mod tests {
 
     #[test]
     fn has_tracked_processes_false_when_empty() {
-        let _ = clear_tracked_for_test();
+        clear_tracked_for_test();
         assert!(!has_tracked_processes());
     }
 
