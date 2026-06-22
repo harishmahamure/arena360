@@ -58,7 +58,7 @@ export function clearFailures(): void {
   write([]);
 }
 
-/** Staff reset via Ctrl+Shift+B on the login screen. */
+/** Staff reset from the login screen Clear sign-in lock button. */
 export function resetLoginLockoutByStaff(): LockoutState {
   clearFailures();
   return getLockout();

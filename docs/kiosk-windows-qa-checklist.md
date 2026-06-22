@@ -15,8 +15,8 @@ Run on a **Windows 10/11** station with Riot Client / Valorant (or Steam) instal
 
 | # | Steps | Expected | Pass |
 |---|--------|----------|------|
-| 1 | Launch Valorant (or another game) via Riot Client from kiosk library | Game launches; kiosk tracks process | |
-| 2 | Press **Ctrl+Shift+H** to return to kiosk | Kiosk login/session UI visible; **Riot social overlay must not cover kiosk** | |
+| 1 | Launch Valorant (or another game) via Riot Client from kiosk library | Launcher and game windows come to front; kiosk tracks process | |
+| 2 | **Alt+Tab** back to kiosk during session | Kiosk session UI visible; **Riot social overlay must not cover kiosk** | |
 | 3 | **Alt+Tab** between game and kiosk several times | OS z-order respected; **no TOPMOST flicker** or fighting | |
 
 ## Session-end cleanup (Part 2)
@@ -45,7 +45,7 @@ Run on a **Windows 10/11** station with Riot Client / Valorant (or Steam) instal
 
 | # | Steps | Expected | Pass |
 |---|--------|----------|------|
-| 13 | Enter setup (**Ctrl+Shift+A**), then exit without player session | **No** session-end process sweep | |
+| 13 | Open setup via **Staff login**, then exit without player session | **No** session-end process sweep | |
 | 14 | Disconnect network briefly during session | Offline banner; local countdown continues; reconnect replays end intents | |
 | 15 | Reconnect WS after brief outage (session still active) | One-shot `GET /kiosk/sessions/current` re-anchors; no periodic poll | |
 

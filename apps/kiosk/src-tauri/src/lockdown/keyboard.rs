@@ -4,13 +4,11 @@
 //! both Windows keys and any `Win`+key combo, Alt+Esc, Alt+F4, Alt+Space
 //! (system menu), Ctrl+Esc (Start menu), Ctrl+Shift+Esc (Task Manager), and
 //! the Menu/Apps (context-menu) key. Alt+Tab is intentionally allowed so
-//! players can switch between approved launched apps. **Ctrl+Shift+H** raises
-//! the kiosk above launched games without closing them. **Ctrl+Shift+A** opens
-//! administrator setup (emits `enter-setup` to the webview). **Ctrl+Shift+B**
-//! clears the player login lockout (emits `clear-login-lockout`). **Limitation:**
-//! Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user
-//! mode by design — it always reaches the Windows Secure Desktop. Full CAD
-//! suppression requires the `DisableLockWorkstation` /
+//! players can switch between approved launched apps. Staff actions (setup,
+//! lockout reset) use login-screen buttons only — no global Ctrl+Shift combos.
+//! **Limitation:** Ctrl+Alt+Del (the Secure Attention Sequence) cannot be
+//! intercepted from user mode by design — it always reaches the Windows Secure
+//! Desktop. Full CAD suppression requires the `DisableLockWorkstation` /
 //! `DisableTaskMgr` group-policy keys plus a kiosk/assigned-access account; this
 //! is documented for deployment and is out of scope for the app binary. After a
 //! user returns from the Secure Desktop we re-assert fullscreen on window focus
@@ -22,12 +20,12 @@ mod win {
     use std::sync::{Mutex, OnceLock};
     use std::thread;
     use std::time::{Duration, Instant};
-    use tauri::{AppHandle, Emitter};
+    use tauri::AppHandle;
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, VK_A, VK_APPS, VK_B, VK_CONTROL, VK_ESCAPE, VK_F4, VK_H, VK_LWIN,
-        VK_MENU, VK_RWIN, VK_SHIFT, VK_SPACE, VK_TAB,
+        GetAsyncKeyState, VK_APPS, VK_CONTROL, VK_ESCAPE, VK_F4, VK_LWIN, VK_MENU, VK_RWIN,
+        VK_SPACE, VK_TAB,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
@@ -44,9 +42,6 @@ mod win {
 
     static HOOK: Mutex<Option<HookHandle>> = Mutex::new(None);
     static ENABLED: AtomicBool = AtomicBool::new(false);
-    /// When true, shell shortcuts (Win key, Alt+F4, etc.) are swallowed. When false,
-    /// the hook stays installed but only staff combos (Ctrl+Shift+A/B/H) are handled.
-    static FULL_BLOCK: AtomicBool = AtomicBool::new(false);
     static ALT_REHIDE_RUNNING: AtomicBool = AtomicBool::new(false);
     static APP: OnceLock<AppHandle> = OnceLock::new();
 
@@ -98,27 +93,6 @@ mod win {
         false
     }
 
-    /// Ctrl+Shift+H — return to the kiosk shell while launched apps keep running.
-    unsafe fn is_focus_kiosk_combo(vk: u32) -> bool {
-        vk == VK_H.0 as u32
-            && is_down(VK_CONTROL.0 as i32)
-            && is_down(VK_SHIFT.0 as i32)
-    }
-
-    /// Ctrl+Shift+A — open administrator setup (handled in the webview via event).
-    unsafe fn is_enter_setup_combo(vk: u32) -> bool {
-        vk == VK_A.0 as u32
-            && is_down(VK_CONTROL.0 as i32)
-            && is_down(VK_SHIFT.0 as i32)
-    }
-
-    /// Ctrl+Shift+B — clear player login lockout (handled in the webview via event).
-    unsafe fn is_clear_lockout_combo(vk: u32) -> bool {
-        vk == VK_B.0 as u32
-            && is_down(VK_CONTROL.0 as i32)
-            && is_down(VK_SHIFT.0 as i32)
-    }
-
     /// Alt+Tab is allowed through, but Explorer often flashes the taskbar when the switcher opens.
     unsafe fn is_alt_tab(vk: u32) -> bool {
         vk == VK_TAB.0 as u32 && is_down(VK_MENU.0 as i32)
@@ -150,9 +124,8 @@ mod win {
             let is_keydown =
                 wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
             let is_keyup = wparam.0 == WM_KEYUP as usize || wparam.0 == WM_SYSKEYUP as usize;
-            let full_block = FULL_BLOCK.load(Ordering::SeqCst);
 
-            if full_block && is_keyup && kb.vkCode == VK_MENU.0 as u32 {
+            if is_keyup && kb.vkCode == VK_MENU.0 as u32 {
                 crate::lockdown::shell::hide_shell_chrome();
                 if let Some(app) = APP.get() {
                     crate::lockdown::foreground::capture_allowed_foreground(app);
@@ -160,34 +133,12 @@ mod win {
             }
 
             if is_keydown {
-                if is_focus_kiosk_combo(kb.vkCode) {
-                    if let Some(app) = APP.get() {
-                        let _ = crate::process::focus_kiosk_window(app);
-                    }
+                if should_block(kb.vkCode) {
                     return LRESULT(1);
                 }
-                if is_enter_setup_combo(kb.vkCode) {
-                    if let Some(app) = APP.get() {
-                        let _ = crate::process::focus_kiosk_window(app);
-                        let _ = app.emit("enter-setup", ());
-                    }
-                    return LRESULT(1);
-                }
-                if is_clear_lockout_combo(kb.vkCode) {
-                    if let Some(app) = APP.get() {
-                        let _ = crate::process::focus_kiosk_window(app);
-                        let _ = app.emit("clear-login-lockout", ());
-                    }
-                    return LRESULT(1);
-                }
-                if full_block {
-                    if should_block(kb.vkCode) {
-                        return LRESULT(1);
-                    }
-                    if is_alt_tab(kb.vkCode) {
-                        crate::lockdown::shell::hide_shell_chrome();
-                        start_alt_rehide_burst();
-                    }
+                if is_alt_tab(kb.vkCode) {
+                    crate::lockdown::shell::hide_shell_chrome();
+                    start_alt_rehide_burst();
                 }
             }
         }
@@ -213,17 +164,10 @@ mod win {
     }
 
     pub fn install() {
-        FULL_BLOCK.store(true, Ordering::SeqCst);
-        ensure_hook_installed();
-    }
-
-    pub fn set_staff_combo_only() {
-        FULL_BLOCK.store(false, Ordering::SeqCst);
         ensure_hook_installed();
     }
 
     pub fn remove() {
-        FULL_BLOCK.store(false, Ordering::SeqCst);
         ENABLED.store(false, Ordering::SeqCst);
         let Ok(mut guard) = HOOK.lock() else {
             return;
@@ -243,14 +187,6 @@ pub fn set_app_handle(app: tauri::AppHandle) {
 
 #[cfg(not(target_os = "windows"))]
 pub fn set_app_handle(_app: tauri::AppHandle) {}
-
-#[cfg(target_os = "windows")]
-pub fn set_staff_combo_only() {
-    win::set_staff_combo_only();
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn set_staff_combo_only() {}
 
 #[cfg(target_os = "windows")]
 pub fn install_hook() {

@@ -96,12 +96,12 @@ bootstrapper is embedded and run during install (small download at install time)
 
 App-level lockdown blocks the Windows keys, Alt+F4 and Ctrl+Shift+Esc, hides the taskbar and Start menu flyout while locked, and Alt+Tab uses native Windows switching.
 
-**Staff shortcuts (login screen):**
+**Staff actions (login screen only):**
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+A | Open setup / admin login |
-| Ctrl+Shift+B | Clear player login lockout (“too many attempts”) |
+| Control | Action |
+|---------|--------|
+| **Staff login** (footer link) | Open setup / admin login |
+| **Clear sign-in lock** (footer link, when locked) | Clear player login lockout (“too many attempts”) |
 
 Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user mode.
 For a hardened station, also apply at the OS level:

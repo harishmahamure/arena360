@@ -20,15 +20,14 @@ function formatRetry(retryAt: number): string {
 
 /**
  * Arena360 cinematic logged-out home: looped background video with radial scrim,
- * centered glass sign-in card, and station controls. All auth logic (lockout,
- * maintenance/offline gating, player login) is preserved. Staff setup is reached
- * via Ctrl+Shift+A (handled globally in KioskProvider) or the Staff login button.
- * Staff can clear login lockout with Ctrl+Shift+B (handled globally in KioskProvider).
+ * centered glass sign-in card, and station controls. Staff setup and lockout reset
+ * use footer buttons on this screen only (no global keyboard shortcuts).
  */
 export function LoginHomePage() {
   const {
     playerLogin,
     enterSetup,
+    clearStaffLoginLockout,
     error,
     clearError,
     online,
@@ -225,8 +224,8 @@ export function LoginHomePage() {
             <div className="gz-auth-error" role="alert">
               <p className="error-headline">Too many attempts</p>
               <p className="error-detail">
-                Sign-in is locked. Try again in {formatRetry(lockout.retryAt)} or ask staff for
-                help.
+                Sign-in is locked. Try again in {formatRetry(lockout.retryAt)}, or staff can clear
+                the lock below.
               </p>
             </div>
           ) : error ? (
@@ -253,6 +252,15 @@ export function LoginHomePage() {
           <button type="button" className="link a360-staff-login" onClick={() => void enterSetup()}>
             Staff login
           </button>
+          {lockout.locked ? (
+            <button
+              type="button"
+              className="link a360-staff-login"
+              onClick={clearStaffLoginLockout}
+            >
+              Clear sign-in lock
+            </button>
+          ) : null}
           {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: version line exposes build label to screen readers */}
           <p className="a360-login-version" aria-label={`App version ${KIOSK_APP_VERSION}`}>
             v{KIOSK_APP_VERSION}

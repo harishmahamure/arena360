@@ -29,7 +29,7 @@ flowchart TB
     shell[Assigned Access or shell replacement]
     autologon[Optional auto-logon same user]
     autostart[Scheduled Task at logon]
-    provisionPC[Ctrl+Shift+A register + allow-list]
+    provisionPC[Staff login register + allow-list]
   end
   subgraph tv [PlayStation Android TV]
     buildAPK[Release APK with production API URL]
@@ -125,13 +125,14 @@ Arena360 PC lockdown has two layers. **Both** are required for a hardened public
 - `SetupRelaxed` — admin logged into setup; lockdown relaxed for allow-list editing and
   software testing. Returns to `Locked` on logout, 15-minute idle, or player session start.
 
-### Staff shortcuts (login screen)
+### Staff actions (login screen)
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+A | Open setup / admin login |
-| Ctrl+Shift+B | Clear player login lockout (“too many attempts”) |
-| Ctrl+Shift+H | Raise kiosk above game overlay (during session) |
+| Control | Action |
+|---------|--------|
+| **Staff login** (footer link) | Open setup / admin login |
+| **Clear sign-in lock** (footer link, when locked) | Clear player login lockout (“too many attempts”) |
+
+During an active session, use **Alt+Tab** to return to Arena360 while games keep running.
 
 ### What is not automated yet
 
@@ -305,7 +306,7 @@ To re-register: clear app data or uninstall/reinstall (see Sideload install).
 | App not starting on boot | Run `scripts\verify-station-startup.ps1 -Repair` (elevated); verify **Arena360 Kiosk** task user matches auto-logon | Check TV OEM auto-start setting; confirm app not force-stopped |
 | Stuck on registration | Confirm admin credentials and TOTP; check backend logs | Same; ensure device type is PS4/PS5 only |
 | Need to re-provision | Setup → Factory reset, or clear tokens via setup | Settings → Apps → Clear data, or `adb uninstall` |
-| Player cannot sign in | Check login lockout; staff **Ctrl+Shift+B** on login screen | N/A — no player login on TV |
+| Player cannot sign in | Check login lockout; staff **Clear sign-in lock** on login screen | N/A — no player login on TV |
 | Session not starting (TV) | N/A | Confirm WebSocket connected; verify admin started session for correct device |
 | Wrong HDMI input (TV) | N/A | Enable CEC; switch input manually if degraded banner shown |
 | WebView2 / blank UI (PC) | Install WebView2 runtime; see kiosk README | N/A |

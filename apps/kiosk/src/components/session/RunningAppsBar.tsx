@@ -15,7 +15,7 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
     processes.length === 1 && primary ? primary.displayName : `${processes.length} apps running`;
   const launcherLoginHint =
     processes.length === 1 && primary?.awaitingLauncherLogin
-      ? `Sign in to your account in the launcher window for ${primary.displayName}, then Alt+Tab to the game when it starts.`
+      ? `Sign in to your account in the launcher window for ${primary.displayName}. The launcher should open in front automatically — use Alt+Tab to switch to the game when it starts.`
       : null;
 
   return (
@@ -31,17 +31,16 @@ export function RunningAppsBar({ processes, closing, onCloseAll }: RunningAppsBa
               <p className="a360-running-apps-sub" title={primary.executablePath}>
                 {launcherLoginHint ?? (
                   <>
-                    Use <strong>Alt+Tab</strong> to switch windows like normal. Press{' '}
-                    <strong>Ctrl+Shift+H</strong> to return to Arena360, then close when you are
-                    done playing.
+                    Use <strong>Alt+Tab</strong> to switch windows like normal, then close the app
+                    from Arena360 when you are done playing.
                   </>
                 )}
               </p>
             ) : (
               <>
                 <p className="a360-running-apps-sub">
-                  Use <strong>Alt+Tab</strong> to switch windows like normal. Press{' '}
-                  <strong>Ctrl+Shift+H</strong> to return to Arena360.
+                  Use <strong>Alt+Tab</strong> to switch windows like normal, then return to
+                  Arena360 when you are done.
                 </p>
                 <ul className="a360-running-apps-list">
                   {processes.map((process) => (

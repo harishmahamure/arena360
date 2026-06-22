@@ -1,6 +1,5 @@
 import type { DeductionProfile } from '@gaming-cafe/contracts';
 import { ApiError } from '@gaming-cafe/utils';
-import { listen } from '@tauri-apps/api/event';
 import {
   createContext,
   type ReactNode,
@@ -42,7 +41,6 @@ import {
   storeSessionSnapshot,
 } from '../lib/sessionPersist';
 import { prepareSessionSounds } from '../lib/sessionSounds';
-import { resolveSetupShortcutAction } from '../lib/setupShortcut';
 import {
   clearAllTokens,
   focusKiosk,
@@ -188,8 +186,9 @@ interface KioskContextValue {
   /** Dismiss the single-login conflict screen back to idle. */
   dismissConflict: () => void;
   factoryReset: () => Promise<void>;
-  /** Bumped when staff clears player login lockout (Ctrl+Shift+B). */
+  /** Bumped when staff clears player login lockout from the login screen. */
   staffLockoutClearTick: number;
+  clearStaffLoginLockout: () => void;
 }
 
 const KioskContext = createContext<KioskContextValue | null>(null);
@@ -247,9 +246,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const setupRelaxedRef = useRef(false);
   const activeSessionRef = useRef<ActiveSession | null>(null);
   const cleanupInFlightRef = useRef(false);
-  const lastEnterSetupAtRef = useRef(0);
   const lastClearLockoutAtRef = useRef(0);
-  const SETUP_SHORTCUT_DEBOUNCE_MS = 400;
+  const STAFF_ACTION_DEBOUNCE_MS = 400;
   // Short-lived admin token captured during first-time provisioning (in memory only).
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [setupAuthenticated, setSetupAuthenticated] = useState(false);
@@ -590,7 +588,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   // Reconcile the React phase with the native lockdown state. When setup mode
   // ends (SetupRelaxed → Locked), return to the player login screen. Do not
-  // bounce when opening setup admin login via Ctrl+Shift+A while still Locked.
+  // bounce when opening setup admin login from the Staff login button while still Locked.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     void import('@tauri-apps/api/event').then(({ listen }) =>
@@ -691,28 +689,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setPhase('setup');
   }, []);
 
-  const requestEnterSetup = useCallback(() => {
+  const clearStaffLoginLockout = useCallback(() => {
     const now = Date.now();
-    if (now - lastEnterSetupAtRef.current < SETUP_SHORTCUT_DEBOUNCE_MS) return;
-    lastEnterSetupAtRef.current = now;
-
-    switch (resolveSetupShortcutAction(phaseRef.current)) {
-      case 'noop':
-        return;
-      case 'focusSetup':
-        void focusKiosk().catch(() => {
-          // Non-fatal when running outside Tauri (browser dev).
-        });
-        return;
-      case 'enterSetup':
-        void enterSetup();
-        return;
-    }
-  }, [enterSetup]);
-
-  const requestClearLoginLockout = useCallback(() => {
-    const now = Date.now();
-    if (now - lastClearLockoutAtRef.current < SETUP_SHORTCUT_DEBOUNCE_MS) return;
+    if (now - lastClearLockoutAtRef.current < STAFF_ACTION_DEBOUNCE_MS) return;
     lastClearLockoutAtRef.current = now;
 
     if (phaseRef.current !== 'login') return;
@@ -733,52 +712,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }
     setPhase('login');
   }, []);
-
-  // Setup entry via Ctrl+Shift+A (ADR-0020 amendment). Windows also handles this
-  // in the native keyboard hook (`enter-setup` event) when the webview lacks focus.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    void listen('enter-setup', () => {
-      requestEnterSetup();
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey && e.shiftKey && e.code === 'KeyA') {
-        e.preventDefault();
-        requestEnterSetup();
-      }
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      unlisten?.();
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [requestEnterSetup]);
-
-  // Staff lockout clear via Ctrl+Shift+B (ADR-0020). Native hook emits
-  // `clear-login-lockout` when the webview lacks focus under lockdown.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    void listen('clear-login-lockout', () => {
-      requestClearLoginLockout();
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.ctrlKey && e.shiftKey && e.code === 'KeyB') {
-        e.preventDefault();
-        requestClearLoginLockout();
-      }
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      unlisten?.();
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [requestClearLoginLockout]);
 
   const playerLogin = useCallback(
     async (username: string, password: string) => {
@@ -972,6 +905,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     dismissConflict,
     factoryReset,
     staffLockoutClearTick,
+    clearStaffLoginLockout,
   };
 
   return <KioskContext.Provider value={value}>{children}</KioskContext.Provider>;

@@ -32,6 +32,8 @@ struct WatchEntry {
     root_pid: u32,
     descendant_pids: Vec<u32>,
     window_handle: Option<isize>,
+    /// One-time foreground for the main app/game window (after launcher login or direct launch).
+    app_foregrounded: bool,
 }
 
 static TRACKED: Mutex<Vec<WatchEntry>> = Mutex::new(Vec::new());
@@ -457,11 +459,8 @@ fn process_exe_name(_pid: u32) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn is_overlay_hwnd(hwnd: windows::Win32::Foundation::HWND, min_primary_area: i32) -> bool {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, GWL_EXSTYLE,
-        WS_EX_TOOLWINDOW,
-    };
+fn is_small_or_tool_window(hwnd: windows::Win32::Foundation::HWND, min_primary_area: i32) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW};
 
     unsafe {
         let area = window_area(hwnd);
@@ -470,10 +469,22 @@ fn is_overlay_hwnd(hwnd: windows::Win32::Foundation::HWND, min_primary_area: i32
         }
 
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        if ex_style & WS_EX_TOOLWINDOW.0 != 0 {
-            return true;
-        }
+        ex_style & WS_EX_TOOLWINDOW.0 != 0
+    }
+}
 
+/// Overlays minimized when the kiosk regains focus — includes launcher chrome below the shell.
+#[cfg(target_os = "windows")]
+fn is_suppressible_overlay(hwnd: windows::Win32::Foundation::HWND, min_primary_area: i32) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetWindowTextW, GetWindowThreadProcessId,
+    };
+
+    if is_small_or_tool_window(hwnd, min_primary_area) {
+        return true;
+    }
+
+    unsafe {
         let mut class_buf = [0u16; 256];
         let class_len = GetClassNameW(hwnd, &mut class_buf);
         if class_len > 0 {
@@ -504,7 +515,44 @@ fn is_overlay_hwnd(hwnd: windows::Win32::Foundation::HWND, min_primary_area: i32
 }
 
 #[cfg(not(target_os = "windows"))]
-fn is_overlay_hwnd(_hwnd: isize, _min_primary_area: i32) -> bool {
+fn is_small_or_tool_window(_hwnd: isize, _min_primary_area: i32) -> bool {
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_suppressible_overlay(_hwnd: isize, _min_primary_area: i32) -> bool {
+    false
+}
+
+fn is_launcher_login_process(exe: &str, entry: &WatchEntry) -> bool {
+    if is_overlay_launcher_exe(exe) {
+        return true;
+    }
+    if is_launcher_executable(&entry.executable_path) {
+        let root_name = executable_basename(&entry.executable_path);
+        if exe == root_name {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn is_launcher_login_hwnd(hwnd: isize, entry: &WatchEntry) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+
+    unsafe {
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(HWND(hwnd as *mut _), Some(&mut pid));
+        process_exe_name(pid)
+            .map(|exe| is_launcher_login_process(&exe, entry))
+            .unwrap_or(false)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_launcher_login_hwnd(_hwnd: isize, _entry: &WatchEntry) -> bool {
     false
 }
 
@@ -536,7 +584,7 @@ fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
         if !search.pid_set.contains(&window_pid) || !IsWindowVisible(hwnd).as_bool() {
             return BOOL(1);
         }
-        if is_overlay_hwnd(hwnd, search.min_primary_area) {
+        if is_small_or_tool_window(hwnd, search.min_primary_area) {
             return BOOL(1);
         }
         let area = window_area(hwnd);
@@ -567,6 +615,27 @@ fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
 }
 
 #[cfg(target_os = "windows")]
+fn foreground_launcher_window(root_pid: u32) -> Option<isize> {
+    let mut system = System::new();
+    for _ in 0..60 {
+        refresh_system_processes(&mut system);
+        let pids = process_tree_pids(root_pid, &system);
+        if let Some(hwnd) = best_visible_hwnd_for_pids(&pids) {
+            bring_hwnd_to_foreground(hwnd);
+            set_last_allowed_hwnd(hwnd);
+            return Some(hwnd);
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn foreground_launcher_window(_root_pid: u32) -> Option<isize> {
+    None
+}
+
+#[cfg(target_os = "windows")]
 fn refresh_entry_window_handle(entry: &mut WatchEntry) {
     let mut pids: Vec<u32> = entry.descendant_pids.clone();
     pids.push(entry.root_pid);
@@ -577,6 +646,23 @@ fn refresh_entry_window_handle(entry: &mut WatchEntry) {
     if let Some(hwnd) = best_visible_hwnd_for_pids(&pids) {
         entry.window_handle = Some(hwnd);
     }
+}
+
+#[cfg(target_os = "windows")]
+fn maybe_foreground_tracked_app(entry: &mut WatchEntry) {
+    if entry.app_foregrounded {
+        return;
+    }
+    refresh_entry_window_handle(entry);
+    let Some(hwnd) = entry.window_handle else {
+        return;
+    };
+    if is_launcher_login_hwnd(hwnd, entry) {
+        return;
+    }
+    bring_hwnd_to_foreground(hwnd);
+    set_last_allowed_hwnd(hwnd);
+    entry.app_foregrounded = true;
 }
 
 #[cfg(target_os = "windows")]
@@ -879,7 +965,7 @@ fn suppress_tracked_overlays() {
         if !search.pid_set.contains(&window_pid) || !IsWindowVisible(hwnd).as_bool() {
             return BOOL(1);
         }
-        if is_overlay_hwnd(hwnd, search.min_primary_area) {
+        if is_suppressible_overlay(hwnd, search.min_primary_area) {
             let _ = ShowWindow(hwnd, SW_MINIMIZE);
             let _ = SetWindowPos(
                 hwnd,
@@ -1090,7 +1176,7 @@ fn start_monitor_if_needed(app: AppHandle) {
                     refresh_pids_for_monitor(&mut system, &tracked);
                     for entry in tracked.iter_mut() {
                         refresh_watch_entry(entry, &system);
-                        refresh_entry_window_handle(entry);
+                        maybe_foreground_tracked_app(entry);
                     }
                     tracked.retain(|entry| entry_has_live_process(entry, &system));
                 }
@@ -1140,10 +1226,15 @@ pub fn launch_allowed(
         normalize_launch_arguments(arguments).as_deref(),
     )?;
     crate::boost::apply_game_priority(pid);
-    let window_handle = if is_launcher_executable(&executable_path) {
-        None
+    let launcher = is_launcher_executable(&executable_path);
+    let window_handle = if launcher {
+        foreground_launcher_window(pid)
     } else {
-        fullscreen_process_window(pid)
+        let hwnd = fullscreen_process_window(pid);
+        if let Some(h) = hwnd {
+            bring_hwnd_to_foreground(h);
+        }
+        hwnd
     };
     apply_kiosk_game_mode_background(&app);
     TRACKED.lock().map_err(|e| e.to_string())?.push(WatchEntry {
@@ -1151,6 +1242,7 @@ pub fn launch_allowed(
         root_pid: pid,
         descendant_pids: Vec::new(),
         window_handle,
+        app_foregrounded: !launcher && window_handle.is_some(),
     });
     start_monitor_if_needed(app);
     Ok(LaunchResult { pid })
@@ -1188,7 +1280,8 @@ pub fn clear_tracked_processes() -> Result<(), String> {
 mod tests {
     use super::{
         all_tree_pids, has_tracked_processes, is_allowed, is_launcher_executable,
-        is_overlay_launcher_exe, is_session_keep_process, normalize_path, WatchEntry,
+        is_launcher_login_process, is_overlay_launcher_exe, is_session_keep_process,
+        normalize_path, WatchEntry,
     };
 
     #[test]
@@ -1255,6 +1348,30 @@ mod tests {
     }
 
     #[test]
+    fn is_launcher_login_process_detects_riot_ux_and_root_launcher() {
+        let riot_entry = WatchEntry {
+            executable_path: "C:\\Riot Games\\Riot Client\\RiotClientServices.exe".to_string(),
+            root_pid: 1,
+            descendant_pids: vec![],
+            window_handle: None,
+            app_foregrounded: false,
+        };
+        assert!(is_launcher_login_process("riotclientux.exe", &riot_entry));
+        assert!(is_launcher_login_process("riotclientservices.exe", &riot_entry));
+        assert!(!is_launcher_login_process("valorant-win64-shipping.exe", &riot_entry));
+
+        let steam_entry = WatchEntry {
+            executable_path: "C:\\Program Files (x86)\\Steam\\steam.exe".to_string(),
+            root_pid: 2,
+            descendant_pids: vec![],
+            window_handle: None,
+            app_foregrounded: false,
+        };
+        assert!(is_launcher_login_process("steam.exe", &steam_entry));
+        assert!(!is_launcher_login_process("cs2.exe", &steam_entry));
+    }
+
+    #[test]
     fn all_tree_pids_dedupes_roots_and_descendants() {
         let entries = vec![
             WatchEntry {
@@ -1262,12 +1379,14 @@ mod tests {
                 root_pid: 100,
                 descendant_pids: vec![101, 102],
                 window_handle: None,
+                app_foregrounded: false,
             },
             WatchEntry {
                 executable_path: "b.exe".to_string(),
                 root_pid: 200,
                 descendant_pids: vec![201],
                 window_handle: None,
+                app_foregrounded: false,
             },
         ];
         let pids = all_tree_pids(&entries);
