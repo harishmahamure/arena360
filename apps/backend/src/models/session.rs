@@ -49,7 +49,7 @@ pub struct EndSessionDto {
 /// reasons are a code change, not a migration.
 pub const SESSION_END_REASONS: &[&str] = &["voluntary", "auto", "force", "offline_reconcile"];
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionFilterDto {
     pub balance_id: Option<Uuid>,

@@ -60,6 +60,7 @@ impl CashRegisterService {
         }
 
         let result = self.repo.open_register(&dto, actor_id).await?;
+        self.invalidate_register(result.id).await?;
         if let Some(ref notifications) = self.notifications {
             let _ = notifications
                 .record(RecordNotification {
@@ -136,9 +137,12 @@ impl CashRegisterService {
             ));
         }
 
-        self.repo
+        let result = self
+            .repo
             .reconcile(id, dto.reconciliation_notes, actor_id)
-            .await
+            .await?;
+        self.invalidate_register(id).await?;
+        Ok(result)
     }
 
     pub async fn update_opening_balance(

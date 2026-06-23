@@ -501,4 +501,25 @@ impl BalanceRepository {
             builder.push(" AND b.\"expiryDate\" > NOW() AND b.\"remainingMinutes\" > 0");
         }
     }
+
+    /// Open session for a player (session id, device id) for cache invalidation after recharge.
+    pub async fn find_open_session_ids(
+        &self,
+        player_id: Uuid,
+    ) -> Result<Option<(Uuid, Uuid)>, AppError> {
+        let row = sqlx::query_as::<_, (Uuid, Uuid)>(
+            r#"
+            SELECT s.id, s."deviceId"
+            FROM usage_sessions s
+            INNER JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
+            WHERE b."playerId" = $1 AND s."endTime" IS NULL AND s."deletedAt" IS NULL
+            ORDER BY s."startTime" DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(player_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
 }

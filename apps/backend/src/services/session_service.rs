@@ -14,7 +14,7 @@ use crate::realtime::{publish_balance_updated_for_session, OutboxService};
 
 /// Device-channel `session.ended` must be durable so kiosks replay missed force-ends on reconnect.
 const DEVICE_SESSION_ENDED_DURABLE: bool = true;
-use crate::cache::{self, get_or_set, keys, CacheService};
+use crate::cache::{self, get_or_set, keys, set_json, CacheService};
 use crate::repositories::SessionRepository;
 use crate::services::deduction_profile::{
     wall_minutes_between, weighted_minutes_between,
@@ -138,12 +138,33 @@ impl SessionService {
         }
     }
 
+    async fn invalidate_sessions_list_cache(&self) -> Result<(), AppError> {
+        self.cache
+            .invalidate_prefix(keys::SESSIONS_LIST_PREFIX)
+            .await
+    }
+
     async fn invalidate_session(&self, session: &UsageSession) -> Result<(), AppError> {
         let keys_to_drop = vec![
             keys::session_enriched(&session.id),
             keys::session_device(&session.device_id),
         ];
-        cache::invalidate(&*self.cache, &keys_to_drop).await
+        cache::invalidate(&*self.cache, &keys_to_drop).await?;
+        self.invalidate_sessions_list_cache().await
+    }
+
+    async fn write_through_session_enriched(&self, session_id: Uuid) -> Result<(), AppError> {
+        let Some(enriched) = self.repo.find_enriched_by_id(session_id).await? else {
+            return Ok(());
+        };
+        let enriched = with_cafe_timezone(enriched, self.cafe_timezone.as_str());
+        set_json(
+            &*self.cache,
+            &keys::session_enriched(&session_id),
+            &enriched,
+            keys::ttl::SESSION_ENRICHED,
+        )
+        .await
     }
 
     async fn invalidate_stats_cache(&self) {
@@ -220,33 +241,33 @@ impl SessionService {
         &self,
         filters: SessionFilterDto,
     ) -> Result<crate::dto::PaginationResult<UsageSessionResponse>, AppError> {
-        let mut result = self.repo.list(&filters).await?;
-        let tz = self.cafe_timezone.as_str();
-        result.data = result
-            .data
-            .into_iter()
-            .map(|s| with_cafe_timezone(s, tz))
-            .collect();
-        Ok(result)
+        let ttl = if filters.is_active == Some(1) {
+            keys::ttl::SESSION_ENRICHED
+        } else {
+            keys::ttl::SESSION
+        };
+        let cache_key = keys::sessions_list(&keys::filter_hash(&filters));
+        let tz = self.cafe_timezone.clone();
+        get_or_set(&*self.cache, &cache_key, ttl, || async move {
+            let mut result = self.repo.list(&filters).await?;
+            result.data = result
+                .data
+                .into_iter()
+                .map(|s| with_cafe_timezone(s, tz.as_str()))
+                .collect();
+            Ok(result)
+        })
+        .await
     }
 
     pub async fn list_active(
         &self,
     ) -> Result<crate::dto::PaginationResult<UsageSessionResponse>, AppError> {
-        let mut result = self
-            .repo
-            .list(&SessionFilterDto {
-                is_active: Some(1),
-                ..Default::default()
-            })
-            .await?;
-        let tz = self.cafe_timezone.as_str();
-        result.data = result
-            .data
-            .into_iter()
-            .map(|s| with_cafe_timezone(s, tz))
-            .collect();
-        Ok(result)
+        self.list(SessionFilterDto {
+            is_active: Some(1),
+            ..Default::default()
+        })
+        .await
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<UsageSessionResponse, AppError> {
@@ -558,6 +579,7 @@ impl SessionService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Session with ID {session_id} not found")))?;
         let _ = self.invalidate_session(&session).await;
+        let _ = self.write_through_session_enriched(session_id).await;
         if updated_balance.remaining_minutes <= 0 {
             self.auto_end_expired(session_id).await?;
         }
@@ -644,6 +666,7 @@ impl SessionService {
             .end(id, end_time, duration_minutes, Some(time_used), actor_id)
             .await?;
         let _ = self.invalidate_session(&updated).await;
+        let _ = self.write_through_session_enriched(id).await;
 
         let remaining_minutes = final_balance.remaining_minutes;
         let player_id = Some(final_balance.player_id);

@@ -11,7 +11,6 @@ import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
 import { useDispatch, useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
-import { useEnrichedSessions } from '../hooks/useEnrichedSessions';
 import { usePermissions } from '../hooks/usePermissions';
 import { clearAdminSession } from '../lib/authSession';
 import { getSessions } from '../services/sessions/list';
@@ -50,12 +49,12 @@ export default function DashboardLayout() {
     enabled: isAuthenticated && isStaff,
   });
 
-  const enrichedSessions = useEnrichedSessions(data?.data);
+  const sessions = data?.data ?? [];
 
   const countDownData = useMemo<CountdownConfig[]>(() => {
-    if (!enrichedSessions.length || isLoading) return [];
+    if (!sessions.length || isLoading) return [];
 
-    return enrichedSessions
+    return sessions
       .filter((session) => session.balance?.remainingMinutes != null && !session.endTime)
       .map((session) => ({
         id: session.id,
@@ -70,7 +69,7 @@ export default function DashboardLayout() {
           deviceName: session.device?.name ?? 'Unknown',
         },
       }));
-  }, [enrichedSessions, isLoading]);
+  }, [sessions, isLoading]);
 
   useMultipleCountdowns(countDownData);
 

@@ -14,7 +14,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import { StaffTotpDialog } from '../../../components/StaffTotpDialog';
 import { useSelector } from '../../../hooks/store';
-import { useEnrichedSessions } from '../../../hooks/useEnrichedSessions';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { getSessions, type SessionResponse } from '../../../services/sessions/list';
 import { endSession } from '../../../services/sessions/update';
@@ -69,7 +68,7 @@ export default function SessionsPage() {
       }),
   });
 
-  const enrichedSessions = useEnrichedSessions(data?.data);
+  const sessions = data?.data ?? [];
   const currentUserRole = useSelector((state) => state.auth.role);
   const { can } = usePermissions();
   const queryClient = useQueryClient();
@@ -175,7 +174,7 @@ export default function SessionsPage() {
         hideOnMobile: true,
         format: (value) => {
           const id = value as SessionResponse['id'];
-          const session = enrichedSessions.find((s) => s.id === id);
+          const session = sessions.find((s) => s.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
           if (endTime) {
@@ -191,7 +190,7 @@ export default function SessionsPage() {
         minWidth: 100,
         format: (value) => {
           const id = value as SessionResponse['id'];
-          const session = enrichedSessions.find((s) => s.id === id);
+          const session = sessions.find((s) => s.id === id);
           const startTime = session?.startTime;
           const endTime = session?.endTime;
           if (endTime) {
@@ -238,7 +237,7 @@ export default function SessionsPage() {
         ),
       },
     ],
-    [enrichedSessions],
+    [sessions],
   );
 
   const actions: Action<SessionResponse>[] = [
@@ -273,7 +272,7 @@ export default function SessionsPage() {
       <ListPage<SessionResponse>
         title="Sessions"
         description="Manage player gaming sessions and usage tracking."
-        data={enrichedSessions}
+        data={sessions}
         columns={columns}
         actions={actions}
         isLoading={isLoading}

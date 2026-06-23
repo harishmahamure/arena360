@@ -279,6 +279,11 @@ impl TransactionService {
 
         db_tx.commit().await?;
 
+        let _ = self
+            .cache
+            .invalidate_prefix(&format!("stock:level:{sale_location_id}:"))
+            .await;
+
         if is_credit {
             let _ = self
                 .credit
@@ -466,6 +471,13 @@ impl TransactionService {
             }
         }
 
+        if is_credit {
+            let _ = self
+                .credit
+                .invalidate_player_credit(dto.player_id)
+                .await;
+        }
+
         self.apply_cash_register_effects(&transaction, actor_id, cash_registers)
             .await?;
 
@@ -522,29 +534,46 @@ impl TransactionService {
         let updated = self.repo.update(id, &dto, actor_id).await?;
 
         if old_txn.payment_status != "completed" && updated.payment_status == "completed" {
-            let cash_portion = match updated.payment_method.as_str() {
-                "cash" => updated.cash_amount.unwrap_or(updated.amount),
-                "split_payment" => updated.cash_amount.unwrap_or(0.0),
-                _ => 0.0,
-            };
-            if cash_portion > 0.0 {
-                if let (Some(shift_id), Some(actor_id)) = (updated.shift_id, actor_id) {
-                    let register = cash_registers.get_by_shift(shift_id).await?;
-                    cash_registers
-                        .add_entry(
-                            register.register.id,
-                            crate::models::CreateCashRegisterEntryDto {
-                                entry_type: "cash_in".to_string(),
-                                amount: cash_portion,
-                                reason: Some(format!("Transaction {}", updated.id)),
-                                reference_type: Some("transaction".to_string()),
-                                reference_id: Some(updated.id),
+            let plan_already_granted = Self::should_grant_plan_benefit(
+                &old_txn.payment_method,
+                &old_txn.payment_status,
+            );
+            if updated.transaction_type == "plan_purchase"
+                && !plan_already_granted
+                && Self::should_grant_plan_benefit(&updated.payment_method, &updated.payment_status)
+            {
+                if let Some(plan_id) = updated.plan_id {
+                    let balance = self
+                        .balances
+                        .purchase_or_recharge(
+                            PurchaseBalanceDto {
+                                player_id: updated.player_id,
+                                plan_id,
+                                transaction_id: Some(updated.id),
                             },
                             actor_id,
                         )
                         .await?;
+
+                    publish_balance_updated_for_player(
+                        &self.repo.pool,
+                        &self.outbox,
+                        updated.player_id,
+                        &balance,
+                    )
+                    .await;
                 }
             }
+
+            if updated.payment_method == "credit" {
+                let _ = self
+                    .credit
+                    .invalidate_player_credit(updated.player_id)
+                    .await;
+            }
+
+            self.apply_cash_register_effects(&updated, actor_id, cash_registers)
+                .await?;
         }
 
         self.invalidate_stats_cache().await;

@@ -76,6 +76,12 @@ pub fn session_enriched(id: &uuid::Uuid) -> String {
     format!("session:enriched:{id}")
 }
 
+pub const SESSIONS_LIST_PREFIX: &str = "sessions:list:";
+
+pub fn sessions_list(filter_hash: &str) -> String {
+    format!("sessions:list:{filter_hash}")
+}
+
 pub fn balance_active(player_id: &uuid::Uuid, scope: &str) -> String {
     format!("balance:active:{player_id}:{scope}")
 }

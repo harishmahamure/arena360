@@ -10,21 +10,28 @@ use crate::models::{
     StaffGamingAllowanceStatus, StaffGamingAllowanceSummary, STAFF_ALLOWANCE_PERIOD_DAYS,
 };
 use crate::repositories::{BalanceRepository, LedgerRepository};
-use crate::services::UserService;
+use crate::services::{BalanceService, UserService};
 
 pub struct StaffGamingAllowanceService {
     balances: BalanceRepository,
     ledger: LedgerRepository,
     users: Arc<UserService>,
+    balance_service: Arc<BalanceService>,
     cache: Arc<dyn CacheService>,
 }
 
 impl StaffGamingAllowanceService {
-    pub fn new(pool: PgPool, users: Arc<UserService>, cache: Arc<dyn CacheService>) -> Self {
+    pub fn new(
+        pool: PgPool,
+        users: Arc<UserService>,
+        balance_service: Arc<BalanceService>,
+        cache: Arc<dyn CacheService>,
+    ) -> Self {
         Self {
             balances: BalanceRepository::new(pool.clone()),
             ledger: LedgerRepository::new(pool),
             users,
+            balance_service,
             cache,
         }
     }
@@ -147,6 +154,11 @@ impl StaffGamingAllowanceService {
                     actor_id,
                 )
                 .await?;
+            if let Ok(Some(cancelled)) = self.balances.find_by_id(existing.id).await {
+                self.balance_service
+                    .sync_balance_cache_after_mutation(&cancelled)
+                    .await?;
+            }
         }
 
         let now = Utc::now();
@@ -177,6 +189,9 @@ impl StaffGamingAllowanceService {
             .await?;
 
         self.invalidate(user_id).await?;
+        self.balance_service
+            .sync_balance_cache_after_mutation(&balance)
+            .await?;
 
         Ok(Self::summary_from_balance(
             user_id,

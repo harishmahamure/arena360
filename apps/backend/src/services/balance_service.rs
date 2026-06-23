@@ -3,7 +3,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::cache::{self, get_or_set, keys, CacheService};
+use crate::cache::{self, get_or_set, keys, set_json, CacheService};
 use crate::error::AppError;
 use crate::models::{
     balance_status, ledger_reason, plan_kind, BalanceFilterDto, BalanceValidationResult, Device,
@@ -59,6 +59,45 @@ impl BalanceService {
         cache::invalidate(&*self.cache, &[keys::balance_raw(&balance_id)]).await
     }
 
+    async fn write_through_balance_raw(&self, balance: &PlayerPlanBalance) -> Result<(), AppError> {
+        let cache_key = keys::balance_raw(&balance.id);
+        set_json(&*self.cache, &cache_key, balance, keys::ttl::SESSION).await
+    }
+
+    async fn invalidate_open_session_caches_for_player(
+        &self,
+        player_id: Uuid,
+    ) -> Result<(), AppError> {
+        let Some((session_id, device_id)) = self.repo.find_open_session_ids(player_id).await?
+        else {
+            return Ok(());
+        };
+        cache::invalidate(
+            &*self.cache,
+            &[
+                keys::session_enriched(&session_id),
+                keys::session_device(&device_id),
+            ],
+        )
+        .await
+    }
+
+    pub async fn sync_balance_cache_after_mutation(
+        &self,
+        balance: &PlayerPlanBalance,
+    ) -> Result<(), AppError> {
+        self.invalidate_balance(balance).await?;
+        self.invalidate_balance_raw(balance.id).await?;
+        self.write_through_balance_raw(balance).await?;
+        self.invalidate_open_session_caches_for_player(balance.player_id)
+            .await?;
+        let _ = self
+            .cache
+            .invalidate_prefix(keys::SESSIONS_LIST_PREFIX)
+            .await;
+        Ok(())
+    }
+
     pub async fn get_raw(&self, id: Uuid) -> Result<PlayerPlanBalance, AppError> {
         let cache_key = keys::balance_raw(&id);
         get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION, || async {
@@ -91,6 +130,7 @@ impl BalanceService {
         dto: PurchaseBalanceDto,
         actor_id: Option<Uuid>,
     ) -> Result<PlayerPlanBalance, AppError> {
+
         let plan = self
             .plan_repo
             .find_by_id(dto.plan_id)
@@ -135,6 +175,8 @@ impl BalanceService {
 
                 let carry_forward = should_carry_forward_minutes(&balance, now);
 
+                self.invalidate_balance_raw(balance.id).await?;
+
                 let updated = self
                     .repo
                     .recharge(
@@ -166,7 +208,7 @@ impl BalanceService {
                     )
                     .await?;
 
-                self.invalidate_balance_raw(updated.id).await?;
+                self.sync_balance_cache_after_mutation(&updated).await?;
                 let _ = cache::invalidate_stats(&*self.cache).await;
                 Ok(updated)
             }
@@ -204,7 +246,7 @@ impl BalanceService {
                     )
                     .await?;
 
-                self.invalidate_balance_raw(balance.id).await?;
+                self.sync_balance_cache_after_mutation(&balance).await?;
                 let _ = cache::invalidate_stats(&*self.cache).await;
                 Ok(balance)
             }
@@ -396,8 +438,7 @@ impl BalanceService {
     ) -> Result<PlayerPlanBalance, AppError> {
         let updated = self.repo.deduct_minutes(balance_id, minutes).await?;
 
-        self.invalidate_balance(&updated).await?;
-        self.invalidate_balance_raw(balance_id).await?;
+        self.sync_balance_cache_after_mutation(&updated).await?;
 
         self.ledger
             .append(
@@ -592,6 +633,9 @@ impl BalanceService {
                     .set_status(balance.id, balance_status::EXPIRED)
                     .await;
                 balance.status = balance_status::EXPIRED.to_string();
+                if let Ok(Some(expired)) = self.repo.find_by_id(balance.id).await {
+                    let _ = self.sync_balance_cache_after_mutation(&expired).await;
+                }
             }
         }
         Ok(())

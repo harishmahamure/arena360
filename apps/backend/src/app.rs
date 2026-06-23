@@ -139,7 +139,7 @@ pub async fn build_state() -> Arc<AppState> {
         ),
         transactions: TransactionService::new(
             pool.clone(),
-            balances,
+            balances.clone(),
             credit.clone(),
             events.clone(),
             outbox.clone(),
@@ -151,6 +151,7 @@ pub async fn build_state() -> Arc<AppState> {
         staff_gaming_allowances: StaffGamingAllowanceService::new(
             pool.clone(),
             users.clone(),
+            balances.clone(),
             cache.clone(),
         ),
         products: ProductService::new(pool.clone(), cache.clone()),

@@ -49,6 +49,10 @@ impl DeviceService {
             &[keys::session_device(device_id)],
         )
         .await;
+        let _ = self
+            .cache
+            .invalidate_prefix(keys::SESSIONS_LIST_PREFIX)
+            .await;
         let _ = cache::invalidate_stats(&*self.cache).await;
     }
 

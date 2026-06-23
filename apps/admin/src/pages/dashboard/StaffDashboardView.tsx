@@ -22,7 +22,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { StatCard, type StatTone } from '../../containers/stats/StatCard';
-import { useEnrichedSessions } from '../../hooks/useEnrichedSessions';
 import { useStaffDashboardStats } from '../../hooks/useStaffDashboardStats';
 import type { SessionResponse } from '../../services/sessions/list';
 import { getSessions } from '../../services/sessions/list';
@@ -113,7 +112,7 @@ export default function StaffDashboardView() {
     enabled: shiftActive,
   });
 
-  const enrichedSessions = useEnrichedSessions(activeSessionsData?.data);
+  const enrichedSessions = activeSessionsData?.data ?? [];
 
   // Local tick so "ending soon" decays without server refetch (matches SessionRemainingClock).
   const [clockTick, setClockTick] = useState(0);
