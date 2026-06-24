@@ -136,6 +136,7 @@ pub async fn build_state() -> Arc<AppState> {
             pool.clone(),
             outbox.clone(),
             notifications.clone(),
+            cash_registers.clone(),
         ),
         transactions: TransactionService::new(
             pool.clone(),

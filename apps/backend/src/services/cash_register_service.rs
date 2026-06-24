@@ -13,6 +13,8 @@ use crate::repositories::CashRegisterRepository;
 use crate::services::{NotificationService, RecordNotification, Recipients};
 use crate::models::activity_kind;
 
+const OPENING_BALANCE_EPSILON: f64 = 0.01;
+
 pub struct CashRegisterService {
     repo: CashRegisterRepository,
     pool: PgPool,
@@ -227,6 +229,16 @@ impl CashRegisterService {
         .await
     }
 
+    pub async fn recalculate_closure_after_deposit(
+        &self,
+        register_id: Uuid,
+    ) -> Result<(), AppError> {
+        self.repo
+            .recalculate_closed_register_totals(register_id)
+            .await?;
+        self.invalidate_register(register_id).await
+    }
+
     pub async fn find_register_by_shift(
         &self,
         shift_id: Uuid,
@@ -250,15 +262,27 @@ impl CashRegisterService {
 
     pub async fn carry_forward_balance(
         &self,
-        user_id: Uuid,
+        _user_id: Uuid,
         new_shift_id: Uuid,
         actor_id: Uuid,
     ) -> Result<CashRegister, AppError> {
-        let last_register = self.repo.find_last_closed_by_user(user_id).await?;
+        let last_register = self.repo.find_last_closed_register().await?;
         let opening = match last_register {
             Some(ref r) => self.compute_carry_forward_opening(r).await?,
             None => 0.0,
         };
+        self.ensure_open_for_shift(new_shift_id, actor_id, opening)
+            .await
+    }
+
+    /// Carry forward opening from a specific closed register (e.g. handover predecessor).
+    pub async fn apply_carry_forward_from_register(
+        &self,
+        new_shift_id: Uuid,
+        actor_id: Uuid,
+        source_register: &CashRegister,
+    ) -> Result<CashRegister, AppError> {
+        let opening = self.compute_carry_forward_opening(source_register).await?;
         self.ensure_open_for_shift(new_shift_id, actor_id, opening)
             .await
     }
@@ -271,6 +295,18 @@ impl CashRegisterService {
     ) -> Result<CashRegister, AppError> {
         if let Some(existing) = self.repo.find_by_shift(shift_id).await? {
             if existing.status == "open" {
+                if (existing.opening_balance - opening_balance).abs() > OPENING_BALANCE_EPSILON {
+                    return self
+                        .update_opening_balance(
+                            existing.id,
+                            crate::models::UpdateOpeningBalanceDto {
+                                opening_balance,
+                                opening_denominations: None,
+                            },
+                            actor_id,
+                        )
+                        .await;
+                }
                 return Ok(existing);
             }
         }

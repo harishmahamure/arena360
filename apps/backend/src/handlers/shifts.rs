@@ -283,6 +283,13 @@ pub async fn handover_shift(
                     .await?,
             )
         } else {
+            let stored_closing = register_data.register.closing_balance.unwrap_or(0.0);
+            if (stored_closing - dto.closing_balance).abs() > 0.01 {
+                return Err(crate::error::AppError::BadRequest(
+                    "Cash register is already closed with a different balance. Contact an admin."
+                        .to_string(),
+                ));
+            }
             Some(register_data.register.clone())
         }
     } else {
@@ -311,20 +318,17 @@ pub async fn handover_shift(
         )
         .await?;
 
-    let opening_balance = match closed_register.as_ref() {
-        Some(register) => {
-            state
-                .cash_registers
-                .compute_carry_forward_opening(register)
-                .await?
-        }
-        None => 0.0,
-    };
-
-    let _ = state
-        .cash_registers
-        .ensure_open_for_shift(new_shift.id, validator.id, opening_balance)
-        .await;
+    if let Some(ref closed_reg) = closed_register {
+        state
+            .cash_registers
+            .apply_carry_forward_from_register(new_shift.id, validator.id, closed_reg)
+            .await?;
+    } else {
+        state
+            .cash_registers
+            .ensure_open_for_shift(new_shift.id, validator.id, 0.0)
+            .await?;
+    }
 
     let mut auth_response = state.auth.issue_auth_response(&validator)?;
     auth_response.shiftId = Some(new_shift.id.to_string());

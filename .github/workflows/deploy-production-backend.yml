@@ -2,6 +2,12 @@ name: Deploy Backend to Production
 
 on:
   workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: "Run database migrations before deploy?"
+        type: boolean
+        required: true
+        default: false
 
 env:
   DOCKER_REPO: "${{ secrets.DOCKERHUB_REPO || 'harishmahamure/arena360' }}"
@@ -61,11 +67,13 @@ jobs:
           version: v3.13.0
 
       - name: Install sqlx-cli
+        if: inputs.run_migrations
         uses: taiki-e/install-action@v2
         with:
           tool: sqlx-cli
 
       - name: Run database migrations
+        if: inputs.run_migrations
         env:
           DATABASE_URL: "${{ secrets.MIGRATION_DATABASE_URL }}"
         run: |
@@ -197,3 +205,4 @@ jobs:
           echo "- Release: \`${{ env.RELEASE_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image: \`${{ env.DOCKER_REPO }}:backend-prod-${{ steps.vars.outputs.short_sha }}\` (linux/amd64)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Migrations: ${{ inputs.run_migrations && 'ran' || 'skipped' }}" >> "$GITHUB_STEP_SUMMARY"

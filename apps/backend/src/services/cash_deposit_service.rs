@@ -1,4 +1,5 @@
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 use serde_json::json;
 
@@ -9,6 +10,7 @@ use crate::models::{
 };
 use crate::realtime::OutboxService;
 use crate::repositories::{CashDepositRepository, CashRegisterRepository};
+use crate::services::CashRegisterService;
 use crate::services::NotificationService;
 use crate::models::activity_kind;
 use crate::services::{RecordNotification, Recipients};
@@ -16,15 +18,22 @@ use crate::services::{RecordNotification, Recipients};
 pub struct CashDepositService {
     repo: CashDepositRepository,
     cash_register_repo: CashRegisterRepository,
+    cash_registers: Option<Arc<CashRegisterService>>,
     outbox: OutboxService,
     notifications: NotificationService,
 }
 
 impl CashDepositService {
-    pub fn new(pool: PgPool, outbox: OutboxService, notifications: NotificationService) -> Self {
+    pub fn new(
+        pool: PgPool,
+        outbox: OutboxService,
+        notifications: NotificationService,
+        cash_registers: Arc<CashRegisterService>,
+    ) -> Self {
         Self {
             repo: CashDepositRepository::new(pool.clone()),
             cash_register_repo: CashRegisterRepository::new(pool),
+            cash_registers: Some(cash_registers),
             outbox,
             notifications,
         }
@@ -179,6 +188,9 @@ impl CashDepositService {
             )
             .await;
 
+        self.recalculate_register_closure(deposit.cash_register_id)
+            .await?;
+
         Ok(deposit)
     }
 
@@ -261,7 +273,19 @@ impl CashDepositService {
             }
         }
 
+        self.recalculate_register_closure(deposit.cash_register_id)
+            .await?;
+
         Ok(deposit)
+    }
+
+    async fn recalculate_register_closure(&self, register_id: Uuid) -> Result<(), AppError> {
+        if let Some(ref cash_registers) = self.cash_registers {
+            cash_registers
+                .recalculate_closure_after_deposit(register_id)
+                .await?;
+        }
+        Ok(())
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<CashDeposit, AppError> {

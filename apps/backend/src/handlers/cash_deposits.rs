@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::error::AppError;
-use crate::middleware::{AdminOrStaff, AdminUser};
+use crate::middleware::{AdminOrStaff, AdminUser, StaffUser};
 use crate::models::{
     ApproveDepositDto, CashDeposit, CashDepositFilterDto, InitiateDepositDto, RejectDepositDto,
 };
@@ -31,7 +31,7 @@ use crate::openapi::responses::{
     tag = "cash-deposits"
 )]
 pub async fn initiate_deposit(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<InitiateDepositDto>,
 ) -> ApiResult<CashDeposit> {

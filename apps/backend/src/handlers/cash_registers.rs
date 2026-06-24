@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
-use crate::middleware::{AdminOrStaff, AdminUser};
+use crate::middleware::{AdminOrStaff, AdminUser, StaffUser};
 use crate::models::{
     CashRegister, CashRegisterEntry, CashRegisterFilterDto, CashRegisterWithEntries,
     CloseCashRegisterDto, CreateCashRegisterEntryDto, OpenCashRegisterDto,
@@ -35,7 +35,7 @@ use crate::openapi::responses::{
 )]
 pub async fn open_cash_register(
     State(state): State<Arc<AppState>>,
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     Json(dto): Json<OpenCashRegisterDto>,
 ) -> ApiResult<CashRegister> {
     let actor_id: Uuid = claims
@@ -66,7 +66,7 @@ pub async fn open_cash_register(
 )]
 pub async fn close_cash_register(
     State(state): State<Arc<AppState>>,
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     Path(id): Path<Uuid>,
     Json(dto): Json<CloseCashRegisterDto>,
 ) -> ApiResult<CashRegister> {
@@ -165,7 +165,7 @@ pub async fn update_opening_balance(
 )]
 pub async fn add_entry(
     State(state): State<Arc<AppState>>,
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     Path(id): Path<Uuid>,
     Json(dto): Json<CreateCashRegisterEntryDto>,
 ) -> ApiResult<CashRegisterEntry> {
@@ -247,7 +247,7 @@ pub struct ExpectedClosingResponse {
 )]
 pub async fn get_active_expected_closing(
     State(state): State<Arc<AppState>>,
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
 ) -> ApiResult<ExpectedClosingResponse> {
     let user_id: uuid::Uuid = claims
         .userId

@@ -12,6 +12,7 @@ use crate::models::activity_kind;
 
 pub struct ShiftService {
     repo: ShiftRepository,
+    pool: PgPool,
     cash_registers: Option<Arc<CashRegisterService>>,
     notifications: Option<NotificationService>,
 }
@@ -19,7 +20,8 @@ pub struct ShiftService {
 impl ShiftService {
     pub fn new(pool: PgPool) -> Self {
         Self {
-            repo: ShiftRepository::new(pool),
+            repo: ShiftRepository::new(pool.clone()),
+            pool,
             cash_registers: None,
             notifications: None,
         }
@@ -39,6 +41,8 @@ impl ShiftService {
         dto: ClockInDto,
         actor_id: Uuid,
     ) -> Result<Shift, AppError> {
+        self.assert_user_is_staff(user_id).await?;
+
         if let Some(active) = self.repo.find_active_by_user(user_id).await? {
             return Err(AppError::Conflict(format!(
                 "User already has an active shift (ID: {}). Clock out first.",
@@ -70,6 +74,8 @@ impl ShiftService {
         user_id: Uuid,
         actor_id: Uuid,
     ) -> Result<Shift, AppError> {
+        self.assert_user_is_staff(user_id).await?;
+
         let login_notes = Some("Auto-started on login".to_string());
         match self
             .clock_in(
@@ -167,6 +173,25 @@ impl ShiftService {
     pub async fn force_close(&self, id: Uuid, actor_id: Uuid) -> Result<Shift, AppError> {
         self.auto_close_register(id, actor_id).await;
         self.repo.force_close(id, actor_id).await
+    }
+
+    async fn assert_user_is_staff(&self, user_id: Uuid) -> Result<(), AppError> {
+        let row: Option<(Option<String>,)> = sqlx::query_as(
+            r#"SELECT role FROM users WHERE id = $1 AND "deletedAt" IS NULL"#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row.and_then(|(role,)| role).as_deref() {
+            Some("staff") => Ok(()),
+            Some("admin") => Err(AppError::Forbidden(
+                "Admins cannot open shifts".to_string(),
+            )),
+            _ => Err(AppError::Forbidden(
+                "Only staff can open shifts".to_string(),
+            )),
+        }
     }
 
     async fn auto_close_register(&self, shift_id: Uuid, actor_id: Uuid) {

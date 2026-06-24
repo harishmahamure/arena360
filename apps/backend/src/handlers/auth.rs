@@ -32,6 +32,16 @@ pub async fn login_admin(
     Json(dto): Json<StaffLoginDto>,
 ) -> ApiResult<AuthResponseDto> {
     let result = state.auth.login_admin(dto).await?;
+    let user_id: Uuid = result
+        .user
+        .id
+        .parse()
+        .map_err(|_| AppError::Internal("Invalid user ID".to_string()))?;
+
+    if let Some(active) = state.shifts.get_active(user_id).await? {
+        state.shifts.force_close(active.id, user_id).await?;
+    }
+
     ok(result)
 }
 

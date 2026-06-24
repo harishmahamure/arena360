@@ -40,6 +40,47 @@ impl CashRegisterRepository {
         FROM cash_registers
     "#;
 
+    const ENTRY_AGGREGATES_JOIN: &'static str = r#"
+               LEFT JOIN (
+                   SELECT e."cashRegisterId",
+                          SUM(e.amount::float8) FILTER (WHERE e."entryType" = 'cash_in') AS total_cash_in,
+                          SUM(e.amount::float8) FILTER (WHERE e."entryType" = 'cash_out') AS total_cash_out,
+                          SUM(e.amount::float8) FILTER (
+                              WHERE e."entryType" = 'cash_out'
+                                AND e."referenceType" = 'cash_deposit'
+                                AND d.status = 'approved'
+                          ) AS total_deposited
+                   FROM cash_register_entries e
+                   LEFT JOIN cash_deposits d ON d.id = e."referenceId"
+                   GROUP BY e."cashRegisterId"
+               ) agg ON agg."cashRegisterId" = cr.id"#;
+
+    const SELECT_WITH_TOTALS: &'static str = r#"
+        SELECT cr.id,
+               cr."shiftId" as shift_id,
+               cr."openedBy" as opened_by,
+               cr."closedBy" as closed_by,
+               cr."openingBalance"::float8 as opening_balance,
+               cr."openingDenominations" as opening_denominations,
+               cr."closingBalance"::float8 as closing_balance,
+               cr."closingDenominations" as closing_denominations,
+               cr."expectedClosing"::float8 as expected_closing,
+               cr.variance::float8 as variance,
+               cr.status,
+               cr.notes,
+               cr."reconciledBy" as reconciled_by,
+               cr."reconciledAt" as reconciled_at,
+               cr."reconciliationNotes" as reconciliation_notes,
+               cr."createdBy" as created_by,
+               cr."updatedBy" as updated_by,
+               cr."createdAt" as created_at,
+               cr."updatedAt" as updated_at,
+               COALESCE(agg.total_cash_in, 0)::float8 as total_cash_in,
+               COALESCE(agg.total_cash_out, 0)::float8 as total_cash_out,
+               COALESCE(agg.total_deposited, 0)::float8 as total_deposited
+        FROM cash_registers cr
+    "#;
+
     const ENTRY_SELECT: &'static str = r#"
         SELECT id,
                "cashRegisterId" as cash_register_id,
@@ -250,7 +291,11 @@ impl CashRegisterRepository {
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<CashRegister>, AppError> {
-        let query = format!("{} WHERE id = $1", Self::SELECT);
+        let query = format!(
+            "{}{} WHERE cr.id = $1",
+            Self::SELECT_WITH_TOTALS,
+            Self::ENTRY_AGGREGATES_JOIN
+        );
         let register = sqlx::query_as::<_, CashRegister>(&query)
             .bind(id)
             .fetch_optional(&self.pool)
@@ -278,45 +323,11 @@ impl CashRegisterRepository {
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
 
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT cr.id,
-                      cr."shiftId" as shift_id,
-                      cr."openedBy" as opened_by,
-                      cr."closedBy" as closed_by,
-                      cr."openingBalance"::float8 as opening_balance,
-                      cr."openingDenominations" as opening_denominations,
-                      cr."closingBalance"::float8 as closing_balance,
-                      cr."closingDenominations" as closing_denominations,
-                      cr."expectedClosing"::float8 as expected_closing,
-                      cr.variance::float8 as variance,
-                      cr.status,
-                      cr.notes,
-                      cr."reconciledBy" as reconciled_by,
-                      cr."reconciledAt" as reconciled_at,
-                      cr."reconciliationNotes" as reconciliation_notes,
-                      cr."createdBy" as created_by,
-                      cr."updatedBy" as updated_by,
-                      cr."createdAt" as created_at,
-                      cr."updatedAt" as updated_at,
-                      COALESCE(agg.total_cash_in, 0)::float8 as total_cash_in,
-                      COALESCE(agg.total_cash_out, 0)::float8 as total_cash_out,
-                      COALESCE(agg.total_deposited, 0)::float8 as total_deposited
-               FROM cash_registers cr
-               LEFT JOIN (
-                   SELECT e."cashRegisterId",
-                          SUM(e.amount::float8) FILTER (WHERE e."entryType" = 'cash_in') AS total_cash_in,
-                          SUM(e.amount::float8) FILTER (WHERE e."entryType" = 'cash_out') AS total_cash_out,
-                          SUM(e.amount::float8) FILTER (
-                              WHERE e."entryType" = 'cash_out'
-                                AND e."referenceType" = 'cash_deposit'
-                                AND d.status = 'approved'
-                          ) AS total_deposited
-                   FROM cash_register_entries e
-                   LEFT JOIN cash_deposits d ON d.id = e."referenceId"
-                   GROUP BY e."cashRegisterId"
-               ) agg ON agg."cashRegisterId" = cr.id
-               WHERE 1=1"#,
-        );
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(format!(
+            "{}{} WHERE 1=1",
+            Self::SELECT_WITH_TOTALS,
+            Self::ENTRY_AGGREGATES_JOIN
+        ));
 
         Self::apply_filters(&mut builder, filters);
 
@@ -441,6 +452,18 @@ impl CashRegisterRepository {
         Ok(register)
     }
 
+    /// Most recently closed/reconciled register site-wide (single drawer carry-forward).
+    pub async fn find_last_closed_register(&self) -> Result<Option<CashRegister>, AppError> {
+        let query = format!(
+            r#"{base} WHERE status IN ('closed', 'reconciled') ORDER BY "updatedAt" DESC LIMIT 1"#,
+            base = Self::SELECT
+        );
+        let register = sqlx::query_as::<_, CashRegister>(&query)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(register)
+    }
+
     pub async fn list_entries(
         &self,
         register_id: Uuid,
@@ -518,17 +541,83 @@ impl CashRegisterRepository {
         self.calculate_expected_closing(register_id).await
     }
 
+    /// Recompute stored expected closing and variance after deposit approval/rejection.
+    pub async fn recalculate_closed_register_totals(
+        &self,
+        register_id: Uuid,
+    ) -> Result<Option<CashRegister>, AppError> {
+        let register = self.find_by_id(register_id).await?.ok_or_else(|| {
+            AppError::NotFound(format!("Cash register with ID {register_id} not found"))
+        })?;
+
+        if register.status != "closed" && register.status != "reconciled" {
+            return Ok(None);
+        }
+
+        let Some(closing) = register.closing_balance else {
+            return Ok(None);
+        };
+
+        let ledger_expected = self.compute_ledger_expected(register_id, &register).await?;
+        let approved_deposits = self.sum_deposit_entries(register_id).await?;
+        let variance = closing - ledger_expected - approved_deposits;
+
+        let updated = sqlx::query_as::<_, CashRegister>(
+            r#"
+            UPDATE cash_registers SET
+                "expectedClosing" = $2,
+                variance = $3,
+                "updatedAt" = NOW()
+            WHERE id = $1
+            RETURNING id,
+                      "shiftId" as shift_id,
+                      "openedBy" as opened_by,
+                      "closedBy" as closed_by,
+                      "openingBalance"::float8 as opening_balance,
+                      "openingDenominations" as opening_denominations,
+                      "closingBalance"::float8 as closing_balance,
+                      "closingDenominations" as closing_denominations,
+                      "expectedClosing"::float8 as expected_closing,
+                      variance::float8 as variance,
+                      status,
+                      notes,
+                      "reconciledBy" as reconciled_by,
+                      "reconciledAt" as reconciled_at,
+                      "reconciliationNotes" as reconciliation_notes,
+                      "createdBy" as created_by,
+                      "updatedBy" as updated_by,
+                      "createdAt" as created_at,
+                      "updatedAt" as updated_at
+            "#,
+        )
+        .bind(register_id)
+        .bind(ledger_expected)
+        .bind(variance)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(updated)
+    }
+
+    async fn compute_ledger_expected(
+        &self,
+        register_id: Uuid,
+        register: &CashRegister,
+    ) -> Result<f64, AppError> {
+        let cash_in = self.sum_entries_by_type(register_id, "cash_in").await?;
+        let cash_out = self.sum_entries_by_type(register_id, "cash_out").await?;
+        let all_deposits = self.sum_all_deposit_cash_out(register_id).await?;
+
+        // Pending and approved deposit cash_out stay in the drawer until approval;
+        // exclude all deposit withdrawals from the ledger reduction.
+        Ok(register.opening_balance + cash_in - (cash_out - all_deposits))
+    }
+
     async fn calculate_expected_closing(&self, register_id: Uuid) -> Result<f64, AppError> {
         let register = self.find_by_id(register_id).await?.ok_or_else(|| {
             AppError::NotFound(format!("Cash register with ID {register_id} not found"))
         })?;
 
-        let cash_in = self.sum_entries_by_type(register_id, "cash_in").await?;
-        let cash_out = self.sum_entries_by_type(register_id, "cash_out").await?;
-        let deposited = self.sum_deposit_entries(register_id).await?;
-
-        // Exclude deposits from expected: staff counts the full drawer before
-        // deposits are physically removed, so deposits don't create variance.
-        Ok(register.opening_balance + cash_in - (cash_out - deposited))
+        self.compute_ledger_expected(register_id, &register).await
     }
 }
