@@ -37,12 +37,15 @@ export interface SessionDeviceSummary {
 
 export interface SessionResponse {
   id: string;
-  balanceId: string;
+  balanceId: string | null;
   deviceId: string;
   startTime: string;
   endTime?: string | null;
   durationMinutes?: number | null;
   timeCreditsConsumed?: number | null;
+  walletMinutesAtStart?: number | null;
+  sourcePlanIdAtStart?: string | null;
+  planAtStart?: SessionPlanSummary | null;
   cafeTimezone?: string;
   createdAt: string;
   updatedAt: string;

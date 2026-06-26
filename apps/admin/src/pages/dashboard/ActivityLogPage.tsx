@@ -4,6 +4,7 @@ import {
   activityKindLabels,
 } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
+import { formatRemainingLabel } from '@gaming-cafe/utils';
 import { Visibility } from '@mui/icons-material';
 import {
   Alert,
@@ -87,7 +88,23 @@ export default function ActivityLogPage() {
       label: 'Summary',
       minWidth: 220,
       hideOnMobile: true,
-      format: (value) => (value as string | undefined) || '—',
+      format: (value, row) => {
+        const summary = (value as string | undefined) || '';
+        if (row.kind !== 'session_started') {
+          return summary || '—';
+        }
+        const payload = row.payload as Record<string, unknown> | undefined;
+        const loginMinutes =
+          typeof payload?.walletMinutesAtStart === 'number' ? payload.walletMinutesAtStart : null;
+        if (loginMinutes == null) {
+          return summary || '—';
+        }
+        const loginLabel = formatRemainingLabel(loginMinutes);
+        if (summary.includes('at login')) {
+          return summary;
+        }
+        return summary ? `${summary} · ${loginLabel} at login` : `${loginLabel} at login`;
+      },
     },
   ];
 

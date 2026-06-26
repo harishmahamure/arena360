@@ -22,11 +22,17 @@ pub mod activity_kind {
     pub const CASH_DEPOSIT_INITIATED: &str = "cash_deposit_initiated";
     pub const INVENTORY_TRANSFER_REQUESTED: &str = "inventory_transfer_requested";
     pub const INVENTORY_WASTE_RECORDED: &str = "inventory_waste_recorded";
+    pub const KIOSK_ORDER_PLACED: &str = "kiosk_order_placed";
+    pub const KIOSK_ORDER_FULFILLED: &str = "kiosk_order_fulfilled";
+    pub const KIOSK_ORDER_CANCELLED: &str = "kiosk_order_cancelled";
 
     pub const STAFF_SHARED: &[&str] = &[
         SESSION_STARTED,
         SESSION_ENDED,
         DEVICE_STATUS_CHANGED,
+        KIOSK_ORDER_PLACED,
+        KIOSK_ORDER_FULFILLED,
+        KIOSK_ORDER_CANCELLED,
     ];
 }
 

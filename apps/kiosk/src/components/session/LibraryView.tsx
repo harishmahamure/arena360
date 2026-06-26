@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useGameLibrary } from '../../hooks/useGameLibrary';
 import { fetchGames } from '../../lib/allowList';
 import { GameCard } from './GameCard';
@@ -12,7 +13,7 @@ interface LibraryViewProps {
 }
 
 /** Arena360 Game Library: search and filter allowed games on this station. */
-export function LibraryView({
+export const LibraryView = memo(function LibraryView({
   disabled,
   initialQuery = '',
   onError,
@@ -103,4 +104,4 @@ export function LibraryView({
       )}
     </section>
   );
-}
+});

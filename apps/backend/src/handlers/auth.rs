@@ -5,15 +5,16 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{
     created, ok, ApiResult, AuthResponseDto, CreateSsoTokenDto, CreateSsoTokenResponseDto,
-    DevicePairingDto, DevicePairingResponseDto, LoginDto, PlayerLoginDto, RedeemSsoTokenDto,
-    RegisterDto, RegisterResponseDto, StaffLoginDto,
+    DevicePairingDto, DevicePairingResponseDto, KioskRegisterDto, KioskRegisterResponseDto,
+    LoginDto, PlayerLoginDto, RedeemSsoTokenDto, RegisterDto, RegisterResponseDto, StaffLoginDto,
 };
 use crate::validation::{is_playstation_device_type, require_playstation_device_type};
 use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, DeviceUser};
 use crate::openapi::responses::{
-    AuthResponseEnvelope, ErrorEnvelope, RegisterResponseEnvelope,
+    AuthResponseEnvelope, ErrorEnvelope, KioskRegisterResponseEnvelope, RegisterResponseEnvelope,
 };
+use crate::services::KioskRegistrationRateLimiter;
 
 #[utoipa::path(
     post,
@@ -122,6 +123,45 @@ pub async fn login_player(
         )
         .await?;
     ok(result)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/register/player",
+    request_body = KioskRegisterDto,
+    responses(
+        (status = 201, description = "Player registered", body = KioskRegisterResponseEnvelope),
+        (status = 400, description = "Bad request — validation (AUTH_WEAK_PASSWORD, field details)", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden — DEVICE_NOT_REGISTERED or DEVICE_UNDER_MAINTENANCE", body = ErrorEnvelope),
+        (status = 409, description = "Conflict — AUTH_USERNAME_ALREADY_EXISTS", body = ErrorEnvelope),
+        (status = 429, description = "Too many requests — REGISTRATION_RATE_LIMITED", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "auth"
+)]
+pub async fn register_player(
+    State(state): State<Arc<AppState>>,
+    device_user: DeviceUser,
+    Json(dto): Json<KioskRegisterDto>,
+) -> ApiResult<KioskRegisterResponseDto> {
+    let device_id = device_user.device_id()?;
+    let device = state.devices.get_by_id(device_id).await?;
+
+    if device.registration_status != "registered" {
+        return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
+    }
+    if device.status == "under_maintenance" {
+        return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
+    }
+
+    KioskRegistrationRateLimiter::new(state.cache.clone())
+        .check_and_record(device_id)
+        .await?;
+
+    let result = state.users.register_from_kiosk(dto).await?;
+    created(result)
 }
 
 #[utoipa::path(

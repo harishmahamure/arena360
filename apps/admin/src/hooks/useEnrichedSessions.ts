@@ -8,6 +8,7 @@ export function useEnrichedPlayerPlans(playerId?: string) {
     queryFn: () =>
       getPlayerPlans({
         status: PlayerPlanStatus.ACTIVE,
+        usableOnly: true,
         limit: 100,
         playerId: playerId as string,
       }),

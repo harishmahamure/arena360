@@ -18,12 +18,12 @@
 | Setup escape (`Ctrl+Shift+A` → admin login) | **Shipped** | `SetupRelaxed` allows close and non-allow-listed launches |
 | Windows installer (NSIS `perMachine`) | **Shipped** | [ADR-0028](adr/0028-kiosk-release-pipeline-and-auto-update.md) |
 | Idle auto-update | **Shipped** | On registration, setup, and login/attract screens (no active session) |
-| Boot auto-start (logon task) | **IT manual** | Run [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) after install, or create the **Arena360 Kiosk** ONLOGON task |
-| Auto-reopen after crash/kill | **Not shipped** | Kiosk relaunches on next user logon only ([ADR-0041](adr/0041-remove-watchdog-logon-autostart.md)) |
+| Boot auto-start (logon task) | **IT manual** | Run [`configure-station.ps1`](../apps/kiosk/scripts/windows/configure-station.ps1) after install — registers **Arena360 Watchdog** ONLOGON task ([ADR-0048](adr/DRAFT-0048-reintroduce-kiosk-watchdog.md)) |
+| Auto-reopen after crash/kill | **Shipped** | `arena360-watchdog.exe` sidecar relaunches main kiosk within ~10 s ([ADR-0048](adr/DRAFT-0048-reintroduce-kiosk-watchdog.md)) |
 | Post-install station config | **Not in installer** | Optional IT scripts in repo: logon task, HKLM hardening, auto-logon |
 
 **Gap (remaining):** Assigned Access / shell replacement (Layer 1 Options A/B) is still IT manual.
-**Exit to desktop** closes the kiosk; it returns on the next user logon (no pause-file IPC).
+**Exit to desktop** sets a 15-minute watchdog pause, then closes the kiosk; watchdog resumes after pause expires or on next Locked startup.
 
 ---
 
@@ -33,8 +33,9 @@
 flowchart LR
   boot[Windows boots] --> autologon[Auto-login kiosk user]
   autologon --> logon[User session]
-  logon --> task[Arena360 Kiosk ONLOGON task]
-  task --> launch[Main kiosk exe fullscreen]
+  logon --> task[Arena360 Watchdog ONLOGON task]
+  task --> watchdog[arena360-watchdog.exe]
+  watchdog --> launch[Main kiosk exe fullscreen]
   launch --> locked[Locked attract / session]
   locked -->|Ctrl+Shift+A + admin| setup[SetupRelaxed]
   setup -->|admin logout / idle| locked
@@ -50,7 +51,7 @@ setup—the same account that runs the installer (e.g. your venue Administrator 
 No separate `ArenaKiosk` user is required.
 
 **Startup only — Explorer is not replaced.** The recommended path matches Layer 1 **Option C**
-(auto-logon optional + **Arena360 Kiosk** scheduled task at logon). `explorer.exe` remains the
+(auto-logon optional + **Arena360 Watchdog** scheduled task at logon). `explorer.exe` remains the
 Windows shell; the kiosk launches on top after logon. Post-install config does **not** write
 `Winlogon\Shell`. Layer 1 Option B (shell replacement) is optional advanced IT manual only.
 
@@ -83,7 +84,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\configure-station.ps1 `
   -KioskUser $env:USERNAME
 ```
 
-Uninstall removes the **Arena360 Kiosk** and legacy **Arena360 Watchdog** scheduled tasks via NSIS hooks. IT-managed registry hardening from a prior `configure-station.ps1` run is not removed automatically — re-run the script with `-Uninstall` if needed.
+Uninstall removes the **Arena360 Watchdog** and legacy **Arena360 Kiosk** scheduled tasks via NSIS hooks. IT-managed registry hardening from a prior `configure-station.ps1` run is not removed automatically — re-run the script with `-Uninstall` if needed.
 
 ---
 
@@ -158,13 +159,12 @@ where available.
 
 ---
 
-## Layer 2 — Auto-start at logon (K10 — shipped)
+## Layer 2 — Auto-start at logon + watchdog (K10 — shipped)
 
-In-app close prevention only applies while `Locked`. **Crash/kill auto-relaunch is not
-shipped** ([ADR-0041](adr/0041-remove-watchdog-logon-autostart.md)); the kiosk
-returns on the next user logon.
+In-app close prevention applies while `Locked`. **Crash/kill auto-relaunch** is handled by
+`arena360-watchdog.exe` ([ADR-0048](adr/DRAFT-0048-reintroduce-kiosk-watchdog.md)).
 
-### Shipped: **Arena360 Kiosk** scheduled task
+### Shipped: **Arena360 Watchdog** scheduled task
 
 ### Logon autostart (IT manual)
 
@@ -172,28 +172,30 @@ returns on the next user logon.
 
 | Component | Role |
 |-----------|------|
-| `Arena360 Station Management.exe` | Main Tauri app — started directly at logon |
-| Scheduled task **Arena360 Kiosk** | `ONLOGON` trigger for `-KioskUser` |
+| `arena360-watchdog.exe` | Sidecar — started at logon; polls every 2 s |
+| `Arena360 Station Management.exe` | Main Tauri app — spawned by watchdog when absent |
+| Scheduled task **Arena360 Watchdog** | `ONLOGON` trigger for `-KioskUser` |
+| `%ProgramData%\Arena360\watchdog.pause` | TTL pause file (setup, exit-to-desktop, updates) |
 
 **Installer behavior** ([apps/kiosk/src-tauri/windows/hooks.nsh](../apps/kiosk/src-tauri/windows/hooks.nsh)):
 
 1. **No post-install PowerShell** — install/uninstall only copies binaries and shortcuts.
-2. **Uninstall** deletes **Arena360 Kiosk** and legacy **Arena360 Watchdog** scheduled tasks.
-3. **In-app updates** replace binaries only; they do not run station scripts.
+2. **Uninstall** deletes **Arena360 Watchdog** and legacy **Arena360 Kiosk** scheduled tasks.
+3. **In-app updates** (idle only) close tracked games, set update pause, replace binaries, relaunch.
 
-**Single-instance:** the main process acquires `Global\Arena360KioskInstance` mutex at
-startup to avoid duplicate instances if the task fires twice.
+**Single-instance:** main process uses `Global\Arena360KioskInstance`; watchdog uses `Global\Arena360WatchdogInstance`.
 
-**Exit to desktop:** closes the kiosk window; desktop remains until the next logon (or manual
-launch). No pause file.
+**Pause file:** JSON `{ "expiresAt": "<ISO8601>", "reason": "maintenance|update|..." }`. Watchdog purges expired pauses on startup (fixes stale pause after reboot — see ADR-0041 lesson).
+
+**Exit to desktop:** 15-minute watchdog pause, then closes kiosk window.
 
 ### Alternatives (documented, not default)
 
 | Approach | Recovery after kill | Complexity | Notes |
 |----------|-------------------|------------|-------|
-| ONLOGON task (shipped) | Next logon only | Low | Simple; matches fleet request |
-| Watchdog sidecar (removed) | &lt;5 s | Medium | Removed — pause-file reboot failures |
-| Windows Service | &lt;5 s | High | Needs ADR if reintroduced |
+| Watchdog sidecar (shipped) | ~10 s | Medium | Default since ADR-0048 |
+| Direct ONLOGON → main exe | Next logon only | Low | Legacy ADR-0041 (removed) |
+| Windows Service | &lt;5 s | High | Over-engineered for v1 |
 | HKLM Run key | Next logon only | Low | IT manual; see Layer 1 Option C |
 
 ### Integration with lockdown (ADR-0020)
@@ -202,8 +204,8 @@ launch). No pause file.
 |-------|----------|
 | Normal player session | Stays running until session end or kill |
 | `Locked` + Alt+F4 on window | Blocked in-app |
-| `SetupRelaxed` + operator closes window | Stays closed until next logon |
-| **Exit to desktop** | Closes kiosk; desktop until next logon |
+| `SetupRelaxed` + operator closes window | Paused 15 min — watchdog does not relaunch |
+| **Exit to desktop** | 15 min watchdog pause; desktop until pause expires or manual launch |
 | `restart_station` / `shutdown_station` | OS reboot/shutdown; task starts kiosk after next logon |
 | Auto-update relaunch | `tauri-plugin-process` relaunch in-process |
 
@@ -231,7 +233,7 @@ launch). No pause file.
 |---------|-------|----------|----------|
 | `kiosk-deploy-guide` | Operator deployment guide + GPO checklist | Should | This doc + README link; PowerShell samples |
 | `kiosk-startup-task` | Logon scheduled task | Should | **IT manual** — `configure-station.ps1` |
-| `kiosk-watchdog` | Watchdog sidecar + pause file + mutex | Should | **Removed** — [ADR-0041](adr/0041-remove-watchdog-logon-autostart.md) |
+| `kiosk-watchdog` | Watchdog sidecar + pause file + mutex | Should | **Shipped** — [ADR-0048](adr/DRAFT-0048-reintroduce-kiosk-watchdog.md) |
 | `kiosk-installer-fleet` | Silent NSIS install | Should | **Done** — no post-install scripts |
 | `kiosk-deploy-adr` | DRAFT ADR only if Windows Service chosen | Conditional | Per [20-adr-discipline](../.cursor/rules/20-adr-discipline.mdc) |
 

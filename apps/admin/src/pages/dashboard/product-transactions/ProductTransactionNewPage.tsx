@@ -26,7 +26,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
 import {
@@ -47,6 +47,7 @@ import {
 } from '../../../containers/transactions/schemas/transaction-schema';
 import { getPlayerCredit } from '../../../services/credit';
 import { getInventoryLocations, getLocationStock } from '../../../services/inventory';
+import { getKioskOrder } from '../../../services/kiosk-orders';
 import { getProducts, type ProductResponse } from '../../../services/product/list';
 import { addTransaction } from '../../../services/transaction/add';
 import { PaymentStatus, TransactionType } from '../../../services/transaction/list';
@@ -168,6 +169,8 @@ function PosProductCard({
 
 export default function CreateProductTransactionPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const prefillOrderId = searchParams.get('orderId') ?? undefined;
   const [error, setError] = useState<string | undefined>();
   const {
     loading: submitting,
@@ -187,6 +190,39 @@ export default function CreateProductTransactionPage() {
   const [onlineAmount, setOnlineAmount] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [saleLocationId, setSaleLocationId] = useState<string>('');
+  const [kioskOrderId, setKioskOrderId] = useState<string | undefined>(prefillOrderId);
+
+  const { data: prefillOrder } = useQuery({
+    queryKey: ['kiosk-order', prefillOrderId],
+    queryFn: () => getKioskOrder(prefillOrderId as string),
+    enabled: !!prefillOrderId,
+  });
+
+  useEffect(() => {
+    if (!prefillOrder) return;
+    setKioskOrderId(prefillOrder.id);
+    setSelectedPlayer({
+      id: prefillOrder.playerId,
+      username: prefillOrder.playerUsername ?? prefillOrder.playerId,
+    });
+    if (prefillOrder.playerNote) {
+      setNotes(prefillOrder.playerNote);
+    }
+    setCart(
+      prefillOrder.lineItems.map((item) => ({
+        id: item.productId,
+        name: item.productName,
+        description: '',
+        price: item.unitPrice,
+        dayPrice: item.unitPrice,
+        nightPrice: item.unitPrice,
+        stockQuantity: item.quantity,
+        unitsPerPurchaseUnit: 1,
+        quantity: item.quantity,
+        effectivePrice: item.unitPrice,
+      })),
+    );
+  }, [prefillOrder]);
 
   const nightActive = isNightPricingWindow();
 
@@ -372,6 +408,7 @@ export default function CreateProductTransactionPage() {
                 ? total
                 : undefined,
           notes: notes || undefined,
+          kioskOrderId,
           lineItems: cart.map((item) => ({
             productId: item.id,
             quantity: item.quantity,
@@ -398,11 +435,19 @@ export default function CreateProductTransactionPage() {
 
   const handleLocationChange = (id: string) => {
     setSaleLocationId(id);
-    setCart([]);
+    if (!kioskOrderId) {
+      setCart([]);
+    }
   };
 
   const alerts = (
     <>
+      {prefillOrder ? (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Converting kiosk order from {prefillOrder.deviceName ?? 'station'} —{' '}
+          {prefillOrder.playerUsername ?? 'player'}. Choose payment method and complete the sale.
+        </Alert>
+      ) : null}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(undefined)}>
           {error}

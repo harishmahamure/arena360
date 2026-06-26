@@ -158,25 +158,15 @@ pub async fn end_session(
     // Idempotent end (D18): a replayed offline end-intent for an
     // already-closed session is a no-op, never a second deduction.
     if session.end_time.is_some() {
-        let (remaining, deduction_profile, time_credits_consumed, expiry_date) =
-            match session.balance_id {
-                Some(balance_id) => {
-                    let balance = state.balances.get_raw(balance_id).await?;
-                    (
-                        balance.remaining_minutes,
-                        balance.deduction_profile.clone(),
-                        session.time_credits_consumed.map(|v| v as f64),
-                        balance.expiry_date.to_rfc3339(),
-                    )
-                }
-                None => (0, None, None, Utc::now().to_rfc3339()),
-            };
+        let balance_id = session.balance_id;
+        let balance = state.balances.get_raw(balance_id).await?;
+        let remaining = balance.remaining_minutes;
+        let deduction_profile = balance.deduction_profile.clone();
+        let time_credits_consumed = session.time_credits_consumed.map(|v| v as f64);
+        let expiry_date = balance.expiry_date.to_rfc3339();
         return ok(KioskSessionResponseDto {
             sessionId: session.id.to_string(),
-            balanceId: session
-                .balance_id
-                .map(|b| b.to_string())
-                .unwrap_or_default(),
+            balanceId: balance_id.to_string(),
             deviceId: session.device_id.to_string(),
             startTime: session.start_time.to_rfc3339(),
             remainingMinutes: remaining as f64,
@@ -209,22 +199,16 @@ pub async fn end_session(
         )
         .await?;
 
-    let (remaining, deduction_profile, time_credits_consumed, expiry_date) = match ended.balance_id {
-        Some(balance_id) => {
-            let balance = state.balances.get_raw(balance_id).await?;
-            (
-                balance.remaining_minutes,
-                balance.deduction_profile.clone(),
-                ended.time_credits_consumed.map(|v| v as f64),
-                balance.expiry_date.to_rfc3339(),
-            )
-        }
-        None => (0, None, None, Utc::now().to_rfc3339()),
-    };
+    let balance_id = ended.balance_id;
+    let balance = state.balances.get_raw(balance_id).await?;
+    let remaining = balance.remaining_minutes;
+    let deduction_profile = balance.deduction_profile.clone();
+    let time_credits_consumed = ended.time_credits_consumed.map(|v| v as f64);
+    let expiry_date = balance.expiry_date.to_rfc3339();
 
     ok(KioskSessionResponseDto {
         sessionId: ended.id.to_string(),
-        balanceId: ended.balance_id.map(|b| b.to_string()).unwrap_or_default(),
+        balanceId: balance_id.to_string(),
         deviceId: ended.device_id.to_string(),
         startTime: ended.start_time.to_rfc3339(),
         remainingMinutes: remaining as f64,

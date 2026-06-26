@@ -19,6 +19,9 @@ export const ActivityKind = {
   CASH_DEPOSIT_INITIATED: 'cash_deposit_initiated',
   INVENTORY_TRANSFER_REQUESTED: 'inventory_transfer_requested',
   INVENTORY_WASTE_RECORDED: 'inventory_waste_recorded',
+  KIOSK_ORDER_PLACED: 'kiosk_order_placed',
+  KIOSK_ORDER_FULFILLED: 'kiosk_order_fulfilled',
+  KIOSK_ORDER_CANCELLED: 'kiosk_order_cancelled',
 } as const;
 
 export type ActivityKindValue = (typeof ActivityKind)[keyof typeof ActivityKind];
@@ -42,4 +45,7 @@ export const activityKindLabels: Record<ActivityKindValue, string> = {
   [ActivityKind.CASH_DEPOSIT_INITIATED]: 'Cash deposit',
   [ActivityKind.INVENTORY_TRANSFER_REQUESTED]: 'Stock transfer',
   [ActivityKind.INVENTORY_WASTE_RECORDED]: 'Stock waste',
+  [ActivityKind.KIOSK_ORDER_PLACED]: 'Kiosk order',
+  [ActivityKind.KIOSK_ORDER_FULFILLED]: 'Kiosk order fulfilled',
+  [ActivityKind.KIOSK_ORDER_CANCELLED]: 'Kiosk order cancelled',
 };

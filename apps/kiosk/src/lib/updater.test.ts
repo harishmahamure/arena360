@@ -14,10 +14,12 @@ vi.mock('@tauri-apps/plugin-updater', () => ({
 }));
 
 describe('isIdleUpdatePhase', () => {
-  it('returns true for register, setup, and login', () => {
+  it('returns true for register, setup, login, and create-account phases', () => {
     expect(isIdleUpdatePhase('register')).toBe(true);
     expect(isIdleUpdatePhase('setup')).toBe(true);
     expect(isIdleUpdatePhase('login')).toBe(true);
+    expect(isIdleUpdatePhase('create-account')).toBe(true);
+    expect(isIdleUpdatePhase('create-account-success')).toBe(true);
   });
 
   it('returns false for loading, session, and already-in-session', () => {

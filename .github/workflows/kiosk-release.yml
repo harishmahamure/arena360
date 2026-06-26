@@ -58,7 +58,10 @@ jobs:
       - name: Cache cargo (kiosk)
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/kiosk/src-tauri
+          workspaces: |
+            apps/kiosk/src-tauri
+            apps/kiosk/watchdog
+            apps/kiosk/watchdog-common
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

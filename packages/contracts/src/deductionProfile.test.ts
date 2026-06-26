@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDeductionPlayBreakdown,
   capRemainingByExpiry,
+  createSessionClockCache,
   formatDeductionTime,
   formatDeductionTimeRange,
   maxWallMinutes,
   minutesUntilExpiry,
   ratioAtMinute,
+  tickSessionClockCache,
   validateDeductionProfile,
   weightedMinutesBetween,
   windowsOverlap,
@@ -97,5 +99,15 @@ describe('deductionProfile contracts', () => {
     expect(capRemainingByExpiry(300, expirySoon, now)).toBe(15);
     expect(capRemainingByExpiry(10, expiryLater, now)).toBe(10);
     expect(capRemainingByExpiry(50, undefined, now)).toBe(50);
+  });
+
+  it('session clock cache ticks incrementally in O(1) per second', () => {
+    const startMs = Date.parse('2026-06-07T02:30:00.000Z');
+    const start = new Date(startMs).toISOString();
+    const cache = createSessionClockCache(start, 60, 0, profile, 'Asia/Kolkata', null, startMs);
+    expect(cache).not.toBeNull();
+    const ticked = tickSessionClockCache(cache!, 1_000, startMs + 1_000);
+    expect(ticked.remainingMinutes).toBeLessThan(60);
+    expect(ticked.lastTickMs).toBe(startMs + 1_000);
   });
 });

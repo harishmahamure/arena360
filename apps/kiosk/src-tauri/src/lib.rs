@@ -11,6 +11,8 @@ mod process;
 mod scan;
 mod storage;
 mod update;
+mod watchdog_ipc;
+mod webview2;
 
 use instance_mutex::ensure_single_instance;
 use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
@@ -25,6 +27,13 @@ pub fn run() {
         std::env::consts::OS
     ));
     ensure_single_instance();
+
+    #[cfg(windows)]
+    if let Err(e) = webview2::ensure_runtime() {
+        diagnostics::error(format!("WebView2 ensure failed: {e}"));
+        webview2::show_install_failure(&e);
+        std::process::exit(1);
+    }
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -74,6 +83,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             diagnostics::get_boot_diagnostics,
             diagnostics::append_kiosk_log,
+            webview2::get_webview2_status_cmd,
             storage::get_tokens,
             storage::set_device_token,
             storage::set_player_token,
@@ -93,12 +103,15 @@ pub fn run() {
             process::focus_kiosk,
             process::get_tracked_processes,
             process::kill_tracked_processes,
+            process::is_cleanup_in_progress_cmd,
             process::close_tracked_apps,
             process::clear_tracked_processes,
             boost::set_game_boost_config,
             boost::get_game_boost_config,
             cache::cache_asset,
             update::prepare_for_update,
+            watchdog_ipc::set_watchdog_pause,
+            watchdog_ipc::clear_watchdog_pause,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

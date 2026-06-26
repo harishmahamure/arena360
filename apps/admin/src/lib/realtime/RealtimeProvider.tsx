@@ -100,6 +100,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    const unsubKioskOrder = client.on('kiosk_order.placed', (frame: ServerFrame) => {
+      const deviceName = (frame.payload?.deviceName as string) ?? 'Station';
+      const username = (frame.payload?.playerUsername as string) ?? 'player';
+      toastUtils.info(`New order from ${deviceName} — ${username}`);
+      queryClient.invalidateQueries({ queryKey: ['kiosk-orders'] });
+    });
+
     return () => {
       unsubSale();
       unsubApprovalReq();
@@ -109,6 +116,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       unsubBalance();
       unsubDevice();
       unsubNotification();
+      unsubKioskOrder();
       client.disconnect();
     };
   }, [queryClient, userId, role, accessToken]);

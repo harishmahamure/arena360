@@ -11,13 +11,15 @@ use crate::models::deduction_profile::DeductionProfile;
 #[serde(rename_all = "camelCase")]
 pub struct UsageSession {
     pub id: Uuid,
-    pub balance_id: Option<Uuid>,
+    pub balance_id: Uuid,
     pub device_id: Uuid,
     pub shift_id: Option<Uuid>,
     pub start_time: DateTime<Utc>,
     pub end_time: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
     pub time_credits_consumed: Option<i32>,
+    pub wallet_minutes_at_start: Option<i32>,
+    pub source_plan_id_at_start: Option<Uuid>,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -117,13 +119,17 @@ pub struct SessionBalanceSummary {
 #[serde(rename_all = "camelCase")]
 pub struct UsageSessionResponse {
     pub id: Uuid,
-    pub balance_id: Option<Uuid>,
+    pub balance_id: Uuid,
     pub device_id: Uuid,
     pub shift_id: Option<Uuid>,
     pub start_time: DateTime<Utc>,
     pub end_time: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
     pub time_credits_consumed: Option<i32>,
+    pub wallet_minutes_at_start: Option<i32>,
+    pub source_plan_id_at_start: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_at_start: Option<SessionPlanSummary>,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -150,6 +156,9 @@ impl From<UsageSession> for UsageSessionResponse {
             end_time: value.end_time,
             duration_minutes: value.duration_minutes,
             time_credits_consumed: value.time_credits_consumed,
+            wallet_minutes_at_start: value.wallet_minutes_at_start,
+            source_plan_id_at_start: value.source_plan_id_at_start,
+            plan_at_start: None,
             created_by: value.created_by,
             updated_by: value.updated_by,
             created_at: value.created_at,
@@ -165,13 +174,15 @@ impl From<UsageSession> for UsageSessionResponse {
 #[derive(Debug, FromRow)]
 pub struct UsageSessionRow {
     pub id: Uuid,
-    pub balance_id: Option<Uuid>,
+    pub balance_id: Uuid,
     pub device_id: Uuid,
     pub shift_id: Option<Uuid>,
     pub start_time: DateTime<Utc>,
     pub end_time: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
     pub time_credits_consumed: Option<i32>,
+    pub wallet_minutes_at_start: Option<i32>,
+    pub source_plan_id_at_start: Option<Uuid>,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -194,6 +205,9 @@ pub struct UsageSessionRow {
     pub device_status: Option<String>,
     pub bal_deduction_profile: Option<Value>,
     pub bal_expiry_date: Option<DateTime<Utc>>,
+    pub plan_start_name: Option<String>,
+    pub plan_start_type: Option<String>,
+    pub plan_start_time_credits: Option<i32>,
 }
 
 fn parse_deduction_profile(value: Option<Value>) -> Option<DeductionProfile> {
@@ -221,9 +235,9 @@ impl UsageSessionRow {
             time_credits: self.plan_time_credits.unwrap_or(0),
         });
         let deduction_profile = parse_deduction_profile(self.bal_deduction_profile);
-        let balance = self.balance_id.map(|bid| SessionBalanceSummary {
-            id: bid,
-            player_id: self.bal_player_id.unwrap_or_default(),
+        let balance = self.bal_player_id.map(|player_id| SessionBalanceSummary {
+            id: self.balance_id,
+            player_id,
             kind: self.bal_kind.unwrap_or_else(|| "time".to_string()),
             remaining_minutes: self.bal_remaining_minutes.unwrap_or(0),
             status: self.bal_status.unwrap_or_else(|| "active".to_string()),
@@ -244,6 +258,16 @@ impl UsageSessionRow {
                 .unwrap_or_else(|| "available".to_string()),
         });
 
+        let plan_at_start = self.plan_start_name.as_ref().map(|name| SessionPlanSummary {
+            id: self.source_plan_id_at_start.unwrap_or_default(),
+            name: name.clone(),
+            plan_type: self
+                .plan_start_type
+                .clone()
+                .unwrap_or_else(|| "time_based".to_string()),
+            time_credits: self.plan_start_time_credits.unwrap_or(0),
+        });
+
         UsageSessionResponse {
             id: self.id,
             balance_id: self.balance_id,
@@ -253,6 +277,9 @@ impl UsageSessionRow {
             end_time: self.end_time,
             duration_minutes: self.duration_minutes,
             time_credits_consumed: self.time_credits_consumed,
+            wallet_minutes_at_start: self.wallet_minutes_at_start,
+            source_plan_id_at_start: self.source_plan_id_at_start,
+            plan_at_start,
             created_by: self.created_by,
             updated_by: self.updated_by,
             created_at: self.created_at,
@@ -287,13 +314,15 @@ mod tests {
         let balance_id = Uuid::new_v4();
         let row = UsageSessionRow {
             id: Uuid::new_v4(),
-            balance_id: Some(balance_id),
+            balance_id,
             device_id: Uuid::new_v4(),
             shift_id: None,
             start_time: now,
             end_time: None,
             duration_minutes: None,
             time_credits_consumed: None,
+            wallet_minutes_at_start: Some(45),
+            source_plan_id_at_start: Some(Uuid::new_v4()),
             created_by: None,
             updated_by: None,
             created_at: now,
@@ -316,14 +345,69 @@ mod tests {
             device_status: Some("in_use".to_string()),
             bal_deduction_profile: Some(sample_profile_json()),
             bal_expiry_date: Some(now + chrono::Duration::days(7)),
+            plan_start_name: Some("Original plan".to_string()),
+            plan_start_type: Some("time_based".to_string()),
+            plan_start_time_credits: Some(60),
         };
 
         let response = row.into_response();
+        assert_eq!(response.wallet_minutes_at_start, Some(45));
+        assert_eq!(
+            response.plan_at_start.as_ref().map(|p| p.name.as_str()),
+            Some("Original plan")
+        );
         let balance = response.balance.expect("balance summary");
         let profile = balance
             .deduction_profile
             .expect("deduction profile on balance");
         assert!((profile.peak_ratio - 1.5).abs() < f64::EPSILON);
         assert_eq!(balance.id, balance_id);
+    }
+
+    #[test]
+    fn into_response_omits_balance_when_join_fails() {
+        let now = Utc::now();
+        let balance_id = Uuid::new_v4();
+        let row = UsageSessionRow {
+            id: Uuid::new_v4(),
+            balance_id,
+            device_id: Uuid::new_v4(),
+            shift_id: None,
+            start_time: now,
+            end_time: None,
+            duration_minutes: None,
+            time_credits_consumed: None,
+            wallet_minutes_at_start: None,
+            source_plan_id_at_start: None,
+            created_by: None,
+            updated_by: None,
+            created_at: now,
+            updated_at: now,
+            deleted_at: None,
+            bal_player_id: None,
+            bal_kind: None,
+            bal_remaining_minutes: None,
+            bal_status: None,
+            bal_source_plan_id: None,
+            player_username: None,
+            player_first_name: None,
+            player_last_name: None,
+            plan_name: None,
+            plan_type: None,
+            plan_time_credits: None,
+            device_name: Some("PC-1".to_string()),
+            device_type: Some("PC".to_string()),
+            device_location: None,
+            device_status: Some("in_use".to_string()),
+            bal_deduction_profile: None,
+            bal_expiry_date: None,
+            plan_start_name: None,
+            plan_start_type: None,
+            plan_start_time_credits: None,
+        };
+
+        let response = row.into_response();
+        assert_eq!(response.balance_id, balance_id);
+        assert!(response.balance.is_none(), "orphan balanceId must not fabricate balance");
     }
 }

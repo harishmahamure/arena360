@@ -9,6 +9,7 @@ import { formatRemainingLabel, toastUtils } from '@gaming-cafe/utils';
 import {
   AccessTime,
   Devices,
+  GridView,
   Login,
   Logout,
   People,
@@ -28,6 +29,7 @@ import { getSessions } from '../../services/sessions/list';
 import { clockIn } from '../../services/shifts';
 import { formatTypePaymentSubtitle, normalizeRevenue } from '../../services/stats/statsHelpers';
 import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
+import { PendingKioskOrdersPanel } from './kiosk-orders/PendingKioskOrdersPanel';
 
 const ENDING_SOON_MINUTES = 15;
 const ENDING_SOON_MAX = 5;
@@ -57,6 +59,18 @@ const quickActions = [
     path: '/sessions/new',
     icon: PlayCircle,
     variant: 'contained' as const,
+  },
+  {
+    label: 'Kiosk orders',
+    path: '/kiosk-orders',
+    icon: ShoppingCart,
+    variant: 'outlined' as const,
+  },
+  {
+    label: 'Stations',
+    path: '/stations',
+    icon: GridView,
+    variant: 'outlined' as const,
   },
   {
     label: 'Sell items',
@@ -372,34 +386,41 @@ export default function StaffDashboardView() {
         </Box>
       )}
 
-      <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
-        Shift collection summary
-      </Typography>
-
       {stats.shift ? (
-        <Grid container spacing={3}>
-          {collectionCards.map((card) => {
-            const Icon = card.icon;
-            return (
-              <Grid key={card.title} size={{ xs: 12, sm: 6, md: 4 }}>
-                <StatCard
-                  title={card.title}
-                  value={card.value}
-                  subtitle={card.subtitle}
-                  icon={<Icon />}
-                  tone={card.tone}
-                />
-              </Grid>
-            );
-          })}
-        </Grid>
+        <>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+            Shift collection summary
+          </Typography>
+          <Grid container spacing={3}>
+            {collectionCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <Grid key={card.title} size={{ xs: 12, sm: 6, md: 4 }}>
+                  <StatCard
+                    title={card.title}
+                    value={card.value}
+                    subtitle={card.subtitle}
+                    icon={<Icon />}
+                    tone={card.tone}
+                  />
+                </Grid>
+              );
+            })}
+          </Grid>
+          <PendingKioskOrdersPanel variant="embedded" />
+        </>
       ) : (
-        <EmptyState
-          title="No shift collections yet"
-          description="Start your shift to track sales and sessions for this period."
-          actionLabel="Start shift"
-          onAction={() => void handleStartShift()}
-        />
+        <>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+            Shift collection summary
+          </Typography>
+          <EmptyState
+            title="No shift collections yet"
+            description="Start your shift to track sales and sessions for this period."
+            actionLabel="Start shift"
+            onAction={() => void handleStartShift()}
+          />
+        </>
       )}
     </PageShell>
   );

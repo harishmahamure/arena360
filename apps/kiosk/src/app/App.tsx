@@ -5,6 +5,8 @@ import { LockdownOverlay } from '../components/LockdownOverlay';
 import { KioskProvider, useKiosk } from '../context/KioskProvider';
 import { useKioskShellGuard } from '../lib/useKioskShellGuard';
 import { AlreadyInSessionPage } from '../pages/AlreadyInSessionPage';
+import { CreateAccountPage } from '../pages/CreateAccountPage';
+import { CreateAccountSuccessPage } from '../pages/CreateAccountSuccessPage';
 import { LoginHomePage } from '../pages/LoginHomePage';
 import { RegistrationPage } from '../pages/RegistrationPage';
 import { SessionPage } from '../pages/SessionPage';
@@ -32,6 +34,8 @@ function KioskShell() {
     content = null;
   } else if (phase === 'register') content = <RegistrationPage />;
   else if (phase === 'login') content = <LoginHomePage />;
+  else if (phase === 'create-account') content = <CreateAccountPage />;
+  else if (phase === 'create-account-success') content = <CreateAccountSuccessPage />;
   else if (phase === 'setup') content = <SetupPage />;
   else if (phase === 'session') content = <SessionPage />;
   else if (phase === 'already-in-session') content = <AlreadyInSessionPage />;

@@ -183,6 +183,9 @@ importers:
       react-dom:
         specifier: ^19.2.0
         version: 19.2.6(react@19.2.6)
+      yup:
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       '@gaming-cafe/tsconfig':
         specifier: workspace:*

@@ -82,6 +82,16 @@ pub fn set_lockdown_state(app: AppHandle, state: String) -> Result<(), String> {
         crate::diagnostics::error(format!("set_lockdown_state apply_window_mode: {e}"));
         e
     })?;
+    #[cfg(windows)]
+    {
+        let pause_result = match state {
+            LockdownState::SetupRelaxed => crate::watchdog_ipc::set_pause_for_maintenance(),
+            LockdownState::Locked => crate::watchdog_ipc::clear_watchdog_pause(),
+        };
+        if let Err(e) = pause_result {
+            crate::diagnostics::warn(format!("watchdog pause sync failed: {e}"));
+        }
+    }
     let _ = app.emit("lockdown-changed", state.as_str());
     Ok(())
 }
@@ -109,6 +119,12 @@ pub fn init_locked_on_startup(app: &AppHandle) -> Result<(), String> {
         *guard = LockdownState::Locked;
     }
     apply_window_mode(app, LockdownState::Locked)?;
+    #[cfg(windows)]
+    {
+        if let Err(e) = crate::watchdog_ipc::clear_pause_on_locked_startup() {
+            crate::diagnostics::warn(format!("watchdog pause clear on startup failed: {e}"));
+        }
+    }
     let _ = app.emit("lockdown-changed", LockdownState::Locked.as_str());
     Ok(())
 }

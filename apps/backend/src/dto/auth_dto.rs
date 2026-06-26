@@ -17,6 +17,24 @@ pub struct RegisterDto {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct KioskRegisterDto {
+    pub username: String,
+    pub password: String,
+    pub phoneNumber: String,
+    pub firstName: Option<String>,
+    pub lastName: Option<String>,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Serialize, ToSchema)]
+pub struct KioskRegisterResponseDto {
+    pub message: String,
+    pub username: String,
+    pub userId: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ChangePasswordDto {
     pub newPassword: String,
 }

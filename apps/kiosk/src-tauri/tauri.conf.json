@@ -40,6 +40,7 @@
     "shortDescription": "Locked-down Arena360 Station Management Application",
     "longDescription": "Arena360 Station Management Application: device registration, player sessions, lockdown and launcher for gaming cafe stations.",
     "createUpdaterArtifacts": false,
+    "resources": ["resources/arena360-watchdog.exe"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -224,9 +224,7 @@ impl SessionService {
         if delta == 0 {
             return Ok((total, balance.clone()));
         }
-        let balance_id = session
-            .balance_id
-            .ok_or_else(|| AppError::BadRequest("Session has no linked balance".to_string()))?;
+        let balance_id = session.balance_id;
         let updated = self
             .balances
             .deduct_minutes(balance_id, delta, Some(session.id))
@@ -318,7 +316,17 @@ impl SessionService {
             )));
         }
 
-        let session = self.repo.create(&dto, start_time, actor_id).await?;
+        let balance = self.balances.get_raw(dto.balance_id).await?;
+        let session = self
+            .repo
+            .create(
+                &dto,
+                start_time,
+                actor_id,
+                balance.remaining_minutes,
+                balance.source_plan_id,
+            )
+            .await?;
         let _ = self.invalidate_session(&session).await;
 
         let _ = self
@@ -333,7 +341,6 @@ impl SessionService {
 
         self.events.publish_session_started(&session.id.to_string());
 
-        let balance = self.balances.get_raw(dto.balance_id).await?;
         let remaining = display_remaining_for_session(
             &balance,
             &session,
@@ -346,6 +353,8 @@ impl SessionService {
             "playerId": balance.player_id.to_string(),
             "balanceId": dto.balance_id.to_string(),
             "startTime": session.start_time.to_rfc3339(),
+            "walletMinutesAtStart": balance.remaining_minutes,
+            "sourcePlanIdAtStart": balance.source_plan_id.map(|id| id.to_string()),
             "remainingMinutes": remaining as f64,
             "deductionProfile": balance.deduction_profile,
             "cafeTimezone": self.cafe_timezone,
@@ -377,7 +386,11 @@ impl SessionService {
             .record(RecordNotification {
                 kind: activity_kind::SESSION_STARTED.to_string(),
                 title: "Session started".to_string(),
-                summary: Some(format!("Player session on device {}", dto.device_id)),
+                summary: Some(format!(
+                    "Player session on {} · {} min at login",
+                    device.name,
+                    balance.remaining_minutes
+                )),
                 payload: payload.clone(),
                 actor_user_id: None,
                 entity_type: Some("session".to_string()),
@@ -560,9 +573,7 @@ impl SessionService {
             ));
         }
 
-        let balance_id = session
-            .balance_id
-            .ok_or_else(|| AppError::BadRequest("Session has no linked balance".to_string()))?;
+        let balance_id = session.balance_id;
         let balance = self.balances.get_raw(balance_id).await?;
         if balance.player_id != player_id {
             return Err(AppError::Forbidden(
@@ -633,9 +644,7 @@ impl SessionService {
         let end_time = dto.end_time.unwrap_or_else(Utc::now);
         let duration_minutes = elapsed_minutes_between(session.start_time, end_time);
 
-        let balance_id = session.balance_id.ok_or_else(|| {
-            AppError::BadRequest("Session has no linked balance (legacy session)".to_string())
-        })?;
+        let balance_id = session.balance_id;
 
         let raw_session = self
             .repo
@@ -764,9 +773,7 @@ impl SessionService {
             return Ok(None);
         };
 
-        let balance_id = session.balance_id.ok_or_else(|| {
-            AppError::BadRequest("Session has no linked balance".to_string())
-        })?;
+        let balance_id = session.balance_id;
         let balance = self.balances.get_raw(balance_id).await?;
         let remaining =
             display_remaining_for_session(&balance, &session, &self.cafe_timezone);
@@ -804,25 +811,18 @@ impl SessionService {
         }
 
         if session.end_time.is_some() {
-            let balance_id = session.balance_id.unwrap_or_default();
-            let (remaining, deduction_profile, expiry_date) = if balance_id != Uuid::nil() {
-                let balance = self.balances.get_raw(balance_id).await?;
-                (
-                    balance.remaining_minutes,
-                    balance.deduction_profile.as_ref().and_then(|value| {
-                        serde_json::from_value::<DeductionProfile>(value.clone()).ok()
-                    }),
-                    balance.expiry_date.to_rfc3339(),
-                )
-            } else {
-                (0, None, Utc::now().to_rfc3339())
-            };
+            let balance_id = session.balance_id;
+            let balance = self.balances.get_raw(balance_id).await?;
+            let (remaining, deduction_profile, expiry_date) = (
+                balance.remaining_minutes,
+                balance.deduction_profile.as_ref().and_then(|value| {
+                    serde_json::from_value::<DeductionProfile>(value.clone()).ok()
+                }),
+                balance.expiry_date.to_rfc3339(),
+            );
             return Ok(crate::dto::TvSessionResponseDto {
                 sessionId: session.id.to_string(),
-                balanceId: session
-                    .balance_id
-                    .map(|b| b.to_string())
-                    .unwrap_or_default(),
+                balanceId: balance_id.to_string(),
                 deviceId: device.id.to_string(),
                 startTime: session.start_time.to_rfc3339(),
                 remainingMinutes: remaining as f64,
@@ -847,19 +847,15 @@ impl SessionService {
             )
             .await?;
 
-        let balance_id = ended.balance_id.unwrap_or_default();
-        let (remaining, deduction_profile, expiry_date) = if balance_id != Uuid::nil() {
-            let balance = self.balances.get_raw(balance_id).await?;
-            (
-                balance.remaining_minutes,
-                balance.deduction_profile.as_ref().and_then(|value| {
-                    serde_json::from_value::<DeductionProfile>(value.clone()).ok()
-                }),
-                balance.expiry_date.to_rfc3339(),
-            )
-        } else {
-            (0, None, Utc::now().to_rfc3339())
-        };
+        let balance_id = ended.balance_id;
+        let balance = self.balances.get_raw(balance_id).await?;
+        let (remaining, deduction_profile, expiry_date) = (
+            balance.remaining_minutes,
+            balance.deduction_profile.as_ref().and_then(|value| {
+                serde_json::from_value::<DeductionProfile>(value.clone()).ok()
+            }),
+            balance.expiry_date.to_rfc3339(),
+        );
 
         Ok(crate::dto::TvSessionResponseDto {
             sessionId: ended.id.to_string(),
@@ -890,13 +886,16 @@ mod tests {
         let now = Utc::now();
         let session = UsageSessionResponse {
             id: Uuid::new_v4(),
-            balance_id: None,
+            balance_id: Uuid::new_v4(),
             device_id: Uuid::new_v4(),
             shift_id: None,
             start_time: now,
             end_time: None,
             duration_minutes: None,
             time_credits_consumed: None,
+            wallet_minutes_at_start: None,
+            source_plan_id_at_start: None,
+            plan_at_start: None,
             created_by: None,
             updated_by: None,
             created_at: now,
@@ -936,13 +935,15 @@ mod tests {
         };
         let session = UsageSession {
             id: Uuid::new_v4(),
-            balance_id: Some(balance.id),
+            balance_id: balance.id,
             device_id: Uuid::new_v4(),
             shift_id: None,
             start_time: start,
             end_time: None,
             duration_minutes: None,
             time_credits_consumed: Some(0),
+            wallet_minutes_at_start: None,
+            source_plan_id_at_start: None,
             created_by: None,
             updated_by: None,
             created_at: start,
@@ -990,13 +991,15 @@ mod tests {
         };
         let session = UsageSession {
             id: Uuid::new_v4(),
-            balance_id: Some(balance.id),
+            balance_id: balance.id,
             device_id: Uuid::new_v4(),
             shift_id: None,
             start_time: start,
             end_time: None,
             duration_minutes: None,
             time_credits_consumed: Some(0),
+            wallet_minutes_at_start: None,
+            source_plan_id_at_start: None,
             created_by: None,
             updated_by: None,
             created_at: start,

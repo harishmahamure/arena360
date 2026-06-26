@@ -1,5 +1,8 @@
 {
   "bundle": {
-    "targets": ["nsis"]
+    "targets": ["nsis"],
+    "resources": {
+      "resources/MicrosoftEdgeWebview2Setup.exe": "WebView2/"
+    }
   }
 }

@@ -82,15 +82,28 @@ This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bund
 
 ### WebView2 runtime (Windows 10)
 
-The app renders through the Microsoft **Edge WebView2** runtime. The installer is
-configured with `webviewInstallMode: embedBootstrapper`, so the WebView2
-bootstrapper is embedded and run during install (small download at install time).
+The app renders through the Microsoft **Edge WebView2** runtime.
+
+**At NSIS install time:** the installer uses `embedBootstrapper` in
+`src-tauri/tauri.conf.json`, so the WebView2 bootstrapper runs during setup when
+the runtime is missing (~1.8 MB embedded, requires internet during install).
+
+**At app launch (Windows):** if WebView2 is still not installed, the kiosk will:
+
+1. Check the registry for the Evergreen runtime
+2. Run a **bundled** `MicrosoftEdgeWebview2Setup.exe` from `WebView2/` next to the app (downloaded automatically during Windows builds via `build.rs`)
+3. If the bundled file is absent, **download** the Evergreen bootstrapper from Microsoft
+4. Install silently (`/silent /install`), **relaunch** the app once, then continue
+5. If install still fails: show a native error dialog with the log path (`%ProgramData%\Arena360\kiosk.log`) and manual install URL
 
 - Windows 11 ships WebView2 by default.
-- Windows 10 may not have it. The embedded bootstrapper installs it automatically;
-  for fully offline imaging, switch `webviewInstallMode` to `offlineInstaller`
-  (embeds the full runtime, ~150 MB) in `src-tauri/tauri.conf.json`, or pre-install the
-  [Evergreen Standalone Installer](https://developer.microsoft.com/microsoft-edge/webview2/).
+- Windows 10 may not have it. Offline venues should either pre-install WebView2 on
+  the golden image, use NSIS `offlineInstaller` (~127 MB), or ensure the bundled
+  bootstrapper is present in the installed app.
+- Manual install: [Evergreen Standalone Installer](https://developer.microsoft.com/microsoft-edge/webview2/)
+
+Staff can query runtime status via the Tauri command `get_webview2_status` (also
+logged at boot in `kiosk.log`).
 
 ### Lockdown / kiosk OS configuration
 

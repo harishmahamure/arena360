@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { fetchGames } from '../../lib/allowList';
 import { LOGIN_BACKGROUND_VIDEO_URL } from '../../lib/config';
 import { HeroGameCarousel } from './HeroGameCarousel';
@@ -20,7 +20,7 @@ function tryAutoplay(video: HTMLVideoElement) {
   void Promise.resolve(video.play()).catch(() => {});
 }
 
-export function HomeView({
+export const HomeView = memo(function HomeView({
   disabled,
   onError,
   onNavigate,
@@ -112,4 +112,4 @@ export function HomeView({
       </section>
     </div>
   );
-}
+});

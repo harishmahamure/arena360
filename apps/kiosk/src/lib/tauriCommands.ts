@@ -53,6 +53,14 @@ export async function setLockdownState(state: 'Locked' | 'SetupRelaxed'): Promis
   await invokeLogged('set_lockdown_state', { state });
 }
 
+export async function setWatchdogPause(durationSecs: number, reason: string): Promise<void> {
+  await invokeLogged('set_watchdog_pause', { durationSecs, reason });
+}
+
+export async function clearWatchdogPause(): Promise<void> {
+  await invokeLogged('clear_watchdog_pause');
+}
+
 export type LockdownState = 'Locked' | 'SetupRelaxed';
 
 export async function getLockdownState(): Promise<LockdownState> {
@@ -179,6 +187,10 @@ export async function getTrackedProcesses(): Promise<TrackedProcess[]> {
 
 export async function killTrackedProcesses(): Promise<{ killed: number; restored: boolean }> {
   return invokeLogged('kill_tracked_processes');
+}
+
+export async function isCleanupInProgress(): Promise<boolean> {
+  return invokeLogged<boolean>('is_cleanup_in_progress_cmd');
 }
 
 export async function closeTrackedApps(): Promise<{ killed: number; restored: boolean }> {

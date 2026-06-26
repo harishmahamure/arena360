@@ -3,8 +3,8 @@ use utoipa::{Modify, OpenApi};
 
 use crate::dto::auth_dto::{
     ActiveSessionDto, AuthResponseDto, AuthUserDto, ChangePasswordDto, CreateSsoTokenDto,
-    CreateSsoTokenResponseDto, DevicePairingDto, DevicePairingResponseDto, LoginDto, RedeemSsoTokenDto,
-    RegisterDto, RegisterResponseDto,
+    CreateSsoTokenResponseDto, DevicePairingDto, DevicePairingResponseDto, KioskRegisterDto,
+    KioskRegisterResponseDto, LoginDto, RedeemSsoTokenDto, RegisterDto, RegisterResponseDto,
 };
 use crate::dto::{EndTvSessionDto, TvSessionResponseDto};
 use crate::handlers;
@@ -41,6 +41,8 @@ use crate::models::{
     UpdateVendorDto, UpsertConfigDto, UsageSession, UsageSessionResponse, User, UserFilterDto,
     ValidationResult, Vendor, VendorFilterDto, VerifyTotpSetupDto, WasteSummaryRow,
     ActivityLog, ActivityLogFilterDto, NotificationFilterDto, NotificationItem, UnreadCountDto,
+    ConvertKioskOrderDto, CreateKioskOrderDto, CreateKioskOrderLineItemDto, KioskMenuProduct,
+    KioskOrderFilterDto, KioskOrderItemResponse, KioskOrderWithItems, UpdateKioskOrderDto,
 };
 use crate::openapi::responses::*;
 use crate::realtime::rooms::{AddMemberDto, CreateRoomDto, Room};
@@ -88,6 +90,7 @@ impl Modify for SecurityAddon {
         handlers::auth::login_admin,
         handlers::auth::login_staff,
         handlers::auth::login_player,
+        handlers::auth::register_player,
         handlers::auth::create_sso_token,
         handlers::auth::redeem_sso_token,
         handlers::auth::device_pairing,
@@ -113,6 +116,13 @@ impl Modify for SecurityAddon {
         handlers::kiosk::current_session,
         handlers::kiosk::heartbeat_session,
         handlers::kiosk::end_session,
+        handlers::kiosk_orders::list_products,
+        handlers::kiosk_orders::place_order,
+        handlers::kiosk_orders::current_order,
+        handlers::kiosk_orders::list_orders,
+        handlers::kiosk_orders::get_order,
+        handlers::kiosk_orders::update_order,
+        handlers::kiosk_orders::convert_order,
         handlers::console_tv::current_session,
         handlers::console_tv::end_session,
         handlers::plans::list_plans,
@@ -254,6 +264,8 @@ impl Modify for SecurityAddon {
             crate::models::deduction_profile::DeductionProfile,
             crate::dto::            EndKioskSessionDto,
             RegisterDto,
+            KioskRegisterDto,
+            KioskRegisterResponseDto,
             ChangePasswordDto,
             AuthResponseDto,
             AuthUserDto,
@@ -268,6 +280,7 @@ impl Modify for SecurityAddon {
             AuthResponseEnvelope,
             RegisterResponseDto,
             RegisterResponseEnvelope,
+            KioskRegisterResponseEnvelope,
             DashboardStatsDto,
             DashboardStatsEnvelope,
             StaffDashboardStatsDto,
@@ -536,6 +549,14 @@ impl Modify for SecurityAddon {
             ActivityLogFilterDto,
             ActivityLogPaginationEnvelope,
             ActivityLogPaginationPage,
+            KioskMenuProduct,
+            KioskOrderWithItems,
+            KioskOrderItemResponse,
+            CreateKioskOrderDto,
+            CreateKioskOrderLineItemDto,
+            UpdateKioskOrderDto,
+            ConvertKioskOrderDto,
+            KioskOrderFilterDto,
         )
     ),
     modifiers(&SecurityAddon),
@@ -550,6 +571,7 @@ impl Modify for SecurityAddon {
         (name = "units", description = "Inventory units"),
         (name = "sessions", description = "Usage sessions"),
         (name = "kiosk", description = "Kiosk player session lifecycle"),
+        (name = "kiosk-orders", description = "Kiosk player food/drink orders"),
         (name = "transactions", description = "Payment transactions"),
         (name = "products", description = "Products"),
         (name = "games", description = "Game media catalog"),

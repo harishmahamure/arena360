@@ -26,6 +26,7 @@ function formatRetry(retryAt: number): string {
 export function LoginHomePage() {
   const {
     playerLogin,
+    goToCreateAccount,
     enterSetup,
     clearStaffLoginLockout,
     error,
@@ -249,6 +250,9 @@ export function LoginHomePage() {
         <StationControls deviceName={deviceName} online={online} maintenance={maintenance} />
 
         <footer className="a360-login-footer">
+          <button type="button" className="link a360-staff-login" onClick={goToCreateAccount}>
+            Create account
+          </button>
           <button type="button" className="link a360-staff-login" onClick={() => void enterSetup()}>
             Staff login
           </button>

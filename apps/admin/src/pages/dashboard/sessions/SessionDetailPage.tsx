@@ -436,7 +436,20 @@ export default function ViewSessionPage() {
                     : 'N/A'}
                 </Typography>
               </DetailField>
-              <DetailField label="Plan name">
+              <DetailField label="Plan at login">
+                <Typography variant="body1">
+                  {session?.planAtStart?.name ??
+                    (session?.walletMinutesAtStart != null ? 'N/A' : '—')}
+                </Typography>
+              </DetailField>
+              <DetailField label="Balance at login">
+                <Typography variant="body1">
+                  {session?.walletMinutesAtStart != null
+                    ? formatRemainingLabel(session.walletMinutesAtStart)
+                    : '—'}
+                </Typography>
+              </DetailField>
+              <DetailField label="Current plan">
                 <Typography variant="body1">{balance.plan?.name || 'N/A'}</Typography>
               </DetailField>
               <DetailField label={isActive ? 'Time remaining' : 'Time at end'}>

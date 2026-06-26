@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{self, get_or_set, keys, set_json, CacheService};
-use crate::dto::{JwtUserClaims, PaginationResult, RegisterDto, RegisterResponseDto};
+use crate::dto::{JwtUserClaims, KioskRegisterDto, KioskRegisterResponseDto, PaginationResult, RegisterDto, RegisterResponseDto};
 use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
 use crate::repositories::{CreatePlayerParams, UserRepository};
@@ -204,6 +204,70 @@ impl UserService {
 
         Ok(RegisterResponseDto {
             message: "Created successfully".to_string(),
+        })
+    }
+
+    pub async fn register_from_kiosk(
+        &self,
+        dto: KioskRegisterDto,
+    ) -> Result<KioskRegisterResponseDto, AppError> {
+        let username = match validate_username(&dto.username) {
+            Ok(value) => value,
+            Err(AppError::BadRequest(message)) => {
+                return Err(AppError::bad_request_code(
+                    &message,
+                    Some(serde_json::json!({ "field": "username" })),
+                ));
+            }
+            Err(err) => return Err(err),
+        };
+
+        if self.repo.username_exists(&username, None).await? {
+            return Err(AppError::conflict_code(
+                "AUTH_USERNAME_ALREADY_EXISTS",
+                Some(serde_json::json!({ "field": "username" })),
+            ));
+        }
+
+        let password = trim_secret(&dto.password);
+        if password.len() < 8 {
+            return Err(AppError::bad_request_code(
+                "AUTH_WEAK_PASSWORD",
+                Some(serde_json::json!({ "field": "password" })),
+            ));
+        }
+
+        let phone_number = normalize_phone_digits(&dto.phoneNumber);
+        if phone_number.len() < 10 {
+            return Err(AppError::bad_request_code(
+                "Phone number must be at least 10 digits",
+                Some(serde_json::json!({ "field": "phoneNumber" })),
+            ));
+        }
+
+        let password_hash = bcrypt::hash(&password, bcrypt::DEFAULT_COST)
+            .map_err(|e| AppError::Internal(format!("Failed to hash password: {e}")))?;
+
+        let user = self
+            .repo
+            .create_player(CreatePlayerParams {
+                username: &username,
+                password_hash: &password_hash,
+                phone_number: &phone_number,
+                first_name: trim_optional_string(dto.firstName).as_deref(),
+                last_name: trim_optional_string(dto.lastName).as_deref(),
+                role: "player",
+                actor_id: None,
+            })
+            .await?;
+
+        self.invalidate_user_caches(&user, None).await?;
+        let _ = cache::invalidate_stats(&*self.cache).await;
+
+        Ok(KioskRegisterResponseDto {
+            message: "Account created successfully".to_string(),
+            username: user.username,
+            userId: user.id.to_string(),
         })
     }
 

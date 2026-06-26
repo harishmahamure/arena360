@@ -36,12 +36,63 @@ impl SessionRepository {
                "endTime" as end_time,
                "durationMinutes" as duration_minutes,
                "timeCreditsConsumed" as time_credits_consumed,
+               "walletMinutesAtStart" as wallet_minutes_at_start,
+               "sourcePlanIdAtStart" as source_plan_id_at_start,
                "createdBy" as created_by,
                "updatedBy" as updated_by,
                "createdAt" as created_at,
                "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM usage_sessions
+    "#;
+
+    const ENRICHED_SELECT: &'static str = r#"
+        SELECT s.id, s."balanceId" as balance_id, s."deviceId" as device_id,
+               s."shiftId" as shift_id, s."startTime" as start_time, s."endTime" as end_time,
+               s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
+               s."walletMinutesAtStart" as wallet_minutes_at_start,
+               s."sourcePlanIdAtStart" as source_plan_id_at_start,
+               s."createdBy" as created_by, s."updatedBy" as updated_by,
+               s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
+               b."playerId" as bal_player_id, b.kind::text as bal_kind,
+               b."remainingMinutes" as bal_remaining_minutes, b.status::text as bal_status,
+               b."sourcePlanId" as bal_source_plan_id,
+               b."deductionProfile" as bal_deduction_profile,
+               b."expiryDate" as bal_expiry_date,
+               u.username as player_username, u."firstName" as player_first_name,
+               u."lastName" as player_last_name,
+               p.name as plan_name, p."planType"::text as plan_type, p."timeCredits" as plan_time_credits,
+               d.name as device_name, d."deviceType"::text as device_type,
+               d.location as device_location, d.status::text as device_status,
+               p_start.name as plan_start_name, p_start."planType"::text as plan_start_type,
+               p_start."timeCredits" as plan_start_time_credits
+    "#;
+
+    const ENRICHED_FROM: &'static str = r#"
+        FROM usage_sessions s
+        LEFT JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
+        LEFT JOIN users u ON u.id = b."playerId" AND u."deletedAt" IS NULL
+        LEFT JOIN plans p ON p.id = b."sourcePlanId" AND p."deletedAt" IS NULL
+        LEFT JOIN plans p_start ON p_start.id = s."sourcePlanIdAtStart" AND p_start."deletedAt" IS NULL
+        LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
+    "#;
+
+    const SESSION_RETURNING: &'static str = r#"
+        RETURNING id,
+                  "balanceId" as balance_id,
+                  "deviceId" as device_id,
+                  "shiftId" as shift_id,
+                  "startTime" as start_time,
+                  "endTime" as end_time,
+                  "durationMinutes" as duration_minutes,
+                  "timeCreditsConsumed" as time_credits_consumed,
+                  "walletMinutesAtStart" as wallet_minutes_at_start,
+                  "sourcePlanIdAtStart" as source_plan_id_at_start,
+                  "createdBy" as created_by,
+                  "updatedBy" as updated_by,
+                  "createdAt" as created_at,
+                  "updatedAt" as updated_at,
+                  "deletedAt" as deleted_at
     "#;
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<UsageSession>, AppError> {
@@ -58,29 +109,14 @@ impl SessionRepository {
         id: Uuid,
     ) -> Result<Option<UsageSessionResponse>, AppError> {
         let row = sqlx::query_as::<_, UsageSessionRow>(
-            r#"
-            SELECT s.id, s."balanceId" as balance_id, s."deviceId" as device_id,
-                   s."shiftId" as shift_id, s."startTime" as start_time, s."endTime" as end_time,
-                   s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
-                   s."createdBy" as created_by, s."updatedBy" as updated_by,
-                   s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
-                   b."playerId" as bal_player_id, b.kind::text as bal_kind,
-                   b."remainingMinutes" as bal_remaining_minutes, b.status::text as bal_status,
-                   b."sourcePlanId" as bal_source_plan_id,
-                   b."deductionProfile" as bal_deduction_profile,
-                   b."expiryDate" as bal_expiry_date,
-                   u.username as player_username, u."firstName" as player_first_name,
-                   u."lastName" as player_last_name,
-                   p.name as plan_name, p."planType"::text as plan_type, p."timeCredits" as plan_time_credits,
-                   d.name as device_name, d."deviceType"::text as device_type,
-                   d.location as device_location, d.status::text as device_status
-            FROM usage_sessions s
-            LEFT JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
-            LEFT JOIN users u ON u.id = b."playerId" AND u."deletedAt" IS NULL
-            LEFT JOIN plans p ON p.id = b."sourcePlanId" AND p."deletedAt" IS NULL
-            LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
+            &format!(
+                r#"{ENRICHED_SELECT}
+            {ENRICHED_FROM}
             WHERE s.id = $1 AND s."deletedAt" IS NULL
             "#,
+                ENRICHED_SELECT = Self::ENRICHED_SELECT,
+                ENRICHED_FROM = Self::ENRICHED_FROM,
+            ),
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -197,27 +233,13 @@ impl SessionRepository {
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"SELECT s.id, s."balanceId" as balance_id, s."deviceId" as device_id,
-               s."shiftId" as shift_id, s."startTime" as start_time, s."endTime" as end_time,
-               s."durationMinutes" as duration_minutes, s."timeCreditsConsumed" as time_credits_consumed,
-               s."createdBy" as created_by, s."updatedBy" as updated_by,
-               s."createdAt" as created_at, s."updatedAt" as updated_at, s."deletedAt" as deleted_at,
-               b."playerId" as bal_player_id, b.kind::text as bal_kind,
-               b."remainingMinutes" as bal_remaining_minutes, b.status::text as bal_status,
-               b."sourcePlanId" as bal_source_plan_id,
-               b."deductionProfile" as bal_deduction_profile,
-               b."expiryDate" as bal_expiry_date,
-               u.username as player_username, u."firstName" as player_first_name,
-               u."lastName" as player_last_name,
-               p.name as plan_name, p."planType"::text as plan_type, p."timeCredits" as plan_time_credits,
-               d.name as device_name, d."deviceType"::text as device_type,
-               d.location as device_location, d.status::text as device_status
-               FROM usage_sessions s
-               LEFT JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
-               LEFT JOIN users u ON u.id = b."playerId" AND u."deletedAt" IS NULL
-               LEFT JOIN plans p ON p.id = b."sourcePlanId" AND p."deletedAt" IS NULL
-               LEFT JOIN devices d ON d.id = s."deviceId" AND d."deletedAt" IS NULL
+            &format!(
+                r#"{ENRICHED_SELECT}
+               {ENRICHED_FROM}
                WHERE s."deletedAt" IS NULL"#,
+                ENRICHED_SELECT = Self::ENRICHED_SELECT,
+                ENRICHED_FROM = Self::ENRICHED_FROM,
+            ),
         );
 
         Self::apply_filters(&mut builder, filters, "s");
@@ -304,33 +326,28 @@ impl SessionRepository {
         dto: &CreateSessionDto,
         start_time: DateTime<Utc>,
         actor_id: Option<Uuid>,
+        wallet_minutes_at_start: i32,
+        source_plan_id_at_start: Option<Uuid>,
     ) -> Result<UsageSession, AppError> {
-        let session = sqlx::query_as::<_, UsageSession>(
+        let query = format!(
             r#"
             INSERT INTO usage_sessions (
                 id, "balanceId", "deviceId", "shiftId", "startTime",
+                "walletMinutesAtStart", "sourcePlanIdAtStart",
                 "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5, NOW(), NOW())
-            RETURNING id,
-                      "balanceId" as balance_id,
-                      "deviceId" as device_id,
-                      "shiftId" as shift_id,
-                      "startTime" as start_time,
-                      "endTime" as end_time,
-                      "durationMinutes" as duration_minutes,
-                      "timeCreditsConsumed" as time_credits_consumed,
-                      "createdBy" as created_by,
-                      "updatedBy" as updated_by,
-                      "createdAt" as created_at,
-                      "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $7, NOW(), NOW())
+            {returning}
             "#,
-        )
+            returning = Self::SESSION_RETURNING,
+        );
+        let session = sqlx::query_as::<_, UsageSession>(&query)
         .bind(dto.balance_id)
         .bind(dto.device_id)
         .bind(dto.shift_id)
         .bind(start_time)
+        .bind(wallet_minutes_at_start)
+        .bind(source_plan_id_at_start)
         .bind(actor_id)
         .fetch_one(&self.pool)
         .await?;
@@ -347,7 +364,8 @@ impl SessionRepository {
         actor_id: Option<Uuid>,
     ) -> Result<UsageSession, AppError> {
         let session = sqlx::query_as::<_, UsageSession>(
-            r#"
+            &format!(
+                r#"
             UPDATE usage_sessions SET
                 "endTime" = $2,
                 "durationMinutes" = $3,
@@ -355,20 +373,10 @@ impl SessionRepository {
                 "updatedBy" = COALESCE($5, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
-            RETURNING id,
-                      "balanceId" as balance_id,
-                      "deviceId" as device_id,
-                      "shiftId" as shift_id,
-                      "startTime" as start_time,
-                      "endTime" as end_time,
-                      "durationMinutes" as duration_minutes,
-                      "timeCreditsConsumed" as time_credits_consumed,
-                      "createdBy" as created_by,
-                      "updatedBy" as updated_by,
-                      "createdAt" as created_at,
-                      "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {returning}
             "#,
+                returning = Self::SESSION_RETURNING,
+            ),
         )
         .bind(id)
         .bind(end_time)
@@ -387,25 +395,16 @@ impl SessionRepository {
         time_credits_consumed: i32,
     ) -> Result<UsageSession, AppError> {
         let session = sqlx::query_as::<_, UsageSession>(
-            r#"
+            &format!(
+                r#"
             UPDATE usage_sessions SET
                 "timeCreditsConsumed" = $2,
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
-            RETURNING id,
-                      "balanceId" as balance_id,
-                      "deviceId" as device_id,
-                      "shiftId" as shift_id,
-                      "startTime" as start_time,
-                      "endTime" as end_time,
-                      "durationMinutes" as duration_minutes,
-                      "timeCreditsConsumed" as time_credits_consumed,
-                      "createdBy" as created_by,
-                      "updatedBy" as updated_by,
-                      "createdAt" as created_at,
-                      "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {returning}
             "#,
+                returning = Self::SESSION_RETURNING,
+            ),
         )
         .bind(id)
         .bind(time_credits_consumed)

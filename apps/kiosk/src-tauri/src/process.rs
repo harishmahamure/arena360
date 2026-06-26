@@ -282,6 +282,24 @@ fn cleanup_in_progress() -> bool {
     CLEANUP_IN_PROGRESS.load(Ordering::SeqCst)
 }
 
+#[cfg(windows)]
+fn terminate_pid(pid: u32) {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+
+    unsafe {
+        if let Ok(handle) = OpenProcess(PROCESS_TERMINATE, false, pid) {
+            let _ = TerminateProcess(handle, 1);
+            let _ = CloseHandle(handle);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn terminate_pid(pid: u32) {
+    kill_pid(pid);
+}
+
 fn kill_pid(pid: u32) {
     #[cfg(target_os = "windows")]
     {
@@ -1051,12 +1069,14 @@ fn terminate_user_session_apps() -> u32 {
         if targets.is_empty() {
             break;
         }
+        let mut killed_this_pass = 0u32;
         for pid in targets {
-            kill_pid(pid);
+            terminate_pid(pid);
             killed += 1;
+            killed_this_pass += 1;
         }
-        if pass < 2 {
-            thread::sleep(Duration::from_millis(500));
+        if pass < 2 && killed_this_pass > 0 {
+            thread::sleep(Duration::from_millis(100));
         }
     }
     killed
@@ -1067,8 +1087,7 @@ fn terminate_user_session_apps() -> u32 {
     0
 }
 
-fn session_end_cleanup(app: &AppHandle) -> KillResult {
-    CLEANUP_IN_PROGRESS.store(true, Ordering::SeqCst);
+fn run_session_end_cleanup(app: &AppHandle) -> KillResult {
     stop_monitor_thread();
 
     let entries: Vec<WatchEntry> = TRACKED
@@ -1078,8 +1097,8 @@ fn session_end_cleanup(app: &AppHandle) -> KillResult {
     let mut killed = all_tree_pids(&entries).len() as u32;
     if !entries.is_empty() {
         kill_process_trees(&entries);
+        thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     }
-    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     killed += terminate_user_session_apps();
     if let Ok(mut tracked) = TRACKED.lock() {
         tracked.clear();
@@ -1088,9 +1107,7 @@ fn session_end_cleanup(app: &AppHandle) -> KillResult {
         *guard = None;
     }
     crate::boost::restore_game_boost();
-    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     restore_kiosk_window(app);
-    CLEANUP_IN_PROGRESS.store(false, Ordering::SeqCst);
     KillResult {
         killed,
         restored: true,
@@ -1108,8 +1125,8 @@ fn close_tracked_apps_cleanup(app: &AppHandle) -> KillResult {
     let killed = all_tree_pids(&entries).len() as u32;
     if !entries.is_empty() {
         kill_process_trees(&entries);
+        thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     }
-    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     if let Ok(mut tracked) = TRACKED.lock() {
         tracked.clear();
     }
@@ -1117,7 +1134,6 @@ fn close_tracked_apps_cleanup(app: &AppHandle) -> KillResult {
         *guard = None;
     }
     crate::boost::restore_game_boost();
-    thread::sleep(Duration::from_millis(CLEANUP_SETTLE_MS));
     show_kiosk_foreground(app);
     CLEANUP_IN_PROGRESS.store(false, Ordering::SeqCst);
     KillResult {
@@ -1222,6 +1238,9 @@ pub fn launch_allowed(
     allow_list: Vec<String>,
     arguments: Option<Vec<String>>,
 ) -> Result<LaunchResult, String> {
+    if cleanup_in_progress() {
+        return Err("Session cleanup in progress".to_string());
+    }
     if !is_allowed(&executable_path, &allow_list) {
         return Err("Executable not in allow-list".to_string());
     }
@@ -1266,9 +1285,52 @@ pub fn get_tracked_processes() -> Result<Vec<TrackedProcess>, String> {
         .collect())
 }
 
+/// Blocking full session cleanup for update handoff (must finish before NSIS replace).
+pub fn kill_tracked_processes_blocking(app: AppHandle) -> Result<KillResult, String> {
+    for _ in 0..50 {
+        if CLEANUP_IN_PROGRESS
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            let result = run_session_end_cleanup(&app);
+            CLEANUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+            return Ok(result);
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err("Session cleanup timed out".to_string())
+}
+
+#[tauri::command]
+pub fn is_cleanup_in_progress_cmd() -> bool {
+    cleanup_in_progress()
+}
+
 #[tauri::command]
 pub fn kill_tracked_processes(app: AppHandle) -> Result<KillResult, String> {
-    Ok(session_end_cleanup(&app))
+    if CLEANUP_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Ok(KillResult {
+            killed: 0,
+            restored: false,
+        });
+    }
+
+    thread::spawn(move || {
+        let result = run_session_end_cleanup(&app);
+        CLEANUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+        crate::diagnostics::info(format!(
+            "session end cleanup finished: killed={} restored={}",
+            result.killed, result.restored
+        ));
+    });
+
+    Ok(KillResult {
+        killed: 0,
+        restored: false,
+    })
 }
 
 #[tauri::command]

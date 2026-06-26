@@ -5,6 +5,7 @@ import {
   CreditCard,
   Dashboard,
   Devices,
+  GridView,
   History,
   Inventory,
   Inventory2,
@@ -47,6 +48,13 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
+    title: 'Stations',
+    path: '/stations',
+    icon: <GridView />,
+    section: 'Operations',
+    requiredPermission: Permission.DevicesRead,
+  },
+  {
     title: 'Plan sales',
     path: '/plan-transactions',
     icon: <Receipt />,
@@ -84,6 +92,11 @@ export const adminNavItems: AdminNavItem[] = [
       {
         title: 'Completed Transactions',
         path: '/product-transactions?status=completed',
+      },
+      {
+        title: 'Kiosk orders',
+        path: '/kiosk-orders',
+        requiredPermission: Permission.TransactionsRead,
       },
     ],
   },

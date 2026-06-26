@@ -76,6 +76,30 @@ impl AppError {
         }
     }
 
+    pub fn bad_request_code(code: &str, details: Option<serde_json::Value>) -> Self {
+        Self::Api {
+            code: code.to_string(),
+            status: StatusCode::BAD_REQUEST,
+            details,
+        }
+    }
+
+    pub fn not_found_code(code: &str) -> Self {
+        Self::Api {
+            code: code.to_string(),
+            status: StatusCode::NOT_FOUND,
+            details: None,
+        }
+    }
+
+    pub fn too_many_requests_code(code: &str) -> Self {
+        Self::Api {
+            code: code.to_string(),
+            status: StatusCode::TOO_MANY_REQUESTS,
+            details: None,
+        }
+    }
+
     fn status(&self) -> StatusCode {
         match self {
             Self::NotFound(_) => StatusCode::NOT_FOUND,

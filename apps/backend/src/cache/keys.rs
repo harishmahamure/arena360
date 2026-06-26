@@ -11,6 +11,7 @@ pub mod ttl {
     pub const AUTH: Duration = Duration::from_secs(12 * 60 * 60);
     pub const AGGREGATE: Duration = Duration::from_secs(2 * 60 * 60);
     pub const OTP_RATE_LIMIT: Duration = Duration::from_secs(60);
+    pub const KIOSK_REGISTER_RATE_LIMIT: Duration = Duration::from_secs(15 * 60);
     pub const NOTIFICATIONS: Duration = Duration::from_secs(5 * 60);
 }
 
@@ -108,6 +109,10 @@ pub fn jwt_blacklist(jti: &str) -> String {
 
 pub fn otp_rate_limit(username: &str) -> String {
     format!("otp:ratelimit:{}", username.to_lowercase())
+}
+
+pub fn kiosk_register_rate_limit(device_id: &uuid::Uuid) -> String {
+    format!("kiosk:register:ratelimit:{device_id}")
 }
 
 pub fn credit_outstanding(player_id: &uuid::Uuid) -> String {

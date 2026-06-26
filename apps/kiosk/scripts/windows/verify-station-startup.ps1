@@ -4,7 +4,7 @@
   Diagnose and optionally repair Arena360 kiosk logon autostart.
 
 .DESCRIPTION
-  Checks the Arena360 Kiosk scheduled task, executable path, and legacy watchdog.pause.
+  Checks the Arena360 Watchdog scheduled task, kiosk/watchdog executables, and pause file TTL.
   With -Repair, re-registers the logon task via configure-station.ps1.
 
 .PARAMETER Repair
@@ -22,7 +22,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$KioskTaskName = 'Arena360 Kiosk'
+$WatchdogTaskName = 'Arena360 Watchdog'
+$LegacyKioskTaskName = 'Arena360 Kiosk'
 $WinlogonKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 $MarkerDir = Join-Path $env:ProgramData 'Arena360'
 $MarkerPath = Join-Path $MarkerDir 'registry-hardening.json'
@@ -135,6 +136,22 @@ function Resolve-RepairUser {
     return $env:USERNAME
 }
 
+function Test-PauseFileActive {
+    if (-not (Test-Path -LiteralPath $PausePath)) {
+        return $false
+    }
+    try {
+        $pause = Get-Content -LiteralPath $PausePath -Raw | ConvertFrom-Json
+        if (-not $pause.expiresAt) {
+            return $true
+        }
+        $expires = [DateTime]::Parse($pause.expiresAt)
+        return $expires.ToUniversalTime() -gt [DateTime]::UtcNow
+    } catch {
+        return $true
+    }
+}
+
 $Issues = @()
 $InstallDir = Resolve-InstallDir $InstallDir
 $ConfigureScript = Join-Path $InstallDir 'scripts\configure-station.ps1'
@@ -153,10 +170,11 @@ Write-Info "Auto-logon enabled: $autoLogonEnabled"
 Write-Info "Auto-logon user: $(if ($autoLogonUser) { $autoLogonUser } else { '(none)' })"
 
 if (-not $autoLogonEnabled -or [string]::IsNullOrWhiteSpace($autoLogonUser)) {
-    Write-Info 'Auto-logon is not configured. The kiosk starts after the installing user logs on.'
+    Write-Info 'Auto-logon is not configured. The watchdog starts after the installing user logs on.'
 }
 
 $preferredExe = Join-Path $InstallDir 'Arena360 Station Management.exe'
+$watchdogExe = Join-Path $InstallDir 'arena360-watchdog.exe'
 $kioskExe = $null
 if (Test-Path -LiteralPath $preferredExe) {
     $kioskExe = $preferredExe
@@ -169,19 +187,28 @@ if (Test-Path -LiteralPath $preferredExe) {
     }
 }
 Write-Info "Kiosk executable: $(if ($kioskExe) { $kioskExe } else { '(not found)' })"
+Write-Info "Watchdog executable: $(if (Test-Path -LiteralPath $watchdogExe) { $watchdogExe } else { '(not found)' })"
 if (-not $kioskExe) {
     Write-Issue "Kiosk binary not found under $InstallDir"
 }
-
-if (Test-Path -LiteralPath $PausePath) {
-    Write-Issue "Legacy watchdog.pause exists at $PausePath (blocks old watchdog builds)"
+if (-not (Test-Path -LiteralPath $watchdogExe)) {
+    Write-Issue "Watchdog binary not found at $watchdogExe"
 }
 
-$taskQuery = schtasks /Query /TN $KioskTaskName /V /FO LIST 2>&1
+if (Test-PauseFileActive) {
+    Write-Issue "watchdog.pause is active at $PausePath (watchdog will not relaunch kiosk until it expires)"
+}
+
+$legacyTask = schtasks /Query /TN $LegacyKioskTaskName /V /FO LIST 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Issue "Legacy direct-launch task '$LegacyKioskTaskName' still exists (re-run configure-station.ps1)"
+}
+
+$taskQuery = schtasks /Query /TN $WatchdogTaskName /V /FO LIST 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Issue "Scheduled task '$KioskTaskName' is missing"
+    Write-Issue "Scheduled task '$WatchdogTaskName' is missing"
 } else {
-    Write-Info "Scheduled task '$KioskTaskName' exists"
+    Write-Info "Scheduled task '$WatchdogTaskName' exists"
 
     $runAsUser = ($taskQuery | Where-Object { $_ -match 'Run As User' }) -replace '^\s*Run As User:\s*', ''
     $taskToRun = ($taskQuery | Where-Object { $_ -match 'Task To Run' }) -replace '^\s*Task To Run:\s*', ''
@@ -197,8 +224,8 @@ if ($LASTEXITCODE -ne 0) {
         Write-Issue "Task user '$runAsUser' does not match auto-logon user '$autoLogonUser'"
     }
 
-    if ($kioskExe -and $taskToRun -and ($taskToRun.Trim('"') -ne $kioskExe)) {
-        Write-Issue "Task action '$taskToRun' does not match installed exe '$kioskExe'"
+    if ((Test-Path -LiteralPath $watchdogExe) -and $taskToRun -and ($taskToRun.Trim('"') -ne $watchdogExe)) {
+        Write-Issue "Task action '$taskToRun' does not match installed watchdog '$watchdogExe'"
     }
 
     if ($status -notmatch 'Ready|Running') {
@@ -230,7 +257,7 @@ if ($Repair) {
 
 Write-Info '--- Summary ---'
 if ($Issues.Count -eq 0) {
-    Write-Info 'No issues detected. After reboot, kiosk should launch ~30s after the user logs on.'
+    Write-Info 'No issues detected. After reboot, watchdog should launch ~30s after logon and start the kiosk.'
     exit 0
 }
 

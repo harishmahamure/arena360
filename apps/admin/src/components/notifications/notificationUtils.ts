@@ -34,6 +34,8 @@ export function getNotificationLink(
       return '/cash-registers';
     case 'device':
       return `/devices/${entityId}`;
+    case 'kiosk_order':
+      return `/kiosk-orders`;
     default:
       return undefined;
   }
@@ -119,6 +121,9 @@ export function kindLabel(kind: ActivityKindValue | string): string {
     cash_deposit_initiated: 'Deposit',
     inventory_transfer_requested: 'Transfer',
     inventory_waste_recorded: 'Waste',
+    kiosk_order_placed: 'Kiosk order',
+    kiosk_order_fulfilled: 'Order fulfilled',
+    kiosk_order_cancelled: 'Order cancelled',
   };
   return labels[kind] ?? kind;
 }

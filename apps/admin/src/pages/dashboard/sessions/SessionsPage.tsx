@@ -2,6 +2,7 @@ import { DEFAULT_CAFE_TZ, SESSION_CLOCK_TICK_MS } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
 import {
   formatRemainingClock,
+  formatRemainingLabel,
   formatTimeAgo,
   toastUtils,
   useAsyncAction,
@@ -181,6 +182,21 @@ export default function SessionsPage() {
             return formatTimeAgo(startTime || '');
           }
           return <CountTimeComponent startedAt={startTime || ''} />;
+        },
+      },
+      {
+        id: 'id',
+        key: 'balance-at-login',
+        label: 'Balance at login',
+        minWidth: 120,
+        hideOnMobile: true,
+        format: (value) => {
+          const id = value as SessionResponse['id'];
+          const session = sessions.find((s) => s.id === id);
+          if (session?.walletMinutesAtStart == null) {
+            return '—';
+          }
+          return formatRemainingLabel(session.walletMinutesAtStart);
         },
       },
       {

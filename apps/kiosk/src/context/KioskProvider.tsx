@@ -45,18 +45,49 @@ import { prepareSessionSounds } from '../lib/sessionSounds';
 import {
   clearAllTokens,
   focusKiosk,
+  isCleanupInProgress,
   killTrackedProcesses,
   setLockdownState,
 } from '../lib/tauriCommands';
+import { walletMinutesFromResponse } from '../lib/walletMinutesFromResponse';
+
+/** Fire-and-forget session-end process cleanup (runs after login UI is shown). */
+function runSessionCleanupInBackground(): void {
+  void killTrackedProcesses().catch(() => {
+    // Process cleanup is best-effort off-Windows / when nothing tracked.
+  });
+}
+
+async function assertSessionCleanupIdle(setErrorFn: (msg: string) => void): Promise<boolean> {
+  try {
+    if (await isCleanupInProgress()) {
+      setErrorFn('This station is still finishing the last session. Please wait a moment.');
+      return false;
+    }
+  } catch {
+    // Non-Tauri dev builds — no native cleanup guard.
+  }
+  return true;
+}
 
 export type AppPhase =
   | 'loading'
   | 'boot-error'
   | 'register'
   | 'login'
+  | 'create-account'
+  | 'create-account-success'
   | 'setup'
   | 'session'
   | 'already-in-session';
+
+export interface KioskRegisterPayload {
+  username: string;
+  phoneNumber: string;
+  password: string;
+  firstName?: string;
+  lastName?: string;
+}
 
 interface KioskSessionResponse {
   sessionId: string;
@@ -95,21 +126,12 @@ export interface ActiveSession {
   expiryDate?: string | null;
 }
 
-function walletMinutesFromResponse(
-  walletBalanceMinutes: number | undefined,
-  remainingMinutes: number | undefined,
-): number {
-  if (typeof walletBalanceMinutes === 'number') return walletBalanceMinutes;
-  if (typeof remainingMinutes === 'number') return remainingMinutes;
-  return 0;
-}
-
 function sessionFromResponse(res: KioskSessionResponse): ActiveSession {
   return {
     id: res.sessionId,
     startTime: res.startTime,
     balanceId: res.balanceId,
-    walletBalanceMinutes: walletMinutesFromResponse(res.walletBalanceMinutes, res.remainingMinutes),
+    walletBalanceMinutes: walletMinutesFromResponse(res.walletBalanceMinutes),
     deductionProfile: res.deductionProfile ?? null,
     cafeTimezone: res.cafeTimezone,
     timeCreditsConsumed: res.timeCreditsConsumed ?? null,
@@ -122,7 +144,7 @@ function activeSessionFromLogin(raw: LoginActiveSessionResponse): ActiveSession 
     id: raw.id,
     startTime: raw.startTime,
     balanceId: raw.balanceId,
-    walletBalanceMinutes: walletMinutesFromResponse(raw.walletBalanceMinutes, raw.remainingMinutes),
+    walletBalanceMinutes: walletMinutesFromResponse(raw.walletBalanceMinutes),
     deductionProfile: raw.deductionProfile ?? null,
     cafeTimezone: raw.cafeTimezone,
     timeCreditsConsumed: raw.timeCreditsConsumed ?? null,
@@ -146,7 +168,6 @@ interface KioskContextValue {
   playerRole: string | null;
   activeSession: ActiveSession | null;
   wsConnected: boolean;
-  lastEvent: string | null;
   error: string | null;
   /** Device status string from the latest `device.status_changed` event. */
   deviceStatus: string | null;
@@ -178,6 +199,10 @@ interface KioskContextValue {
     options?: { relaxLockdown?: boolean },
   ) => Promise<void>;
   playerLogin: (username: string, password: string) => Promise<void>;
+  goToCreateAccount: () => void;
+  registerPlayer: (payload: KioskRegisterPayload) => Promise<void>;
+  registeredUsername: string | null;
+  backToLoginFromCreateAccount: () => void;
   playerLogout: () => Promise<void>;
   /** Start (or resume) the kiosk session for the signed-in player. */
   startSession: () => Promise<void>;
@@ -238,7 +263,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [playerRole, setPlayerRole] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
-  const [lastEvent, setLastEvent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<string | null>(null);
   const [conflictDevice, setConflictDevice] = useState<string | null>(null);
@@ -256,6 +280,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [setupAuthenticated, setSetupAuthenticated] = useState(false);
   const [staffLockoutClearTick, setStaffLockoutClearTick] = useState(0);
+  const [registeredUsername, setRegisteredUsername] = useState<string | null>(null);
 
   const maintenance = deviceStatus === 'under_maintenance' || deviceStatus === 'out_of_service';
 
@@ -325,11 +350,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const cleanupSessionAndReturnToLogin = useCallback(
     async (opts?: { staffEnded?: boolean }) => {
-      try {
-        await killTrackedProcesses();
-      } catch {
-        // Process cleanup is best-effort off-Windows / when nothing tracked.
-      }
       setActiveSession(null);
       await clearPlayerSession();
       setPlayerName(null);
@@ -341,6 +361,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       setPhase('login');
       const id = deviceIdRef.current;
       if (id) connectWs(id);
+      runSessionCleanupInBackground();
     },
     [connectWs],
   );
@@ -386,8 +407,6 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const rt = realtimeRef.current;
     return rt.onAny((frame) => {
-      if (frame.event_type) setLastEvent(frame.event_type);
-
       if (isRemoteSessionEndEvent(frame.event_type ?? '')) {
         const payload = frame.payload as SessionEndPayload | undefined;
         if (!shouldEndSessionForRemoteEvent(activeSessionRef.current?.id, payload)) {
@@ -420,8 +439,13 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const rt = realtimeRef.current;
-    const interval = setInterval(() => setWsConnected(rt.connected), 500);
-    return () => clearInterval(interval);
+    setWsConnected(rt.connected);
+    return rt.onConnect(() => setWsConnected(true));
+  }, [realtimeRef]);
+
+  useEffect(() => {
+    const rt = realtimeRef.current;
+    return rt.onDisconnect(() => setWsConnected(false));
   }, [realtimeRef]);
 
   useEffect(() => {
@@ -468,11 +492,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const handleDeviceAuthExpired = useCallback(async () => {
     if (phaseRef.current === 'session') {
-      try {
-        await killTrackedProcesses();
-      } catch {
-        // Process cleanup is best-effort off-Windows / when nothing tracked.
-      }
+      runSessionCleanupInBackground();
     }
     await clearAllTokens();
     tokenCache.device = undefined;
@@ -752,6 +772,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const playerLogin = useCallback(
     async (username: string, password: string) => {
       setError(null);
+      if (!(await assertSessionCleanupIdle(setError))) {
+        throw new Error('cleanup in progress');
+      }
       if (!online) {
         setError('This station is offline. Please wait for the connection to return.');
         throw new Error('offline');
@@ -802,6 +825,39 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     [connectWs, deviceId, online],
   );
 
+  const goToCreateAccount = useCallback(() => {
+    setError(null);
+    setRegisteredUsername(null);
+    setPhase('create-account');
+  }, []);
+
+  const backToLoginFromCreateAccount = useCallback(() => {
+    setRegisteredUsername(null);
+    setPhase('login');
+  }, []);
+
+  const registerPlayer = useCallback(
+    async (payload: KioskRegisterPayload) => {
+      if (!online) {
+        throw new ApiError({
+          message: 'This station is offline. Please wait for the connection to return.',
+          statusCode: 503,
+        });
+      }
+      const http = getHttpClient();
+      const res = await http.post<{ username: string }>('/auth/register/player', {
+        username: payload.username,
+        password: payload.password,
+        phoneNumber: payload.phoneNumber,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+      });
+      setRegisteredUsername(res.username);
+      setPhase('create-account-success');
+    },
+    [online],
+  );
+
   const playerLogout = useCallback(async () => {
     await clearPlayerSession();
     setPlayerName(null);
@@ -814,6 +870,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const startSession = useCallback(async () => {
     setError(null);
+    if (!(await assertSessionCleanupIdle(setError))) {
+      return;
+    }
     if (!tokenCache.player) {
       await loadTokensIntoCache();
     }
@@ -908,41 +967,84 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }
   }, [realtimeRef]);
 
-  const value: KioskContextValue = {
-    phase,
-    deviceId,
-    deviceName,
-    playerName,
-    playerRole,
-    activeSession,
-    wsConnected,
-    lastEvent,
-    error,
-    deviceStatus,
-    maintenance,
-    conflictDevice,
-    online,
-    loginNotice,
-    clearLoginNotice,
-    clearError,
-    refresh,
-    provisionDevice,
-    adminAuthenticated: adminToken !== null,
-    setupAuthenticated,
-    clearSetupAuthenticated,
-    enterSetup,
-    exitSetup,
-    adminLogin,
-    playerLogin,
-    playerLogout,
-    startSession,
-    reconcileSession: reconcileSessionOnce,
-    endSession,
-    dismissConflict,
-    factoryReset,
-    staffLockoutClearTick,
-    clearStaffLoginLockout,
-  };
+  const value: KioskContextValue = useMemo(
+    () => ({
+      phase,
+      deviceId,
+      deviceName,
+      playerName,
+      playerRole,
+      activeSession,
+      wsConnected,
+      error,
+      deviceStatus,
+      maintenance,
+      conflictDevice,
+      online,
+      loginNotice,
+      clearLoginNotice,
+      clearError,
+      refresh,
+      provisionDevice,
+      adminAuthenticated: adminToken !== null,
+      setupAuthenticated,
+      clearSetupAuthenticated,
+      enterSetup,
+      exitSetup,
+      adminLogin,
+      playerLogin,
+      goToCreateAccount,
+      registerPlayer,
+      registeredUsername,
+      backToLoginFromCreateAccount,
+      playerLogout,
+      startSession,
+      reconcileSession: reconcileSessionOnce,
+      endSession,
+      dismissConflict,
+      factoryReset,
+      staffLockoutClearTick,
+      clearStaffLoginLockout,
+    }),
+    [
+      phase,
+      deviceId,
+      deviceName,
+      playerName,
+      playerRole,
+      activeSession,
+      wsConnected,
+      error,
+      deviceStatus,
+      maintenance,
+      conflictDevice,
+      online,
+      loginNotice,
+      clearLoginNotice,
+      clearError,
+      refresh,
+      provisionDevice,
+      adminToken,
+      setupAuthenticated,
+      clearSetupAuthenticated,
+      enterSetup,
+      exitSetup,
+      adminLogin,
+      playerLogin,
+      goToCreateAccount,
+      registerPlayer,
+      registeredUsername,
+      backToLoginFromCreateAccount,
+      playerLogout,
+      startSession,
+      reconcileSessionOnce,
+      endSession,
+      dismissConflict,
+      factoryReset,
+      staffLockoutClearTick,
+      clearStaffLoginLockout,
+    ],
+  );
 
   return <KioskContext.Provider value={value}>{children}</KioskContext.Provider>;
 }

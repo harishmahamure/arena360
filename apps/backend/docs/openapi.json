@@ -396,6 +396,101 @@
         ]
       }
     },
+    "/auth/register/player": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "register_player",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KioskRegisterDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Player registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KioskRegisterResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — validation (AUTH_WEAK_PASSWORD, field details)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — DEVICE_NOT_REGISTERED or DEVICE_UNDER_MAINTENANCE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict — AUTH_USERNAME_ALREADY_EXISTS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests — REGISTRATION_RATE_LIMITED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/auth/sso/redeem": {
       "post": {
         "tags": [
@@ -5935,6 +6030,293 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk-orders": {
+      "get": {
+        "tags": [
+          "kiosk-orders"
+        ],
+        "operationId": "list_orders",
+        "responses": {
+          "200": {
+            "description": "List kiosk orders"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk-orders/{id}": {
+      "get": {
+        "tags": [
+          "kiosk-orders"
+        ],
+        "operationId": "get_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order detail"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "kiosk-orders"
+        ],
+        "operationId": "update_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKioskOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Order updated"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk-orders/{id}/convert": {
+      "post": {
+        "tags": [
+          "kiosk-orders"
+        ],
+        "operationId": "convert_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertKioskOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Order converted to sale"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk/orders": {
+      "post": {
+        "tags": [
+          "kiosk"
+        ],
+        "operationId": "place_order",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKioskOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Order placed"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No active session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Open order already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk/orders/current": {
+      "get": {
+        "tags": [
+          "kiosk"
+        ],
+        "operationId": "current_order",
+        "responses": {
+          "200": {
+            "description": "Current open order or null"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/kiosk/products": {
+      "get": {
+        "tags": [
+          "kiosk"
+        ],
+        "operationId": "list_products",
+        "responses": {
+          "200": {
+            "description": "Kiosk product menu"
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
@@ -12717,6 +13099,50 @@
           }
         }
       },
+      "ConvertKioskOrderDto": {
+        "type": "object",
+        "required": [
+          "paymentMethod"
+        ],
+        "properties": {
+          "cashAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onlineAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "paymentStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "saleLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "CreateCashRegisterEntryDto": {
         "type": "object",
         "required": [
@@ -12986,6 +13412,43 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "CreateKioskOrderDto": {
+        "type": "object",
+        "required": [
+          "lineItems"
+        ],
+        "properties": {
+          "lineItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateKioskOrderLineItemDto"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CreateKioskOrderLineItemDto": {
+        "type": "object",
+        "required": [
+          "productId",
+          "quantity"
+        ],
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -13481,6 +13944,13 @@
               "null"
             ],
             "format": "double"
+          },
+          "kioskOrderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "lineItems": {
             "type": [
@@ -15893,6 +16363,264 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "KioskMenuProduct": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "price",
+          "stockAvailable",
+          "inStock"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "inStock": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "stockAvailable": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "KioskOrderFilterDto": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "KioskOrderItemResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "productId",
+          "quantity",
+          "productName",
+          "unitPrice"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unitPrice": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "KioskOrderWithItems": {
+        "type": "object",
+        "required": [
+          "id",
+          "sessionId",
+          "playerId",
+          "deviceId",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "lineItems"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deviceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fulfilledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lineItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KioskOrderItemResponse"
+            }
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "playerUsername": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "transactionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "KioskRegisterDto": {
+        "type": "object",
+        "required": [
+          "username",
+          "password",
+          "phoneNumber"
+        ],
+        "properties": {
+          "firstName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "type": "string"
+          },
+          "phoneNumber": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "KioskRegisterResponseDto": {
+        "type": "object",
+        "required": [
+          "message",
+          "username",
+          "userId"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "KioskRegisterResponseEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KioskRegisterResponseDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
           }
         }
       },
@@ -21210,7 +21938,7 @@
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Transaction"
+              "$ref": "#/components/schemas/TransactionResponse"
             }
           },
           "limit": {
@@ -21228,6 +21956,51 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "TransactionPlanSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "planType",
+          "price"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "planType": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "TransactionPlayerSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
           }
         }
       },
@@ -21280,6 +22053,135 @@
           "unitPrice": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "TransactionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "transactionType",
+          "amount",
+          "paidAmount",
+          "paymentMethod",
+          "paymentStatus",
+          "transactionDate",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "cashAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "onlineAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "paidAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "paymentStatus": {
+            "type": "string"
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TransactionPlanSummary"
+              }
+            ]
+          },
+          "planId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "player": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TransactionPlayerSummary"
+              }
+            ]
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transactionType": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -21991,6 +22893,17 @@
           }
         }
       },
+      "UpdateKioskOrderDto": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "UpdateOpeningBalanceDto": {
         "type": "object",
         "required": [
@@ -22410,6 +23323,13 @@
             ],
             "format": "uuid"
           },
+          "sourcePlanIdAtStart": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "startTime": {
             "type": "string",
             "format": "date-time"
@@ -22431,6 +23351,13 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "walletMinutesAtStart": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -22515,7 +23442,24 @@
             "type": "string",
             "format": "uuid"
           },
+          "planAtStart": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionPlanSummary"
+              }
+            ]
+          },
           "shiftId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "sourcePlanIdAtStart": {
             "type": [
               "string",
               "null"
@@ -22543,6 +23487,13 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "walletMinutesAtStart": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -23244,6 +24195,10 @@
     {
       "name": "kiosk",
       "description": "Kiosk player session lifecycle"
+    },
+    {
+      "name": "kiosk-orders",
+      "description": "Kiosk player food/drink orders"
     },
     {
       "name": "transactions",

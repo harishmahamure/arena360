@@ -2,19 +2,18 @@ import { type DeductionProfile, deductionPeriodLabelForNow } from '@gaming-cafe/
 import { formatRemainingClock } from '@gaming-cafe/utils';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { useSessionTimerDisplay } from '../../hooks/useSessionTimerController';
 import { KIOSK_LOGO_URL } from '../../lib/config';
 import { getSystemVolume, setSystemVolume } from '../../lib/tauriCommands';
 
 const VOLUME_KEY = 'gaming-cafe.kiosk.volume';
 
-export type SessionView = 'home' | 'library' | 'settings';
+export type SessionView = 'home' | 'library' | 'menu' | 'settings';
 
 interface SessionNavProps {
   playerName: string | null;
   playerRole?: string | null;
   deviceName?: string | null;
-  /** Authoritative remaining minutes from the active session, if any. */
-  remainingMinutes?: number;
   deductionProfile?: DeductionProfile | null;
   cafeTimezone?: string;
   activeView: SessionView;
@@ -27,6 +26,7 @@ interface SessionNavProps {
 const TABS: { id: SessionView; label: string }[] = [
   { id: 'home', label: 'Home' },
   { id: 'library', label: 'Games' },
+  { id: 'menu', label: 'Menu' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -49,7 +49,6 @@ export function SessionNav({
   playerName,
   playerRole,
   deviceName,
-  remainingMinutes,
   deductionProfile,
   cafeTimezone,
   activeView,
@@ -58,6 +57,7 @@ export function SessionNav({
   onRefreshTime,
   refreshing = false,
 }: SessionNavProps) {
+  const remainingMinutes = useSessionTimerDisplay();
   const [open, setOpen] = useState<'audio' | 'profile' | null>(null);
   const [volume, setVolume] = useState<number>(() => readVolume());
   const barRef = useRef<HTMLDivElement | null>(null);

@@ -1,13 +1,17 @@
-/// Pre-update housekeeping (ADR-0028). Clears legacy watchdog pause files so an
-/// in-app NSIS update is not blocked by artifacts from older builds.
+/// Pre-update housekeeping (ADR-0028, ADR-0048).
+///
+/// Closes tracked games, pauses the watchdog, and clears stale pause artifacts
+/// before an in-app NSIS update.
+use tauri::AppHandle;
+
 #[tauri::command]
-pub fn prepare_for_update() -> Result<(), String> {
+pub fn prepare_for_update(app: AppHandle) -> Result<(), String> {
+    let _ = crate::process::close_tracked_apps(app.clone());
+    let _ = crate::process::kill_tracked_processes_blocking(app);
     #[cfg(windows)]
     {
-        let pause_path = std::path::Path::new(r"C:\ProgramData\Arena360\watchdog.pause");
-        if pause_path.exists() {
-            std::fs::remove_file(pause_path).map_err(|e| e.to_string())?;
-        }
+        let _ = watchdog_common::purge_expired_pause();
+        crate::watchdog_ipc::set_pause_for_update()?;
     }
     Ok(())
 }

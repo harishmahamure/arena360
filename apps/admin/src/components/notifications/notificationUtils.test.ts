@@ -11,6 +11,7 @@ describe('notificationUtils', () => {
   it('builds entity links', () => {
     expect(getNotificationLink('credit_settlement', 'abc-123')).toBe('/credit/settlements/abc-123');
     expect(getNotificationLink('transaction', 'tx-1')).toBe('/product-transactions/tx-1');
+    expect(getNotificationLink('kiosk_order', 'ord-1')).toBe('/kiosk-orders');
     expect(getNotificationLink('transaction', 'tx-2', { transactionType: 'plan_purchase' })).toBe(
       '/plan-transactions/tx-2',
     );

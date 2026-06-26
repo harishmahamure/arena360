@@ -51,7 +51,14 @@ export enum ErrorCode {
   AUTH_TOKEN_INVALID = 'AUTH_TOKEN_INVALID',
   AUTH_INSUFFICIENT_PERMISSIONS = 'AUTH_INSUFFICIENT_PERMISSIONS',
   AUTH_EMAIL_ALREADY_EXISTS = 'AUTH_EMAIL_ALREADY_EXISTS',
+  AUTH_USERNAME_ALREADY_EXISTS = 'AUTH_USERNAME_ALREADY_EXISTS',
   AUTH_WEAK_PASSWORD = 'AUTH_WEAK_PASSWORD',
+  REGISTRATION_RATE_LIMITED = 'REGISTRATION_RATE_LIMITED',
+
+  // Kiosk ordering
+  KIOSK_ORDER_NOT_FOUND = 'KIOSK_ORDER_NOT_FOUND',
+  KIOSK_ORDER_ALREADY_OPEN = 'KIOSK_ORDER_ALREADY_OPEN',
+  KIOSK_NO_ACTIVE_SESSION = 'KIOSK_NO_ACTIVE_SESSION',
 
   // Staff gaming allowance
   STAFF_SHIFT_ACTIVE = 'STAFF_SHIFT_ACTIVE',
@@ -104,7 +111,14 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.AUTH_TOKEN_INVALID]: 'Authentication token is invalid',
   [ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS]: 'Insufficient permissions to access this resource',
   [ErrorCode.AUTH_EMAIL_ALREADY_EXISTS]: 'An account with this email already exists',
+  [ErrorCode.AUTH_USERNAME_ALREADY_EXISTS]: 'That username is already taken',
   [ErrorCode.AUTH_WEAK_PASSWORD]: 'Password does not meet security requirements',
+  [ErrorCode.REGISTRATION_RATE_LIMITED]: 'Too many registration attempts. Please try again later.',
+
+  [ErrorCode.KIOSK_ORDER_NOT_FOUND]: 'Kiosk order not found',
+  [ErrorCode.KIOSK_ORDER_ALREADY_OPEN]:
+    'You already have an open order. Wait for staff to fulfill it before ordering again.',
+  [ErrorCode.KIOSK_NO_ACTIVE_SESSION]: 'No active gaming session — start a session to order',
 
   [ErrorCode.STAFF_SHIFT_ACTIVE]:
     'You are on an active shift. Clock out before playing on the kiosk.',

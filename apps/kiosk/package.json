@@ -27,7 +27,8 @@
     "@tauri-apps/plugin-process": "^2",
     "@tauri-apps/plugin-updater": "^2",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "yup": "^1.7.1"
   },
   "devDependencies": {
     "@gaming-cafe/tsconfig": "workspace:*",

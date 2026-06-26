@@ -23,6 +23,7 @@ export class KioskRealtimeClient {
   private handlers = new Map<string, Set<RealtimeHandler>>();
   private globalHandlers = new Set<RealtimeHandler>();
   private connectHandlers = new Set<() => void>();
+  private disconnectHandlers = new Set<() => void>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private disposed = false;
@@ -91,6 +92,9 @@ export class KioskRealtimeClient {
         this.intentionalClose = false;
         return;
       }
+      for (const handler of this.disconnectHandlers) {
+        handler();
+      }
       if (!this.disposed) this.scheduleReconnect();
     };
 
@@ -150,6 +154,12 @@ export class KioskRealtimeClient {
   onConnect(handler: () => void): () => void {
     this.connectHandlers.add(handler);
     return () => this.connectHandlers.delete(handler);
+  }
+
+  /** Fires when the socket closes unexpectedly (not intentional disconnect). */
+  onDisconnect(handler: () => void): () => void {
+    this.disconnectHandlers.add(handler);
+    return () => this.disconnectHandlers.delete(handler);
   }
 
   disconnect(): void {

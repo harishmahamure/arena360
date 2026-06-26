@@ -100,6 +100,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/register/player": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["register_player"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sso/redeem": {
         parameters: {
             query?: never;
@@ -924,6 +940,102 @@ export interface paths {
             cookie?: never;
         };
         get: operations["waste_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kiosk-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_orders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kiosk-orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_order"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_order"];
+        trace?: never;
+    };
+    "/kiosk-orders/{id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["convert_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kiosk/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["place_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kiosk/orders/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["current_order"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/kiosk/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_products"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2245,6 +2357,17 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        ConvertKioskOrderDto: {
+            /** Format: double */
+            cashAmount?: number | null;
+            notes?: string | null;
+            /** Format: double */
+            onlineAmount?: number | null;
+            paymentMethod: string;
+            paymentStatus?: string | null;
+            /** Format: uuid */
+            saleLocationId?: string | null;
+        };
         CreateCashRegisterEntryDto: {
             /** Format: double */
             amount: number;
@@ -2306,6 +2429,16 @@ export interface components {
             isActive?: boolean | null;
             kind: string;
             name: string;
+        };
+        CreateKioskOrderDto: {
+            lineItems: components["schemas"]["CreateKioskOrderLineItemDto"][];
+            note?: string | null;
+        };
+        CreateKioskOrderLineItemDto: {
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            quantity: number;
         };
         CreateLineItemDto: {
             /** Format: uuid */
@@ -2441,6 +2574,8 @@ export interface components {
             amount?: number | null;
             /** Format: double */
             cashAmount?: number | null;
+            /** Format: uuid */
+            kioskOrderId?: string | null;
             lineItems?: components["schemas"]["CreateLineItemDto"][] | null;
             notes?: string | null;
             /** Format: double */
@@ -3128,6 +3263,80 @@ export interface components {
             total: number;
             /** Format: int64 */
             totalPages: number;
+        };
+        KioskMenuProduct: {
+            category: string;
+            description?: string | null;
+            /** Format: uuid */
+            id: string;
+            inStock: boolean;
+            name: string;
+            /** Format: double */
+            price: number;
+            /** Format: int32 */
+            stockAvailable: number;
+        };
+        KioskOrderFilterDto: {
+            /** Format: uuid */
+            deviceId?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            status?: string | null;
+        };
+        KioskOrderItemResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            productName: string;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: double */
+            unitPrice: number;
+        };
+        KioskOrderWithItems: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            deviceId: string;
+            deviceName?: string | null;
+            /** Format: date-time */
+            fulfilledAt?: string | null;
+            /** Format: uuid */
+            id: string;
+            lineItems: components["schemas"]["KioskOrderItemResponse"][];
+            /** Format: uuid */
+            playerId: string;
+            playerNote?: string | null;
+            playerUsername?: string | null;
+            /** Format: uuid */
+            sessionId: string;
+            status: string;
+            /** Format: uuid */
+            transactionId?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        KioskRegisterDto: {
+            firstName?: string | null;
+            lastName?: string | null;
+            password: string;
+            phoneNumber: string;
+            username: string;
+        };
+        KioskRegisterResponseDto: {
+            message: string;
+            userId: string;
+            username: string;
+        };
+        KioskRegisterResponseEnvelope: {
+            data: components["schemas"]["KioskRegisterResponseDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         KioskSessionResponseDto: {
             balanceId: string;
@@ -4711,7 +4920,7 @@ export interface components {
             timestamp: string;
         };
         TransactionPaginationPage: {
-            data: components["schemas"]["Transaction"][];
+            data: components["schemas"]["TransactionResponse"][];
             /** Format: int64 */
             limit: number;
             /** Format: int64 */
@@ -4720,6 +4929,20 @@ export interface components {
             total: number;
             /** Format: int64 */
             totalPages: number;
+        };
+        TransactionPlanSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            planType: string;
+            /** Format: double */
+            price: number;
+        };
+        TransactionPlayerSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            username: string;
         };
         TransactionProductResponse: {
             /** Format: date-time */
@@ -4738,6 +4961,42 @@ export interface components {
             transactionId: string;
             /** Format: double */
             unitPrice: number;
+        };
+        TransactionResponse: {
+            /** Format: double */
+            amount: number;
+            /** Format: double */
+            cashAmount?: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: double */
+            onlineAmount?: number | null;
+            /** Format: double */
+            paidAmount: number;
+            paymentMethod: string;
+            paymentStatus: string;
+            plan?: null | components["schemas"]["TransactionPlanSummary"];
+            /** Format: uuid */
+            planId?: string | null;
+            player?: null | components["schemas"]["TransactionPlayerSummary"];
+            /** Format: uuid */
+            playerId: string;
+            /** Format: uuid */
+            shiftId?: string | null;
+            /** Format: date-time */
+            transactionDate: string;
+            transactionType: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
         };
         TransactionStatsDto: {
             /** Format: double */
@@ -4926,6 +5185,9 @@ export interface components {
             kind?: string | null;
             name?: string | null;
         };
+        UpdateKioskOrderDto: {
+            status: string;
+        };
         UpdateOpeningBalanceDto: {
             /** Format: double */
             openingBalance: number;
@@ -5028,6 +5290,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             shiftId?: string | null;
+            /** Format: uuid */
+            sourcePlanIdAtStart?: string | null;
             /** Format: date-time */
             startTime: string;
             /** Format: int32 */
@@ -5036,6 +5300,8 @@ export interface components {
             updatedAt: string;
             /** Format: uuid */
             updatedBy?: string | null;
+            /** Format: int32 */
+            walletMinutesAtStart?: number | null;
         };
         UsageSessionResponse: {
             balance?: null | components["schemas"]["SessionBalanceSummary"];
@@ -5058,8 +5324,11 @@ export interface components {
             endTime?: string | null;
             /** Format: uuid */
             id: string;
+            planAtStart?: null | components["schemas"]["SessionPlanSummary"];
             /** Format: uuid */
             shiftId?: string | null;
+            /** Format: uuid */
+            sourcePlanIdAtStart?: string | null;
             /** Format: date-time */
             startTime: string;
             /** Format: int32 */
@@ -5068,6 +5337,8 @@ export interface components {
             updatedAt: string;
             /** Format: uuid */
             updatedBy?: string | null;
+            /** Format: int32 */
+            walletMinutesAtStart?: number | null;
         };
         UsageStatsDto: {
             /** Format: int64 */
@@ -5563,6 +5834,84 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    register_player: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KioskRegisterDto"];
+            };
+        };
+        responses: {
+            /** @description Player registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KioskRegisterResponseEnvelope"];
+                };
+            };
+            /** @description Bad request — validation (AUTH_WEAK_PASSWORD, field details) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden — DEVICE_NOT_REGISTERED or DEVICE_UNDER_MAINTENANCE */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict — AUTH_USERNAME_ALREADY_EXISTS */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests — REGISTRATION_RATE_LIMITED */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9662,6 +10011,240 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List kiosk orders */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Order detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateKioskOrderDto"];
+            };
+        };
+        responses: {
+            /** @description Order updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    convert_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertKioskOrderDto"];
+            };
+        };
+        responses: {
+            /** @description Order converted to sale */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    place_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateKioskOrderDto"];
+            };
+        };
+        responses: {
+            /** @description Order placed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No active session */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Open order already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    current_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current open order or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_products: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Kiosk product menu */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -58,6 +58,7 @@ export interface GetPlayerPlansFilters {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
+  usableOnly?: boolean;
 }
 
 export const getPlayerPlans = async (filters: GetPlayerPlansFilters = {}) => {

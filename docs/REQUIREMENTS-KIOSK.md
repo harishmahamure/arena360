@@ -67,12 +67,14 @@ This PRD targets **functional parity with ggLeap’s core in-cafe experience** (
 - Offline grace for **active** sessions only
 - Member profile screen (balances, history)
 - Single active session per player — block login on a second device while already in session elsewhere
+- **Kiosk food/drink ordering** — browse menu and submit orders during active session; staff fulfill and convert to POS sale (`US-KORDER-*`)
 
 ### 1.5 Out of scope (v1 — Won’t)
 
 | Area | Notes |
 |------|-------|
-| In-kiosk store / self top-up / online payment on kiosk | Recharge is staff/counter only |
+| In-kiosk self top-up / online payment on kiosk | Recharge is staff/counter only |
+| In-kiosk payment for food/drink orders | Staff collects payment at counter when converting order to sale |
 | Reservations / pre-booking stations | Future |
 | Loyalty points, tiers, rewards redemption | Member view is informational only |
 | Leaderboards, friends, social | Future |
@@ -221,6 +223,7 @@ Legacy platform IDs (`US-KIOSK-*`, `US-SESSION-*`, `US-AUTH-003`) map to these e
 | US-KAUTH-004 | As the kiosk, I want to lock out login after N failed password attempts (configurable, default 5) for M minutes (default 15), so brute force at the physical machine is slowed. | Should | — |
 | US-KAUTH-005 | As a player, I want to log out from the kiosk UI without ending my session early only when explicitly choosing “End session” (distinct from “Lock screen” if offered), so billing is intentional. | Must | US-SESSION-002 |
 | US-KAUTH-006 | As the backend, I want to allow at most one active `usage_sessions` row per player at any time, so the same account cannot be logged in on two kiosks simultaneously and minutes are not double-consumed. | Must | — |
+| US-KAUTH-007 | As a new player at a kiosk, I want to create my own account on the station without staff typing credentials for me, so I can register and then ask staff to add plan time before signing in. | Must | US-KAUTH-001 |
 
 ### 4.4 Session lifecycle — `US-KSESSION-*`
 
@@ -294,6 +297,17 @@ Implementation tracked in [PLANNER-KIOSK.md](PLANNER-KIOSK.md) phase **K10** and
 | US-KOFFLINE-001 | As the kiosk, I want during an active session if the backend is unreachable to show a “Session running — connection lost” screen, continue local countdown from last known `remainingMinutes` and `session.startTime`, for up to **10 minutes** grace, then lock and require staff. | Could | US-KIOSK-008 |
 | US-KOFFLINE-002 | As the kiosk, I want to deny **new** player logins when offline. | Must | — |
 | US-KOFFLINE-003 | As the kiosk, I want to queue session end locally if offline at logout and reconcile when online (idempotent end call). | Should | — |
+
+### 4.11 Kiosk ordering — `US-KORDER-*`
+
+| ID | Story | Priority | Maps from |
+|----|-------|----------|-----------|
+| US-KORDER-001 | As a player in an active session, I want to browse a menu of snacks and drinks and submit an order from the kiosk, so staff can prepare items without me leaving my station. | Must | DRAFT-0051 |
+| US-KORDER-002 | As staff, I want a real-time notification when a player places an order showing PC name, username, and items ordered, so I can fulfill it promptly. | Must | DRAFT-0051 |
+| US-KORDER-003 | As staff, I want to convert a fulfilled kiosk order into a POS sale with my choice of payment method (cash/credit/split), so inventory and revenue are recorded correctly. | Must | DRAFT-0051 |
+| US-KORDER-004 | As a player, I want to see the status of my open order (pending/preparing) on the kiosk until staff completes it. | Should | DRAFT-0051 |
+
+Payment for kiosk orders is **staff-at-counter only** — the kiosk does not collect payment.
 
 ---
 

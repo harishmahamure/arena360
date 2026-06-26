@@ -16,7 +16,7 @@ use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService,     ExpenseCategoryService, ExpenseService,
-    GameService, InventoryService, NotificationService, PlanService, PlayerPlanService, ProductService, SessionService,
+    GameService, InventoryService, KioskOrderService, NotificationService, PlanService, PlayerPlanService, ProductService, SessionService,
     ShiftService, StaffGamingAllowanceService, StatsService, StorageConfig, StorageService, TransactionService, UnitService,
     UserService, VendorService,
 };
@@ -53,6 +53,7 @@ pub struct AppState {
     pub staff_gaming_allowances: StaffGamingAllowanceService,
     pub events: EventService,
     pub notifications: NotificationService,
+    pub kiosk_orders: KioskOrderService,
     pub outbox: OutboxService,
     pub rooms: RoomService,
     pub ws_connections: Arc<
@@ -175,6 +176,12 @@ pub async fn build_state() -> Arc<AppState> {
             cache.clone(),
         ),
         stats: StatsService::new(pool.clone(), cache.clone()),
+        kiosk_orders: KioskOrderService::new(
+            pool.clone(),
+            notifications.clone(),
+            outbox.clone(),
+            settings.cafe_timezone.clone(),
+        ),
         notifications,
         outbox,
         rooms,
@@ -195,6 +202,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/login/admin", post(handlers::auth::login_admin))
         .route("/auth/login/staff", post(handlers::auth::login_staff))
         .route("/auth/login/player", post(handlers::auth::login_player))
+        .route("/auth/register/player", post(handlers::auth::register_player))
         .route("/auth/register", post(handlers::auth::register))
         .route("/auth/sso/tokens", post(handlers::auth::create_sso_token))
         .route("/auth/sso/redeem", post(handlers::auth::redeem_sso_token))
@@ -339,6 +347,28 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/kiosk/sessions/{id}/end",
             patch(handlers::kiosk::end_session),
+        )
+        .route(
+            "/kiosk/products",
+            get(handlers::kiosk_orders::list_products),
+        )
+        .route("/kiosk/orders", post(handlers::kiosk_orders::place_order))
+        .route(
+            "/kiosk/orders/current",
+            get(handlers::kiosk_orders::current_order),
+        )
+        .route(
+            "/kiosk-orders",
+            get(handlers::kiosk_orders::list_orders),
+        )
+        .route(
+            "/kiosk-orders/{id}",
+            get(handlers::kiosk_orders::get_order)
+                .patch(handlers::kiosk_orders::update_order),
+        )
+        .route(
+            "/kiosk-orders/{id}/convert",
+            post(handlers::kiosk_orders::convert_order),
         )
         .route(
             "/tv/sessions/current",

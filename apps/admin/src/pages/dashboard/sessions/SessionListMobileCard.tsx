@@ -1,6 +1,6 @@
 import { DEFAULT_CAFE_TZ } from '@gaming-cafe/contracts';
 import type { Action } from '@gaming-cafe/ui';
-import { formatTimeAgo } from '@gaming-cafe/utils';
+import { formatRemainingLabel, formatTimeAgo } from '@gaming-cafe/utils';
 import { Box, Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import type { SessionResponse } from '../../../services/sessions/list';
@@ -49,10 +49,17 @@ export function SessionListMobileCard({ row, actions }: SessionListMobileCardPro
     <Card variant="outlined">
       <CardContent>
         <Stack spacing={1.5}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-            <Typography variant="subtitle1" fontWeight={700} noWrap sx={{ flex: 1 }}>
-              {playerName}
-            </Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1}>
+            <Stack spacing={0.25} sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle1" fontWeight={700} noWrap>
+                {playerName}
+              </Typography>
+              {row.walletMinutesAtStart != null && (
+                <Typography variant="caption" color="text.secondary">
+                  {formatRemainingLabel(row.walletMinutesAtStart)} at login
+                </Typography>
+              )}
+            </Stack>
             <Chip
               label={isActive ? 'Active' : 'Completed'}
               color={isActive ? 'success' : 'default'}

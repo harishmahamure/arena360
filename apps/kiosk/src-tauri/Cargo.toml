@@ -21,6 +21,7 @@ path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
@@ -31,7 +32,11 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Asset caching downloads (DRAFT-0022). rustls avoids a system OpenSSL dependency.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+watchdog-common = { path = "../watchdog-common" }
+
+[dev-dependencies]
+tempfile = "3"
 
 # Auto-update manager (ADR-0028). Desktop-only: the updater + process plugins are
 # not built for mobile targets.
@@ -55,5 +60,6 @@ windows = { version = "0.58", features = [
   "Win32_System_Threading",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
+  "Win32_System_Registry",
   "Win32_UI_WindowsAndMessaging",
 ] }

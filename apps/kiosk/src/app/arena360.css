@@ -277,6 +277,34 @@ body,
   color: var(--a360-on-surface-variant);
 }
 
+.a360-field-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #ff8a80;
+}
+
+.a360-field-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--a360-on-surface-variant);
+  opacity: 0.85;
+}
+
+.a360-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.a360-login-card--wide {
+  max-width: 34rem;
+}
+
+.a360-input-wrap:focus-within:has([aria-invalid="true"]) {
+  border-color: #ff8a80;
+  box-shadow: 0 0 0 1px #ff8a80;
+}
+
 .a360-input-wrap {
   display: flex;
   align-items: center;
@@ -1356,6 +1384,189 @@ body,
 
 .a360-tool-launch .material-symbols-outlined {
   font-size: 18px;
+}
+
+/* Menu / ordering */
+.a360-menu-layout {
+  display: grid;
+  grid-template-columns: 1fr min(320px, 100%);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .a360-menu-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.a360-menu-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.a360-chip {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+}
+
+.a360-chip.is-active {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: rgba(99, 102, 241, 0.6);
+}
+
+.a360-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.a360-menu-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  text-align: left;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.a360-menu-card.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.a360-menu-card-cat {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+}
+
+.a360-menu-card-name {
+  font-weight: 600;
+}
+
+.a360-menu-card-desc {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  line-height: 1.3;
+}
+
+.a360-menu-card-price {
+  margin-top: auto;
+  font-weight: 700;
+  color: #a5b4fc;
+}
+
+.a360-menu-card-oos {
+  font-size: 0.75rem;
+  color: #fca5a5;
+}
+
+.a360-menu-cart {
+  position: sticky;
+  top: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.a360-menu-cart-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.a360-menu-cart-lines {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.a360-menu-cart-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.a360-menu-cart-qty {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.a360-menu-cart-qty button {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.a360-menu-cart-total {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 0.5rem;
+}
+
+.a360-menu-pay-note {
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.a360-menu-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.a360-menu-note input {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+}
+
+.a360-menu-submit {
+  width: 100%;
+}
+
+.a360-menu-order-status {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+}
+
+.a360-menu-success {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
 }
 
 @media (prefers-reduced-motion: reduce) {

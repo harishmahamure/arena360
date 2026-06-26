@@ -39,6 +39,7 @@ import InventoryWarehousePage from './pages/dashboard/inventory/InventoryWarehou
 import InventoryWasteNewPage from './pages/dashboard/inventory/InventoryWasteNewPage';
 import InventoryWastePage from './pages/dashboard/inventory/InventoryWastePage';
 import InventoryWasteReportPage from './pages/dashboard/inventory/InventoryWasteReportPage';
+import KioskOrdersPage from './pages/dashboard/kiosk-orders/KioskOrdersPage';
 import PlanTransactionDetailPage from './pages/dashboard/plan-transactions/PlanTransactionDetailPage';
 import PlanTransactionNewPage from './pages/dashboard/plan-transactions/PlanTransactionNewPage';
 import PlanTransactionsPage from './pages/dashboard/plan-transactions/PlanTransactionsPage';
@@ -60,6 +61,7 @@ import SessionsPage from './pages/dashboard/sessions/SessionsPage';
 import SettingsPage from './pages/dashboard/settings/SettingsPage';
 import ShiftDetailPage from './pages/dashboard/shifts/ShiftDetailPage';
 import ShiftsPage from './pages/dashboard/shifts/ShiftsPage';
+import StationsFloorPage from './pages/dashboard/stations/StationsFloorPage';
 import VendorDetailPage from './pages/dashboard/vendors/VendorDetailPage';
 import VendorNewPage from './pages/dashboard/vendors/VendorNewPage';
 import VendorsPage from './pages/dashboard/vendors/VendorsPage';
@@ -114,6 +116,7 @@ function App() {
                     <Route element={<RequirePermission permission={Permission.DevicesRead} />}>
                       <Route path="/devices" element={<DevicesPage />} />
                       <Route path="/devices/:id" element={<DeviceDetailPage />} />
+                      <Route path="/stations" element={<StationsFloorPage />} />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.DevicesWrite} />}>
                       <Route path="/devices/new" element={<DeviceNewPage />} />
@@ -159,6 +162,7 @@ function App() {
                       <Route path="/games/:id" element={<GameDetailPage />} />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.TransactionsRead} />}>
+                      <Route path="/kiosk-orders" element={<KioskOrdersPage />} />
                       <Route path="/product-transactions" element={<ProductTransactionsPage />} />
                       <Route
                         path="/product-transactions/:id"

@@ -160,6 +160,110 @@ export function effectiveRemainingMinutes(
   return Math.max(0, walletBalanceMinutes - owed);
 }
 
+/** Cached session clock state for O(1) 1 Hz ticks (kiosk HUD). */
+export interface SessionClockCache {
+  sessionStartMs: number;
+  walletBalanceMinutes: number;
+  timeCreditsConsumed: number;
+  deductionProfile: DeductionProfile | null;
+  cafeTimezone: string;
+  expiryDate: string | null;
+  lastTickMs: number;
+  remainingMinutes: number;
+}
+
+export function createSessionClockCache(
+  sessionStartTime: string,
+  walletBalanceMinutes: number,
+  timeCreditsConsumed: number,
+  deductionProfile: DeductionProfile | null | undefined,
+  cafeTimezone: string,
+  expiryDate: string | null | undefined,
+  nowMs = Date.now(),
+): SessionClockCache | null {
+  const sessionStartMs = Date.parse(sessionStartTime);
+  if (Number.isNaN(sessionStartMs)) return null;
+
+  const remainingMinutes = capRemainingByExpiry(
+    effectiveRemainingMinutes(
+      sessionStartTime,
+      walletBalanceMinutes,
+      timeCreditsConsumed,
+      deductionProfile,
+      cafeTimezone,
+      nowMs,
+    ),
+    expiryDate,
+    nowMs,
+  );
+
+  return {
+    sessionStartMs,
+    walletBalanceMinutes,
+    timeCreditsConsumed,
+    deductionProfile: deductionProfile ?? null,
+    cafeTimezone,
+    expiryDate: expiryDate ?? null,
+    lastTickMs: nowMs,
+    remainingMinutes,
+  };
+}
+
+/** Advance the cached clock by up to one tick interval (default 1 s). */
+export function tickSessionClockCache(
+  cache: SessionClockCache,
+  tickMs = SESSION_CLOCK_TICK_MS,
+  nowMs = Date.now(),
+): SessionClockCache {
+  const segmentEnd = Math.min(cache.lastTickMs + tickMs, nowMs);
+  if (segmentEnd <= cache.lastTickMs) {
+    return cache;
+  }
+
+  const consumed =
+    cache.deductionProfile != null
+      ? weightedMinutesBetween(
+          cache.lastTickMs,
+          segmentEnd,
+          cache.deductionProfile,
+          cache.cafeTimezone,
+        )
+      : (segmentEnd - cache.lastTickMs) / 60_000;
+
+  const remainingMinutes = capRemainingByExpiry(
+    Math.max(0, cache.remainingMinutes - consumed),
+    cache.expiryDate,
+    segmentEnd,
+  );
+
+  return {
+    ...cache,
+    lastTickMs: segmentEnd,
+    remainingMinutes,
+  };
+}
+
+/** Re-anchor the cached clock after server wallet sync. */
+export function reanchorSessionClockCache(
+  cache: SessionClockCache,
+  walletBalanceMinutes: number,
+  timeCreditsConsumed: number,
+  nowMs = Date.now(),
+): SessionClockCache {
+  const sessionStartTime = new Date(cache.sessionStartMs).toISOString();
+  return (
+    createSessionClockCache(
+      sessionStartTime,
+      walletBalanceMinutes,
+      timeCreditsConsumed,
+      cache.deductionProfile,
+      cache.cafeTimezone,
+      cache.expiryDate,
+      nowMs,
+    ) ?? cache
+  );
+}
+
 /** Floor minutes from now until plan expiry (0 when already expired). */
 export function minutesUntilExpiry(expiryDateIso: string, nowMs = Date.now()): number {
   const expiryMs = Date.parse(expiryDateIso);

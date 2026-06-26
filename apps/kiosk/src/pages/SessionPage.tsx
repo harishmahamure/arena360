@@ -1,19 +1,17 @@
 import { SESSION_CLOCK_TICK_MS } from '@gaming-cafe/contracts';
-import {
-  AUTO_END_REMAINING_SECONDS,
-  useAsyncAction,
-  useSessionRemainingMinutes,
-} from '@gaming-cafe/utils';
+import { AUTO_END_REMAINING_SECONDS, useAsyncAction } from '@gaming-cafe/utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AsyncActionButton } from '../components/AsyncActionButton';
 import { HomeView } from '../components/session/HomeView';
 import { LibraryView } from '../components/session/LibraryView';
+import { MenuView } from '../components/session/MenuView';
 import { RunningAppsBar } from '../components/session/RunningAppsBar';
 import { SessionNav, type SessionView } from '../components/session/SessionNav';
 import { SettingsView } from '../components/session/SettingsView';
 import { useTrackedProcesses } from '../components/session/useTrackedProcesses';
 import { ToastHost, type ToastMessage } from '../components/Toast';
 import { useKiosk } from '../context/KioskProvider';
+import { useSessionTimerController } from '../hooks/useSessionTimerController';
 import { OFFLINE_GRACE_MS } from '../lib/config';
 import { playRemainingTimeSound } from '../lib/sessionSounds';
 
@@ -118,18 +116,36 @@ export function SessionPage() {
   }, [activeSession?.id]);
 
   const walletBalance = activeSession?.walletBalanceMinutes;
-  const displayRemaining = useSessionRemainingMinutes(
-    activeSession
-      ? {
-          sessionStartTime: activeSession.startTime,
-          walletBalanceMinutes: activeSession.walletBalanceMinutes,
-          timeCreditsConsumed: activeSession.timeCreditsConsumed ?? 0,
-          deductionProfile: activeSession.deductionProfile,
-          cafeTimezone: activeSession.cafeTimezone,
-          expiryDate: activeSession.expiryDate ?? undefined,
-        }
-      : undefined,
-  );
+  const timerInput = activeSession
+    ? {
+        sessionStartTime: activeSession.startTime,
+        walletBalanceMinutes: activeSession.walletBalanceMinutes,
+        timeCreditsConsumed: activeSession.timeCreditsConsumed ?? 0,
+        deductionProfile: activeSession.deductionProfile,
+        cafeTimezone: activeSession.cafeTimezone,
+        expiryDate: activeSession.expiryDate ?? undefined,
+      }
+    : undefined;
+
+  useSessionTimerController(timerInput, (displayRemaining) => {
+    if (typeof displayRemaining !== 'number') return;
+
+    for (const t of REMINDER_THRESHOLDS) {
+      if (displayRemaining <= t && !firedRemindersRef.current.has(t)) {
+        firedRemindersRef.current.add(t);
+        pushToast(`${t} minute${t === 1 ? '' : 's'} remaining`, t === 1 ? 'warning' : 'info');
+        if (t !== 1) playRemainingTimeSound(t);
+      }
+    }
+
+    if (!autoEndFiredRef.current) {
+      const remainingSeconds = Math.floor(displayRemaining * 60);
+      if (remainingSeconds <= AUTO_END_REMAINING_SECONDS) {
+        autoEndFiredRef.current = true;
+        void endSession('auto');
+      }
+    }
+  });
 
   // Recharge toast when wallet balance increases (mid-session top-up via balance.updated).
   useEffect(() => {
@@ -138,33 +154,11 @@ export function SessionPage() {
     if (prev !== null && walletBalance > prev + 0.05) {
       pushToast('Time added — thanks!', 'success');
       for (const t of REMINDER_THRESHOLDS) {
-        if ((displayRemaining ?? walletBalance) > t) firedRemindersRef.current.delete(t);
+        firedRemindersRef.current.delete(t);
       }
     }
     prevWalletRef.current = walletBalance;
-  }, [walletBalance, displayRemaining, pushToast]);
-
-  // Time-based reminders: driven by the local countdown so sounds fire on schedule.
-  useEffect(() => {
-    if (typeof displayRemaining !== 'number') return;
-    for (const t of REMINDER_THRESHOLDS) {
-      if (displayRemaining <= t && !firedRemindersRef.current.has(t)) {
-        firedRemindersRef.current.add(t);
-        pushToast(`${t} minute${t === 1 ? '' : 's'} remaining`, t === 1 ? 'warning' : 'info');
-        if (t !== 1) playRemainingTimeSound(t);
-      }
-    }
-  }, [displayRemaining, pushToast]);
-
-  // Auto-end when display reaches the final seconds threshold (once per session).
-  useEffect(() => {
-    if (typeof displayRemaining !== 'number' || autoEndFiredRef.current) return;
-    const remainingSeconds = Math.floor(displayRemaining * 60);
-    if (remainingSeconds <= AUTO_END_REMAINING_SECONDS) {
-      autoEndFiredRef.current = true;
-      void endSession('auto');
-    }
-  }, [displayRemaining, endSession]);
+  }, [walletBalance, pushToast]);
 
   // Offline grace: keep counting down locally, then re-lock when grace elapses.
   useEffect(() => {
@@ -190,7 +184,6 @@ export function SessionPage() {
       <SessionNav
         playerName={playerName}
         playerRole={playerRole}
-        remainingMinutes={displayRemaining ?? undefined}
         deductionProfile={activeSession?.deductionProfile}
         cafeTimezone={activeSession?.cafeTimezone}
         deviceName={deviceName}
@@ -232,6 +225,8 @@ export function SessionPage() {
           />
         ) : view === 'library' ? (
           <LibraryView initialQuery={libraryQuery} onError={onError} onLaunched={refresh} />
+        ) : view === 'menu' ? (
+          <MenuView onError={onError} />
         ) : (
           <SettingsView onError={onError} onLaunched={refresh} />
         )}
@@ -265,11 +260,11 @@ export function SessionPage() {
                 className="secondary"
                 disabled={endingSession || endSucceeded}
                 onClick={() => {
-                  setConfirmEnd(false);
                   resetEndSession();
+                  setConfirmEnd(false);
                 }}
               >
-                Keep playing
+                Cancel
               </button>
             </div>
           </div>

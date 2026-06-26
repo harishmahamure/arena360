@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { fetchTools } from '../../lib/allowList';
 import { openAudioSettings } from '../../lib/tauriCommands';
 import { useAllowList } from './useAllowList';
@@ -13,7 +14,11 @@ interface SettingsViewProps {
  * Arena360 Settings & Tools: launch allowed launcher/utility apps (ADR-0019),
  * plus a built-in Sound Settings tile.
  */
-export function SettingsView({ disabled, onError, onLaunched }: SettingsViewProps) {
+export const SettingsView = memo(function SettingsView({
+  disabled,
+  onError,
+  onLaunched,
+}: SettingsViewProps) {
   const { items: tools } = useAllowList(fetchTools);
   const { launchingKey, isLaunchable, launch } = useLauncher(
     Boolean(disabled),
@@ -82,4 +87,4 @@ export function SettingsView({ disabled, onError, onLaunched }: SettingsViewProp
       </div>
     </section>
   );
-}
+});

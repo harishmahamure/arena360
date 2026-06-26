@@ -92,11 +92,20 @@ pub async fn create_transaction(
 
     dto.shift_id = Some(active_shift.id);
 
+    let kiosk_order_id = dto.kiosk_order_id;
     let actor_role = claims.roles.first().map(|s| s.as_str());
     let transaction = state
         .transactions
         .create(dto, Some(user_id), actor_role, &state.cash_registers)
         .await?;
+
+    if let Some(order_id) = kiosk_order_id {
+        state
+            .kiosk_orders
+            .mark_fulfilled(order_id, transaction.id)
+            .await?;
+    }
+
     created(transaction)
 }
 

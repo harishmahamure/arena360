@@ -1,74 +1,23 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
-import {
-  Build,
-  CheckCircle,
-  Computer,
-  Edit,
-  Error as ErrorIcon,
-  PlayArrow,
-  SportsEsports,
-  Tv,
-} from '@mui/icons-material';
+import { Computer, Edit, SportsEsports, Tv } from '@mui/icons-material';
 import { Box, Chip, debounce, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
-import { type DeviceResponse, DeviceStatus, getDevices } from '../../../services/devices/list';
+import { type DeviceResponse, getDevices } from '../../../services/devices/list';
 import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
+import {
+  deviceStatusColor,
+  deviceStatusIcon,
+  deviceStatusLabel,
+} from '../../../utils/deviceStatusDisplay';
 
-const getStatusColor = (status: DeviceStatusValue) => {
-  switch (status) {
-    case DeviceStatus.OPERATIONAL:
-      return 'success';
-    case DeviceStatus.UNDER_MAINTENANCE:
-      return 'warning';
-    case DeviceStatus.OUT_OF_SERVICE:
-      return 'error';
-    case DeviceStatus.IN_USE:
-      return 'primary';
-    case DeviceStatus.AVAILABLE:
-      return 'success';
-    default:
-      return 'default';
-  }
-};
-
-const getStatusIcon = (status: DeviceStatusValue) => {
-  switch (status) {
-    case DeviceStatus.OPERATIONAL:
-      return <CheckCircle fontSize="small" />;
-    case DeviceStatus.UNDER_MAINTENANCE:
-      return <Build fontSize="small" />;
-    case DeviceStatus.OUT_OF_SERVICE:
-      return <ErrorIcon fontSize="small" />;
-    case DeviceStatus.IN_USE:
-      return <PlayArrow fontSize="small" />;
-    case DeviceStatus.AVAILABLE:
-      return <CheckCircle fontSize="small" />;
-    default:
-      return null;
-  }
-};
-
-const getStatusLabel = (status: DeviceStatusValue) => {
-  switch (status) {
-    case DeviceStatus.OPERATIONAL:
-      return 'Operational';
-    case DeviceStatus.UNDER_MAINTENANCE:
-      return 'Maintenance';
-    case DeviceStatus.OUT_OF_SERVICE:
-      return 'Out of Order';
-    case DeviceStatus.IN_USE:
-      return 'In Use';
-    case DeviceStatus.AVAILABLE:
-      return 'Available';
-    default:
-      return status;
-  }
-};
+const getStatusColor = deviceStatusColor;
+const getStatusIcon = deviceStatusIcon;
+const getStatusLabel = deviceStatusLabel;
 
 const getDeviceIcon = (deviceType: string) => {
   const type = deviceType.toUpperCase();

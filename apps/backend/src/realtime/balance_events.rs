@@ -65,9 +65,19 @@ pub async fn publish_balance_updated_for_session(
         .publish(
             &user_channel,
             "balance.updated",
-            payload,
+            payload.clone(),
             None,
             Some(player_id),
+            false,
+        )
+        .await;
+    let _ = outbox
+        .publish(
+            "staff",
+            "balance.updated",
+            payload,
+            None,
+            None,
             false,
         )
         .await;
