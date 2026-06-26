@@ -1,6 +1,7 @@
 mod audio;
 mod boost;
 mod cache;
+mod diagnostics;
 mod fingerprint;
 mod instance_mutex;
 mod launch_profile;
@@ -13,10 +14,16 @@ mod update;
 
 use instance_mutex::ensure_single_instance;
 use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    diagnostics::init();
+    diagnostics::info(format!(
+        "kiosk starting v{} ({})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS
+    ));
     ensure_single_instance();
 
     let mut builder = tauri::Builder::default()
@@ -52,10 +59,21 @@ pub fn run() {
         })
         .setup(|app| {
             register_keyboard_app(app.handle().clone());
-            init_locked_on_startup(app.handle());
+            if let Err(e) = init_locked_on_startup(app.handle()) {
+                diagnostics::error(format!("lockdown init failed: {e}"));
+                let _ = app.emit(
+                    "kiosk-diagnostic",
+                    serde_json::json!({
+                        "level": "error",
+                        "message": format!("Lockdown init failed: {e}"),
+                    }),
+                );
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            diagnostics::get_boot_diagnostics,
+            diagnostics::append_kiosk_log,
             storage::get_tokens,
             storage::set_device_token,
             storage::set_player_token,

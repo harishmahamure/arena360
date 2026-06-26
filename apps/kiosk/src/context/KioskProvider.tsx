@@ -13,6 +13,7 @@ import {
 import { SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
 import { isTokenAuthFailure, registerAuthSessionHandlers } from '../lib/authSession';
 import { applyBalanceUpdated, mergeReconciledSession } from '../lib/balanceUpdated';
+import { appendKioskLog } from '../lib/bootDiagnostics';
 import { SESSION_RECONCILE_MS } from '../lib/config';
 import {
   clearPlayerSession,
@@ -50,6 +51,7 @@ import {
 
 export type AppPhase =
   | 'loading'
+  | 'boot-error'
   | 'register'
   | 'login'
   | 'setup'
@@ -194,6 +196,7 @@ interface KioskContextValue {
 const KioskContext = createContext<KioskContextValue | null>(null);
 
 const DEVICE_NAME_KEY = 'gaming-cafe.kiosk.device_name';
+const BOOT_TIMEOUT_MS = 30_000;
 
 function readStoredDeviceName(): string | null {
   try {
@@ -248,6 +251,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const cleanupInFlightRef = useRef(false);
   const lastClearLockoutAtRef = useRef(0);
   const STAFF_ACTION_DEBOUNCE_MS = 400;
+  const bootStepRef = useRef('start');
   // Short-lived admin token captured during first-time provisioning (in memory only).
   const [adminToken, setAdminToken] = useState<string | null>(null);
   const [setupAuthenticated, setSetupAuthenticated] = useState(false);
@@ -551,35 +555,67 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     setError(null);
-    await loadTokensIntoCache();
-    if (!tokenCache.device) {
-      setPhase('register');
-      await setLockdownState('Locked');
-      return;
-    }
-    setDeviceName(readStoredDeviceName());
-    let deviceId: string | null = null;
+    setPhase('loading');
     try {
-      const payload = JSON.parse(atob(tokenCache.device.split('.')[1] ?? ''));
-      deviceId = payload.userId as string;
-      setDeviceId(deviceId);
-    } catch {
-      setDeviceId(null);
-    }
+      bootStepRef.current = 'loadTokensIntoCache';
+      await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
+      await loadTokensIntoCache();
 
-    if (tokenCache.player && deviceId) {
-      const restored = await tryRestorePlayerSession(deviceId);
-      if (restored) {
+      if (!tokenCache.device) {
+        bootStepRef.current = 'setLockdownState(register)';
+        setPhase('register');
+        await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
         await setLockdownState('Locked');
         return;
       }
-    } else if (deviceId) {
-      connectWs(deviceId);
-    }
 
-    setPhase('login');
-    await setLockdownState('Locked');
+      setDeviceName(readStoredDeviceName());
+      let nextDeviceId: string | null = null;
+      try {
+        const payload = JSON.parse(atob(tokenCache.device.split('.')[1] ?? ''));
+        nextDeviceId = payload.userId as string;
+        setDeviceId(nextDeviceId);
+      } catch {
+        setDeviceId(null);
+      }
+
+      if (tokenCache.player && nextDeviceId) {
+        bootStepRef.current = 'tryRestorePlayerSession';
+        await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
+        const restored = await tryRestorePlayerSession(nextDeviceId);
+        if (restored) {
+          bootStepRef.current = 'setLockdownState(session-restore)';
+          await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
+          await setLockdownState('Locked');
+          return;
+        }
+      } else if (nextDeviceId) {
+        connectWs(nextDeviceId);
+      }
+
+      bootStepRef.current = 'setLockdownState(login)';
+      setPhase('login');
+      await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
+      await setLockdownState('Locked');
+    } catch (e) {
+      const msg = toErrorMessage(e, 'Boot failed');
+      const detail = `Boot failed at ${bootStepRef.current}: ${msg}`;
+      setError(detail);
+      setPhase('boot-error');
+      await appendKioskLog('error', detail);
+    }
   }, [connectWs, tryRestorePlayerSession]);
+
+  useEffect(() => {
+    if (phase !== 'loading') return;
+    const id = window.setTimeout(() => {
+      const detail = `Boot timed out at step: ${bootStepRef.current}`;
+      setError(detail);
+      setPhase('boot-error');
+      void appendKioskLog('error', detail);
+    }, BOOT_TIMEOUT_MS);
+    return () => window.clearTimeout(id);
+  }, [phase]);
 
   useEffect(() => {
     void refresh();

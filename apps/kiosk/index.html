@@ -22,10 +22,67 @@
       rel="stylesheet"
     />
     <title>Arena360 Station Management</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0b0f1a;
+        color: #e8ecf4;
+        font-family: system-ui, sans-serif;
+      }
+
+      #root {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .boot-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        text-align: center;
+      }
+
+      .boot-loading-spinner {
+        width: 2.5rem;
+        height: 2.5rem;
+        border: 3px solid #2a3550;
+        border-top-color: #ff6900;
+        border-radius: 50%;
+        animation: boot-spin 0.8s linear infinite;
+      }
+
+      .boot-loading-text {
+        margin: 0;
+        color: #94a3b8;
+        font-size: 1rem;
+      }
+
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
 
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      setTimeout(() => {
+        var root = document.getElementById('root');
+        if (root && root.childElementCount === 0) {
+          root.innerHTML =
+            '<div class="boot-loading" role="alert">' +
+            '<p class="boot-loading-text" style="color:#ff6900">Station failed to start</p>' +
+            '<p class="boot-loading-text">JavaScript did not load. Check the install or network.</p>' +
+            '</div>';
+        }
+      }, 15000);
+    </script>
   </body>
 </html>

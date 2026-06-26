@@ -1,4 +1,6 @@
-import { useEffect } from 'react';
+import { type ReactNode, useEffect } from 'react';
+import { BootErrorOverlay } from '../components/BootErrorOverlay';
+import { BootLoading } from '../components/BootLoading';
 import { LockdownOverlay } from '../components/LockdownOverlay';
 import { KioskProvider, useKiosk } from '../context/KioskProvider';
 import { useKioskShellGuard } from '../lib/useKioskShellGuard';
@@ -7,13 +9,10 @@ import { LoginHomePage } from '../pages/LoginHomePage';
 import { RegistrationPage } from '../pages/RegistrationPage';
 import { SessionPage } from '../pages/SessionPage';
 import { SetupPage } from '../pages/SetupPage';
-import '@gaming-cafe/theme/tokens.css';
-import './app.css';
-import './arena360.css';
 
 function KioskShell() {
-  const { phase } = useKiosk();
-  const locked = phase !== 'setup' && phase !== 'loading';
+  const { phase, error, refresh } = useKiosk();
+  const locked = phase !== 'setup' && phase !== 'loading' && phase !== 'boot-error';
   useKioskShellGuard(locked);
 
   // Auto-update manager (ADR-0028): check while idle (register, setup, login),
@@ -28,14 +27,23 @@ function KioskShell() {
     });
   }, [phase]);
 
-  let content = <p className="meta">Loading…</p>;
-  if (phase === 'register') content = <RegistrationPage />;
+  let content: ReactNode = <BootLoading />;
+  if (phase === 'boot-error') {
+    content = null;
+  } else if (phase === 'register') content = <RegistrationPage />;
   else if (phase === 'login') content = <LoginHomePage />;
   else if (phase === 'setup') content = <SetupPage />;
   else if (phase === 'session') content = <SessionPage />;
   else if (phase === 'already-in-session') content = <AlreadyInSessionPage />;
 
-  return <LockdownOverlay visible={locked}>{content}</LockdownOverlay>;
+  return (
+    <>
+      <LockdownOverlay visible={locked}>{content}</LockdownOverlay>
+      {phase === 'boot-error' ? (
+        <BootErrorOverlay message={error} onRetry={() => void refresh()} />
+      ) : null}
+    </>
+  );
 }
 
 export function App() {

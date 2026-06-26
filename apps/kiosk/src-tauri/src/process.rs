@@ -8,6 +8,12 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
+fn log_window_op(op: &str, result: Result<(), tauri::Error>) {
+    if let Err(e) = result {
+        crate::diagnostics::error(format!("window {op}: {e}"));
+    }
+}
+
 #[cfg(windows)]
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
@@ -830,12 +836,12 @@ pub fn send_kiosk_behind_games(window: &tauri::WebviewWindow) {
 /// Fullscreen shell — idle/login or after all games closed (no TOPMOST).
 pub fn apply_kiosk_shell_lockdown(app: &AppHandle) {
     if let Ok(window) = main_window(app) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_decorations(false);
-        let _ = window.set_fullscreen(true);
-        let _ = window.set_always_on_top(false);
-        let _ = window.set_focus();
+        log_window_op("unminimize", window.unminimize());
+        log_window_op("show", window.show());
+        log_window_op("set_decorations(false)", window.set_decorations(false));
+        log_window_op("set_fullscreen(true)", window.set_fullscreen(true));
+        log_window_op("set_always_on_top(false)", window.set_always_on_top(false));
+        log_window_op("set_focus", window.set_focus());
         #[cfg(windows)]
         set_foreground_window(&window);
         if let Some(hwnd) = kiosk_hwnd(app) {

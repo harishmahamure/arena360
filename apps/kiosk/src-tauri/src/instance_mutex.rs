@@ -59,7 +59,10 @@ pub fn ensure_single_instance() {
                 // Leak the guard for process lifetime; releasing would allow a second instance.
                 std::mem::forget(guard);
             }
-            Err(_) => {
+            Err(reason) => {
+                crate::diagnostics::info(format!(
+                    "duplicate kiosk instance detected, exiting: {reason}"
+                ));
                 // Exit 0 so logon scheduled tasks do not report failure when kiosk is already up.
                 std::process::exit(0);
             }

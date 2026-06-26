@@ -78,7 +78,10 @@ pub fn set_lockdown_state(app: AppHandle, state: String) -> Result<(), String> {
         let mut guard = STATE.lock().map_err(|e| e.to_string())?;
         *guard = state;
     }
-    apply_window_mode(&app, state)?;
+    apply_window_mode(&app, state).map_err(|e| {
+        crate::diagnostics::error(format!("set_lockdown_state apply_window_mode: {e}"));
+        e
+    })?;
     let _ = app.emit("lockdown-changed", state.as_str());
     Ok(())
 }
@@ -100,13 +103,14 @@ pub fn register_keyboard_app(app: AppHandle) {
     keyboard::set_app_handle(app);
 }
 
-pub fn init_locked_on_startup(app: &AppHandle) {
-    let _txn = TRANSITION.lock().expect("transition lock");
+pub fn init_locked_on_startup(app: &AppHandle) -> Result<(), String> {
+    let _txn = TRANSITION.lock().map_err(|e| e.to_string())?;
     if let Ok(mut guard) = STATE.lock() {
         *guard = LockdownState::Locked;
     }
-    let _ = apply_window_mode(app, LockdownState::Locked);
+    apply_window_mode(app, LockdownState::Locked)?;
     let _ = app.emit("lockdown-changed", LockdownState::Locked.as_str());
+    Ok(())
 }
 
 pub fn on_app_exit() {

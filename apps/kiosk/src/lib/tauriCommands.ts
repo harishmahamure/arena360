@@ -1,5 +1,6 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { appendKioskLog } from './bootDiagnostics';
 
 export interface TokenStore {
   deviceToken?: string;
@@ -14,62 +15,72 @@ export interface FingerprintPayload {
   collectedAt: string;
 }
 
+async function invokeLogged<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await appendKioskLog('error', `${cmd}: ${msg}`);
+    throw e;
+  }
+}
+
 export async function getTokens(): Promise<TokenStore> {
-  return invoke<TokenStore>('get_tokens');
+  return invokeLogged<TokenStore>('get_tokens');
 }
 
 export async function setDeviceToken(token: string): Promise<void> {
-  await invoke('set_device_token', { token });
+  await invokeLogged('set_device_token', { token });
 }
 
 export async function setPlayerToken(token: string): Promise<void> {
-  await invoke('set_player_token', { token });
+  await invokeLogged('set_player_token', { token });
 }
 
 export async function clearPlayerToken(): Promise<void> {
-  await invoke('clear_player_token');
+  await invokeLogged('clear_player_token');
 }
 
 export async function clearAllTokens(): Promise<void> {
-  await invoke('clear_all_tokens');
+  await invokeLogged('clear_all_tokens');
 }
 
 export async function collectFingerprint(): Promise<FingerprintPayload> {
-  return invoke<FingerprintPayload>('collect_fingerprint');
+  return invokeLogged<FingerprintPayload>('collect_fingerprint');
 }
 
 export async function setLockdownState(state: 'Locked' | 'SetupRelaxed'): Promise<void> {
-  await invoke('set_lockdown_state', { state });
+  await invokeLogged('set_lockdown_state', { state });
 }
 
 export type LockdownState = 'Locked' | 'SetupRelaxed';
 
 export async function getLockdownState(): Promise<LockdownState> {
-  return invoke<LockdownState>('get_lockdown_state');
+  return invokeLogged<LockdownState>('get_lockdown_state');
 }
 
 export async function getSystemVolume(): Promise<number> {
-  return invoke<number>('get_system_volume');
+  return invokeLogged<number>('get_system_volume');
 }
 
 export async function setSystemVolume(volume: number): Promise<number> {
-  return invoke<number>('set_system_volume', { volume });
+  return invokeLogged<number>('set_system_volume', { volume });
 }
 
 export async function openAudioSettings(): Promise<void> {
-  await invoke('open_audio_settings');
+  await invokeLogged('open_audio_settings');
 }
 
 export async function sleepStation(): Promise<void> {
-  await invoke('sleep_station');
+  await invokeLogged('sleep_station');
 }
 
 export async function restartStation(): Promise<void> {
-  await invoke('restart_station');
+  await invokeLogged('restart_station');
 }
 
 export async function shutdownStation(): Promise<void> {
-  await invoke('shutdown_station');
+  await invokeLogged('shutdown_station');
 }
 
 export interface ScanLaunchVia {
@@ -93,7 +104,7 @@ export interface ScanCandidate {
 }
 
 export async function scanInstalledSoftware(): Promise<ScanCandidate[]> {
-  return invoke<ScanCandidate[]>('scan_installed_software');
+  return invokeLogged<ScanCandidate[]>('scan_installed_software');
 }
 
 /**
@@ -147,7 +158,7 @@ export interface TrackedProcess {
 }
 
 export async function focusKiosk(): Promise<void> {
-  await invoke('focus_kiosk');
+  await invokeLogged('focus_kiosk');
 }
 
 export async function launchAllowed(
@@ -155,7 +166,7 @@ export async function launchAllowed(
   allowList: string[],
   args?: string[],
 ): Promise<{ pid: number }> {
-  return invoke('launch_allowed', {
+  return invokeLogged('launch_allowed', {
     executablePath,
     arguments: args,
     allowList,
@@ -163,19 +174,19 @@ export async function launchAllowed(
 }
 
 export async function getTrackedProcesses(): Promise<TrackedProcess[]> {
-  return invoke<TrackedProcess[]>('get_tracked_processes');
+  return invokeLogged<TrackedProcess[]>('get_tracked_processes');
 }
 
 export async function killTrackedProcesses(): Promise<{ killed: number; restored: boolean }> {
-  return invoke('kill_tracked_processes');
+  return invokeLogged('kill_tracked_processes');
 }
 
 export async function closeTrackedApps(): Promise<{ killed: number; restored: boolean }> {
-  return invoke('close_tracked_apps');
+  return invokeLogged('close_tracked_apps');
 }
 
 export async function clearTrackedProcesses(): Promise<void> {
-  await invoke('clear_tracked_processes');
+  await invokeLogged('clear_tracked_processes');
 }
 
 export interface GameBoostConfig {
@@ -184,11 +195,11 @@ export interface GameBoostConfig {
 }
 
 export async function setGameBoostConfig(config: GameBoostConfig): Promise<void> {
-  await invoke('set_game_boost_config', { config });
+  await invokeLogged('set_game_boost_config', { config });
 }
 
 export async function getGameBoostConfig(): Promise<GameBoostConfig> {
-  return invoke<GameBoostConfig>('get_game_boost_config');
+  return invokeLogged<GameBoostConfig>('get_game_boost_config');
 }
 
 /**
@@ -199,7 +210,7 @@ export async function getGameBoostConfig(): Promise<GameBoostConfig> {
 export async function cachedAssetSrc(url: string): Promise<string> {
   if (!url) return url;
   try {
-    const path = await invoke<string>('cache_asset', { url });
+    const path = await invokeLogged<string>('cache_asset', { url });
     return convertFileSrc(path);
   } catch {
     return url;
