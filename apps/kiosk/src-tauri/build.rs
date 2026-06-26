@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 fn main() {
+    #[cfg(not(windows))]
     ensure_watchdog_resource_stub();
     #[cfg(windows)]
     {
