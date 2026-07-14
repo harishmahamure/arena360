@@ -1176,12 +1176,20 @@ fn refresh_pids_for_monitor(system: &mut System, tracked: &[WatchEntry]) {
 }
 
 fn start_monitor_if_needed(app: AppHandle) {
-    let mut running = MONITOR_RUNNING.lock().expect("monitor lock");
-    if *running {
+    let should_start = match MONITOR_RUNNING.lock() {
+        Ok(mut running) => {
+            if *running {
+                false
+            } else {
+                *running = true;
+                true
+            }
+        }
+        Err(_) => false,
+    };
+    if !should_start {
         return;
     }
-    *running = true;
-    drop(running);
 
     thread::spawn(move || {
         #[cfg(windows)]
@@ -1226,6 +1234,35 @@ fn start_monitor_if_needed(app: AppHandle) {
     });
 }
 
+/// Poll for launcher/game HWND after spawn without blocking the IPC command.
+#[cfg(target_os = "windows")]
+fn spawn_launch_foreground_task(root_pid: u32, launcher: bool) {
+    thread::spawn(move || {
+        let window_handle = if launcher {
+            foreground_launcher_window(root_pid)
+        } else {
+            let hwnd = fullscreen_process_window(root_pid);
+            if let Some(h) = hwnd {
+                bring_hwnd_to_foreground(h);
+            }
+            hwnd
+        };
+        if let Ok(mut tracked) = TRACKED.lock() {
+            if let Some(entry) = tracked.iter_mut().find(|e| e.root_pid == root_pid) {
+                if let Some(hwnd) = window_handle {
+                    entry.window_handle = Some(hwnd);
+                    if !launcher {
+                        entry.app_foregrounded = true;
+                    }
+                }
+            }
+        }
+    });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn spawn_launch_foreground_task(_root_pid: u32, _launcher: bool) {}
+
 #[tauri::command]
 pub fn focus_kiosk(app: AppHandle) -> Result<(), String> {
     focus_kiosk_window(&app)
@@ -1252,24 +1289,18 @@ pub fn launch_allowed(
     )?;
     crate::boost::apply_game_priority(pid);
     let launcher = is_launcher_executable(&executable_path);
-    let window_handle = if launcher {
-        foreground_launcher_window(pid)
-    } else {
-        let hwnd = fullscreen_process_window(pid);
-        if let Some(h) = hwnd {
-            bring_hwnd_to_foreground(h);
-        }
-        hwnd
-    };
     apply_kiosk_game_mode_background(&app);
-    TRACKED.lock().map_err(|e| e.to_string())?.push(WatchEntry {
-        executable_path,
-        root_pid: pid,
-        descendant_pids: Vec::new(),
-        window_handle,
-        app_foregrounded: !launcher && window_handle.is_some(),
-    });
+    if let Ok(mut tracked) = TRACKED.lock() {
+        tracked.push(WatchEntry {
+            executable_path,
+            root_pid: pid,
+            descendant_pids: Vec::new(),
+            window_handle: None,
+            app_foregrounded: false,
+        });
+    }
     start_monitor_if_needed(app);
+    spawn_launch_foreground_task(pid, launcher);
     Ok(LaunchResult { pid })
 }
 

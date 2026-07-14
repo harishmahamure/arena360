@@ -214,12 +214,12 @@ export function AllowListEditor() {
     if (launchingId) return;
     setLaunchingId(entry.id);
     setStatus(null);
+    const { launchEntry, launchErrorMessage } = await import('../lib/launch');
     try {
-      const { launchEntry } = await import('../lib/launch');
       await launchEntry(entry, entries);
       setStatus(`Launched ${entry.name}`);
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : `Could not launch ${entry.name}`);
+      setStatus(launchErrorMessage(e, `Could not launch ${entry.name}`));
     } finally {
       setLaunchingId(null);
     }

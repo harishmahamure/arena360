@@ -8,7 +8,7 @@ import {
   resolveLaunch,
   tokenizeArguments,
 } from './allowList';
-import { launchEntry } from './launch';
+import { launchEntry, launchErrorMessage } from './launch';
 
 const valorantEntry: LaunchEntry = {
   id: '1',
@@ -122,5 +122,23 @@ describe('launchEntry validation', () => {
       launchVia: { executablePath: '  ', arguments: ['-applaunch', '1'] },
     };
     await expect(launchEntry(entry, [entry])).rejects.toThrow(/Launcher path is required/);
+  });
+});
+
+describe('launchErrorMessage', () => {
+  it('uses Error.message', () => {
+    expect(launchErrorMessage(new Error('Executable not in allow-list'), 'fallback')).toBe(
+      'Executable not in allow-list',
+    );
+  });
+
+  it('uses string rejections from Tauri', () => {
+    expect(launchErrorMessage('Session cleanup in progress', 'Could not launch GTA')).toBe(
+      'Session cleanup in progress',
+    );
+  });
+
+  it('falls back when message is empty', () => {
+    expect(launchErrorMessage('   ', 'Could not launch GTA')).toBe('Could not launch GTA');
   });
 });

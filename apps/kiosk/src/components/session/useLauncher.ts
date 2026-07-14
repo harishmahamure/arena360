@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { LaunchEntry } from '../../lib/allowList';
-import { installedEntries, launchEntry } from '../../lib/launch';
+import { installedEntries, launchEntry, launchErrorMessage } from '../../lib/launch';
 
 interface UseLauncher {
   entries: LaunchEntry[];
@@ -17,19 +17,22 @@ export function useLauncher(
 ): UseLauncher {
   const entries = useMemo(() => installedEntries(), []);
   const [launchingKey, setLaunchingKey] = useState<string | null>(null);
+  const launchingRef = useRef(false);
 
   const isLaunchable = useCallback((entry: LaunchEntry) => entry.present !== false, []);
 
   const launch = useCallback(
     async (entry: LaunchEntry) => {
-      if (disabled || entry.present === false) return;
+      if (disabled || entry.present === false || launchingRef.current) return;
+      launchingRef.current = true;
       setLaunchingKey(entry.id);
       try {
         await launchEntry(entry, entries);
         onLaunched?.();
       } catch (e) {
-        onError?.(e instanceof Error ? e.message : `Could not launch ${entry.name}`);
+        onError?.(launchErrorMessage(e, `Could not launch ${entry.name}`));
       } finally {
+        launchingRef.current = false;
         setLaunchingKey(null);
       }
     },

@@ -8,6 +8,12 @@ import {
 } from './allowList';
 import { launchAllowed } from './tauriCommands';
 
+/** Extract a user-visible message from a launch failure (Tauri rejects with strings). */
+export function launchErrorMessage(e: unknown, fallback: string): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.trim() || fallback;
+}
+
 /** Allow-list entries available to launch (executable present at last scan). */
 export function installedEntries(): LaunchEntry[] {
   return loadLaunchEntries().filter((e) => e.present !== false);
