@@ -22,6 +22,7 @@ const RECONNECT_LOG_EVERY = 5;
 
 export class KioskRealtimeClient {
   private ws: WebSocket | null = null;
+  private connectionGen = 0;
   private subscriptions = new Set<string>();
   private handlers = new Map<string, Set<RealtimeHandler>>();
   private globalHandlers = new Set<RealtimeHandler>();
@@ -33,8 +34,6 @@ export class KioskRealtimeClient {
   private intentionalClose = false;
 
   connect(): void {
-    // Re-arm: a prior disconnect() sets `disposed` to suppress auto-reconnect,
-    // but an explicit connect() means the caller wants a live socket again.
     this.disposed = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -43,25 +42,37 @@ export class KioskRealtimeClient {
     const token = tokenCache.device;
     if (!token) return;
 
+    if (this.ws) {
+      this.intentionalClose = true;
+      this.ws.close();
+      this.ws = null;
+      this.intentionalClose = false;
+    }
+
+    const gen = ++this.connectionGen;
+    let socket: WebSocket;
     try {
-      this.ws = new WebSocket(realtimeUrl(), ['bearer', token]);
+      socket = new WebSocket(realtimeUrl(), ['bearer', token]);
     } catch (e) {
       void appendKioskLog('warn', `[realtime] WebSocket construct failed: ${String(e)}`);
       this.scheduleReconnect();
       return;
     }
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (gen !== this.connectionGen || this.ws !== socket) return;
       this.reconnectAttempts = 0;
       if (this.subscriptions.size > 0) {
-        this.send({ type: 'Subscribe', channels: [...this.subscriptions] });
+        this.sendOn(socket, { type: 'Subscribe', channels: [...this.subscriptions] });
       }
       for (const handler of this.connectHandlers) {
         handler();
       }
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (gen !== this.connectionGen || this.ws !== socket) return;
       let frame: ServerFrame;
       try {
         frame = JSON.parse(event.data as string);
@@ -71,7 +82,7 @@ export class KioskRealtimeClient {
       }
 
       if (frame.type === 'Event' && frame.msg_id != null) {
-        this.send({ type: 'Ack', msg_id: frame.msg_id });
+        this.sendOn(socket, { type: 'Ack', msg_id: frame.msg_id });
       }
 
       for (const handler of this.globalHandlers) {
@@ -88,8 +99,11 @@ export class KioskRealtimeClient {
       }
     };
 
-    this.ws.onclose = () => {
-      this.ws = null;
+    socket.onclose = () => {
+      if (gen !== this.connectionGen) return;
+      if (this.ws === socket) {
+        this.ws = null;
+      }
       if (this.intentionalClose) {
         this.intentionalClose = false;
         return;
@@ -101,9 +115,10 @@ export class KioskRealtimeClient {
       if (!this.disposed) this.scheduleReconnect();
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
+      if (gen !== this.connectionGen || this.ws !== socket) return;
       void appendKioskLog('warn', '[realtime] WebSocket error');
-      this.ws?.close();
+      socket.close();
     };
   }
 
@@ -113,29 +128,32 @@ export class KioskRealtimeClient {
     this.subscriptions.clear();
     for (const ch of channels) this.subscriptions.add(ch);
 
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    const socket = this.ws;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     const removed = [...previous].filter((ch) => !this.subscriptions.has(ch));
     const added = [...this.subscriptions].filter((ch) => !previous.has(ch));
     if (removed.length > 0) {
-      this.send({ type: 'Unsubscribe', channels: removed });
+      this.sendOn(socket, { type: 'Unsubscribe', channels: removed });
     }
     if (added.length > 0) {
-      this.send({ type: 'Subscribe', channels: added });
+      this.sendOn(socket, { type: 'Subscribe', channels: added });
     }
   }
 
   subscribe(channels: string[]): void {
     for (const ch of channels) this.subscriptions.add(ch);
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.send({ type: 'Subscribe', channels });
+    const socket = this.ws;
+    if (socket?.readyState === WebSocket.OPEN) {
+      this.sendOn(socket, { type: 'Subscribe', channels });
     }
   }
 
   unsubscribe(channels: string[]): void {
     for (const ch of channels) this.subscriptions.delete(ch);
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.send({ type: 'Unsubscribe', channels });
+    const socket = this.ws;
+    if (socket?.readyState === WebSocket.OPEN) {
+      this.sendOn(socket, { type: 'Unsubscribe', channels });
     }
   }
 
@@ -169,6 +187,7 @@ export class KioskRealtimeClient {
   disconnect(): void {
     this.disposed = true;
     this.reconnectAttempts = 0;
+    this.connectionGen += 1;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -184,9 +203,9 @@ export class KioskRealtimeClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  private send(data: Record<string, unknown>): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
+  private sendOn(socket: WebSocket, data: Record<string, unknown>): void {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(data));
     }
   }
 

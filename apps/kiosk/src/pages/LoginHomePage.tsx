@@ -1,4 +1,4 @@
-import { normalizeUsername, sanitizeUsernameInput, trimValue } from '@gaming-cafe/utils';
+import { ApiError, normalizeUsername, sanitizeUsernameInput, trimValue } from '@gaming-cafe/utils';
 import { useEffect, useRef, useState } from 'react';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
@@ -18,6 +18,8 @@ function formatRetry(retryAt: number): string {
   return `${mins} minute${mins === 1 ? '' : 's'}`;
 }
 
+type StaffLockoutStep = 'credentials' | 'totp';
+
 /**
  * Arena360 cinematic logged-out home: looped background video with radial scrim,
  * centered glass sign-in card, and station controls. Staff setup and lockout reset
@@ -28,7 +30,7 @@ export function LoginHomePage() {
     playerLogin,
     goToCreateAccount,
     enterSetup,
-    clearStaffLoginLockout,
+    staffClearLoginLockout,
     error,
     clearError,
     online,
@@ -45,6 +47,13 @@ export function LoginHomePage() {
   const [lockout, setLockout] = useState(() => getLockout());
   const [staffLockCleared, setStaffLockCleared] = useState(false);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
+  const [staffUsername, setStaffUsername] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [staffTotp, setStaffTotp] = useState('');
+  const [staffStep, setStaffStep] = useState<StaffLockoutStep>('credentials');
+  const [staffBusy, setStaffBusy] = useState(false);
+  const [staffError, setStaffError] = useState<string | null>(null);
   const videoFallbackIndex = useRef(0);
 
   const videoFallbacks = useRef<string[]>([]);
@@ -65,6 +74,8 @@ export function LoginHomePage() {
     if (staffLockoutClearTick === 0) return;
     setLockout(getLockout());
     setStaffLockCleared(true);
+    setStaffModalOpen(false);
+    setStaffError(null);
   }, [staffLockoutClearTick]);
 
   useEffect(() => {
@@ -115,6 +126,58 @@ export function LoginHomePage() {
       setLockout(recordFailure());
     } finally {
       setBusy(false);
+    }
+  }
+
+  function openStaffLockoutModal() {
+    setStaffModalOpen(true);
+    setStaffStep('credentials');
+    setStaffUsername('');
+    setStaffPassword('');
+    setStaffTotp('');
+    setStaffError(null);
+  }
+
+  function closeStaffLockoutModal() {
+    setStaffModalOpen(false);
+    setStaffError(null);
+  }
+
+  async function submitStaffCredentials(e: React.FormEvent) {
+    e.preventDefault();
+    setStaffBusy(true);
+    setStaffError(null);
+    try {
+      await staffClearLoginLockout(
+        normalizeUsername(staffUsername),
+        trimValue(staffPassword),
+        undefined,
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.message === 'TOTP code is required') {
+        setStaffStep('totp');
+      } else {
+        setStaffError(err instanceof Error ? err.message : 'Staff sign-in failed');
+      }
+    } finally {
+      setStaffBusy(false);
+    }
+  }
+
+  async function submitStaffTotp(e: React.FormEvent) {
+    e.preventDefault();
+    setStaffBusy(true);
+    setStaffError(null);
+    try {
+      await staffClearLoginLockout(
+        normalizeUsername(staffUsername),
+        trimValue(staffPassword),
+        trimValue(staffTotp),
+      );
+    } catch (err) {
+      setStaffError(err instanceof Error ? err.message : 'Staff sign-in failed');
+    } finally {
+      setStaffBusy(false);
     }
   }
 
@@ -257,12 +320,8 @@ export function LoginHomePage() {
             Staff login
           </button>
           {lockout.locked ? (
-            <button
-              type="button"
-              className="link a360-staff-login"
-              onClick={clearStaffLoginLockout}
-            >
-              Clear sign-in lock
+            <button type="button" className="link a360-staff-login" onClick={openStaffLockoutModal}>
+              Clear sign-in lock (staff)
             </button>
           ) : null}
           {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: version line exposes build label to screen readers */}
@@ -271,6 +330,83 @@ export function LoginHomePage() {
           </p>
         </footer>
       </main>
+
+      {staffModalOpen ? (
+        <div className="a360-modal-scrim">
+          <div
+            className="confirm-end glass-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="staff-lockout-title"
+          >
+            <h2 id="staff-lockout-title">Staff sign-in required</h2>
+            <p className="hint">
+              Administrator credentials are required to clear the sign-in lock.
+            </p>
+            {staffStep === 'credentials' ? (
+              <form className="a360-form" onSubmit={submitStaffCredentials}>
+                <label className="a360-field">
+                  Admin username
+                  <input
+                    value={staffUsername}
+                    onChange={(e) => setStaffUsername(sanitizeUsernameInput(e.target.value))}
+                    required
+                    autoComplete="username"
+                  />
+                </label>
+                <label className="a360-field">
+                  Password
+                  <input
+                    id="kiosk-staff-password"
+                    type="password"
+                    value={staffPassword}
+                    onChange={(e) => setStaffPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                  />
+                </label>
+                {staffError ? <p className="error">{staffError}</p> : null}
+                <div className="confirm-end-actions">
+                  <button type="submit" className="primary-glow-btn" disabled={staffBusy}>
+                    {staffBusy ? 'Signing in…' : 'Clear lock'}
+                  </button>
+                  <button type="button" className="secondary" onClick={closeStaffLockoutModal}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form className="a360-form" onSubmit={submitStaffTotp}>
+                <label className="a360-field">
+                  Authenticator code
+                  <input
+                    value={staffTotp}
+                    onChange={(e) => setStaffTotp(e.target.value.replace(/\s+/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    required
+                  />
+                </label>
+                {staffError ? <p className="error">{staffError}</p> : null}
+                <div className="confirm-end-actions">
+                  <button type="submit" className="primary-glow-btn" disabled={staffBusy}>
+                    {staffBusy ? 'Verifying…' : 'Verify and clear lock'}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setStaffStep('credentials');
+                      setStaffTotp('');
+                    }}
+                  >
+                    Back
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

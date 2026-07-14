@@ -9,10 +9,11 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useRef, useState } from 'react';
 import { AllowListEditor } from '../components/AllowListEditor';
 import { AsyncActionButton } from '../components/AsyncActionButton';
+import { StationHealthPanel } from '../components/StationHealthPanel';
 import { useKiosk } from '../context/KioskProvider';
+import { loadLaunchEntries } from '../lib/allowList';
 import { KIOSK_LOGO_URL } from '../lib/config';
 import { otpInputProps } from '../lib/inputHints';
-import { setWatchdogPause } from '../lib/tauriCommands';
 
 const SETUP_IDLE_MS = 15 * 60 * 1000;
 
@@ -32,6 +33,7 @@ export function SetupPage() {
   const [totp, setTotp] = useState('');
   const [loginStep, setLoginStep] = useState<SetupLoginStep>('credentials');
   const [authenticated, setAuthenticated] = useState(false);
+  const [allowListCount, setAllowListCount] = useState(() => loadLaunchEntries().length);
   const [busy, setBusy] = useState(false);
   const lockAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
   const factoryResetAction = useAsyncAction({ throttleMs: 1000, lockOnSuccess: true });
@@ -94,11 +96,11 @@ export function SetupPage() {
   }
 
   async function exitToDesktop() {
-    await setWatchdogPause(900, 'maintenance');
     await getCurrentWindow().close();
   }
 
   if (authenticated) {
+    const allowListEmpty = allowListCount === 0;
     return (
       <div className="setup-shell">
         <section className="panel panel-setup">
@@ -106,7 +108,17 @@ export function SetupPage() {
           <p className="hint">
             Scan and allow software on this station. Media is picked from the central CDN gallery.
           </p>
-          <AllowListEditor />
+          {allowListEmpty ? (
+            <div className="maintenance-banner" role="alert">
+              <p className="error-headline">No allowed applications configured</p>
+              <p className="error-detail">
+                Players cannot launch games until at least one executable is on the allow-list. Scan
+                installed software or add entries manually before re-locking.
+              </p>
+            </div>
+          ) : null}
+          <StationHealthPanel />
+          <AllowListEditor onEntriesChange={setAllowListCount} />
           <div className="setup-actions">
             <AsyncActionButton
               className="secondary"
@@ -116,7 +128,7 @@ export function SetupPage() {
               error={lockAction.failed}
               errorLabel={lockAction.errorMessage ?? 'Could not lock station'}
               loadingLabel="Locking…"
-              disabled={lockAction.disabled || factoryResetAction.loading}
+              disabled={lockAction.disabled || factoryResetAction.loading || allowListEmpty}
               onClick={() => void lockAction.run(() => exitSetup())}
             >
               Done — re-lock

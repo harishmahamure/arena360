@@ -146,25 +146,26 @@ mod win {
         CallNextHookEx(next_hook_handle(), code, wparam, lparam)
     }
 
-    fn ensure_hook_installed() {
+    fn ensure_hook_installed() -> Result<(), String> {
         ENABLED.store(true, Ordering::SeqCst);
         let Ok(mut guard) = HOOK.lock() else {
             ENABLED.store(false, Ordering::SeqCst);
-            return;
+            return Err("keyboard hook mutex poisoned".to_string());
         };
         if guard.is_some() {
-            return;
+            return Ok(());
         }
         unsafe {
             let module = GetModuleHandleW(None).unwrap_or_default();
             let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), module, 0)
-                .expect("keyboard hook");
+                .map_err(|e| format!("keyboard hook install failed: {e}"))?;
             *guard = Some(HookHandle(hook));
         }
+        Ok(())
     }
 
-    pub fn install() {
-        ensure_hook_installed();
+    pub fn install() -> Result<(), String> {
+        ensure_hook_installed()
     }
 
     pub fn remove() {
@@ -189,8 +190,8 @@ pub fn set_app_handle(app: tauri::AppHandle) {
 pub fn set_app_handle(_app: tauri::AppHandle) {}
 
 #[cfg(target_os = "windows")]
-pub fn install_hook() {
-    win::install();
+pub fn install_hook() -> Result<(), String> {
+    win::install()
 }
 
 #[cfg(target_os = "windows")]
@@ -199,7 +200,9 @@ pub fn remove_hook() {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn install_hook() {}
+pub fn install_hook() -> Result<(), String> {
+    Ok(())
+}
 
 #[cfg(not(target_os = "windows"))]
 pub fn remove_hook() {}

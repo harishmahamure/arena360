@@ -80,3 +80,45 @@ describe('KioskRealtimeClient failure logging', () => {
     }
   });
 });
+
+describe('KioskRealtimeClient stale socket ownership', () => {
+  it('does not null the replacement socket when an older socket closes', () => {
+    const client = new KioskRealtimeClient();
+    const sockets: WebSocket[] = [];
+
+    const originalWebSocket = globalThis.WebSocket;
+    class TrackingWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      readyState = TrackingWebSocket.OPEN;
+      onopen: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      constructor() {
+        sockets.push(this as unknown as WebSocket);
+        queueMicrotask(() => this.onopen?.());
+      }
+      close() {
+        this.readyState = TrackingWebSocket.CLOSED;
+        queueMicrotask(() => this.onclose?.());
+      }
+      send() {}
+    }
+    globalThis.WebSocket = TrackingWebSocket as unknown as typeof WebSocket;
+
+    try {
+      client.connect();
+      expect(sockets).toHaveLength(1);
+      client.connect();
+      expect(sockets).toHaveLength(2);
+      sockets[0]?.close();
+      expect(client.connected).toBe(true);
+      client.disconnect();
+    } finally {
+      globalThis.WebSocket = originalWebSocket;
+    }
+  });
+});

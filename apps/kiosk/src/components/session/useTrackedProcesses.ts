@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { LaunchEntry } from '../../lib/allowList';
 import { loadLaunchEntries } from '../../lib/allowList';
 import { installedEntries } from '../../lib/launch';
@@ -67,7 +67,6 @@ interface UseTrackedProcessesOptions {
 
 /** Poll native tracked PIDs during an active player session (ADR-0020). */
 export function useTrackedProcesses({ enabled, onError }: UseTrackedProcessesOptions) {
-  const entries = useMemo(() => installedEntries(), []);
   const [processes, setProcesses] = useState<TrackedApp[]>([]);
   const [closing, setClosing] = useState(false);
 
@@ -76,14 +75,15 @@ export function useTrackedProcesses({ enabled, onError }: UseTrackedProcessesOpt
       setProcesses([]);
       return;
     }
+    const currentEntries = installedEntries().length > 0 ? installedEntries() : loadLaunchEntries();
     try {
       const tracked = await getTrackedProcesses();
-      setProcesses(toTrackedApps(tracked, entries.length > 0 ? entries : loadLaunchEntries()));
+      setProcesses(toTrackedApps(tracked, currentEntries));
     } catch {
       // Off-webview dev or non-Tauri: treat as empty.
       setProcesses([]);
     }
-  }, [enabled, entries]);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {

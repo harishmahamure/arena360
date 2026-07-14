@@ -7,7 +7,7 @@ import { LoginHomePage } from './LoginHomePage';
 const playerLogin = vi.fn();
 const clearLoginNotice = vi.fn();
 const clearError = vi.fn();
-const clearStaffLoginLockout = vi.fn();
+const staffClearLoginLockout = vi.fn();
 const enterSetup = vi.fn();
 
 const { restartStation, shutdownStation, sleepStation } = vi.hoisted(() => ({
@@ -23,8 +23,9 @@ let staffLockoutClearTick = 0;
 vi.mock('../context/KioskProvider', () => ({
   useKiosk: () => ({
     playerLogin,
+    goToCreateAccount: vi.fn(),
     enterSetup,
-    clearStaffLoginLockout,
+    staffClearLoginLockout,
     get error() {
       return error;
     },
@@ -61,6 +62,7 @@ describe('LoginHomePage', () => {
     staffLockoutClearTick = 0;
     vi.clearAllMocks();
     vi.useRealTimers();
+    staffClearLoginLockout.mockResolvedValue(undefined);
   });
 
   it('renders the sign-in form and station controls', () => {
@@ -89,15 +91,29 @@ describe('LoginHomePage', () => {
     render(<LoginHomePage />);
     expect(screen.getByText(/too many attempts/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /clear sign-in lock/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /clear sign-in lock \(staff\)/i }),
+    ).toBeInTheDocument();
   });
 
-  it('clear sign-in lock button calls staff reset handler', () => {
+  it('requires staff authentication to clear sign-in lock', async () => {
     const failures = Array.from({ length: MAX_FAILURES }, () => Date.now());
     localStorage.setItem('gaming-cafe.kiosk.login_failures', JSON.stringify(failures));
     render(<LoginHomePage />);
-    fireEvent.click(screen.getByRole('button', { name: /clear sign-in lock/i }));
-    expect(clearStaffLoginLockout).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /clear sign-in lock \(staff\)/i }));
+    expect(screen.getByRole('dialog', { name: /staff sign-in required/i })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/admin username/i), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByRole('dialog').querySelector('#kiosk-staff-password')!, {
+      target: { value: 'secret' },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /clear lock/i }));
+    });
+
+    expect(staffClearLoginLockout).toHaveBeenCalledWith('admin', 'secret', undefined);
   });
 
   it('staff lockout clear tick shows cleared banner and enables sign-in', async () => {

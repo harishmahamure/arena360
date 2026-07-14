@@ -15,6 +15,7 @@ function tryAutoplay(video: HTMLVideoElement) {
 
 export function GameCard({ entry, launchable, launching, disabled, onLaunch }: GameCardProps) {
   const clickable = launchable && !disabled;
+  const statusLabel = launchable ? 'Ready to launch' : 'Executable missing';
 
   return (
     <button
@@ -22,6 +23,7 @@ export function GameCard({ entry, launchable, launching, disabled, onLaunch }: G
       className="a360-game-card"
       disabled={!clickable || launching}
       onClick={onLaunch}
+      aria-label={`${entry.name}. ${statusLabel}`}
       title={launchable ? entry.name : `${entry.name} (executable missing)`}
     >
       {entry.thumbnailUrl ? (

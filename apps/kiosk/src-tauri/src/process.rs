@@ -46,6 +46,8 @@ static TRACKED: Mutex<Vec<WatchEntry>> = Mutex::new(Vec::new());
 static MONITOR_RUNNING: Mutex<bool> = Mutex::new(false);
 static LAST_ALLOWED_HWND: Mutex<Option<isize>> = Mutex::new(None);
 static CLEANUP_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+/// Set by the webview when a player session is active; launch_allowed requires this.
+static SESSION_LAUNCH_ENABLED: AtomicBool = AtomicBool::new(false);
 
 const MONITOR_INTERVAL_SECS: u64 = 2;
 const CLEANUP_SETTLE_MS: u64 = 250;
@@ -67,14 +69,36 @@ fn normalize_path(path: &str) -> String {
     path.replace('\\', "/").to_lowercase()
 }
 
+fn canonical_path(path: &str) -> Option<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    std::fs::canonicalize(trimmed)
+        .ok()
+        .map(|p| normalize_path(&p.to_string_lossy()))
+}
+
+fn paths_match(candidate: &str, allowed: &str) -> bool {
+    if let (Some(c), Some(a)) = (canonical_path(candidate), canonical_path(allowed)) {
+        return c == a;
+    }
+    normalize_path(candidate) == normalize_path(allowed)
+}
+
 fn is_allowed(path: &str, allow_list: &[String]) -> bool {
     if allow_list.is_empty() {
-        return true;
+        return false;
     }
-    let norm = normalize_path(path);
-    allow_list
-        .iter()
-        .any(|entry| norm.ends_with(&normalize_path(entry)))
+    allow_list.iter().any(|entry| paths_match(path, entry))
+}
+
+pub fn set_session_launch_enabled(enabled: bool) {
+    SESSION_LAUNCH_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+fn session_launch_permitted() -> bool {
+    SESSION_LAUNCH_ENABLED.load(Ordering::SeqCst) && crate::lockdown::is_locked()
 }
 
 fn spawn_process(path: &str, args: Option<&[String]>) -> Result<u32, String> {
@@ -1280,6 +1304,12 @@ fn log_launch_failure(stage: &str, executable_path: &str, detail: &str) {
 }
 
 #[tauri::command]
+pub fn set_session_launch_enabled_cmd(enabled: bool) -> Result<(), String> {
+    set_session_launch_enabled(enabled);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn launch_allowed(
     app: AppHandle,
     executable_path: String,
@@ -1289,6 +1319,16 @@ pub fn launch_allowed(
     if cleanup_in_progress() {
         let err = "Session cleanup in progress".to_string();
         log_launch_failure("cleanup_in_progress", &executable_path, &err);
+        return Err(err);
+    }
+    if !session_launch_permitted() {
+        let err = "Launch is only permitted during an active player session".to_string();
+        log_launch_failure("session_gate", &executable_path, &err);
+        return Err(err);
+    }
+    if allow_list.is_empty() {
+        let err = "Allow-list is empty".to_string();
+        log_launch_failure("allow_list_empty", &executable_path, &err);
         return Err(err);
     }
     if !is_allowed(&executable_path, &allow_list) {
@@ -1307,6 +1347,12 @@ pub fn launch_allowed(
     ) {
         Ok(pid) => pid,
         Err(e) => {
+            crate::boost::restore_game_boost();
+            if has_tracked_processes() {
+                apply_kiosk_session_foreground(&app);
+            } else {
+                apply_kiosk_shell_lockdown(&app);
+            }
             log_launch_failure("spawn", &executable_path, &e);
             return Err(e);
         }
@@ -1404,8 +1450,7 @@ pub fn close_tracked_apps(app: AppHandle) -> Result<KillResult, String> {
     Ok(close_tracked_apps_cleanup(&app))
 }
 
-#[tauri::command]
-pub fn clear_tracked_processes() -> Result<(), String> {
+fn clear_tracked_processes_internal() -> Result<(), String> {
     TRACKED.lock().map_err(|e| e.to_string())?.clear();
     Ok(())
 }
@@ -1415,7 +1460,7 @@ mod tests {
     use super::{
         all_tree_pids, executable_basename, format_launch_failure, has_tracked_processes,
         is_allowed, is_launcher_executable, is_launcher_login_process, is_overlay_launcher_exe,
-        is_session_keep_process, normalize_path, WatchEntry,
+        is_session_keep_process, normalize_path, paths_match, WatchEntry,
     };
 
     #[test]
@@ -1424,14 +1469,27 @@ mod tests {
     }
 
     #[test]
-    fn empty_allow_list_permits_everything() {
-        assert!(is_allowed("C:/anything.exe", &[]));
+    fn empty_allow_list_denies_everything() {
+        assert!(!is_allowed("C:/anything.exe", &[]));
     }
 
     #[test]
-    fn allow_list_matches_by_suffix_case_insensitively() {
+    fn allow_list_matches_exact_path_case_insensitively() {
         let allow = vec!["C:\\Program Files\\Steam\\steam.exe".to_string()];
         assert!(is_allowed("c:/program files/steam/STEAM.exe", &allow));
+    }
+
+    #[test]
+    fn allow_list_rejects_suffix_collision() {
+        let allow = vec!["C:\\Program Files\\Steam\\steam.exe".to_string()];
+        assert!(!is_allowed(
+            "D:/evil/Program Files/Steam/steam.exe",
+            &allow
+        ));
+        assert!(!paths_match(
+            "D:/evil/Program Files/Steam/steam.exe",
+            "C:\\Program Files\\Steam\\steam.exe"
+        ));
     }
 
     #[test]
@@ -1531,7 +1589,7 @@ mod tests {
     }
 
     fn clear_tracked_for_test() {
-        let _ = super::clear_tracked_processes();
+        let _ = super::clear_tracked_processes_internal();
     }
 
     #[test]

@@ -12,8 +12,6 @@ on:
       - 'apps/kiosk/**'
       - 'packages/**'
       - '.github/workflows/kiosk-ci.yml'
-  # Allow building a downloadable Windows executable on demand from the
-  # Actions tab (Run workflow). No Windows machine required.
   workflow_dispatch:
 
 env:
@@ -25,6 +23,33 @@ env:
   VITE_OFFLINE_GRACE_MINUTES: ${{ vars.VITE_OFFLINE_GRACE_MINUTES || '5' }}
 
 jobs:
+  kiosk-unit:
+    name: Kiosk unit tests (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck kiosk
+        run: pnpm --filter @gaming-cafe/kiosk typecheck
+
+      - name: Vitest (kiosk)
+        run: pnpm --filter @gaming-cafe/kiosk test
+
   kiosk-windows:
     name: Build & test kiosk (windows)
     runs-on: windows-latest
@@ -51,19 +76,23 @@ jobs:
       - name: Cache cargo (kiosk)
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            apps/kiosk/src-tauri
-            apps/kiosk/watchdog
-            apps/kiosk/watchdog-common
+          workspaces: apps/kiosk/src-tauri
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Vitest (kiosk)
+        run: pnpm --filter @gaming-cafe/kiosk test
+
+      - name: Cargo test (kiosk)
+        run: cargo test --manifest-path apps/kiosk/src-tauri/Cargo.toml
+
       - name: Rust clippy (kiosk)
         run: cargo clippy --all-targets --manifest-path apps/kiosk/src-tauri/Cargo.toml -- -D warnings
 
-      # Inject the kiosk's build-time config. Vite bakes these into the web
-      # bundle at build time (not runtime). Override via Settings > Variables.
+      - name: Typecheck kiosk
+        run: pnpm --filter @gaming-cafe/kiosk typecheck
+
       - name: Tauri build (Windows bundle)
         run: |
           echo "VITE_API_URL: $env:VITE_API_URL"
@@ -73,9 +102,6 @@ jobs:
           echo "VITE_OFFLINE_GRACE_MINUTES: $env:VITE_OFFLINE_GRACE_MINUTES"
           pnpm --filter @gaming-cafe/kiosk tauri:build
 
-      # Publish the installers so they can be downloaded from the workflow
-      # run's "Artifacts" section. The NSIS installer (.exe) is the
-      # recommended kiosk distributable (perMachine install).
       - name: Upload Windows installers
         uses: actions/upload-artifact@v4
         with:

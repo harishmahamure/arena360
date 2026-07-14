@@ -53,12 +53,8 @@ export async function setLockdownState(state: 'Locked' | 'SetupRelaxed'): Promis
   await invokeLogged('set_lockdown_state', { state });
 }
 
-export async function setWatchdogPause(durationSecs: number, reason: string): Promise<void> {
-  await invokeLogged('set_watchdog_pause', { durationSecs, reason });
-}
-
-export async function clearWatchdogPause(): Promise<void> {
-  await invokeLogged('clear_watchdog_pause');
+export async function setSessionLaunchEnabled(enabled: boolean): Promise<void> {
+  await invokeLogged('set_session_launch_enabled_cmd', { enabled });
 }
 
 export type LockdownState = 'Locked' | 'SetupRelaxed';
@@ -127,7 +123,7 @@ export async function pickExecutable(): Promise<string | null> {
       directory: false,
       title: 'Select an application',
       filters: [
-        { name: 'Programs', extensions: ['exe', 'bat', 'cmd', 'com', 'lnk'] },
+        { name: 'Programs', extensions: ['exe'] },
         { name: 'All files', extensions: ['*'] },
       ],
     });
@@ -196,10 +192,6 @@ export async function isCleanupInProgress(): Promise<boolean> {
 
 export async function closeTrackedApps(): Promise<{ killed: number; restored: boolean }> {
   return invokeLogged('close_tracked_apps');
-}
-
-export async function clearTrackedProcesses(): Promise<void> {
-  await invokeLogged('clear_tracked_processes');
 }
 
 export interface GameBoostConfig {

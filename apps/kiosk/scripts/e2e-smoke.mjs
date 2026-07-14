@@ -4,7 +4,7 @@
  * Kiosk end-to-end smoke test (K8 `kiosk-e2e-smoke`).
  *
  * Scripts the full happy path against a *running* backend:
- *   register device -> player login -> start session -> end session
+ *   admin login -> provision device -> player login -> start session -> end session
  * and asserts the single-session guard by starting on a second device.
  *
  * This intentionally talks raw HTTP (no Tauri) so it runs in CI/QA. It is a
@@ -12,10 +12,12 @@
  *
  * Required env:
  *   API_URL                  (default http://localhost:3000)
- *   KIOSK_REG_CODE_A         registration code for device A (from admin)
- *   KIOSK_REG_CODE_B         registration code for device B (from admin)
+ *   KIOSK_ADMIN_USERNAME     admin account for provisioning
+ *   KIOSK_ADMIN_PASSWORD
  *   KIOSK_PLAYER_USERNAME    a player with a usable balance for these devices
  *   KIOSK_PLAYER_PASSWORD
+ * Optional:
+ *   KIOSK_ADMIN_TOTP
  */
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3000';
@@ -65,19 +67,40 @@ function assert(cond, message) {
   console.log(`ok: ${message}`);
 }
 
-async function registerDevice(code, name, fingerprint) {
-  const { status, json } = await api('/devices/register', {
+function unwrap(json, key) {
+  return json?.data?.[key] ?? json?.[key];
+}
+
+async function adminLogin() {
+  const username = need('KIOSK_ADMIN_USERNAME');
+  const password = need('KIOSK_ADMIN_PASSWORD');
+  const totp = process.env.KIOSK_ADMIN_TOTP;
+  const { status, json } = await api('/auth/login/admin', {
     method: 'POST',
+    body: { username, password, totp },
+  });
+  assert(status === 200, `admin login (status ${status})`);
+  const token = unwrap(json, 'accessToken');
+  assert(Boolean(token), 'received admin accessToken');
+  return token;
+}
+
+async function provisionDevice(adminToken, name, fingerprint) {
+  const { status, json } = await api('/devices/provision', {
+    method: 'POST',
+    token: adminToken,
     body: {
-      registrationCode: code,
       fingerprint,
       name,
       deviceType: 'PC',
       deviceSubType: 'HIGH_END_PCS',
+      provisionClient: 'kiosk',
     },
   });
-  assert(status === 200 || status === 201, `register ${name} (status ${status})`);
-  return json?.data?.accessToken ?? json?.accessToken;
+  assert(status === 200 || status === 201, `provision ${name} (status ${status})`);
+  const deviceToken = unwrap(json, 'accessToken');
+  assert(Boolean(deviceToken), `received device token for ${name}`);
+  return deviceToken;
 }
 
 async function playerLogin(deviceToken, fingerprint) {
@@ -89,15 +112,16 @@ async function playerLogin(deviceToken, fingerprint) {
     body: { username, password, fingerprint },
   });
   assert(status === 200, `player login (status ${status})`);
-  return json?.data?.accessToken ?? json?.accessToken;
+  const playerToken = unwrap(json, 'accessToken');
+  assert(Boolean(playerToken), 'received player accessToken');
+  return playerToken;
 }
 
 async function main() {
-  const codeA = need('KIOSK_REG_CODE_A');
-  const codeB = need('KIOSK_REG_CODE_B');
+  const adminToken = await adminLogin();
 
-  const deviceTokenA = await registerDevice(codeA, 'E2E-Device-A', FINGERPRINT_A);
-  const deviceTokenB = await registerDevice(codeB, 'E2E-Device-B', FINGERPRINT_B);
+  const deviceTokenA = await provisionDevice(adminToken, 'E2E-Device-A', FINGERPRINT_A);
+  const deviceTokenB = await provisionDevice(adminToken, 'E2E-Device-B', FINGERPRINT_B);
 
   const playerTokenA = await playerLogin(deviceTokenA, FINGERPRINT_A);
   const playerTokenB = await playerLogin(deviceTokenB, FINGERPRINT_B);
@@ -109,7 +133,7 @@ async function main() {
     body: {},
   });
   assert(start.status === 201, `start session on A (status ${start.status})`);
-  const sessionId = start.json?.data?.sessionId ?? start.json?.sessionId;
+  const sessionId = unwrap(start.json, 'sessionId');
   assert(Boolean(sessionId), 'received sessionId');
 
   const conflict = await api('/kiosk/sessions', {

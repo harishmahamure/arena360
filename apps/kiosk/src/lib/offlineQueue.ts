@@ -13,6 +13,8 @@ export interface EndIntent {
   sessionId: string;
   reason: string;
   queuedAt: number;
+  /** Player who queued the intent — replay only for the same player. */
+  playerId?: string;
 }
 
 export function loadEndIntents(): EndIntent[] {
@@ -41,11 +43,10 @@ function save(intents: EndIntent[]): void {
   }
 }
 
-export function enqueueEndIntent(sessionId: string, reason: string): void {
+export function enqueueEndIntent(sessionId: string, reason: string, playerId?: string): void {
   const intents = loadEndIntents();
-  // Dedupe per session — the latest reason wins.
   const next = intents.filter((i) => i.sessionId !== sessionId);
-  next.push({ sessionId, reason, queuedAt: Date.now() });
+  next.push({ sessionId, reason, queuedAt: Date.now(), playerId });
   save(next);
 }
 
@@ -53,8 +54,19 @@ export function removeEndIntent(sessionId: string): void {
   save(loadEndIntents().filter((i) => i.sessionId !== sessionId));
 }
 
+export function clearEndIntents(): void {
+  save([]);
+}
+
 export function hasPendingEndIntents(): boolean {
   return loadEndIntents().length > 0;
+}
+
+/** Intents owned by the current player (or legacy intents without playerId). */
+export function endIntentsForPlayer(playerId: string | null): EndIntent[] {
+  const intents = loadEndIntents();
+  if (!playerId) return intents.filter((i) => !i.playerId);
+  return intents.filter((i) => !i.playerId || i.playerId === playerId);
 }
 
 /** Log a failed replay attempt for a queued end intent. */

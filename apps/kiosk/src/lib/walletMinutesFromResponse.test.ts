@@ -6,12 +6,15 @@ describe('walletMinutesFromResponse', () => {
     expect(walletMinutesFromResponse(120)).toBe(120);
   });
 
-  it('returns 0 when wallet minutes are missing', () => {
+  it('falls back to remainingMinutes when wallet minutes are missing', () => {
+    expect(walletMinutesFromResponse(undefined, 45)).toBe(45);
+  });
+
+  it('returns 0 when both values are missing', () => {
     expect(walletMinutesFromResponse(undefined)).toBe(0);
   });
 
-  it('does not accept effective remaining minutes as wallet', () => {
-    // Effective display (45) must not be passed as wallet — caller supplies wallet only.
-    expect(walletMinutesFromResponse(100)).not.toBe(45);
+  it('prefers wallet minutes over remainingMinutes', () => {
+    expect(walletMinutesFromResponse(100, 45)).toBe(100);
   });
 });

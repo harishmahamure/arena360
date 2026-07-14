@@ -12,6 +12,15 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+fn allowed_cache_url(url: &str) -> bool {
+    let trimmed = url.trim().to_lowercase();
+    trimmed.starts_with("https://cdn.arena360.cloud/")
+        || trimmed.starts_with("http://localhost")
+        || trimmed.starts_with("https://localhost")
+        || trimmed.starts_with("http://127.0.0.1")
+        || trimmed.starts_with("https://127.0.0.1")
+}
+
 fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -39,8 +48,8 @@ fn cache_file_name(url: &str) -> String {
 /// Returns the existing cached path immediately on a hit.
 #[tauri::command]
 pub async fn cache_asset(app: AppHandle, url: String) -> Result<String, String> {
-    if url.trim().is_empty() {
-        return Err("empty url".to_string());
+    if !allowed_cache_url(&url) {
+        return Err("url host is not allowed for caching".to_string());
     }
     let dir = cache_dir(&app)?;
     let target = dir.join(cache_file_name(&url));

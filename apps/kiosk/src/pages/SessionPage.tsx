@@ -1,6 +1,6 @@
 import { SESSION_CLOCK_TICK_MS } from '@gaming-cafe/contracts';
 import { AUTO_END_REMAINING_SECONDS, useAsyncAction } from '@gaming-cafe/utils';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { AsyncActionButton } from '../components/AsyncActionButton';
 import { HomeView } from '../components/session/HomeView';
 import { LibraryView } from '../components/session/LibraryView';
@@ -34,7 +34,15 @@ export function SessionPage() {
     startSession,
     endSession,
     reconcileSession,
+    reauthRequired,
+    playerReauth,
+    dismissReauth,
   } = useKiosk();
+
+  const confirmEndTitleId = useId();
+  const [reauthPassword, setReauthPassword] = useState('');
+  const [reauthBusy, setReauthBusy] = useState(false);
+  const [reauthError, setReauthError] = useState<string | null>(null);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [view, setView] = useState<SessionView>('home');
@@ -234,8 +242,13 @@ export function SessionPage() {
 
       {confirmEnd ? (
         <div className="a360-modal-scrim">
-          <div className="confirm-end glass-card" role="alertdialog" aria-modal="true">
-            <p>End your session now? Unsaved game progress may be lost.</p>
+          <div
+            className="confirm-end glass-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={confirmEndTitleId}
+          >
+            <p id={confirmEndTitleId}>End your session now? Unsaved game progress may be lost.</p>
             <div className="confirm-end-actions">
               <AsyncActionButton
                 className="danger"
@@ -267,6 +280,68 @@ export function SessionPage() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {reauthRequired ? (
+        <div className="a360-modal-scrim">
+          <div
+            className="confirm-end glass-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reauth-title"
+          >
+            <h2 id="reauth-title">Session paused — sign in again</h2>
+            <p className="hint">
+              Your session timed out for security. Re-enter your password to continue playing as{' '}
+              {playerName ?? 'your account'}.
+            </p>
+            <form
+              className="a360-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setReauthBusy(true);
+                setReauthError(null);
+                void playerReauth(reauthPassword)
+                  .then(() => setReauthPassword(''))
+                  .catch((err) => {
+                    setReauthError(err instanceof Error ? err.message : 'Re-authentication failed');
+                  })
+                  .finally(() => setReauthBusy(false));
+              }}
+            >
+              <label className="a360-field" htmlFor="reauth-password">
+                Password
+                <input
+                  id="reauth-password"
+                  type="password"
+                  value={reauthPassword}
+                  onChange={(e) => setReauthPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </label>
+              {reauthError ? <p className="error">{reauthError}</p> : null}
+              <div className="confirm-end-actions">
+                <button type="submit" className="primary-glow-btn" disabled={reauthBusy}>
+                  {reauthBusy ? 'Signing in…' : 'Continue session'}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={reauthBusy}
+                  onClick={() => {
+                    setReauthPassword('');
+                    setReauthError(null);
+                    dismissReauth();
+                    void endSession('auth_expired');
+                  }}
+                >
+                  End session
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

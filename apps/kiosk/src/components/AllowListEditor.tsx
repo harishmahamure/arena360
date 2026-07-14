@@ -6,7 +6,9 @@ import {
   candidateToEntry,
   categorizeByName,
   entryCategory,
+  exportAllowListJson,
   formatLaunchArguments,
+  importAllowListJson,
   isTrustedScanSource,
   type LaunchCategory,
   type LaunchEntry,
@@ -55,7 +57,11 @@ function suggestName(path: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function AllowListEditor() {
+export function AllowListEditor({
+  onEntriesChange,
+}: {
+  onEntriesChange?: (count: number) => void;
+}) {
   const [entries, setEntries] = useState<LaunchEntry[]>(() => loadLaunchEntries());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ScanCandidate[]>([]);
@@ -92,7 +98,7 @@ export function AllowListEditor() {
     const { entries: next, matched } = applyGalleryMediaToEntries(current, items);
     if (matched > 0) {
       saveLaunchEntries(next);
-      setEntries(next);
+      syncEntries(next);
     }
     return matched;
   }, []);
@@ -133,7 +139,7 @@ export function AllowListEditor() {
       galleryItemsRef.current = null;
       const { added, updated, launchersAdded } = mergeScanCandidates(found);
       const mediaMatched = await matchGalleryForAllowList(true);
-      if (mediaMatched === 0) setEntries(loadLaunchEntries());
+      if (mediaMatched === 0) syncEntries(loadLaunchEntries());
       const parts: string[] = [];
       if (added > 0) parts.push(`Auto-imported ${added} apps (${launchersAdded} launchers)`);
       if (updated > 0) parts.push(`${updated} updated`);
@@ -159,6 +165,7 @@ export function AllowListEditor() {
 
   function syncEntries(next: LaunchEntry[]) {
     setEntries(next);
+    onEntriesChange?.(next.length);
     if (selectedId && !next.some((e) => e.id === selectedId)) setSelectedId(null);
   }
 
@@ -246,9 +253,49 @@ export function AllowListEditor() {
       <aside className="catalog-editor-list">
         <div className="allow-list-header">
           <h2>Allowed software ({entries.length})</h2>
-          <button type="button" onClick={() => void runScan()} disabled={scanning}>
-            {scanning ? 'Scanning…' : 'Scan'}
-          </button>
+          <div className="allow-list-header-actions">
+            <button type="button" onClick={() => void runScan()} disabled={scanning}>
+              {scanning ? 'Scanning…' : 'Scan'}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                const blob = new Blob([exportAllowListJson()], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = 'arena360-allow-list.json';
+                anchor.click();
+                URL.revokeObjectURL(url);
+                setStatus('Exported allow-list.');
+              }}
+            >
+              Export
+            </button>
+            <label className="secondary allow-list-import">
+              Import
+              <input
+                type="file"
+                accept="application/json,.json"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  void file.text().then((text) => {
+                    try {
+                      const next = importAllowListJson(text);
+                      syncEntries(next);
+                      setStatus(`Imported ${next.length} entries.`);
+                    } catch (err) {
+                      setStatus(err instanceof Error ? err.message : 'Import failed');
+                    }
+                  });
+                }}
+              />
+            </label>
+          </div>
         </div>
 
         {scanning && progress ? <progress value={progress.scanned} max={progress.total} /> : null}

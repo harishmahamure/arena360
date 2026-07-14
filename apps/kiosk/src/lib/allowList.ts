@@ -172,6 +172,26 @@ export function saveLaunchEntries(entries: LaunchEntry[]): void {
   }
 }
 
+/** Serialize the allow-list for backup or fleet template sharing. */
+export function exportAllowListJson(): string {
+  return JSON.stringify(loadLaunchEntries(), null, 2);
+}
+
+/** Import allow-list entries from JSON; replaces the stored list when valid. */
+export function importAllowListJson(raw: string): LaunchEntry[] {
+  const parsed = safeParse(raw.trim() || null);
+  if (parsed.length === 0) {
+    throw new Error('No valid allow-list entries found in import file');
+  }
+  const normalized = parsed.map((entry) => ({
+    ...entry,
+    id: entry.id || newId(),
+    category: entry.category ?? categorizeByName(entry.name),
+  }));
+  saveLaunchEntries(normalized);
+  return normalized;
+}
+
 function newId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();

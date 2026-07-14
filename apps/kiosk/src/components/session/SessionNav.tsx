@@ -203,7 +203,9 @@ export function SessionNav({
           <button
             type="button"
             className="kiosk-profile-pill"
+            aria-label={`Player menu for ${playerName ?? 'Player'}`}
             aria-expanded={open === 'profile'}
+            aria-haspopup="menu"
             onClick={() => setOpen((p) => (p === 'profile' ? null : 'profile'))}
           >
             <span className="kiosk-profile-name">{playerName ?? 'Player'}</span>
@@ -229,6 +231,7 @@ export function SessionNav({
               <button
                 type="button"
                 className="danger kiosk-profile-end"
+                role="menuitem"
                 onClick={() => {
                   setOpen(null);
                   onEndSession();

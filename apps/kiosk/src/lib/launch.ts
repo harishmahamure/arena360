@@ -34,6 +34,9 @@ function validateLaunchEntry(entry: LaunchEntry): void {
 export async function launchEntry(entry: LaunchEntry, entries: LaunchEntry[]): Promise<void> {
   validateLaunchEntry(entry);
   const allowList = allowListPaths(entries);
+  if (allowList.length === 0) {
+    throw new Error('No applications are configured on this station');
+  }
   const resolved = resolveLaunch(entry);
 
   if (

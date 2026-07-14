@@ -123,6 +123,15 @@ describe('launchEntry validation', () => {
     };
     await expect(launchEntry(entry, [entry])).rejects.toThrow(/Launcher path is required/);
   });
+
+  it('rejects empty allow-list', async () => {
+    const entry: LaunchEntry = {
+      id: '1',
+      name: 'Test',
+      executablePath: 'C:\\Games\\game.exe',
+    };
+    await expect(launchEntry(entry, [])).rejects.toThrow(/No applications are configured/);
+  });
 });
 
 describe('launchErrorMessage', () => {

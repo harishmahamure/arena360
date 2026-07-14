@@ -8,9 +8,8 @@
   auto-logon for a single Windows kiosk user. Invoked from NSIS post-install or manually
   for fleet rollout. Never logs passwords.
 
-  Launches Arena360 at logon via the Arena360 Watchdog sidecar (ADR-0048), which
-  relaunches the main kiosk if it exits unexpectedly. Does not modify Winlogon\Shell
-  or replace explorer.exe as the Windows shell.
+  Launches Arena360 at logon via the Arena360 Kiosk scheduled task (ADR-0041).
+  Does not modify Winlogon\Shell or replace explorer.exe as the Windows shell.
 
 .PARAMETER Uninstall
   Remove autostart task and registry values recorded in the Arena360 marker file.
@@ -35,8 +34,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$WatchdogTaskName = 'Arena360 Watchdog'
-$LegacyKioskTaskName = 'Arena360 Kiosk'
+$KioskTaskName = 'Arena360 Kiosk'
+$LegacyWatchdogTaskName = 'Arena360 Watchdog'
 $MarkerDir = Join-Path $env:ProgramData 'Arena360'
 $MarkerPath = Join-Path $MarkerDir 'registry-hardening.json'
 $WinlogonKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
@@ -223,17 +222,6 @@ function Resolve-EffectiveKioskUser([string]$RequestedUser, [switch]$ExplicitReq
     return $resolved
 }
 
-function Resolve-WatchdogExe([string]$Dir) {
-    if ([string]::IsNullOrWhiteSpace($Dir)) {
-        return $null
-    }
-    $preferred = Join-Path $Dir 'arena360-watchdog.exe'
-    if (Test-Path -LiteralPath $preferred) {
-        return $preferred
-    }
-    return $null
-}
-
 function Resolve-KioskExe([string]$Dir) {
     if ([string]::IsNullOrWhiteSpace($Dir)) {
         return $null
@@ -252,21 +240,13 @@ function Resolve-KioskExe([string]$Dir) {
     return $null
 }
 
-function Remove-LegacyKioskTask {
-    $null = schtasks /Delete /TN $LegacyKioskTaskName /F 2>&1
-    Write-Info "Removed legacy direct kiosk logon task (if present)."
-}
-
-function Remove-WatchdogLogonTask {
-    try {
-        Unregister-ScheduledTask -TaskName $WatchdogTaskName -Confirm:$false -ErrorAction SilentlyContinue
-    } catch {
-        $null = schtasks /Delete /TN $WatchdogTaskName /F 2>&1
-    }
-}
-
 function Remove-LegacyWatchdogTask {
-    Remove-LegacyKioskTask
+    try {
+        Unregister-ScheduledTask -TaskName $LegacyWatchdogTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {
+        $null = schtasks /Delete /TN $LegacyWatchdogTaskName /F 2>&1
+    }
+    Write-Info 'Removed legacy Arena360 Watchdog task (if present).'
 }
 
 function Clear-LegacyWatchdogPause {
@@ -277,24 +257,24 @@ function Clear-LegacyWatchdogPause {
     }
 }
 
-function Test-WatchdogLogonTaskInteractive {
-    $query = schtasks /Query /TN $WatchdogTaskName /V /FO LIST 2>&1
+function Test-KioskLogonTaskInteractive {
+    $query = schtasks /Query /TN $KioskTaskName /V /FO LIST 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Could not verify $WatchdogTaskName task: $query"
+        Write-Warn "Could not verify $KioskTaskName task: $query"
         return
     }
     $logonLine = $query | Where-Object { $_ -match 'Logon Mode' }
     if ($logonLine -match 'Interactive') {
-        Write-Info "Verified $WatchdogTaskName logon mode is interactive."
+        Write-Info "Verified $KioskTaskName logon mode is interactive."
     } else {
-        Write-Warn "$WatchdogTaskName may not run in the user desktop session. Logon Mode: $logonLine"
+        Write-Warn "$KioskTaskName may not run in the user desktop session. Logon Mode: $logonLine"
     }
 }
 
-function Install-WatchdogLogonTask([string]$InstallDirectory, [string]$RunAsUser) {
-    $watchdogExe = Resolve-WatchdogExe $InstallDirectory
-    if (-not $watchdogExe) {
-        Write-Warn "Watchdog binary not found under $InstallDirectory; skipping scheduled task."
+function Install-KioskLogonTask([string]$InstallDirectory, [string]$RunAsUser) {
+    $kioskExe = Resolve-KioskExe $InstallDirectory
+    if (-not $kioskExe) {
+        Write-Warn "Kiosk binary not found under $InstallDirectory; skipping scheduled task."
         return $false
     }
 
@@ -305,13 +285,17 @@ function Install-WatchdogLogonTask([string]$InstallDirectory, [string]$RunAsUser
         return $false
     }
 
-    Remove-LegacyKioskTask
+    Remove-LegacyWatchdogTask
     Clear-LegacyWatchdogPause
-    Remove-WatchdogLogonTask
+    try {
+        Unregister-ScheduledTask -TaskName $KioskTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {
+        $null = schtasks /Delete /TN $KioskTaskName /F 2>&1
+    }
 
-    Write-Info "Registering $WatchdogTaskName for user '$RunAsUser' at logon (interactive, 30s delay)."
+    Write-Info "Registering $KioskTaskName for user '$RunAsUser' at logon (interactive, 30s delay)."
 
-    $action = New-ScheduledTaskAction -Execute $watchdogExe
+    $action = New-ScheduledTaskAction -Execute $kioskExe
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $RunAsUser
     $trigger.Delay = 'PT30S'
     $principal = New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType Interactive -RunLevel Limited
@@ -322,7 +306,7 @@ function Install-WatchdogLogonTask([string]$InstallDirectory, [string]$RunAsUser
 
     try {
         Register-ScheduledTask `
-            -TaskName $WatchdogTaskName `
+            -TaskName $KioskTaskName `
             -Action $action `
             -Trigger $trigger `
             -Principal $principal `
@@ -330,43 +314,42 @@ function Install-WatchdogLogonTask([string]$InstallDirectory, [string]$RunAsUser
             -Force | Out-Null
     } catch {
         Write-Warn "Register-ScheduledTask failed; falling back to schtasks: $_"
-        $quoted = "`"$watchdogExe`""
-        $result = schtasks /Create /TN $WatchdogTaskName /TR $quoted /SC ONLOGON /RU $RunAsUser /IT /DELAY 0000:30 /RL LIMITED /F 2>&1
+        $quoted = "`"$kioskExe`""
+        $result = schtasks /Create /TN $KioskTaskName /TR $quoted /SC ONLOGON /RU $RunAsUser /IT /DELAY 0000:30 /RL LIMITED /F 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Warn "Could not register watchdog logon task (exit $LASTEXITCODE): $result"
+            Write-Warn "Could not register kiosk logon task (exit $LASTEXITCODE): $result"
             return $false
         }
     }
 
-    $kioskExe = Resolve-KioskExe $InstallDirectory
     $marker = Read-Marker
     if (-not $marker) {
         $marker = [ordered]@{}
     }
     $marker.kioskUser = $RunAsUser
-    if ($kioskExe) {
-        $marker.installDir = Split-Path -Parent $kioskExe
-    } else {
-        $marker.installDir = $InstallDirectory
-    }
+    $marker.installDir = Split-Path -Parent $kioskExe
     Write-Marker $marker
 
-    Write-Info "Registered $WatchdogTaskName to start at logon."
-    Test-WatchdogLogonTaskInteractive
+    Write-Info "Registered $KioskTaskName to start at logon."
+    Test-KioskLogonTaskInteractive
     return $true
 }
 
-function Install-KioskLogonTask([string]$KioskExe, [string]$RunAsUser) {
+function Install-KioskLogonTaskFromExe([string]$KioskExe, [string]$RunAsUser) {
     if ([string]::IsNullOrWhiteSpace($KioskExe)) {
         return $false
     }
     $installDir = Split-Path -Parent $KioskExe
-    return Install-WatchdogLogonTask -InstallDirectory $installDir -RunAsUser $RunAsUser
+    return Install-KioskLogonTask -InstallDirectory $installDir -RunAsUser $RunAsUser
 }
 
 function Remove-KioskLogonTask {
-    Remove-WatchdogLogonTask
-    Remove-LegacyKioskTask
+    try {
+        Unregister-ScheduledTask -TaskName $KioskTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {
+        $null = schtasks /Delete /TN $KioskTaskName /F 2>&1
+    }
+    Remove-LegacyWatchdogTask
     Write-Info 'Removed kiosk autostart scheduled tasks (if present).'
 }
 
@@ -507,7 +490,7 @@ if ($RefreshAutostartOnly) {
         exit 1
     }
     $KioskUser = Resolve-EffectiveKioskUser $KioskUser -ExplicitRequest:$KioskUserExplicit
-    if (-not (Install-KioskLogonTask -KioskExe $kioskExe -RunAsUser $KioskUser)) {
+    if (-not (Install-KioskLogonTaskFromExe -KioskExe $kioskExe -RunAsUser $KioskUser)) {
         exit 1
     }
     Write-Info 'Autostart task refreshed.'
@@ -517,7 +500,7 @@ if ($RefreshAutostartOnly) {
 if ($ShellMode -eq 'ReplaceShell') {
     Write-Warn 'Shell replacement (-ShellMode ReplaceShell) is not automated; see KIOSK-WINDOWS-DEPLOYMENT.md Layer 1 Option B.'
 } elseif ($ShellMode -eq 'RunKey') {
-    Write-Warn 'Run-key shell mode is optional; the Arena360 Watchdog scheduled task launches the kiosk at logon.'
+    Write-Warn 'Run-key shell mode is optional; the Arena360 Kiosk scheduled task launches the kiosk at logon.'
 }
 
 $effectiveKioskUser = Resolve-EffectiveKioskUser $KioskUser -ExplicitRequest:$KioskUserExplicit
@@ -526,10 +509,10 @@ $skipStart = $SkipAutostart -or $SkipWatchdog
 $autostartRegistered = $true
 if (-not $skipStart) {
     if ([string]::IsNullOrWhiteSpace($InstallDir)) {
-        Write-Warn 'InstallDir not provided; skipping watchdog logon task.'
+        Write-Warn 'InstallDir not provided; skipping kiosk logon task.'
         $autostartRegistered = $false
     } else {
-        $autostartRegistered = Install-WatchdogLogonTask -InstallDirectory $InstallDir -RunAsUser $effectiveKioskUser
+        $autostartRegistered = Install-KioskLogonTask -InstallDirectory $InstallDir -RunAsUser $effectiveKioskUser
     }
 }
 
@@ -558,8 +541,8 @@ if ($AutoLogonPassword) {
 }
 
 if (-not $skipStart -and -not $autostartRegistered) {
-    Write-Warn 'Failed to register watchdog logon autostart.'
-    Write-InstallNeedsRepair 'Failed to register watchdog logon autostart.'
+    Write-Warn 'Failed to register kiosk logon autostart.'
+    Write-InstallNeedsRepair 'Failed to register kiosk logon autostart.'
     exit 1
 }
 

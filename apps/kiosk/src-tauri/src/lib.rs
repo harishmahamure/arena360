@@ -11,7 +11,6 @@ mod process;
 mod scan;
 mod storage;
 mod update;
-mod watchdog_ipc;
 mod webview2;
 
 use instance_mutex::ensure_single_instance;
@@ -69,8 +68,14 @@ pub fn run() {
         })
         .setup(|app| {
             register_keyboard_app(app.handle().clone());
+            #[cfg(windows)]
             if let Err(e) = init_locked_on_startup(app.handle()) {
                 diagnostics::error(format!("lockdown init failed: {e}"));
+                return Err(e.into());
+            }
+            #[cfg(not(windows))]
+            if let Err(e) = init_locked_on_startup(app.handle()) {
+                diagnostics::warn(format!("lockdown init failed (non-windows): {e}"));
                 let _ = app.emit(
                     "kiosk-diagnostic",
                     serde_json::json!({
@@ -106,13 +111,11 @@ pub fn run() {
             process::kill_tracked_processes,
             process::is_cleanup_in_progress_cmd,
             process::close_tracked_apps,
-            process::clear_tracked_processes,
+            process::set_session_launch_enabled_cmd,
             boost::set_game_boost_config,
             boost::get_game_boost_config,
             cache::cache_asset,
             update::prepare_for_update,
-            watchdog_ipc::set_watchdog_pause,
-            watchdog_ipc::clear_watchdog_pause,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

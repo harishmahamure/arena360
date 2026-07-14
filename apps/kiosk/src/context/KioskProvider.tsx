@@ -10,11 +10,14 @@ import {
   useRef,
   useState,
 } from 'react';
+import { saveLaunchEntries } from '../lib/allowList';
+import { probeApiHealth } from '../lib/apiHealth';
 import { SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
 import { isTokenAuthFailure, registerAuthSessionHandlers } from '../lib/authSession';
 import { applyBalanceUpdated, mergeReconciledSession } from '../lib/balanceUpdated';
 import { appendKioskLog } from '../lib/bootDiagnostics';
 import { SESSION_RECONCILE_MS } from '../lib/config';
+import { readStoredDeviceStatus, storeDeviceStatus } from '../lib/deviceStatusStore';
 import {
   clearPlayerSession,
   getHttpClient,
@@ -23,10 +26,12 @@ import {
   persistPlayerToken,
   tokenCache,
 } from '../lib/http';
+import type { ActiveSessionDto, KioskSessionResponseDto } from '../lib/kioskApiTypes';
 import { resetLoginLockoutByStaff } from '../lib/loginLockout';
 import {
+  clearEndIntents,
+  endIntentsForPlayer,
   enqueueEndIntent,
-  loadEndIntents,
   logEndIntentReplayFailure,
   removeEndIntent,
 } from '../lib/offlineQueue';
@@ -53,14 +58,20 @@ import {
   isCleanupInProgress,
   killTrackedProcesses,
   setLockdownState,
+  setSessionLaunchEnabled,
 } from '../lib/tauriCommands';
 import { walletMinutesFromResponse } from '../lib/walletMinutesFromResponse';
 
-/** Fire-and-forget session-end process cleanup (runs after login UI is shown). */
-function runSessionCleanupInBackground(): void {
-  void killTrackedProcesses().catch((e) => {
+async function awaitNativeSessionCleanup(): Promise<void> {
+  try {
+    await killTrackedProcesses();
+    for (let i = 0; i < 50; i++) {
+      if (!(await isCleanupInProgress())) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  } catch (e) {
     void appendKioskLog('warn', `[session] killTrackedProcesses failed: ${String(e)}`);
-  });
+  }
 }
 
 async function assertSessionCleanupIdle(setErrorFn: (msg: string) => void): Promise<boolean> {
@@ -94,31 +105,8 @@ export interface KioskRegisterPayload {
   lastName?: string;
 }
 
-interface KioskSessionResponse {
-  sessionId: string;
-  balanceId: string;
-  deviceId: string;
-  startTime: string;
-  remainingMinutes: number;
-  walletBalanceMinutes?: number;
-  resumed: boolean;
-  deductionProfile?: DeductionProfile | null;
-  cafeTimezone?: string;
-  timeCreditsConsumed?: number | null;
-  expiryDate?: string;
-}
-
-interface LoginActiveSessionResponse {
-  id: string;
-  startTime: string;
-  balanceId: string;
-  remainingMinutes?: number;
-  walletBalanceMinutes?: number;
-  deductionProfile?: DeductionProfile | null;
-  cafeTimezone?: string;
-  timeCreditsConsumed?: number | null;
-  expiryDate?: string;
-}
+type KioskSessionResponse = KioskSessionResponseDto;
+type LoginActiveSessionResponse = ActiveSessionDto;
 
 export interface ActiveSession {
   id: string;
@@ -136,7 +124,7 @@ function sessionFromResponse(res: KioskSessionResponse): ActiveSession {
     id: res.sessionId,
     startTime: res.startTime,
     balanceId: res.balanceId,
-    walletBalanceMinutes: walletMinutesFromResponse(res.walletBalanceMinutes),
+    walletBalanceMinutes: walletMinutesFromResponse(res.walletBalanceMinutes, res.remainingMinutes),
     deductionProfile: res.deductionProfile ?? null,
     cafeTimezone: res.cafeTimezone,
     timeCreditsConsumed: res.timeCreditsConsumed ?? null,
@@ -149,7 +137,7 @@ function activeSessionFromLogin(raw: LoginActiveSessionResponse): ActiveSession 
     id: raw.id,
     startTime: raw.startTime,
     balanceId: raw.balanceId,
-    walletBalanceMinutes: walletMinutesFromResponse(raw.walletBalanceMinutes),
+    walletBalanceMinutes: walletMinutesFromResponse(raw.walletBalanceMinutes, raw.remainingMinutes),
     deductionProfile: raw.deductionProfile ?? null,
     cafeTimezone: raw.cafeTimezone,
     timeCreditsConsumed: raw.timeCreditsConsumed ?? null,
@@ -218,9 +206,15 @@ interface KioskContextValue {
   /** Dismiss the single-login conflict screen back to idle. */
   dismissConflict: () => void;
   factoryReset: () => Promise<void>;
-  /** Bumped when staff clears player login lockout from the login screen. */
+  /** True when player JWT expired mid-session and password re-entry is required. */
+  reauthRequired: boolean;
+  /** Re-authenticate with password only (ADR-0017 mid-session expiry). */
+  playerReauth: (password: string) => Promise<void>;
+  dismissReauth: () => void;
+  /** Staff-authenticated clear of player login lockout. */
+  staffClearLoginLockout: (username: string, password: string, totp?: string) => Promise<void>;
+  /** Bumped when staff clears login lockout so LoginHomePage can refresh UI. */
   staffLockoutClearTick: number;
-  clearStaffLoginLockout: () => void;
 }
 
 const KioskContext = createContext<KioskContextValue | null>(null);
@@ -269,15 +263,18 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [deviceStatus, setDeviceStatus] = useState<string | null>(null);
+  const [deviceStatus, setDeviceStatus] = useState<string | null>(readStoredDeviceStatus());
   const [conflictDevice, setConflictDevice] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const [reauthRequired, setReauthRequired] = useState(false);
   const deviceIdRef = useRef<string | null>(null);
   const phaseRef = useRef<AppPhase>('loading');
   const setupRelaxedRef = useRef(false);
   const activeSessionRef = useRef<ActiveSession | null>(null);
-  const cleanupInFlightRef = useRef(false);
+  const sessionTeardownInFlightRef = useRef(false);
+  const bootGenRef = useRef(0);
+  const endSessionRef = useRef<((reason?: string) => Promise<void>) | null>(null);
   const lastClearLockoutAtRef = useRef(0);
   const STAFF_ACTION_DEBOUNCE_MS = 400;
   const bootStepRef = useRef('start');
@@ -313,15 +310,32 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   }, [activeSession]);
 
   useEffect(() => {
-    const syncOnline = () => setOnline(navigator.onLine);
-    syncOnline();
-    window.addEventListener('online', syncOnline);
-    window.addEventListener('offline', syncOnline);
+    const syncNetwork = () => {
+      if (!navigator.onLine) {
+        setOnline(false);
+        return;
+      }
+      void probeApiHealth().then(setOnline);
+    };
+    syncNetwork();
+    window.addEventListener('online', syncNetwork);
+    window.addEventListener('offline', () => setOnline(false));
+    const probeId = setInterval(() => {
+      if (navigator.onLine) void probeApiHealth().then(setOnline);
+    }, 60_000);
     return () => {
-      window.removeEventListener('online', syncOnline);
-      window.removeEventListener('offline', syncOnline);
+      window.removeEventListener('online', syncNetwork);
+      window.removeEventListener('offline', () => setOnline(false));
+      clearInterval(probeId);
     };
   }, []);
+
+  useEffect(() => {
+    const enabled = phase === 'session' && Boolean(activeSession) && !reauthRequired;
+    void setSessionLaunchEnabled(enabled).catch(() => {
+      // Non-Tauri dev builds.
+    });
+  }, [phase, activeSession, reauthRequired]);
 
   const connectWs = useCallback(
     (id: string, playerId?: string) => {
@@ -336,19 +350,18 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   );
 
   const flushEndIntents = useCallback(async () => {
-    const intents = loadEndIntents();
+    const playerId = tokenCache.player ? playerIdFromToken(tokenCache.player) : null;
+    const intents = endIntentsForPlayer(playerId);
     if (intents.length === 0) return;
     const http = getHttpClient();
     for (const intent of intents) {
       try {
-        // Idempotent: ending an already-closed session is a no-op server-side.
         await http.patch(`/kiosk/sessions/${intent.sessionId}/end`, {
           reason: intent.reason,
         });
         removeEndIntent(intent.sessionId);
       } catch (e) {
         logEndIntentReplayFailure(intent.sessionId, e);
-        // Still offline / transient — keep the intent for the next attempt.
         break;
       }
     }
@@ -356,6 +369,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const cleanupSessionAndReturnToLogin = useCallback(
     async (opts?: { staffEnded?: boolean }) => {
+      setReauthRequired(false);
       setActiveSession(null);
       await clearPlayerSession();
       setPlayerName(null);
@@ -364,25 +378,33 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       if (opts?.staffEnded) {
         setLoginNotice('Your session was ended by staff.');
       }
+      await setSessionLaunchEnabled(false).catch(() => {});
+      await awaitNativeSessionCleanup();
       setPhase('login');
       const id = deviceIdRef.current;
       if (id) connectWs(id);
-      runSessionCleanupInBackground();
     },
     [connectWs],
   );
 
-  const handleRemoteSessionEnd = useCallback(
+  const performSessionTeardown = useCallback(
     async (opts?: { staffEnded?: boolean }) => {
-      if (cleanupInFlightRef.current) return;
-      cleanupInFlightRef.current = true;
+      if (sessionTeardownInFlightRef.current) return;
+      sessionTeardownInFlightRef.current = true;
       try {
         await cleanupSessionAndReturnToLogin(opts);
       } finally {
-        cleanupInFlightRef.current = false;
+        sessionTeardownInFlightRef.current = false;
       }
     },
     [cleanupSessionAndReturnToLogin],
+  );
+
+  const handleRemoteSessionEnd = useCallback(
+    async (opts?: { staffEnded?: boolean }) => {
+      await performSessionTeardown(opts);
+    },
+    [performSessionTeardown],
   );
 
   const reconcileSessionOnce = useCallback(
@@ -395,13 +417,22 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         setOnline(true);
         await flushEndIntents();
         if (!res) {
-          await handleRemoteSessionEnd({ staffEnded: opts?.staffEndedOnRemoteEnd ?? false });
+          const staffEnded = opts?.staffEndedOnRemoteEnd ?? false;
+          await handleRemoteSessionEnd({ staffEnded });
           return;
         }
         setActiveSession((prev) => mergeReconciledSession(sessionFromResponse(res), prev));
       } catch (e) {
         void appendKioskLog('warn', `[session] reconcile failed: ${String(e)}`);
-        setOnline(false);
+        if (e instanceof ApiError && isTokenAuthFailure(e.message)) {
+          return;
+        }
+        if (navigator.onLine) {
+          const reachable = await probeApiHealth();
+          setOnline(reachable);
+        } else {
+          setOnline(false);
+        }
       }
     },
     [flushEndIntents, handleRemoteSessionEnd],
@@ -429,8 +460,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         const payload = frame.payload as { status?: string } | undefined;
         if (typeof payload?.status === 'string') {
           setDeviceStatus(payload.status);
+          storeDeviceStatus(payload.status);
           if (payload.status === 'under_maintenance' || payload.status === 'out_of_service') {
-            setPhase((prev) => (prev === 'login' ? 'login' : prev));
+            if (phaseRef.current === 'session') {
+              void endSessionRef.current?.('maintenance');
+            }
           }
         }
       }
@@ -485,21 +519,54 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       return;
     }
     const id = setInterval(() => {
-      void reconcileSessionOnce({ staffEndedOnRemoteEnd: true });
+      void reconcileSessionOnce();
     }, SESSION_RECONCILE_MS);
     return () => clearInterval(id);
   }, [phase, wsConnected, reconcileSessionOnce]);
 
   const handlePlayerAuthExpired = useCallback(async () => {
-    await cleanupSessionAndReturnToLogin();
-
+    if (phaseRef.current === 'session' && activeSessionRef.current) {
+      setReauthRequired(true);
+      return;
+    }
+    await performSessionTeardown();
     setConflictDevice(null);
     setError(SESSION_EXPIRED_MESSAGE);
-  }, [cleanupSessionAndReturnToLogin]);
+  }, [performSessionTeardown]);
+
+  const dismissReauth = useCallback(() => {
+    setReauthRequired(false);
+  }, []);
+
+  const playerReauth = useCallback(
+    async (password: string) => {
+      if (!playerName) throw new Error('Player name missing');
+      const http = getHttpClient();
+      const res = await http.post<{
+        accessToken: string;
+        user: { id: string; username: string; role: string };
+        activeSession?: LoginActiveSessionResponse | null;
+      }>('/auth/login/player', { username: playerName, password });
+
+      await persistPlayerToken(res.accessToken);
+      setPlayerRole(res.user.role);
+      const sessionRes = await http.get<KioskSessionResponse | null>('/kiosk/sessions/current');
+      if (sessionRes) {
+        setActiveSession(sessionFromResponse(sessionRes));
+      } else if (res.activeSession) {
+        setActiveSession(activeSessionFromLogin(res.activeSession));
+      }
+      setReauthRequired(false);
+      setOnline(true);
+      const id = deviceIdRef.current;
+      if (id) connectWs(id, res.user.id);
+    },
+    [connectWs, playerName],
+  );
 
   const handleDeviceAuthExpired = useCallback(async () => {
     if (phaseRef.current === 'session') {
-      runSessionCleanupInBackground();
+      await awaitNativeSessionCleanup();
     }
     await clearAllTokens();
     tokenCache.device = undefined;
@@ -586,12 +653,16 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   );
 
   const refresh = useCallback(async () => {
+    const bootGen = ++bootGenRef.current;
+    const stale = () => bootGen !== bootGenRef.current;
+
     setError(null);
     setPhase('loading');
     try {
       bootStepRef.current = 'loadTokensIntoCache';
       await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
       await loadTokensIntoCache();
+      if (stale()) return;
 
       if (!tokenCache.device) {
         bootStepRef.current = 'setLockdownState(register)';
@@ -602,6 +673,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       }
 
       setDeviceName(readStoredDeviceName());
+      setDeviceStatus(readStoredDeviceStatus());
       let nextDeviceId: string | null = null;
       try {
         const payload = JSON.parse(atob(tokenCache.device.split('.')[1] ?? ''));
@@ -610,11 +682,17 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       } catch {
         setDeviceId(null);
       }
+      if (stale()) return;
+
+      const reachable = await probeApiHealth();
+      if (stale()) return;
+      setOnline(reachable);
 
       if (tokenCache.player && nextDeviceId) {
         bootStepRef.current = 'tryRestorePlayerSession';
         await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
         const restored = await tryRestorePlayerSession(nextDeviceId);
+        if (stale()) return;
         if (restored) {
           bootStepRef.current = 'setLockdownState(session-restore)';
           await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
@@ -630,6 +708,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       await appendKioskLog('info', `boot step: ${bootStepRef.current}`);
       await setLockdownState('Locked');
     } catch (e) {
+      if (stale()) return;
       const msg = toErrorMessage(e, 'Boot failed');
       const detail = `Boot failed at ${bootStepRef.current}: ${msg}`;
       setError(detail);
@@ -640,7 +719,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (phase !== 'loading') return;
+    const bootGen = bootGenRef.current;
     const id = window.setTimeout(() => {
+      if (bootGen !== bootGenRef.current) return;
       const detail = `Boot timed out at step: ${bootStepRef.current}`;
       setError(detail);
       setPhase('boot-error');
@@ -719,7 +800,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         tokenCache.device = adminToken;
         const result = await http.post<{
           accessToken: string;
-          device: { id: string; name: string };
+          device: { id: string; name: string; status?: string };
         }>('/devices/provision', {
           fingerprint,
           name: input.name,
@@ -732,6 +813,10 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         setDeviceId(result.device.id);
         setDeviceName(result.device.name);
         storeDeviceName(result.device.name);
+        if (result.device.status) {
+          setDeviceStatus(result.device.status);
+          storeDeviceStatus(result.device.status);
+        }
         setAdminToken(null);
         await setLockdownState('SetupRelaxed');
         setSetupAuthenticated(true);
@@ -757,15 +842,19 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     setPhase('setup');
   }, []);
 
-  const clearStaffLoginLockout = useCallback(() => {
-    const now = Date.now();
-    if (now - lastClearLockoutAtRef.current < STAFF_ACTION_DEBOUNCE_MS) return;
-    lastClearLockoutAtRef.current = now;
+  const staffClearLoginLockout = useCallback(
+    async (username: string, password: string, totp?: string) => {
+      const now = Date.now();
+      if (now - lastClearLockoutAtRef.current < STAFF_ACTION_DEBOUNCE_MS) return;
+      lastClearLockoutAtRef.current = now;
+      if (phaseRef.current !== 'login') return;
 
-    if (phaseRef.current !== 'login') return;
-    resetLoginLockoutByStaff();
-    setStaffLockoutClearTick((tick) => tick + 1);
-  }, []);
+      await adminLogin(username, password, totp, { relaxLockdown: false });
+      resetLoginLockoutByStaff();
+      setStaffLockoutClearTick((tick) => tick + 1);
+    },
+    [adminLogin],
+  );
 
   const clearSetupAuthenticated = useCallback(() => {
     setSetupAuthenticated(false);
@@ -913,15 +1002,13 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const endSessionInFlightRef = useRef(false);
-  const factoryResetInFlightRef = useRef(false);
-
   const endSession = useCallback(
     async (reason = 'voluntary') => {
-      if (endSessionInFlightRef.current) return;
-      endSessionInFlightRef.current = true;
+      if (sessionTeardownInFlightRef.current) return;
+      sessionTeardownInFlightRef.current = true;
       try {
         const sessionId = activeSession?.id;
+        const playerId = tokenCache.player ? playerIdFromToken(tokenCache.player) : null;
         if (sessionId) {
           try {
             await getHttpClient().patch(`/kiosk/sessions/${sessionId}/end`, { reason });
@@ -931,17 +1018,26 @@ export function KioskProvider({ children }: { children: ReactNode }) {
               'warn',
               `[session] end API failed, queued offline replay sessionId=${sessionId}: ${String(e)}`,
             );
-            // Offline at end time: queue an idempotent replay for reconnect (D18).
-            enqueueEndIntent(sessionId, reason === 'voluntary' ? 'offline_reconcile' : reason);
+            if (!(e instanceof ApiError && isTokenAuthFailure(e.message))) {
+              enqueueEndIntent(
+                sessionId,
+                reason === 'voluntary' ? 'offline_reconcile' : reason,
+                playerId ?? undefined,
+              );
+            }
           }
         }
         await cleanupSessionAndReturnToLogin();
       } finally {
-        endSessionInFlightRef.current = false;
+        sessionTeardownInFlightRef.current = false;
       }
     },
     [activeSession?.id, cleanupSessionAndReturnToLogin],
   );
+
+  useEffect(() => {
+    endSessionRef.current = endSession;
+  }, [endSession]);
 
   const dismissConflict = useCallback(() => {
     setConflictDevice(null);
@@ -961,6 +1057,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     if (online) void flushEndIntents();
   }, [online, flushEndIntents]);
 
+  const factoryResetInFlightRef = useRef(false);
+
   const factoryReset = useCallback(async () => {
     if (factoryResetInFlightRef.current) return;
     factoryResetInFlightRef.current = true;
@@ -972,10 +1070,16 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       setDeviceId(null);
       setDeviceName(null);
       storeDeviceName(null);
+      storeDeviceStatus(null);
       clearPlayerPersistedState();
+      clearEndIntents();
+      saveLaunchEntries([]);
       setPlayerName(null);
       setPlayerRole(null);
       setActiveSession(null);
+      setDeviceStatus(null);
+      setReauthRequired(false);
+      await setSessionLaunchEnabled(false).catch(() => {});
       setPhase('register');
       await setLockdownState('Locked');
     } finally {
@@ -1019,8 +1123,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       endSession,
       dismissConflict,
       factoryReset,
+      reauthRequired,
+      playerReauth,
+      dismissReauth,
       staffLockoutClearTick,
-      clearStaffLoginLockout,
+      staffClearLoginLockout,
     }),
     [
       phase,
@@ -1057,8 +1164,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       endSession,
       dismissConflict,
       factoryReset,
+      reauthRequired,
+      playerReauth,
+      dismissReauth,
       staffLockoutClearTick,
-      clearStaffLoginLockout,
+      staffClearLoginLockout,
     ],
   );
 
