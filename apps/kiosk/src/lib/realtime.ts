@@ -1,3 +1,4 @@
+import { appendKioskLog } from './bootDiagnostics';
 import { realtimeUrl } from './config';
 import { tokenCache } from './http';
 
@@ -16,6 +17,8 @@ export type RealtimeHandler = (frame: ServerFrame) => void;
 
 const MAX_DELAY = 5_000;
 const BASE_DELAY = 1_000;
+/** Log reconnect attempts on the 1st and every 5th to avoid spam. */
+const RECONNECT_LOG_EVERY = 5;
 
 export class KioskRealtimeClient {
   private ws: WebSocket | null = null;
@@ -40,17 +43,15 @@ export class KioskRealtimeClient {
     const token = tokenCache.device;
     if (!token) return;
 
-    const openedThisAttempt = { value: false };
-
     try {
       this.ws = new WebSocket(realtimeUrl(), ['bearer', token]);
-    } catch {
+    } catch (e) {
+      void appendKioskLog('warn', `[realtime] WebSocket construct failed: ${String(e)}`);
       this.scheduleReconnect();
       return;
     }
 
     this.ws.onopen = () => {
-      openedThisAttempt.value = true;
       this.reconnectAttempts = 0;
       if (this.subscriptions.size > 0) {
         this.send({ type: 'Subscribe', channels: [...this.subscriptions] });
@@ -65,6 +66,7 @@ export class KioskRealtimeClient {
       try {
         frame = JSON.parse(event.data as string);
       } catch {
+        void appendKioskLog('warn', '[realtime] malformed WebSocket frame');
         return;
       }
 
@@ -92,6 +94,7 @@ export class KioskRealtimeClient {
         this.intentionalClose = false;
         return;
       }
+      void appendKioskLog('warn', '[realtime] WebSocket disconnected unexpectedly');
       for (const handler of this.disconnectHandlers) {
         handler();
       }
@@ -99,6 +102,7 @@ export class KioskRealtimeClient {
     };
 
     this.ws.onerror = () => {
+      void appendKioskLog('warn', '[realtime] WebSocket error');
       this.ws?.close();
     };
   }
@@ -190,6 +194,12 @@ export class KioskRealtimeClient {
     if (this.disposed || this.reconnectTimer) return;
     const delay = Math.min(BASE_DELAY * 2 ** this.reconnectAttempts, MAX_DELAY);
     this.reconnectAttempts += 1;
+    if (this.reconnectAttempts === 1 || this.reconnectAttempts % RECONNECT_LOG_EVERY === 0) {
+      void appendKioskLog(
+        'warn',
+        `[realtime] reconnect attempt ${this.reconnectAttempts} in ${delay}ms`,
+      );
+    }
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();

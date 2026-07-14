@@ -1268,6 +1268,17 @@ pub fn focus_kiosk(app: AppHandle) -> Result<(), String> {
     focus_kiosk_window(&app)
 }
 
+fn format_launch_failure(stage: &str, executable_path: &str, detail: &str) -> String {
+    format!(
+        "launch_allowed failed stage={stage} exe={} path={executable_path}: {detail}",
+        executable_basename(executable_path)
+    )
+}
+
+fn log_launch_failure(stage: &str, executable_path: &str, detail: &str) {
+    crate::diagnostics::error(format_launch_failure(stage, executable_path, detail));
+}
+
 #[tauri::command]
 pub fn launch_allowed(
     app: AppHandle,
@@ -1276,31 +1287,55 @@ pub fn launch_allowed(
     arguments: Option<Vec<String>>,
 ) -> Result<LaunchResult, String> {
     if cleanup_in_progress() {
-        return Err("Session cleanup in progress".to_string());
+        let err = "Session cleanup in progress".to_string();
+        log_launch_failure("cleanup_in_progress", &executable_path, &err);
+        return Err(err);
     }
     if !is_allowed(&executable_path, &allow_list) {
-        return Err("Executable not in allow-list".to_string());
+        let err = "Executable not in allow-list".to_string();
+        log_launch_failure("allow_list", &executable_path, &err);
+        return Err(err);
     }
-    prepare_kiosk_for_game_mode(&app)?;
+    if let Err(e) = prepare_kiosk_for_game_mode(&app) {
+        log_launch_failure("prepare_kiosk", &executable_path, &e);
+        return Err(e);
+    }
     crate::boost::prepare_game_boost();
-    let pid = spawn_process(
+    let pid = match spawn_process(
         &executable_path,
         normalize_launch_arguments(arguments).as_deref(),
-    )?;
+    ) {
+        Ok(pid) => pid,
+        Err(e) => {
+            log_launch_failure("spawn", &executable_path, &e);
+            return Err(e);
+        }
+    };
     crate::boost::apply_game_priority(pid);
     let launcher = is_launcher_executable(&executable_path);
     apply_kiosk_game_mode_background(&app);
-    if let Ok(mut tracked) = TRACKED.lock() {
-        tracked.push(WatchEntry {
-            executable_path,
-            root_pid: pid,
-            descendant_pids: Vec::new(),
-            window_handle: None,
-            app_foregrounded: false,
-        });
-    }
+    let mut tracked = match TRACKED.lock() {
+        Ok(tracked) => tracked,
+        Err(e) => {
+            let err = e.to_string();
+            log_launch_failure("track_lock", &executable_path, &err);
+            return Err(err);
+        }
+    };
+    tracked.push(WatchEntry {
+        executable_path: executable_path.clone(),
+        root_pid: pid,
+        descendant_pids: Vec::new(),
+        window_handle: None,
+        app_foregrounded: false,
+    });
+    drop(tracked);
     start_monitor_if_needed(app);
     spawn_launch_foreground_task(pid, launcher);
+    crate::diagnostics::info(format!(
+        "launch_allowed ok exe={} path={executable_path} pid={pid}",
+        executable_basename(&executable_path)
+    ));
     Ok(LaunchResult { pid })
 }
 
@@ -1378,9 +1413,9 @@ pub fn clear_tracked_processes() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        all_tree_pids, has_tracked_processes, is_allowed, is_launcher_executable,
-        is_launcher_login_process, is_overlay_launcher_exe, is_session_keep_process,
-        normalize_path, WatchEntry,
+        all_tree_pids, executable_basename, format_launch_failure, has_tracked_processes,
+        is_allowed, is_launcher_executable, is_launcher_login_process, is_overlay_launcher_exe,
+        is_session_keep_process, normalize_path, WatchEntry,
     };
 
     #[test]
@@ -1497,5 +1532,23 @@ mod tests {
 
     fn clear_tracked_for_test() {
         let _ = super::clear_tracked_processes();
+    }
+
+    #[test]
+    fn format_launch_failure_includes_stage_and_executable() {
+        let msg = format_launch_failure(
+            "allow_list",
+            "C:\\Games\\steam.exe",
+            "Executable not in allow-list",
+        );
+        assert!(msg.contains("stage=allow_list"));
+        assert!(msg.contains("exe=steam.exe"));
+        assert!(msg.contains("path=C:\\Games\\steam.exe"));
+        assert!(msg.contains("Executable not in allow-list"));
+    }
+
+    #[test]
+    fn executable_basename_normalizes_path() {
+        assert_eq!(executable_basename("C:\\Games\\steam.exe"), "steam.exe");
     }
 }

@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
 import type { AppPhase } from '../context/KioskProvider';
+import { appendKioskLog, serializeError } from './bootDiagnostics';
 
 /** Phases where no player session is active and an update check is safe (ADR-0028). */
 export type IdleUpdatePhase = Extract<
@@ -102,15 +103,16 @@ export async function checkForUpdateWhenIdle(phase: AppPhase): Promise<void> {
       try {
         await relaunch();
       } catch (relaunchErr) {
-        // biome-ignore lint/suspicious/noConsole: deliberate non-fatal diagnostic for a background update check
-        console.warn('[updater] relaunch after install failed:', relaunchErr);
+        await appendKioskLog(
+          'error',
+          `[updater] relaunch after install failed: ${serializeError(relaunchErr)}`,
+        );
       }
       return;
     }
     // Offline, not-yet-configured, or running outside Tauri (browser dev): all
     // non-fatal. The next idle window will retry.
-    // biome-ignore lint/suspicious/noConsole: deliberate non-fatal diagnostic for a background update check
-    console.warn('[updater] update check skipped:', err);
+    await appendKioskLog('warn', `[updater] update check skipped: ${serializeError(err)}`);
   } finally {
     inFlight = false;
   }

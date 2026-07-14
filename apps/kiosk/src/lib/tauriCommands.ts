@@ -174,7 +174,8 @@ export async function launchAllowed(
   allowList: string[],
   args?: string[],
 ): Promise<{ pid: number }> {
-  return invokeLogged('launch_allowed', {
+  // Rust `launch_allowed` logs stage-specific failures; avoid duplicate entries.
+  return invoke('launch_allowed', {
     executablePath,
     arguments: args,
     allowList,

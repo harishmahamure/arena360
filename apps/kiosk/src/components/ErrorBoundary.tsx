@@ -39,7 +39,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
-    void appendKioskLog('error', `react boundary: ${error.message} ${info.componentStack ?? ''}`);
+    const stack = info.componentStack?.trim();
+    const detail = stack ? `${error.message} ${stack}` : error.message;
+    void appendKioskLog('error', `react boundary: ${detail}`);
   }
 
   override render() {

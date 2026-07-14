@@ -105,6 +105,28 @@ the runtime is missing (~1.8 MB embedded, requires internet during install).
 Staff can query runtime status via the Tauri command `get_webview2_status` (also
 logged at boot in `kiosk.log`).
 
+### Runtime log file (`kiosk.log`)
+
+Arena360 writes a single local log file for boot, runtime, and failure diagnosis.
+Staff should check this file first when a station misbehaves.
+
+| OS | Path |
+|----|------|
+| Windows | `%ProgramData%\Arena360\kiosk.log` |
+| macOS | `~/Library/Logs/Arena360/kiosk.log` |
+| Linux | `/tmp/Arena360/kiosk.log` |
+
+What appears in the log:
+
+- Boot steps, WebView2 checks, and lockdown init
+- **Game launch** attempts (success with PID, or failure with stage such as `allow_list`, `spawn`, `cleanup_in_progress`)
+- **Auto-update** skips and relaunch failures
+- **WebSocket** disconnects, malformed frames, and reconnect attempts (rate-limited)
+- **Session** restore/reconcile/end-intent replay failures
+- **Rust panics** and **React/JS** unhandled errors (with stack traces when available)
+
+When `kiosk.log` exceeds 5 MiB it rotates to `kiosk.log.1` (one backup kept).
+
 ### Lockdown / kiosk OS configuration
 
 App-level lockdown blocks the Windows keys, Alt+F4 and Ctrl+Shift+Esc, hides the taskbar and Start menu flyout while locked, and Alt+Tab uses native Windows switching.

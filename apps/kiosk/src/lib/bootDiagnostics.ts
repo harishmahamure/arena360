@@ -19,6 +19,15 @@ function notify() {
   for (const fn of listeners) fn(cached);
 }
 
+/** Serialize an error for file logging, including stack when available. */
+export function serializeError(reason: unknown): string {
+  if (reason instanceof Error) {
+    const stack = reason.stack ? ` ${reason.stack}` : '';
+    return `${reason.name}: ${reason.message}${stack}`;
+  }
+  return String(reason);
+}
+
 export function subscribeBootErrors(fn: Listener): () => void {
   listeners.add(fn);
   fn(cached);
@@ -31,7 +40,9 @@ export async function getBootDiagnosticsSnapshot(): Promise<BootDiagnosticsSnaps
     cached = await invoke<BootDiagnosticsSnapshot>('get_boot_diagnostics');
     notify();
     return cached;
-  } catch {
+  } catch (e) {
+    // biome-ignore lint/suspicious/noConsole: non-fatal when diagnostics unavailable
+    console.warn('[bootDiagnostics] get_boot_diagnostics failed:', serializeError(e));
     return cached;
   }
 }
@@ -52,8 +63,9 @@ export async function appendKioskLog(level: string, message: string): Promise<vo
   try {
     await invoke('append_kiosk_log', { level, message });
     await getBootDiagnosticsSnapshot();
-  } catch {
-    // Non-fatal when logging fails.
+  } catch (e) {
+    // biome-ignore lint/suspicious/noConsole: non-fatal when logging fails
+    console.warn('[bootDiagnostics] append_kiosk_log failed:', serializeError(e));
   }
 }
 
@@ -68,12 +80,12 @@ export function addBootError(message: string) {
 
 export async function initBootDiagnostics(): Promise<void> {
   window.addEventListener('error', (event) => {
-    const msg = event.message || 'Unknown script error';
-    addBootError(`JS: ${msg}`);
+    const detail =
+      event.error != null ? serializeError(event.error) : event.message || 'Unknown script error';
+    addBootError(`JS: ${detail}`);
   });
   window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
-    addBootError(`Unhandled rejection: ${reason}`);
+    addBootError(`Unhandled rejection: ${serializeError(event.reason)}`);
   });
 
   if (!isTauri()) return;
@@ -88,8 +100,9 @@ export async function initBootDiagnostics(): Promise<void> {
         void appendKioskLog(event.payload.level ?? 'info', message);
       }
     });
-  } catch {
-    // Non-fatal outside Tauri.
+  } catch (e) {
+    // biome-ignore lint/suspicious/noConsole: non-fatal outside Tauri
+    console.warn('[bootDiagnostics] kiosk-diagnostic listener failed:', serializeError(e));
   }
 
   await getBootDiagnosticsSnapshot();

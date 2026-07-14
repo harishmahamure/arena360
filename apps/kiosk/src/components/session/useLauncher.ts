@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { LaunchEntry } from '../../lib/allowList';
+import { appendKioskLog } from '../../lib/bootDiagnostics';
 import { installedEntries, launchEntry, launchErrorMessage } from '../../lib/launch';
 
 interface UseLauncher {
@@ -30,7 +31,12 @@ export function useLauncher(
         await launchEntry(entry, entries);
         onLaunched?.();
       } catch (e) {
-        onError?.(launchErrorMessage(e, `Could not launch ${entry.name}`));
+        const message = launchErrorMessage(e, `Could not launch ${entry.name}`);
+        void appendKioskLog(
+          'error',
+          `launch failed entry=${entry.id} name=${entry.name}: ${message}`,
+        );
+        onError?.(message);
       } finally {
         launchingRef.current = false;
         setLaunchingKey(null);

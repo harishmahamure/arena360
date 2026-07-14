@@ -1,10 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { appendKioskLog } from './bootDiagnostics';
 import {
   enqueueEndIntent,
   hasPendingEndIntents,
   loadEndIntents,
+  logEndIntentReplayFailure,
   removeEndIntent,
 } from './offlineQueue';
+
+vi.mock('./bootDiagnostics', () => ({
+  appendKioskLog: vi.fn(),
+}));
 
 describe('offlineQueue', () => {
   beforeEach(() => {
@@ -38,5 +44,13 @@ describe('offlineQueue', () => {
     const remaining = loadEndIntents();
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.sessionId).toBe('session-2');
+  });
+
+  it('logs replay failures', () => {
+    logEndIntentReplayFailure('session-1', new Error('network down'));
+    expect(appendKioskLog).toHaveBeenCalledWith(
+      'warn',
+      expect.stringContaining('[offlineQueue] replay failed sessionId=session-1'),
+    );
   });
 });

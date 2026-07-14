@@ -5,6 +5,8 @@
  * ending an already-closed session is a no-op, so replays never double-deduct.
  */
 
+import { appendKioskLog } from './bootDiagnostics';
+
 const STORAGE_KEY = 'gaming-cafe.kiosk.end_intents';
 
 export interface EndIntent {
@@ -25,7 +27,8 @@ export function loadEndIntents(): EndIntent[] {
         typeof e?.reason === 'string' &&
         typeof e?.queuedAt === 'number',
     );
-  } catch {
+  } catch (e) {
+    void appendKioskLog('warn', `[offlineQueue] load failed: ${String(e)}`);
     return [];
   }
 }
@@ -33,8 +36,8 @@ export function loadEndIntents(): EndIntent[] {
 function save(intents: EndIntent[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(intents));
-  } catch {
-    // non-fatal
+  } catch (e) {
+    void appendKioskLog('warn', `[offlineQueue] save failed: ${String(e)}`);
   }
 }
 
@@ -52,4 +55,12 @@ export function removeEndIntent(sessionId: string): void {
 
 export function hasPendingEndIntents(): boolean {
   return loadEndIntents().length > 0;
+}
+
+/** Log a failed replay attempt for a queued end intent. */
+export function logEndIntentReplayFailure(sessionId: string, err: unknown): void {
+  void appendKioskLog(
+    'warn',
+    `[offlineQueue] replay failed sessionId=${sessionId}: ${String(err)}`,
+  );
 }

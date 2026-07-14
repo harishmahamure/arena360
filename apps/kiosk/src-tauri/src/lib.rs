@@ -21,6 +21,7 @@ use tauri::{Emitter, Manager, RunEvent};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     diagnostics::init();
+    diagnostics::install_panic_hook();
     diagnostics::info(format!(
         "kiosk starting v{} ({})",
         env!("CARGO_PKG_VERSION"),

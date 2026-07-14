@@ -6,11 +6,17 @@ use tauri::AppHandle;
 
 #[tauri::command]
 pub fn prepare_for_update(app: AppHandle) -> Result<(), String> {
-    let _ = crate::process::close_tracked_apps(app.clone());
-    let _ = crate::process::kill_tracked_processes_blocking(app);
+    if let Err(e) = crate::process::close_tracked_apps(app.clone()) {
+        crate::diagnostics::warn(format!("prepare_for_update close_tracked_apps: {e}"));
+    }
+    if let Err(e) = crate::process::kill_tracked_processes_blocking(app) {
+        crate::diagnostics::warn(format!("prepare_for_update kill_tracked_processes: {e}"));
+    }
     #[cfg(windows)]
     {
-        let _ = watchdog_common::purge_expired_pause();
+        if let Err(e) = watchdog_common::purge_expired_pause() {
+            crate::diagnostics::warn(format!("prepare_for_update purge_expired_pause: {e}"));
+        }
         crate::watchdog_ipc::set_pause_for_update()?;
     }
     Ok(())

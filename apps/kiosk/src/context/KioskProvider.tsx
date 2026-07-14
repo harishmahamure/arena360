@@ -24,7 +24,12 @@ import {
   tokenCache,
 } from '../lib/http';
 import { resetLoginLockoutByStaff } from '../lib/loginLockout';
-import { enqueueEndIntent, loadEndIntents, removeEndIntent } from '../lib/offlineQueue';
+import {
+  enqueueEndIntent,
+  loadEndIntents,
+  logEndIntentReplayFailure,
+  removeEndIntent,
+} from '../lib/offlineQueue';
 import { formatPlayerLoginError } from '../lib/planErrors';
 import { KioskRealtimeClient } from '../lib/realtime';
 import {
@@ -53,8 +58,8 @@ import { walletMinutesFromResponse } from '../lib/walletMinutesFromResponse';
 
 /** Fire-and-forget session-end process cleanup (runs after login UI is shown). */
 function runSessionCleanupInBackground(): void {
-  void killTrackedProcesses().catch(() => {
-    // Process cleanup is best-effort off-Windows / when nothing tracked.
+  void killTrackedProcesses().catch((e) => {
+    void appendKioskLog('warn', `[session] killTrackedProcesses failed: ${String(e)}`);
   });
 }
 
@@ -341,7 +346,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           reason: intent.reason,
         });
         removeEndIntent(intent.sessionId);
-      } catch {
+      } catch (e) {
+        logEndIntentReplayFailure(intent.sessionId, e);
         // Still offline / transient — keep the intent for the next attempt.
         break;
       }
@@ -393,7 +399,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           return;
         }
         setActiveSession((prev) => mergeReconciledSession(sessionFromResponse(res), prev));
-      } catch {
+      } catch (e) {
+        void appendKioskLog('warn', `[session] reconcile failed: ${String(e)}`);
         setOnline(false);
       }
     },
@@ -557,6 +564,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           clearPlayerPersistedState();
           return false;
         }
+
+        void appendKioskLog(
+          'warn',
+          `[session] restore failed, using cache if available: ${String(e)}`,
+        );
 
         const cached = readSessionSnapshot();
         if (cached) {
@@ -914,7 +926,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           try {
             await getHttpClient().patch(`/kiosk/sessions/${sessionId}/end`, { reason });
             setOnline(true);
-          } catch {
+          } catch (e) {
+            void appendKioskLog(
+              'warn',
+              `[session] end API failed, queued offline replay sessionId=${sessionId}: ${String(e)}`,
+            );
             // Offline at end time: queue an idempotent replay for reconnect (D18).
             enqueueEndIntent(sessionId, reason === 'voluntary' ? 'offline_reconcile' : reason);
           }
