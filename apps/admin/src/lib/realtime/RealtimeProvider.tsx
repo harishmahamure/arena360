@@ -1,3 +1,4 @@
+import { isImportantNotificationKind } from '@gaming-cafe/contracts';
 import { local, toastUtils } from '@gaming-cafe/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
@@ -51,8 +52,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     client.subscribe(channels);
 
-    const unsubSale = client.on('transaction.sale_completed', (frame: ServerFrame) => {
-      toastUtils.success(`Sale completed: ₹${frame.payload?.amount ?? ''}`);
+    const unsubSale = client.on('transaction.sale_completed', () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
     });
 
@@ -95,7 +95,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['activity-log'] });
       const title = frame.payload?.title as string | undefined;
-      if (title) {
+      const kind = frame.payload?.kind as string | undefined;
+      if (title && kind && isImportantNotificationKind(kind)) {
         toastUtils.info(title);
       }
     });

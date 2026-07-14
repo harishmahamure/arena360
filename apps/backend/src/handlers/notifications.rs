@@ -18,6 +18,7 @@ use crate::openapi::responses::{
 #[utoipa::path(
     get,
     path = "/notifications",
+    params(NotificationFilterDto),
     responses(
         (status = 200, description = "List notifications", body = NotificationPaginationEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
@@ -40,6 +41,7 @@ pub async fn list_notifications(
 #[utoipa::path(
     get,
     path = "/notifications/unread-count",
+    params(NotificationFilterDto),
     responses(
         (status = 200, description = "Unread notification count", body = UnreadCountEnvelope),
         (status = 401, description = "Unauthorized", body = ErrorEnvelope),
@@ -51,10 +53,11 @@ pub async fn list_notifications(
 pub async fn unread_count(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    Query(filters): Query<NotificationFilterDto>,
 ) -> ApiResult<UnreadCountDto> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let result = state.notifications.unread_count(user_id).await?;
+    let result = state.notifications.unread_count(user_id, filters).await?;
     ok(result)
 }
 
@@ -86,7 +89,10 @@ pub async fn mark_read(
             "Notification {id} not found"
         )));
     }
-    let count = state.notifications.unread_count(user_id).await?;
+    let count = state
+        .notifications
+        .unread_count(user_id, NotificationFilterDto::default())
+        .await?;
     ok(count)
 }
 
@@ -108,7 +114,10 @@ pub async fn mark_all_read(
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
     let _ = state.notifications.mark_all_read(user_id).await?;
-    let count = state.notifications.unread_count(user_id).await?;
+    let count = state
+        .notifications
+        .unread_count(user_id, NotificationFilterDto::default())
+        .await?;
     ok(count)
 }
 

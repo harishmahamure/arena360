@@ -20,6 +20,7 @@ export const TOAST_CONTAINER_PROPS: Pick<
   | 'pauseOnFocusLoss'
   | 'draggable'
   | 'pauseOnHover'
+  | 'limit'
 > = {
   position: 'bottom-center',
   autoClose: 3000,
@@ -30,4 +31,5 @@ export const TOAST_CONTAINER_PROPS: Pick<
   pauseOnFocusLoss: true,
   draggable: true,
   pauseOnHover: true,
+  limit: 3,
 };

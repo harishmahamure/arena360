@@ -28,6 +28,24 @@ export type ActivityKindValue = (typeof ActivityKind)[keyof typeof ActivityKind]
 
 export const ACTIVITY_KIND_VALUES = Object.values(ActivityKind);
 
+/** Actionable staff alerts — bell badge, live toasts, and default inbox filter. */
+export const STAFF_IMPORTANT_NOTIFICATION_KINDS = [
+  ActivityKind.APPROVAL_REQUESTED,
+  ActivityKind.APPROVAL_DECIDED,
+  ActivityKind.KIOSK_ORDER_PLACED,
+  ActivityKind.KIOSK_ORDER_CANCELLED,
+  ActivityKind.CASH_DEPOSIT_INITIATED,
+  ActivityKind.INVENTORY_TRANSFER_REQUESTED,
+] as const;
+
+export type StaffImportantNotificationKind = (typeof STAFF_IMPORTANT_NOTIFICATION_KINDS)[number];
+
+const STAFF_IMPORTANT_KIND_SET = new Set<string>(STAFF_IMPORTANT_NOTIFICATION_KINDS);
+
+export function isImportantNotificationKind(kind: string): kind is StaffImportantNotificationKind {
+  return STAFF_IMPORTANT_KIND_SET.has(kind);
+}
+
 export const activityKindLabels: Record<ActivityKindValue, string> = {
   [ActivityKind.TRANSACTION_SALE]: 'Product sale',
   [ActivityKind.PLAN_SALE]: 'Plan sale',

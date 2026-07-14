@@ -8,6 +8,12 @@ export {
 export { formatRemainingClock, formatRemainingLabel } from './formatRemainingClock.js';
 export { interpolateRemainingMinutes } from './interpolateRemainingMinutes.js';
 export {
+  getSessionUrgentThreshold,
+  SESSION_WARNING_THRESHOLDS,
+  type SessionUrgentThreshold,
+  shouldEmitSessionWarning,
+} from './sessionWarning.js';
+export {
   type SessionRemainingClockInput,
   useSessionRemainingMinutes,
 } from './useSessionRemainingMinutes.js';

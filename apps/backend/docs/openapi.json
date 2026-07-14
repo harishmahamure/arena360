@@ -6599,6 +6599,54 @@
           "notifications"
         ],
         "operationId": "list_notifications",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "unreadOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "importantOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List notifications",
@@ -6689,6 +6737,54 @@
           "notifications"
         ],
         "operationId": "unread_count",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "unreadOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "importantOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Unread notification count",
@@ -16915,6 +17011,12 @@
       "NotificationFilterDto": {
         "type": "object",
         "properties": {
+          "importantOnly": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "limit": {
             "type": [
               "integer",
@@ -23263,6 +23365,7 @@
         "type": "object",
         "required": [
           "id",
+          "balanceId",
           "deviceId",
           "startTime",
           "createdAt",
@@ -23270,10 +23373,7 @@
         ],
         "properties": {
           "balanceId": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "format": "uuid"
           },
           "createdAt": {
@@ -23365,6 +23465,7 @@
         "type": "object",
         "required": [
           "id",
+          "balanceId",
           "deviceId",
           "startTime",
           "createdAt",
@@ -23382,10 +23483,7 @@
             ]
           },
           "balanceId": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "format": "uuid"
           },
           "cafeTimezone": {

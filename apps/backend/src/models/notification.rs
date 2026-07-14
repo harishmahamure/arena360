@@ -34,6 +34,16 @@ pub mod activity_kind {
         KIOSK_ORDER_FULFILLED,
         KIOSK_ORDER_CANCELLED,
     ];
+
+    /// Actionable alerts for staff bell badge and default inbox filter.
+    pub const STAFF_IMPORTANT: &[&str] = &[
+        APPROVAL_REQUESTED,
+        APPROVAL_DECIDED,
+        KIOSK_ORDER_PLACED,
+        KIOSK_ORDER_CANCELLED,
+        CASH_DEPOSIT_INITIATED,
+        INVENTORY_TRANSFER_REQUESTED,
+    ];
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]
@@ -82,6 +92,7 @@ pub struct NotificationFilterDto {
     pub page: Option<i64>,
     pub limit: Option<i64>,
     pub unread_only: Option<bool>,
+    pub important_only: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]

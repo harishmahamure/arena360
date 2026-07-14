@@ -2,6 +2,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { Box, Button, CircularProgress, Drawer, IconButton, List, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getNotifications,
@@ -19,10 +20,15 @@ export default function NotificationDrawer({ open, onClose }: NotificationDrawer
   const theme = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showAll, setShowAll] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['notifications', { unreadOnly: false, limit: 10 }],
-    queryFn: () => getNotifications({ limit: 10 }),
+    queryKey: ['notifications', { unreadOnly: false, limit: 10, importantOnly: !showAll }],
+    queryFn: () =>
+      getNotifications({
+        limit: 10,
+        importantOnly: showAll ? undefined : true,
+      }),
     enabled: open,
   });
 
@@ -72,6 +78,14 @@ export default function NotificationDrawer({ open, onClose }: NotificationDrawer
           Notifications
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Button
+            size="small"
+            color="inherit"
+            onClick={() => setShowAll((prev) => !prev)}
+            sx={{ color: 'text.secondary', textTransform: 'none', minWidth: 'auto' }}
+          >
+            {showAll ? 'Important only' : 'Show all'}
+          </Button>
           {hasUnread && (
             <Button
               size="small"
@@ -97,7 +111,7 @@ export default function NotificationDrawer({ open, onClose }: NotificationDrawer
         ) : items.length === 0 ? (
           <Box sx={{ px: 3, py: 6, textAlign: 'center' }}>
             <Typography color="text.secondary" variant="body2">
-              No notifications yet.
+              {showAll ? 'No notifications yet.' : 'No important notifications.'}
             </Typography>
             <Typography color="text.disabled" variant="caption" sx={{ mt: 0.5, display: 'block' }}>
               Important updates will appear here.

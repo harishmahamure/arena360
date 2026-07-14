@@ -5,6 +5,11 @@ import {
   effectiveRemainingMinutes,
   SESSION_CLOCK_TICK_MS,
 } from '@gaming-cafe/contracts';
+import {
+  getSessionUrgentThreshold,
+  type SessionUrgentThreshold,
+  shouldEmitSessionWarning,
+} from '@gaming-cafe/utils';
 import { useEffect, useRef } from 'react';
 import { useNotification } from './useNotification';
 
@@ -23,38 +28,30 @@ export interface CountdownConfig {
   };
 }
 
-const THRESHOLDS_MIN = [10, 5, 1] as const;
-
 export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
   const { triggerNotification } = useNotification();
 
-  const notificationsSentRef = useRef<
-    Map<string, Record<(typeof THRESHOLDS_MIN)[number], boolean>>
-  >(new Map());
-  const configKeyRef = useRef('');
+  const lastUrgentBandRef = useRef<Map<string, SessionUrgentThreshold | null>>(new Map());
+  const lastWalletMinutesRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    const configKey = configs
-      .map((c) => `${c.id}:${c.remainingMinutes}:${c.sessionStartTime}`)
-      .sort()
-      .join('|');
-
-    if (configKeyRef.current !== configKey) {
-      configKeyRef.current = configKey;
-      for (const config of configs) {
-        if (!notificationsSentRef.current.has(config.id)) {
-          notificationsSentRef.current.set(config.id, {
-            10: false,
-            5: false,
-            1: false,
-          });
-        }
+    for (const config of configs) {
+      const prevWallet = lastWalletMinutesRef.current.get(config.id);
+      if (prevWallet !== undefined && config.remainingMinutes > prevWallet + 0.05) {
+        lastUrgentBandRef.current.delete(config.id);
       }
-      const currentIds = new Set(configs.map((c) => c.id));
-      for (const id of notificationsSentRef.current.keys()) {
-        if (!currentIds.has(id)) {
-          notificationsSentRef.current.delete(id);
-        }
+      lastWalletMinutesRef.current.set(config.id, config.remainingMinutes);
+    }
+
+    const currentIds = new Set(configs.map((c) => c.id));
+    for (const id of lastUrgentBandRef.current.keys()) {
+      if (!currentIds.has(id)) {
+        lastUrgentBandRef.current.delete(id);
+      }
+    }
+    for (const id of lastWalletMinutesRef.current.keys()) {
+      if (!currentIds.has(id)) {
+        lastWalletMinutesRef.current.delete(id);
       }
     }
   }, [configs]);
@@ -75,19 +72,24 @@ export const useMultipleCountdowns = (configs: CountdownConfig[]) => {
           config.expiryDate,
         );
 
-        const notifications = notificationsSentRef.current.get(config.id);
-        if (!notifications) continue;
+        const nextBand = getSessionUrgentThreshold(localRemaining);
+        const prevBand = lastUrgentBandRef.current.get(config.id);
 
-        for (const threshold of THRESHOLDS_MIN) {
-          if (localRemaining <= threshold && !notifications[threshold]) {
-            triggerNotification(
-              `${config.sessionDetails?.playerName} has ${threshold} minute${threshold === 1 ? '' : 's'} remaining on ${config.sessionDetails?.deviceName}. Tap to view session.`,
-              `${config.id}-${threshold}min`,
-              config.id,
-            );
-            notifications[threshold] = true;
-          }
+        if (nextBand === null) {
+          lastUrgentBandRef.current.set(config.id, null);
+          continue;
         }
+
+        if (!shouldEmitSessionWarning(prevBand, nextBand)) {
+          continue;
+        }
+
+        triggerNotification(
+          `${config.sessionDetails?.playerName} has ${nextBand} minute${nextBand === 1 ? '' : 's'} remaining on ${config.sessionDetails?.deviceName}. Tap to view session.`,
+          `session-${config.id}`,
+          config.id,
+        );
+        lastUrgentBandRef.current.set(config.id, nextBand);
       }
     }, SESSION_CLOCK_TICK_MS);
 

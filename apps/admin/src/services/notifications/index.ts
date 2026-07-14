@@ -46,6 +46,7 @@ export interface NotificationFilters {
   page?: number;
   limit?: number;
   unreadOnly?: boolean;
+  importantOnly?: boolean;
 }
 
 export interface ActivityLogFilters {
@@ -65,10 +66,14 @@ export const getNotifications = (filters: NotificationFilters = {}) =>
       page: filters.page ?? 1,
       limit: Math.min(filters.limit ?? MAX_INBOX_NOTIFICATIONS, MAX_INBOX_NOTIFICATIONS),
       unreadOnly: filters.unreadOnly,
+      importantOnly: filters.importantOnly,
     },
   });
 
-export const getUnreadCount = () => http.get<{ count: number }>('/notifications/unread-count');
+export const getUnreadCount = (importantOnly = true) =>
+  http.get<{ count: number }>('/notifications/unread-count', {
+    params: importantOnly ? { importantOnly: true } : undefined,
+  });
 
 export const markNotificationRead = (id: string) =>
   http.patch<{ count: number }>(`/notifications/${id}/read`);

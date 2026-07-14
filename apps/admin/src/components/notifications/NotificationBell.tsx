@@ -9,8 +9,8 @@ export default function NotificationBell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const { data } = useQuery({
-    queryKey: ['notifications', 'unread-count'],
-    queryFn: getUnreadCount,
+    queryKey: ['notifications', 'unread-count', 'important'],
+    queryFn: () => getUnreadCount(true),
     refetchInterval: 60_000,
   });
 

@@ -3429,6 +3429,7 @@ export interface components {
             username: string;
         };
         NotificationFilterDto: {
+            importantOnly?: boolean | null;
             /** Format: int64 */
             limit?: number | null;
             /** Format: int64 */
@@ -5273,7 +5274,7 @@ export interface components {
         };
         UsageSession: {
             /** Format: uuid */
-            balanceId?: string | null;
+            balanceId: string;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -5306,7 +5307,7 @@ export interface components {
         UsageSessionResponse: {
             balance?: null | components["schemas"]["SessionBalanceSummary"];
             /** Format: uuid */
-            balanceId?: string | null;
+            balanceId: string;
             /** @description IANA timezone for peak/low window math (enriched list/detail only). */
             cafeTimezone?: string;
             /** Format: date-time */
@@ -10468,7 +10469,12 @@ export interface operations {
     };
     list_notifications: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number | null;
+                limit?: number | null;
+                unreadOnly?: boolean | null;
+                importantOnly?: boolean | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10544,7 +10550,12 @@ export interface operations {
     };
     unread_count: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number | null;
+                limit?: number | null;
+                unreadOnly?: boolean | null;
+                importantOnly?: boolean | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

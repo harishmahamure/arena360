@@ -145,14 +145,26 @@ impl NotificationService {
         .await
     }
 
-    pub async fn unread_count(&self, user_id: Uuid) -> Result<UnreadCountDto, AppError> {
-        let cache_key = keys::notifications_unread(&user_id);
+    pub async fn unread_count(
+        &self,
+        user_id: Uuid,
+        filters: NotificationFilterDto,
+    ) -> Result<UnreadCountDto, AppError> {
+        let important_only = filters.important_only.unwrap_or(false);
+        let cache_key = if important_only {
+            format!(
+                "{}:important",
+                keys::notifications_unread(&user_id)
+            )
+        } else {
+            keys::notifications_unread(&user_id)
+        };
         get_or_set(
             &*self.cache,
             &cache_key,
             keys::ttl::NOTIFICATIONS,
             || async {
-                let count = self.repo.unread_count(user_id).await?;
+                let count = self.repo.unread_count(user_id, important_only).await?;
                 Ok(UnreadCountDto { count })
             },
         )

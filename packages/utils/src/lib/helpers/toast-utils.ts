@@ -29,7 +29,7 @@ export const toastUtils = {
     toast.warning(message, {
       ...DEFAULT_TOAST_OPTIONS,
       autoClose,
-      toastId: tag,
+      toastId: tag ?? (sessionId ? `session-${sessionId}` : undefined),
       className: 'gc-toast--session-warning',
       onClick: sessionId
         ? () => {

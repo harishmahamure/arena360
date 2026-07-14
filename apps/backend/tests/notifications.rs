@@ -50,6 +50,7 @@ async fn record_and_list_notifications_for_user() {
                 page: Some(1),
                 limit: Some(10),
                 unread_only: Some(false),
+                important_only: None,
             },
         )
         .await
@@ -60,10 +61,70 @@ async fn record_and_list_notifications_for_user() {
 
     let unread = state
         .notifications
-        .unread_count(user_id)
+        .unread_count(user_id, NotificationFilterDto::default())
         .await
         .expect("unread count");
     assert!(unread.count >= 1);
+}
+
+#[tokio::test]
+#[ignore = "requires DATABASE_URL"]
+async fn important_only_unread_count_excludes_routine_events() {
+    let Some(state) = setup().await else {
+        return;
+    };
+
+    let user_id = Uuid::new_v4();
+
+    state
+        .notifications
+        .record(RecordNotification {
+            kind: "session_started".to_string(),
+            title: "Session started".to_string(),
+            summary: None,
+            payload: serde_json::json!({}),
+            actor_user_id: None,
+            entity_type: Some("session".to_string()),
+            entity_id: Some(Uuid::new_v4()),
+            recipients: Recipients::Users(vec![user_id]),
+        })
+        .await
+        .expect("record session");
+
+    state
+        .notifications
+        .record(RecordNotification {
+            kind: "approval_requested".to_string(),
+            title: "Approval needed".to_string(),
+            summary: None,
+            payload: serde_json::json!({}),
+            actor_user_id: None,
+            entity_type: Some("expense".to_string()),
+            entity_id: Some(Uuid::new_v4()),
+            recipients: Recipients::Users(vec![user_id]),
+        })
+        .await
+        .expect("record approval");
+
+    let all_unread = state
+        .notifications
+        .unread_count(user_id, NotificationFilterDto::default())
+        .await
+        .expect("all unread");
+    assert!(all_unread.count >= 2);
+
+    let important_unread = state
+        .notifications
+        .unread_count(
+            user_id,
+            NotificationFilterDto {
+                important_only: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("important unread");
+    assert_eq!(important_unread.count, 1);
 }
 
 #[tokio::test]
@@ -112,7 +173,7 @@ async fn mark_notification_read_clears_unread_count() {
 
     let unread = state
         .notifications
-        .unread_count(user_id)
+        .unread_count(user_id, NotificationFilterDto::default())
         .await
         .expect("unread");
     assert_eq!(unread.count, 0);

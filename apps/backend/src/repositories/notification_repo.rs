@@ -132,6 +132,7 @@ impl NotificationRepository {
             .clamp(1, MAX_INBOX_NOTIFICATIONS);
         let offset = (page - 1) * limit;
         let unread_only = filters.unread_only.unwrap_or(false);
+        let important_only = filters.important_only.unwrap_or(false);
 
         let mut count_builder = sqlx::QueryBuilder::new(
             r#"SELECT COUNT(*) FROM user_notifications un
@@ -141,6 +142,15 @@ impl NotificationRepository {
         count_builder.push_bind(user_id);
         if unread_only {
             count_builder.push(r#" AND un."readAt" IS NULL"#);
+        }
+        if important_only {
+            count_builder.push(r#" AND al.kind::text = ANY("#);
+            let kinds: Vec<String> = activity_kind::STAFF_IMPORTANT
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            count_builder.push_bind(kinds);
+            count_builder.push(")");
         }
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
 
@@ -157,6 +167,15 @@ impl NotificationRepository {
         if unread_only {
             list_builder.push(r#" AND un."readAt" IS NULL"#);
         }
+        if important_only {
+            list_builder.push(r#" AND al.kind::text = ANY("#);
+            let kinds: Vec<String> = activity_kind::STAFF_IMPORTANT
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            list_builder.push_bind(kinds);
+            list_builder.push(")");
+        }
         list_builder.push(r#" ORDER BY un."createdAt" DESC LIMIT "#);
         list_builder.push_bind(limit);
         list_builder.push(" OFFSET ");
@@ -167,7 +186,25 @@ impl NotificationRepository {
         Ok(PaginationResult::new(items, total.0, page, limit))
     }
 
-    pub async fn unread_count(&self, user_id: Uuid) -> Result<i64, AppError> {
+    pub async fn unread_count(&self, user_id: Uuid, important_only: bool) -> Result<i64, AppError> {
+        if important_only {
+            let kinds: Vec<String> = activity_kind::STAFF_IMPORTANT
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            let row: (i64,) = sqlx::query_as(
+                r#"SELECT COUNT(*) FROM user_notifications un
+                   INNER JOIN activity_log al ON al.id = un."activityId"
+                   WHERE un."userId" = $1 AND un."readAt" IS NULL
+                     AND al.kind::text = ANY($2)"#,
+            )
+            .bind(user_id)
+            .bind(kinds)
+            .fetch_one(&self.pool)
+            .await?;
+            return Ok(row.0);
+        }
+
         let row: (i64,) = sqlx::query_as(
             r#"SELECT COUNT(*) FROM user_notifications
                WHERE "userId" = $1 AND "readAt" IS NULL"#,
