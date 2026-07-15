@@ -16,7 +16,7 @@ import { SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
 import { isTokenAuthFailure, registerAuthSessionHandlers } from '../lib/authSession';
 import { applyBalanceUpdated, mergeReconciledSession } from '../lib/balanceUpdated';
 import { appendKioskLog } from '../lib/bootDiagnostics';
-import { SESSION_RECONCILE_MS } from '../lib/config';
+import { SESSION_HEALTH_RECONCILE_MS, SESSION_RECONCILE_MS } from '../lib/config';
 import { readStoredDeviceStatus, storeDeviceStatus } from '../lib/deviceStatusStore';
 import {
   clearPlayerSession,
@@ -65,10 +65,12 @@ import { walletMinutesFromResponse } from '../lib/walletMinutesFromResponse';
 async function awaitNativeSessionCleanup(): Promise<void> {
   try {
     await killTrackedProcesses();
-    for (let i = 0; i < 50; i++) {
+    // Wait up to ~15s so main-thread window restore can finish before React navigates.
+    for (let i = 0; i < 150; i++) {
       if (!(await isCleanupInProgress())) return;
       await new Promise((r) => setTimeout(r, 100));
     }
+    void appendKioskLog('warn', '[session] native cleanup still in progress after 15s');
   } catch (e) {
     void appendKioskLog('warn', `[session] killTrackedProcesses failed: ${String(e)}`);
   }
@@ -370,17 +372,21 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const cleanupSessionAndReturnToLogin = useCallback(
     async (opts?: { staffEnded?: boolean }) => {
       setReauthRequired(false);
+      // Disable launches and run native cleanup before navigating to login —
+      // avoids WebView racing window restore on logout.
+      await setSessionLaunchEnabled(false).catch(() => {});
+      await awaitNativeSessionCleanup();
+      if (opts?.staffEnded) {
+        setLoginNotice('Your session was ended by staff.');
+      }
+      // Leave session phase only after cleanup; set login before clearing
+      // activeSession so SessionPage cannot race-start a new session.
+      setPhase('login');
       setActiveSession(null);
       await clearPlayerSession();
       setPlayerName(null);
       setPlayerRole(null);
       clearPlayerPersistedState();
-      if (opts?.staffEnded) {
-        setLoginNotice('Your session was ended by staff.');
-      }
-      await setSessionLaunchEnabled(false).catch(() => {});
-      await awaitNativeSessionCleanup();
-      setPhase('login');
       const id = deviceIdRef.current;
       if (id) connectWs(id);
     },
@@ -425,6 +431,8 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         void appendKioskLog('warn', `[session] reconcile failed: ${String(e)}`);
         if (e instanceof ApiError && isTokenAuthFailure(e.message)) {
+          // Stale/expired player token — tear down locally so the station re-locks.
+          await handleRemoteSessionEnd({ staffEnded: false });
           return;
         }
         if (navigator.onLine) {
@@ -513,7 +521,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     };
   }, [reconcileSessionOnce]);
 
-  // Poll for remote session ends only while WebSocket is disconnected (5 min default).
+  // Poll for remote session ends while WebSocket is disconnected (30s default).
   useEffect(() => {
     if (!shouldRunWsFailPoll(phase, wsConnected, Boolean(tokenCache.player))) {
       return;
@@ -523,6 +531,16 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     }, SESSION_RECONCILE_MS);
     return () => clearInterval(id);
   }, [phase, wsConnected, reconcileSessionOnce]);
+
+  // Periodic health reconcile during session even when WS reports connected
+  // (catches zombie sockets that miss session.ended).
+  useEffect(() => {
+    if (phase !== 'session' || !tokenCache.player) return;
+    const id = setInterval(() => {
+      void reconcileSessionOnce();
+    }, SESSION_HEALTH_RECONCILE_MS);
+    return () => clearInterval(id);
+  }, [phase, reconcileSessionOnce]);
 
   const handlePlayerAuthExpired = useCallback(async () => {
     if (phaseRef.current === 'session' && activeSessionRef.current) {

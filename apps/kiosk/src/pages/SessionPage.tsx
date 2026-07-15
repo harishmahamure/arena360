@@ -226,17 +226,23 @@ export function SessionPage() {
 
         {view === 'home' ? (
           <HomeView
+            disabled={reauthRequired}
             onError={onError}
             onLaunched={refresh}
             onNavigate={setView}
             onSearchLibrary={setLibraryQuery}
           />
         ) : view === 'library' ? (
-          <LibraryView initialQuery={libraryQuery} onError={onError} onLaunched={refresh} />
+          <LibraryView
+            disabled={reauthRequired}
+            initialQuery={libraryQuery}
+            onError={onError}
+            onLaunched={refresh}
+          />
         ) : view === 'menu' ? (
           <MenuView onError={onError} />
         ) : (
-          <SettingsView onError={onError} onLaunched={refresh} />
+          <SettingsView disabled={reauthRequired} onError={onError} onLaunched={refresh} />
         )}
       </div>
 
@@ -260,9 +266,9 @@ export function SessionPage() {
                 loadingLabel="Ending…"
                 disabled={endDisabled}
                 onClick={() => {
+                  setConfirmEnd(false);
                   void runEndSession(async () => {
                     await endSession('voluntary');
-                    setConfirmEnd(false);
                   });
                 }}
               >

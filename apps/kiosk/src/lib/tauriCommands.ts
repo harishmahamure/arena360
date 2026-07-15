@@ -169,9 +169,24 @@ export async function launchAllowed(
   executablePath: string,
   allowList: string[],
   args?: string[],
+  softLaunch?: boolean,
 ): Promise<{ pid: number }> {
   // Rust `launch_allowed` logs stage-specific failures; avoid duplicate entries.
   return invoke('launch_allowed', {
+    executablePath,
+    arguments: args,
+    allowList,
+    softLaunch: softLaunch ?? false,
+  });
+}
+
+/** Setup-only test launch (SetupRelaxed); still allow-list gated. */
+export async function launchAllowedTest(
+  executablePath: string,
+  allowList: string[],
+  args?: string[],
+): Promise<{ pid: number }> {
+  return invoke('launch_allowed_test', {
     executablePath,
     arguments: args,
     allowList,

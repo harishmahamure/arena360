@@ -186,6 +186,8 @@ export function AllowListEditor({
       name: manualName.trim(),
       executablePath: manualPath.trim(),
       category: manualCategory,
+      // Browse picker only returns existing files; typed paths are verified at Test launch.
+      present: true,
     });
     syncEntries(next);
     const added = next.find(
@@ -221,10 +223,10 @@ export function AllowListEditor({
     if (launchingId) return;
     setLaunchingId(entry.id);
     setStatus(null);
-    const { launchEntry, launchErrorMessage } = await import('../lib/launch');
+    const { launchEntryForTest, launchErrorMessage } = await import('../lib/launch');
     try {
-      await launchEntry(entry, entries);
-      setStatus(`Launched ${entry.name}`);
+      await launchEntryForTest(entry, entries);
+      setStatus(`Launched ${entry.name} — close it manually when done`);
     } catch (e) {
       setStatus(launchErrorMessage(e, `Could not launch ${entry.name}`));
     } finally {
@@ -462,6 +464,8 @@ export function AllowListEditor({
                   className="secondary"
                   disabled={
                     launchingId !== null ||
+                    selected.present === false ||
+                    !selected.executablePath.trim() ||
                     (selected.launchVia
                       ? !selected.launchVia.executablePath.trim() ||
                         !(normalizeLaunchArguments(selected.launchVia.arguments)?.length ?? 0)

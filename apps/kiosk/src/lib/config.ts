@@ -56,9 +56,26 @@ export const OFFLINE_GRACE_MS = numberFromEnv('VITE_OFFLINE_GRACE_MINUTES', 5) *
 /**
  * When WebSocket is disconnected during an active session, poll
  * `GET /kiosk/sessions/current` on this interval as a fallback for remote ends.
- * Configurable via `VITE_SESSION_RECONCILE_MINUTES`; defaults to 5 minutes.
+ * Configurable via `VITE_SESSION_RECONCILE_SECONDS`; defaults to 30 seconds.
+ * Legacy: `VITE_SESSION_RECONCILE_MINUTES` is still honored when seconds is unset.
  */
-export const SESSION_RECONCILE_MS = numberFromEnv('VITE_SESSION_RECONCILE_MINUTES', 5) * 60_000;
+export const SESSION_RECONCILE_MS = (() => {
+  const secondsRaw =
+    typeof import.meta !== 'undefined'
+      ? (import.meta.env as Record<string, string | undefined>)?.VITE_SESSION_RECONCILE_SECONDS
+      : undefined;
+  if (secondsRaw?.trim()) {
+    const parsed = Number.parseInt(secondsRaw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed * 1000;
+  }
+  const minutes = numberFromEnv('VITE_SESSION_RECONCILE_MINUTES', 0);
+  if (minutes > 0) return minutes * 60_000;
+  return 30_000;
+})();
+
+/** Periodic reconcile during an active session (catches zombie WS). Default 45s. */
+export const SESSION_HEALTH_RECONCILE_MS =
+  numberFromEnv('VITE_SESSION_HEALTH_RECONCILE_SECONDS', 45) * 1000;
 
 export function realtimeUrl(): string {
   const apiUrl = API_BASE_URL;

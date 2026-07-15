@@ -6,7 +6,7 @@ import {
   normalizeLaunchArguments,
   resolveLaunch,
 } from './allowList';
-import { launchAllowed } from './tauriCommands';
+import { launchAllowed, launchAllowedTest } from './tauriCommands';
 
 /** Extract a user-visible message from a launch failure (Tauri rejects with strings). */
 export function launchErrorMessage(e: unknown, fallback: string): string {
@@ -30,8 +30,10 @@ function validateLaunchEntry(entry: LaunchEntry): void {
   }
 }
 
-/** Launch an allow-list entry through the native guard (ADR-0019/0020). */
-export async function launchEntry(entry: LaunchEntry, entries: LaunchEntry[]): Promise<void> {
+function prepareLaunch(
+  entry: LaunchEntry,
+  entries: LaunchEntry[],
+): { executablePath: string; allowList: string[]; arguments?: string[] } {
   validateLaunchEntry(entry);
   const allowList = allowListPaths(entries);
   if (allowList.length === 0) {
@@ -48,5 +50,37 @@ export async function launchEntry(entry: LaunchEntry, entries: LaunchEntry[]): P
     );
   }
 
-  await launchAllowed(resolved.executablePath, allowList, resolved.arguments);
+  return {
+    executablePath: resolved.executablePath,
+    allowList,
+    arguments: resolved.arguments,
+  };
+}
+
+/** Soft-launch utilities/launchers (visible spawn, no game boost). */
+export function isSoftLaunchEntry(entry: LaunchEntry): boolean {
+  return entry.category === 'util' || entry.category === 'launcher';
+}
+
+/** Launch an allow-list entry through the native guard (ADR-0019/0020). */
+export async function launchEntry(entry: LaunchEntry, entries: LaunchEntry[]): Promise<void> {
+  const prepared = prepareLaunch(entry, entries);
+  await launchAllowed(
+    prepared.executablePath,
+    prepared.allowList,
+    prepared.arguments,
+    isSoftLaunchEntry(entry),
+  );
+}
+
+/** Setup Test launch — SetupRelaxed only; does not require a player session. */
+export async function launchEntryForTest(
+  entry: LaunchEntry,
+  entries: LaunchEntry[],
+): Promise<void> {
+  if (entry.present === false) {
+    throw new Error(`Executable not found for ${entry.name}`);
+  }
+  const prepared = prepareLaunch(entry, entries);
+  await launchAllowedTest(prepared.executablePath, prepared.allowList, prepared.arguments);
 }

@@ -106,6 +106,7 @@ pub fn run() {
             power::restart_station,
             power::shutdown_station,
             process::launch_allowed,
+            process::launch_allowed_test,
             process::focus_kiosk,
             process::get_tracked_processes,
             process::kill_tracked_processes,

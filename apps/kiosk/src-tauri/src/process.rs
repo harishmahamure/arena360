@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -11,6 +12,26 @@ use tauri::{AppHandle, Manager};
 fn log_window_op(op: &str, result: Result<(), tauri::Error>) {
     if let Err(e) = result {
         crate::diagnostics::error(format!("window {op}: {e}"));
+    }
+}
+
+/// Schedule window work on the Tauri main thread and wait (safe from worker/cleanup threads).
+fn run_on_main_thread_sync(app: &AppHandle, f: impl FnOnce() + Send + 'static) {
+    let (tx, rx) = mpsc::channel::<()>();
+    match app.run_on_main_thread(move || {
+        f();
+        let _ = tx.send(());
+    }) {
+        Ok(()) => {
+            if rx.recv_timeout(Duration::from_secs(10)).is_err() {
+                crate::diagnostics::error(
+                    "run_on_main_thread_sync: timed out waiting for main-thread window op",
+                );
+            }
+        }
+        Err(e) => {
+            crate::diagnostics::error(format!("run_on_main_thread_sync schedule failed: {e}"));
+        }
     }
 }
 
@@ -101,13 +122,28 @@ fn session_launch_permitted() -> bool {
     SESSION_LAUNCH_ENABLED.load(Ordering::SeqCst) && crate::lockdown::is_locked()
 }
 
-fn spawn_process(path: &str, args: Option<&[String]>) -> Result<u32, String> {
+fn setup_test_launch_permitted() -> bool {
+    !crate::lockdown::is_locked() && !cleanup_in_progress()
+}
+
+/// Spawn a process. When `visible` is true, omit CREATE_NO_WINDOW so GUI apps show normally.
+fn spawn_process(path: &str, args: Option<&[String]>, visible: bool) -> Result<u32, String> {
     let mut cmd = Command::new(path);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     #[cfg(target_os = "windows")]
-    cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW);
+    {
+        if visible {
+            cmd.creation_flags(DETACHED_PROCESS);
+        } else {
+            cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = visible;
+    }
     if let Some(parent) = Path::new(path).parent() {
         cmd.current_dir(parent);
     }
@@ -977,7 +1013,10 @@ fn prepare_kiosk_for_game_mode(app: &AppHandle) -> Result<(), String> {
 }
 
 fn restore_kiosk_window(app: &AppHandle) {
-    apply_kiosk_shell_lockdown(app);
+    let app_for_main = app.clone();
+    run_on_main_thread_sync(app, move || {
+        apply_kiosk_shell_lockdown(&app_for_main);
+    });
 }
 
 #[cfg(windows)]
@@ -1224,7 +1263,15 @@ fn start_monitor_if_needed(app: AppHandle) {
                 continue;
             }
             let is_empty = {
-                let mut tracked = TRACKED.lock().expect("tracked lock");
+                let Ok(mut tracked) = TRACKED.lock() else {
+                    crate::diagnostics::error(
+                        "monitor: TRACKED lock poisoned; stopping monitor thread",
+                    );
+                    if let Ok(mut running) = MONITOR_RUNNING.lock() {
+                        *running = false;
+                    }
+                    break;
+                };
                 #[cfg(windows)]
                 {
                     refresh_pids_for_monitor(&mut system, &tracked);
@@ -1309,13 +1356,16 @@ pub fn set_session_launch_enabled_cmd(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Soft launch (`soft_launch`): visible spawn, no game boost — for utilities/launchers.
 #[tauri::command]
 pub fn launch_allowed(
     app: AppHandle,
     executable_path: String,
     allow_list: Vec<String>,
     arguments: Option<Vec<String>>,
+    soft_launch: Option<bool>,
 ) -> Result<LaunchResult, String> {
+    let soft = soft_launch.unwrap_or(false);
     if cleanup_in_progress() {
         let err = "Session cleanup in progress".to_string();
         log_launch_failure("cleanup_in_progress", &executable_path, &err);
@@ -1340,14 +1390,19 @@ pub fn launch_allowed(
         log_launch_failure("prepare_kiosk", &executable_path, &e);
         return Err(e);
     }
-    crate::boost::prepare_game_boost();
+    if !soft {
+        crate::boost::prepare_game_boost();
+    }
     let pid = match spawn_process(
         &executable_path,
         normalize_launch_arguments(arguments).as_deref(),
+        soft,
     ) {
         Ok(pid) => pid,
         Err(e) => {
-            crate::boost::restore_game_boost();
+            if !soft {
+                crate::boost::restore_game_boost();
+            }
             if has_tracked_processes() {
                 apply_kiosk_session_foreground(&app);
             } else {
@@ -1357,7 +1412,9 @@ pub fn launch_allowed(
             return Err(e);
         }
     };
-    crate::boost::apply_game_priority(pid);
+    if !soft {
+        crate::boost::apply_game_priority(pid);
+    }
     let launcher = is_launcher_executable(&executable_path);
     apply_kiosk_game_mode_background(&app);
     let mut tracked = match TRACKED.lock() {
@@ -1376,10 +1433,62 @@ pub fn launch_allowed(
         app_foregrounded: false,
     });
     drop(tracked);
-    start_monitor_if_needed(app);
+    start_monitor_if_needed(app.clone());
+    spawn_launch_foreground_task(pid, launcher || soft);
+    crate::diagnostics::info(format!(
+        "launch_allowed ok exe={} path={executable_path} pid={pid} soft={soft}",
+        executable_basename(&executable_path)
+    ));
+    Ok(LaunchResult { pid })
+}
+
+/// Setup-only test launch: allow-list enforced, no session gate, no boost, not tracked.
+#[tauri::command]
+pub fn launch_allowed_test(
+    executable_path: String,
+    allow_list: Vec<String>,
+    arguments: Option<Vec<String>>,
+) -> Result<LaunchResult, String> {
+    if cleanup_in_progress() {
+        let err = "Session cleanup in progress".to_string();
+        log_launch_failure("cleanup_in_progress", &executable_path, &err);
+        return Err(err);
+    }
+    if !setup_test_launch_permitted() {
+        let err = "Test launch is only available in Setup mode".to_string();
+        log_launch_failure("setup_gate", &executable_path, &err);
+        return Err(err);
+    }
+    if allow_list.is_empty() {
+        let err = "Allow-list is empty".to_string();
+        log_launch_failure("allow_list_empty", &executable_path, &err);
+        return Err(err);
+    }
+    if !is_allowed(&executable_path, &allow_list) {
+        let err = "Executable not in allow-list".to_string();
+        log_launch_failure("allow_list", &executable_path, &err);
+        return Err(err);
+    }
+    if !Path::new(&executable_path).is_file() {
+        let err = "Executable not found".to_string();
+        log_launch_failure("missing_exe", &executable_path, &err);
+        return Err(err);
+    }
+    let pid = match spawn_process(
+        &executable_path,
+        normalize_launch_arguments(arguments).as_deref(),
+        true,
+    ) {
+        Ok(pid) => pid,
+        Err(e) => {
+            log_launch_failure("spawn", &executable_path, &e);
+            return Err(e);
+        }
+    };
+    let launcher = is_launcher_executable(&executable_path);
     spawn_launch_foreground_task(pid, launcher);
     crate::diagnostics::info(format!(
-        "launch_allowed ok exe={} path={executable_path} pid={pid}",
+        "launch_allowed_test ok exe={} path={executable_path} pid={pid}",
         executable_basename(&executable_path)
     ));
     Ok(LaunchResult { pid })

@@ -8,7 +8,7 @@ import {
   resolveLaunch,
   tokenizeArguments,
 } from './allowList';
-import { launchEntry, launchErrorMessage } from './launch';
+import { isSoftLaunchEntry, launchEntry, launchEntryForTest, launchErrorMessage } from './launch';
 
 const valorantEntry: LaunchEntry = {
   id: '1',
@@ -131,6 +131,32 @@ describe('launchEntry validation', () => {
       executablePath: 'C:\\Games\\game.exe',
     };
     await expect(launchEntry(entry, [])).rejects.toThrow(/No applications are configured/);
+  });
+});
+
+describe('isSoftLaunchEntry', () => {
+  it('marks util and launcher categories as soft launch', () => {
+    expect(
+      isSoftLaunchEntry({ id: '1', name: 'Steam', executablePath: 'x', category: 'launcher' }),
+    ).toBe(true);
+    expect(
+      isSoftLaunchEntry({ id: '2', name: 'Discord', executablePath: 'x', category: 'util' }),
+    ).toBe(true);
+    expect(
+      isSoftLaunchEntry({ id: '3', name: 'Game', executablePath: 'x', category: 'game' }),
+    ).toBe(false);
+  });
+});
+
+describe('launchEntryForTest', () => {
+  it('rejects missing executables before invoke', async () => {
+    const entry: LaunchEntry = {
+      id: '1',
+      name: 'Missing',
+      executablePath: 'C:\\Missing\\app.exe',
+      present: false,
+    };
+    await expect(launchEntryForTest(entry, [entry])).rejects.toThrow(/Executable not found/);
   });
 });
 
