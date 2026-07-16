@@ -356,6 +356,7 @@ impl KioskOrderService {
             payment_method: convert.payment_method.clone(),
             payment_status: convert.payment_status.clone(),
             notes: convert.notes.clone(),
+            online_payment_ref_last4: convert.online_payment_ref_last4.clone(),
             transaction_date: None,
             cash_amount: convert.cash_amount,
             online_amount: convert.online_amount,

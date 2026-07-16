@@ -28,6 +28,7 @@ impl TransactionRepository {
                "paymentMethod"::text as payment_method,
                "paymentStatus"::text as payment_status,
                notes,
+               "onlinePaymentRefLast4" as online_payment_ref_last4,
                "transactionDate" as transaction_date,
                "createdBy" as created_by,
                "updatedBy" as updated_by,
@@ -35,6 +36,28 @@ impl TransactionRepository {
                "updatedAt" as updated_at,
                "deletedAt" as deleted_at
         FROM transactions
+    "#;
+
+    const RETURNING: &'static str = r#"
+        RETURNING id,
+                  "playerId" as player_id,
+                  "transactionType"::text as transaction_type,
+                  "planId" as plan_id,
+                  "shiftId" as shift_id,
+                  amount::float8 as amount,
+                  "paidAmount"::float8 as paid_amount,
+                  "cashAmount"::float8 as cash_amount,
+                  "onlineAmount"::float8 as online_amount,
+                  "paymentMethod"::text as payment_method,
+                  "paymentStatus"::text as payment_status,
+                  notes,
+                  "onlinePaymentRefLast4" as online_payment_ref_last4,
+                  "transactionDate" as transaction_date,
+                  "createdBy" as created_by,
+                  "updatedBy" as updated_by,
+                  "createdAt" as created_at,
+                  "updatedAt" as updated_at,
+                  "deletedAt" as deleted_at
     "#;
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, AppError> {
@@ -67,6 +90,7 @@ impl TransactionRepository {
                       t."paymentMethod"::text as payment_method,
                       t."paymentStatus"::text as payment_status,
                       t.notes,
+                      t."onlinePaymentRefLast4" as online_payment_ref_last4,
                       t."transactionDate" as transaction_date,
                       t."createdBy" as created_by,
                       t."updatedBy" as updated_by,
@@ -176,52 +200,39 @@ impl TransactionRepository {
         payment_status: &str,
         actor_id: Option<Uuid>,
     ) -> Result<Transaction, AppError> {
-        let transaction = sqlx::query_as::<_, Transaction>(
+        let query = format!(
             r#"
             INSERT INTO transactions (
                 id, "playerId", "transactionType", "planId", "shiftId", amount,
                 "paidAmount", "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
-                notes, "transactionDate", "createdBy", "updatedBy", "createdAt", "updatedAt"
+                notes, "onlinePaymentRefLast4", "transactionDate", "createdBy", "updatedBy",
+                "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
                 0, $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
-                $10, $11, $12, $12, NOW(), NOW()
+                $10, $11, $12, $13, $13, NOW(), NOW()
             )
-            RETURNING id,
-                      "playerId" as player_id,
-                      "transactionType"::text as transaction_type,
-                      "planId" as plan_id,
-                      "shiftId" as shift_id,
-                      amount::float8 as amount,
-                      "paidAmount"::float8 as paid_amount,
-                      "cashAmount"::float8 as cash_amount,
-                      "onlineAmount"::float8 as online_amount,
-                      "paymentMethod"::text as payment_method,
-                      "paymentStatus"::text as payment_status,
-                      notes,
-                      "transactionDate" as transaction_date,
-                      "createdBy" as created_by,
-                      "updatedBy" as updated_by,
-                      "createdAt" as created_at,
-                      "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {}
             "#,
-        )
-        .bind(dto.player_id)
-        .bind(&dto.transaction_type)
-        .bind(dto.plan_id)
-        .bind(dto.shift_id)
-        .bind(amount)
-        .bind(dto.cash_amount)
-        .bind(dto.online_amount)
-        .bind(&dto.payment_method)
-        .bind(payment_status)
-        .bind(&dto.notes)
-        .bind(transaction_date)
-        .bind(actor_id)
-        .fetch_one(&self.pool)
-        .await?;
+            Self::RETURNING
+        );
+        let transaction = sqlx::query_as::<_, Transaction>(&query)
+            .bind(dto.player_id)
+            .bind(&dto.transaction_type)
+            .bind(dto.plan_id)
+            .bind(dto.shift_id)
+            .bind(amount)
+            .bind(dto.cash_amount)
+            .bind(dto.online_amount)
+            .bind(&dto.payment_method)
+            .bind(payment_status)
+            .bind(&dto.notes)
+            .bind(&dto.online_payment_ref_last4)
+            .bind(transaction_date)
+            .bind(actor_id)
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(transaction)
     }
@@ -232,7 +243,7 @@ impl TransactionRepository {
         dto: &crate::models::UpdateTransactionDto,
         actor_id: Option<Uuid>,
     ) -> Result<Transaction, AppError> {
-        let transaction = sqlx::query_as::<_, Transaction>(
+        let query = format!(
             r#"
             UPDATE transactions SET
                 "paymentStatus" = COALESCE($2::transactions_paymentstatus_enum, "paymentStatus"),
@@ -240,33 +251,18 @@ impl TransactionRepository {
                 "updatedBy" = COALESCE($4, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
-            RETURNING id,
-                      "playerId" as player_id,
-                      "transactionType"::text as transaction_type,
-                      "planId" as plan_id,
-                      "shiftId" as shift_id,
-                      amount::float8 as amount,
-                      "paidAmount"::float8 as paid_amount,
-                      "cashAmount"::float8 as cash_amount,
-                      "onlineAmount"::float8 as online_amount,
-                      "paymentMethod"::text as payment_method,
-                      "paymentStatus"::text as payment_status,
-                      notes,
-                      "transactionDate" as transaction_date,
-                      "createdBy" as created_by,
-                      "updatedBy" as updated_by,
-                      "createdAt" as created_at,
-                      "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {}
             "#,
-        )
-        .bind(id)
-        .bind(&dto.payment_status)
-        .bind(&dto.notes)
-        .bind(actor_id)
-        .fetch_optional(&self.pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;
+            Self::RETURNING
+        );
+        let transaction = sqlx::query_as::<_, Transaction>(&query)
+            .bind(id)
+            .bind(&dto.payment_status)
+            .bind(&dto.notes)
+            .bind(actor_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;
 
         Ok(transaction)
     }
@@ -279,52 +275,39 @@ impl TransactionRepository {
         payment_status: &str,
         actor_id: Option<Uuid>,
     ) -> Result<Transaction, AppError> {
-        let transaction = sqlx::query_as::<_, Transaction>(
+        let query = format!(
             r#"
             INSERT INTO transactions (
                 id, "playerId", "transactionType", "planId", "shiftId", amount,
                 "paidAmount", "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
-                notes, "transactionDate", "createdBy", "updatedBy", "createdAt", "updatedAt"
+                notes, "onlinePaymentRefLast4", "transactionDate", "createdBy", "updatedBy",
+                "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
                 0, $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
-                $10, $11, $12, $12, NOW(), NOW()
+                $10, $11, $12, $13, $13, NOW(), NOW()
             )
-            RETURNING id,
-                      "playerId" as player_id,
-                      "transactionType"::text as transaction_type,
-                      "planId" as plan_id,
-                      "shiftId" as shift_id,
-                      amount::float8 as amount,
-                      "paidAmount"::float8 as paid_amount,
-                      "cashAmount"::float8 as cash_amount,
-                      "onlineAmount"::float8 as online_amount,
-                      "paymentMethod"::text as payment_method,
-                      "paymentStatus"::text as payment_status,
-                      notes,
-                      "transactionDate" as transaction_date,
-                      "createdBy" as created_by,
-                      "updatedBy" as updated_by,
-                      "createdAt" as created_at,
-                      "updatedAt" as updated_at,
-                      "deletedAt" as deleted_at
+            {}
             "#,
-        )
-        .bind(dto.player_id)
-        .bind(&dto.transaction_type)
-        .bind(dto.plan_id)
-        .bind(dto.shift_id)
-        .bind(amount)
-        .bind(dto.cash_amount)
-        .bind(dto.online_amount)
-        .bind(&dto.payment_method)
-        .bind(payment_status)
-        .bind(&dto.notes)
-        .bind(transaction_date)
-        .bind(actor_id)
-        .fetch_one(&mut **tx)
-        .await?;
+            Self::RETURNING
+        );
+        let transaction = sqlx::query_as::<_, Transaction>(&query)
+            .bind(dto.player_id)
+            .bind(&dto.transaction_type)
+            .bind(dto.plan_id)
+            .bind(dto.shift_id)
+            .bind(amount)
+            .bind(dto.cash_amount)
+            .bind(dto.online_amount)
+            .bind(&dto.payment_method)
+            .bind(payment_status)
+            .bind(&dto.notes)
+            .bind(&dto.online_payment_ref_last4)
+            .bind(transaction_date)
+            .bind(actor_id)
+            .fetch_one(&mut **tx)
+            .await?;
 
         Ok(transaction)
     }

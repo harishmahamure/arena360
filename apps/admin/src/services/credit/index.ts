@@ -54,6 +54,7 @@ export interface SettleCreditPayload {
   paymentMethod: string;
   cashAmount?: number;
   onlineAmount?: number;
+  onlinePaymentRefLast4?: string;
   notes?: string;
 }
 
@@ -66,6 +67,7 @@ export interface CreditSettlement {
   paymentMethod: string;
   cashAmount?: number;
   onlineAmount?: number;
+  onlinePaymentRefLast4?: string;
   notes?: string;
   settledAt: string;
 }
@@ -81,6 +83,7 @@ export interface CreditSettlementListRow {
   paymentMethod: string;
   cashAmount?: number;
   onlineAmount?: number;
+  onlinePaymentRefLast4?: string;
   notes?: string;
   settledAt: string;
   itemCount: number;
@@ -106,6 +109,7 @@ export interface CreditSettlementDetail {
   paymentMethod: string;
   cashAmount?: number;
   onlineAmount?: number;
+  onlinePaymentRefLast4?: string;
   notes?: string;
   settledAt: string;
   createdAt: string;

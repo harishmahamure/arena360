@@ -121,6 +121,16 @@ export default function CreditSettlementDetailPage() {
               </Typography>
               <Typography variant="body1">{paymentLabel}</Typography>
             </Grid>
+            {settlement.onlinePaymentRefLast4 && (
+              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                <Typography variant="caption" color="text.secondary">
+                  UPI ref (last 4)
+                </Typography>
+                <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
+                  {settlement.onlinePaymentRefLast4}
+                </Typography>
+              </Grid>
+            )}
             <Grid size={{ xs: 12, sm: 6, md: 4 }}>
               <Typography variant="caption" color="text.secondary">
                 Settled by

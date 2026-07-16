@@ -26,11 +26,14 @@ import {
   CounterSaleLayout,
   evaluateCreditBlocked,
   PlanSaleCard,
+  PosOnlinePaymentRefField,
   PosPaymentTiles,
   type PosPlayer,
   PosPlayerPicker,
   PosSplitAmountFields,
   posSaleSuccessLabel,
+  requiresOnlinePaymentRef,
+  validateOnlinePaymentRefLast4,
   validateSplitPaymentAmounts,
 } from '../../../containers/sales';
 import {
@@ -66,6 +69,7 @@ export default function AddNewPlanTransactionPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>(PaymentMethodValues.CASH);
   const [cashAmount, setCashAmount] = useState<string>('');
   const [onlineAmount, setOnlineAmount] = useState<string>('');
+  const [onlinePaymentRefLast4, setOnlinePaymentRefLast4] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
   const { data: preselectedPlayer } = useQuery({
@@ -140,6 +144,22 @@ export default function AddNewPlanTransactionPage() {
       }
     }
 
+    const onlinePortion =
+      paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+        ? Number.parseFloat(onlineAmount)
+        : paymentMethod === PaymentMethodValues.ONLINE
+          ? purchaseAmount
+          : undefined;
+    const refError = validateOnlinePaymentRefLast4(
+      onlinePaymentRefLast4,
+      paymentMethod,
+      onlinePortion,
+    );
+    if (refError) {
+      setError(refError);
+      return;
+    }
+
     if (isCredit && creditBlocked) {
       setError('This player is not eligible for this credit purchase');
       return;
@@ -168,6 +188,9 @@ export default function AddNewPlanTransactionPage() {
             : paymentMethod === PaymentMethodValues.ONLINE
               ? purchaseAmount
               : undefined,
+        onlinePaymentRefLast4: requiresOnlinePaymentRef(paymentMethod, onlinePortion)
+          ? onlinePaymentRefLast4.trim()
+          : undefined,
       };
 
       try {
@@ -328,6 +351,17 @@ export default function AddNewPlanTransactionPage() {
               onCashChange={setCashAmount}
               onOnlineChange={setOnlineAmount}
               totalAmount={purchaseAmount}
+            />
+          )}
+
+          {requiresOnlinePaymentRef(
+            paymentMethod,
+            paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? onlineAmount : purchaseAmount,
+          ) && (
+            <PosOnlinePaymentRefField
+              value={onlinePaymentRefLast4}
+              onChange={setOnlinePaymentRefLast4}
+              disabled={submitting}
             />
           )}
 

@@ -199,6 +199,16 @@ export default function ViewPlanTransactionPage() {
                     : 'N/A'}
                 </Typography>
               </Grid>
+              {transaction?.onlinePaymentRefLast4 && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    UPI ref (last 4)
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
+                    {transaction.onlinePaymentRefLast4}
+                  </Typography>
+                </Grid>
+              )}
               <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary">
                   Payment Status

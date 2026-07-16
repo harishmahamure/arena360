@@ -151,6 +151,7 @@ pub struct ConvertKioskOrderDto {
     pub payment_method: String,
     pub payment_status: Option<String>,
     pub notes: Option<String>,
+    pub online_payment_ref_last4: Option<String>,
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
     pub sale_location_id: Option<Uuid>,

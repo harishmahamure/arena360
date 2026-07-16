@@ -2363,6 +2363,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             paymentMethod: string;
             paymentStatus?: string | null;
             /** Format: uuid */
@@ -2580,6 +2581,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             paymentMethod: string;
             paymentStatus?: string | null;
             /** Format: uuid */
@@ -2664,6 +2666,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             paymentMethod: string;
             /** Format: uuid */
             playerId: string;
@@ -2689,6 +2692,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             paymentMethod: string;
             /** Format: uuid */
             playerId: string;
@@ -2756,6 +2760,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             paymentMethod: string;
             /** Format: uuid */
             playerId: string;
@@ -4330,6 +4335,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             paymentMethod: string;
             /** Format: uuid */
             playerId: string;
@@ -4863,6 +4869,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             /** Format: double */
             paidAmount: number;
             paymentMethod: string;
@@ -4979,6 +4986,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             /** Format: double */
             paidAmount: number;
             paymentMethod: string;
@@ -5028,6 +5036,7 @@ export interface components {
             notes?: string | null;
             /** Format: double */
             onlineAmount?: number | null;
+            onlinePaymentRefLast4?: string | null;
             /** Format: double */
             paidAmount: number;
             paymentMethod: string;

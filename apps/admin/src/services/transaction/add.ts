@@ -19,6 +19,7 @@ export interface CreateProductTransactionPayload {
   transactionDate?: string;
   cashAmount?: number;
   onlineAmount?: number;
+  onlinePaymentRefLast4?: string;
   lineItems?: LineItemPayload[];
   saleLocationId?: string;
   kioskOrderId?: string;

@@ -13221,6 +13221,12 @@
             ],
             "format": "double"
           },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "paymentMethod": {
             "type": "string"
           },
@@ -14070,6 +14076,12 @@
             ],
             "format": "double"
           },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "paymentMethod": {
             "type": "string"
           },
@@ -14393,6 +14405,12 @@
             ],
             "format": "double"
           },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "paymentMethod": {
             "type": "string"
           },
@@ -14472,6 +14490,12 @@
               "null"
             ],
             "format": "double"
+          },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "paymentMethod": {
             "type": "string"
@@ -14698,6 +14722,12 @@
               "null"
             ],
             "format": "double"
+          },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "paymentMethod": {
             "type": "string"
@@ -19945,6 +19975,12 @@
             ],
             "format": "double"
           },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "paymentMethod": {
             "type": "string"
           },
@@ -21831,6 +21867,12 @@
             ],
             "format": "double"
           },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "paidAmount": {
             "type": "number",
             "format": "double"
@@ -22219,6 +22261,12 @@
             ],
             "format": "double"
           },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "paidAmount": {
             "type": "number",
             "format": "double"
@@ -22386,6 +22434,12 @@
               "null"
             ],
             "format": "double"
+          },
+          "onlinePaymentRefLast4": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "paidAmount": {
             "type": "number",

@@ -29,6 +29,7 @@ export interface Transaction {
   amount: number;
   cashAmount?: number | null;
   onlineAmount?: number | null;
+  onlinePaymentRefLast4?: string | null;
   paymentMethod: string;
   paymentStatus: string;
   notes?: string | null;

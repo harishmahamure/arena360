@@ -59,6 +59,7 @@ pub struct CreditSettlement {
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
     pub notes: Option<String>,
+    pub online_payment_ref_last4: Option<String>,
     pub settled_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -80,6 +81,7 @@ pub struct SettleCreditDto {
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
     pub notes: Option<String>,
+    pub online_payment_ref_last4: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -126,6 +128,7 @@ pub struct CreditSettlementListRow {
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
     pub notes: Option<String>,
+    pub online_payment_ref_last4: Option<String>,
     pub settled_at: DateTime<Utc>,
     pub item_count: i64,
 }
@@ -155,6 +158,7 @@ pub struct CreditSettlementDetail {
     pub cash_amount: Option<f64>,
     pub online_amount: Option<f64>,
     pub notes: Option<String>,
+    pub online_payment_ref_last4: Option<String>,
     pub settled_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

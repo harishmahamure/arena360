@@ -51,6 +51,7 @@ struct CreditSettlementListRowWithTotal {
     cash_amount: Option<f64>,
     online_amount: Option<f64>,
     notes: Option<String>,
+    online_payment_ref_last4: Option<String>,
     settled_at: DateTime<Utc>,
     item_count: i64,
     total_count: i64,
@@ -70,6 +71,7 @@ impl From<CreditSettlementListRowWithTotal> for CreditSettlementListRow {
             cash_amount: row.cash_amount,
             online_amount: row.online_amount,
             notes: row.notes,
+            online_payment_ref_last4: row.online_payment_ref_last4,
             settled_at: row.settled_at,
             item_count: row.item_count,
         }
@@ -89,6 +91,7 @@ struct CreditSettlementHeaderRow {
     cash_amount: Option<f64>,
     online_amount: Option<f64>,
     notes: Option<String>,
+    online_payment_ref_last4: Option<String>,
     settled_at: DateTime<Utc>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -301,6 +304,7 @@ impl CreditRepository {
         cash_amount: Option<f64>,
         online_amount: Option<f64>,
         notes: Option<&str>,
+        online_payment_ref_last4: Option<&str>,
         items: &[SettleItemDto],
     ) -> Result<CreditSettlement, AppError> {
         let mut tx = self.pool.begin().await?;
@@ -309,12 +313,12 @@ impl CreditRepository {
             r#"
             INSERT INTO credit_settlements (
                 id, "playerId", "shiftId", "settledBy", amount,
-                "paymentMethod", "cashAmount", "onlineAmount", notes,
+                "paymentMethod", "cashAmount", "onlineAmount", notes, "onlinePaymentRefLast4",
                 "settledAt", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4,
-                $5, $6, $7, $8,
+                $5, $6, $7, $8, $9,
                 NOW(), $3, $3, NOW(), NOW()
             )
             RETURNING id,
@@ -326,6 +330,7 @@ impl CreditRepository {
                       "cashAmount"::float8 as cash_amount,
                       "onlineAmount"::float8 as online_amount,
                       notes,
+                      "onlinePaymentRefLast4" as online_payment_ref_last4,
                       "settledAt" as settled_at,
                       "createdAt" as created_at,
                       "updatedAt" as updated_at
@@ -339,6 +344,7 @@ impl CreditRepository {
         .bind(cash_amount)
         .bind(online_amount)
         .bind(notes)
+        .bind(online_payment_ref_last4)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -437,6 +443,7 @@ impl CreditRepository {
                    cs."cashAmount"::float8 as cash_amount,
                    cs."onlineAmount"::float8 as online_amount,
                    cs.notes,
+                   cs."onlinePaymentRefLast4" as online_payment_ref_last4,
                    cs."settledAt" as settled_at,
                    (
                        SELECT COUNT(*)::bigint
@@ -533,6 +540,7 @@ impl CreditRepository {
                    cs."cashAmount"::float8 as cash_amount,
                    cs."onlineAmount"::float8 as online_amount,
                    cs.notes,
+                   cs."onlinePaymentRefLast4" as online_payment_ref_last4,
                    cs."settledAt" as settled_at,
                    cs."createdAt" as created_at,
                    cs."updatedAt" as updated_at
@@ -577,6 +585,7 @@ impl CreditRepository {
             cash_amount: header.cash_amount,
             online_amount: header.online_amount,
             notes: header.notes,
+            online_payment_ref_last4: header.online_payment_ref_last4,
             settled_at: header.settled_at,
             created_at: header.created_at,
             updated_at: header.updated_at,

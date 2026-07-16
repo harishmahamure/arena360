@@ -13,6 +13,7 @@ use crate::repositories::CreditRepository;
 use crate::services::CashRegisterService;
 use crate::services::{NotificationService, RecordNotification, Recipients};
 use crate::models::activity_kind;
+use crate::validation::validate_online_payment_ref_last4;
 
 pub struct CreditService {
     repo: CreditRepository,
@@ -137,6 +138,18 @@ impl CreditService {
         )
         .map_err(AppError::BadRequest)?;
 
+        let online_ref = validate_online_payment_ref_last4(
+            &dto.payment_method,
+            dto.online_amount.or_else(|| {
+                if dto.payment_method == "online" {
+                    Some(total)
+                } else {
+                    None
+                }
+            }),
+            dto.online_payment_ref_last4,
+        )?;
+
         let settlement = self
             .repo
             .create_settlement(
@@ -148,6 +161,7 @@ impl CreditService {
                 dto.cash_amount,
                 dto.online_amount,
                 dto.notes.as_deref(),
+                online_ref.as_deref(),
                 &dto.items,
             )
             .await?;

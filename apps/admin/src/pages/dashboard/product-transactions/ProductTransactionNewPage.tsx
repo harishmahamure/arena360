@@ -33,12 +33,15 @@ import {
   CounterSaleLayout,
   evaluateCreditBlocked,
   isPosPaymentSuccessful,
+  PosOnlinePaymentRefField,
   PosPaymentTiles,
   type PosPlayer,
   PosPlayerPicker,
   PosSplitAmountFields,
   PosStoreToolbar,
   posSaleSuccessLabel,
+  requiresOnlinePaymentRef,
+  validateOnlinePaymentRefLast4,
   validateSplitPaymentAmounts,
 } from '../../../containers/sales';
 import {
@@ -188,6 +191,7 @@ export default function CreateProductTransactionPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>(PaymentMethodValues.CASH);
   const [cashAmount, setCashAmount] = useState<string>('');
   const [onlineAmount, setOnlineAmount] = useState<string>('');
+  const [onlinePaymentRefLast4, setOnlinePaymentRefLast4] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [saleLocationId, setSaleLocationId] = useState<string>('');
   const [kioskOrderId, setKioskOrderId] = useState<string | undefined>(prefillOrderId);
@@ -373,6 +377,22 @@ export default function CreateProductTransactionPage() {
       }
     }
 
+    const onlinePortion =
+      paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+        ? Number.parseFloat(onlineAmount)
+        : paymentMethod === PaymentMethodValues.ONLINE
+          ? total
+          : undefined;
+    const refError = validateOnlinePaymentRefLast4(
+      onlinePaymentRefLast4,
+      paymentMethod,
+      onlinePortion,
+    );
+    if (refError) {
+      setError(refError);
+      return;
+    }
+
     if (isCredit && creditBlocked) {
       setError('This player is not eligible for this credit purchase');
       return;
@@ -407,6 +427,9 @@ export default function CreateProductTransactionPage() {
               : paymentMethod === PaymentMethodValues.ONLINE
                 ? total
                 : undefined,
+          onlinePaymentRefLast4: requiresOnlinePaymentRef(paymentMethod, onlinePortion)
+            ? onlinePaymentRefLast4.trim()
+            : undefined,
           notes: notes || undefined,
           kioskOrderId,
           lineItems: cart.map((item) => ({
@@ -650,6 +673,17 @@ export default function CreateProductTransactionPage() {
               onCashChange={setCashAmount}
               onOnlineChange={setOnlineAmount}
               totalAmount={total}
+            />
+          )}
+
+          {requiresOnlinePaymentRef(
+            paymentMethod,
+            paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? onlineAmount : total,
+          ) && (
+            <PosOnlinePaymentRefField
+              value={onlinePaymentRefLast4}
+              onChange={setOnlinePaymentRefLast4}
+              disabled={submitting}
             />
           )}
 

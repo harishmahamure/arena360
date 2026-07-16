@@ -51,6 +51,35 @@ export function validateSplitPaymentAmounts(
   return undefined;
 }
 
+/** True when staff must enter UPI receipt last-4 digits. */
+export function requiresOnlinePaymentRef(
+  paymentMethod: string,
+  onlineAmount?: number | string,
+): boolean {
+  if (paymentMethod === PaymentMethodValues.ONLINE) return true;
+  if (paymentMethod !== PaymentMethodValues.SPLIT_PAYMENT) return false;
+  const amount =
+    typeof onlineAmount === 'string' ? Number.parseFloat(onlineAmount) : (onlineAmount ?? 0);
+  return !Number.isNaN(amount) && amount > 0;
+}
+
+export function validateOnlinePaymentRefLast4(
+  ref: string,
+  paymentMethod: string,
+  onlineAmount?: number | string,
+): string | undefined {
+  if (!requiresOnlinePaymentRef(paymentMethod, onlineAmount)) return undefined;
+
+  const trimmed = ref.trim();
+  if (!trimmed) {
+    return 'Enter the last 4 digits of the UPI Transaction ID';
+  }
+  if (!/^\d{4}$/.test(trimmed)) {
+    return 'UPI Transaction ID last 4 must be exactly 4 digits';
+  }
+  return undefined;
+}
+
 export function formatPaymentSplit(row: {
   paymentMethod: string;
   amount: number;

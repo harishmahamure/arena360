@@ -14,7 +14,7 @@ use crate::repositories::{InventoryRepository, TransactionProductRepository, Tra
 use crate::services::{BalanceService, CreditService, EventService, InventoryService, NotificationService};
 use crate::validation::{
     optional_payment_status, require_payment_method, require_payment_status,
-    require_transaction_type,
+    require_transaction_type, validate_online_payment_ref_last4,
 };
 
 pub struct TransactionService {
@@ -237,6 +237,11 @@ impl TransactionService {
         let mut dto_for_insert = dto;
         dto_for_insert.amount = Some(server_total);
         Self::populate_payment_amounts(&mut dto_for_insert, server_total);
+        dto_for_insert.online_payment_ref_last4 = validate_online_payment_ref_last4(
+            &dto_for_insert.payment_method,
+            dto_for_insert.online_amount,
+            dto_for_insert.online_payment_ref_last4.take(),
+        )?;
 
         let transaction = TransactionRepository::create_in_tx(
             &mut db_tx,
@@ -439,6 +444,11 @@ impl TransactionService {
         let transaction_date = dto.transaction_date.unwrap_or_else(Utc::now);
 
         Self::populate_payment_amounts(&mut dto, amount);
+        dto.online_payment_ref_last4 = validate_online_payment_ref_last4(
+            &dto.payment_method,
+            dto.online_amount,
+            dto.online_payment_ref_last4.take(),
+        )?;
 
         let transaction = self
             .repo

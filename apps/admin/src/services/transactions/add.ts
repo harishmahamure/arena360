@@ -17,6 +17,7 @@ export interface CreateTransactionPayload {
   transactionDate?: string;
   cashAmount?: number;
   onlineAmount?: number;
+  onlinePaymentRefLast4?: string;
 }
 
 export const addTransaction = async (payload: CreateTransactionPayload) => {

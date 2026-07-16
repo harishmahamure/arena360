@@ -27,6 +27,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  PosOnlinePaymentRefField,
+  requiresOnlinePaymentRef,
+  validateOnlinePaymentRefLast4,
+  validateSplitPaymentAmounts,
+} from '../../../containers/sales';
+import {
   type PaymentMethodType,
   PaymentMethodValues,
   paymentMethodOptions,
@@ -61,6 +67,7 @@ export default function CreditPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>(PaymentMethodValues.CASH);
   const [cashAmount, setCashAmount] = useState('');
   const [onlineAmount, setOnlineAmount] = useState('');
+  const [onlinePaymentRefLast4, setOnlinePaymentRefLast4] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | undefined>();
@@ -97,6 +104,7 @@ export default function CreditPage() {
     setPaymentMethod(PaymentMethodValues.CASH);
     setCashAmount('');
     setOnlineAmount('');
+    setOnlinePaymentRefLast4('');
     setNotes('');
     setDialogError(undefined);
   };
@@ -166,6 +174,30 @@ export default function CreditPage() {
       }
     }
 
+    if (paymentMethod === PaymentMethodValues.SPLIT_PAYMENT) {
+      const splitError = validateSplitPaymentAmounts(selectedTotal, cashAmount, onlineAmount);
+      if (splitError) {
+        setDialogError(splitError);
+        return;
+      }
+    }
+
+    const onlinePortion =
+      paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
+        ? Number.parseFloat(onlineAmount)
+        : paymentMethod === PaymentMethodValues.ONLINE
+          ? selectedTotal
+          : undefined;
+    const refError = validateOnlinePaymentRefLast4(
+      onlinePaymentRefLast4,
+      paymentMethod,
+      onlinePortion,
+    );
+    if (refError) {
+      setDialogError(refError);
+      return;
+    }
+
     setSubmitting(true);
     try {
       await settleCredit({
@@ -184,6 +216,9 @@ export default function CreditPage() {
             : paymentMethod === PaymentMethodValues.ONLINE
               ? selectedTotal
               : undefined,
+        onlinePaymentRefLast4: requiresOnlinePaymentRef(paymentMethod, onlinePortion)
+          ? onlinePaymentRefLast4.trim()
+          : undefined,
         notes: notes || undefined,
       });
       toastUtils.success('Credit bill settled');
@@ -415,6 +450,19 @@ export default function CreditPage() {
               </>
             )}
           </Box>
+
+          {requiresOnlinePaymentRef(
+            paymentMethod,
+            paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? onlineAmount : selectedTotal,
+          ) && (
+            <Box sx={{ mt: 2 }}>
+              <PosOnlinePaymentRefField
+                value={onlinePaymentRefLast4}
+                onChange={setOnlinePaymentRefLast4}
+                disabled={submitting}
+              />
+            </Box>
+          )}
 
           <Typography variant="body2" sx={{ mt: 2 }} fontWeight={600}>
             Settlement total: {formatCurrency(selectedTotal)}

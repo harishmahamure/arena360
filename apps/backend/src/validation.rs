@@ -181,6 +181,42 @@ pub fn require_payment_status(value: Option<String>) -> Result<String, AppError>
         .ok_or_else(|| AppError::BadRequest(enum_error_message("paymentStatus", PAYMENT_STATUSES)))
 }
 
+/// Require UPI receipt last-4 when payment includes an online portion.
+///
+/// Required when `payment_method` is `online`, or `split_payment` with
+/// `online_amount > 0`. Value must be exactly four ASCII digits.
+pub fn validate_online_payment_ref_last4(
+    payment_method: &str,
+    online_amount: Option<f64>,
+    ref_last4: Option<String>,
+) -> Result<Option<String>, AppError> {
+    let requires = payment_method == "online"
+        || (payment_method == "split_payment" && online_amount.unwrap_or(0.0) > 0.0);
+
+    let trimmed = ref_last4
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    if !requires {
+        return Ok(None);
+    }
+
+    let value = trimmed.ok_or_else(|| {
+        AppError::BadRequest(
+            "onlinePaymentRefLast4 is required for online payments (last 4 digits of UPI Transaction ID)"
+                .to_string(),
+        )
+    })?;
+
+    if value.len() != 4 || !value.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(
+            "onlinePaymentRefLast4 must be exactly 4 digits".to_string(),
+        ));
+    }
+
+    Ok(Some(value))
+}
+
 fn optional_enum(
     value: Option<String>,
     normalize: fn(&str) -> Option<String>,
@@ -197,7 +233,10 @@ fn optional_enum(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_phone_digits, normalize_username, trim_secret, validate_username};
+    use super::{
+        normalize_phone_digits, normalize_username, trim_secret, validate_online_payment_ref_last4,
+        validate_username,
+    };
 
     #[test]
     fn normalize_username_collapses_whitespace() {
@@ -219,5 +258,59 @@ mod tests {
     #[test]
     fn normalize_phone_digits_strips_formatting() {
         assert_eq!(normalize_phone_digits("98 7654 3210"), "9876543210");
+    }
+
+    #[test]
+    fn online_ref_required_for_online_method() {
+        assert!(validate_online_payment_ref_last4("online", Some(100.0), None).is_err());
+        assert_eq!(
+            validate_online_payment_ref_last4("online", Some(100.0), Some("1234".into())).unwrap(),
+            Some("1234".into())
+        );
+    }
+
+    #[test]
+    fn online_ref_required_for_split_with_online_amount() {
+        assert!(
+            validate_online_payment_ref_last4("split_payment", Some(50.0), None).is_err()
+        );
+        assert_eq!(
+            validate_online_payment_ref_last4(
+                "split_payment",
+                Some(50.0),
+                Some(" 9876 ".into())
+            )
+            .unwrap(),
+            Some("9876".into())
+        );
+    }
+
+    #[test]
+    fn online_ref_not_required_for_cash_or_credit() {
+        assert_eq!(
+            validate_online_payment_ref_last4("cash", Some(0.0), Some("1234".into())).unwrap(),
+            None
+        );
+        assert_eq!(
+            validate_online_payment_ref_last4("credit", None, None).unwrap(),
+            None
+        );
+        assert_eq!(
+            validate_online_payment_ref_last4("split_payment", Some(0.0), None).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn online_ref_rejects_non_digit_or_wrong_length() {
+        assert!(
+            validate_online_payment_ref_last4("online", Some(10.0), Some("12".into())).is_err()
+        );
+        assert!(
+            validate_online_payment_ref_last4("online", Some(10.0), Some("12ab".into())).is_err()
+        );
+        assert!(
+            validate_online_payment_ref_last4("online", Some(10.0), Some("12345".into())).is_err()
+        );
     }
 }

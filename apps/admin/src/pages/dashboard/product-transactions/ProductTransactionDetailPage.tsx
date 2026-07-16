@@ -147,6 +147,16 @@ export default function ProductTransactionDetailPage() {
                 })}
               </Typography>
             </Box>
+            {data.onlinePaymentRefLast4 && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  UPI ref (last 4)
+                </Typography>
+                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                  {data.onlinePaymentRefLast4}
+                </Typography>
+              </Box>
+            )}
             {data.notes && (
               <Box sx={{ gridColumn: '1 / -1' }}>
                 <Typography variant="caption" color="text.secondary">
