@@ -11,7 +11,8 @@ pub use crate::models::{
     UsageSession, UsageSessionResponse, User, UserFilterDto, ValidationResult,
 };
 use crate::services::stats_service::{
-    DashboardStatsDto, PeriodPairRevenueByPaymentMethod, PeriodPairUsageStats,
+    DashboardStatsDto, FinanceDepositStatsDto, FinanceReconciliationStatsDto,
+    FinanceVarianceStatsDto, PeriodPairRevenueByPaymentMethod, PeriodPairUsageStats,
 };
 
 #[derive(Serialize, ToSchema)]
@@ -84,6 +85,12 @@ success_envelope!(
     PeriodPairRevenueByPaymentMethod
 );
 success_envelope!(UsageStatsEnvelope, PeriodPairUsageStats);
+success_envelope!(
+    FinanceReconciliationStatsEnvelope,
+    FinanceReconciliationStatsDto
+);
+success_envelope!(FinanceDepositStatsEnvelope, FinanceDepositStatsDto);
+success_envelope!(FinanceVarianceStatsEnvelope, FinanceVarianceStatsDto);
 success_envelope!(DeviceEnvelope, Device);
 success_envelope!(PlanEnvelope, Plan);
 success_envelope!(ActivePlansEnvelope, Vec<Plan>);
@@ -206,6 +213,10 @@ pagination_envelope!(
 
 success_envelope!(CreditSummaryEnvelope, crate::models::CreditSummary);
 success_envelope!(
+    CreditPortfolioSummaryEnvelope,
+    crate::models::CreditPortfolioSummary
+);
+success_envelope!(
     StaffGamingAllowanceSummaryEnvelope,
     crate::models::StaffGamingAllowanceSummary
 );
@@ -230,7 +241,7 @@ pagination_envelope!(
 );
 
 use crate::models::{
-    InventoryLocation, LocationStockRow, StockReceipt, StockReceiptWithLines,
+    InventoryLocation, LocationStockRow, ReceiptSummaryRow, StockReceipt, StockReceiptWithLines,
     StockAdjustment, StockAdjustmentWithLines, StockTransferRequest, StockTransferRequestWithLines,
     StockWasteEvent, StockWasteEventWithLines, WasteSummaryRow,
 };
@@ -275,6 +286,7 @@ pagination_envelope!(
     StockWasteEvent
 );
 success_envelope!(StockWasteSummaryListEnvelope, Vec<WasteSummaryRow>);
+success_envelope!(StockReceiptSummaryListEnvelope, Vec<ReceiptSummaryRow>);
 success_envelope!(UnreadCountEnvelope, crate::models::UnreadCountDto);
 pagination_envelope!(
     NotificationPaginationEnvelope,

@@ -165,9 +165,40 @@ pub struct CreditSettlementDetail {
     pub items: Vec<CreditSettlementItemRow>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditLastSettlement {
+    pub id: Uuid,
+    pub player_id: Uuid,
+    pub player_username: String,
+    pub amount: f64,
+    pub settled_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditPortfolioSummary {
+    pub total_credit_limit: f64,
+    pub total_outstanding: f64,
+    pub total_available: f64,
+    /// 0–100, capped when outstanding exceeds limit.
+    pub utilization_percent: f64,
+    pub credit_enabled_player_count: i64,
+    pub players_with_outstanding_count: i64,
+    pub last_settlement: Option<CreditLastSettlement>,
+}
+
 /// Pure helper: available credit headroom.
 pub fn compute_available(credit_limit: f64, outstanding: f64) -> f64 {
     (credit_limit - outstanding).max(0.0)
+}
+
+/// Pure helper: portfolio utilization as a percentage (0–100, capped).
+pub fn compute_utilization_percent(total_credit_limit: f64, total_outstanding: f64) -> f64 {
+    if total_credit_limit <= 0.0 {
+        return 0.0;
+    }
+    ((total_outstanding / total_credit_limit) * 100.0).min(100.0)
 }
 
 /// Pure helper: validate settlement line items and payment split.
@@ -224,6 +255,13 @@ mod tests {
     fn compute_available_never_negative() {
         assert_eq!(compute_available(100.0, 80.0), 20.0);
         assert_eq!(compute_available(100.0, 150.0), 0.0);
+    }
+
+    #[test]
+    fn compute_utilization_percent_caps_at_100() {
+        assert_eq!(compute_utilization_percent(100.0, 50.0), 50.0);
+        assert_eq!(compute_utilization_percent(100.0, 150.0), 100.0);
+        assert_eq!(compute_utilization_percent(0.0, 50.0), 0.0);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { Permission } from '@gaming-cafe/contracts';
 import {
   AccountBalanceWallet,
+  Balance,
   CardMembership,
   CreditCard,
   Dashboard,
@@ -173,6 +174,7 @@ export const adminNavItems: AdminNavItem[] = [
       },
       { title: 'Waste approvals', path: '/inventory/waste' },
       { title: 'Waste report', path: '/inventory/waste/report' },
+      { title: 'Receipt report', path: '/inventory/receipts/report' },
     ],
   },
   {
@@ -237,6 +239,27 @@ export const adminNavItems: AdminNavItem[] = [
     icon: <WorkHistory />,
     section: 'Finance',
     requiredPermission: Permission.ShiftsRead,
+  },
+  {
+    title: 'Reconciliation',
+    path: '/finance/reconciliation',
+    icon: <PointOfSale />,
+    section: 'Finance',
+    requiredPermission: Permission.StatsRead,
+  },
+  {
+    title: 'Deposit dashboard',
+    path: '/finance/deposits',
+    icon: <AccountBalanceWallet />,
+    section: 'Finance',
+    requiredPermission: Permission.StatsRead,
+  },
+  {
+    title: 'Variance',
+    path: '/finance/variance',
+    icon: <Balance />,
+    section: 'Finance',
+    requiredPermission: Permission.StatsRead,
   },
   {
     title: 'Cash Registers',

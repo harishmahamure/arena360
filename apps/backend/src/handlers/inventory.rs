@@ -7,7 +7,8 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
-    created, ok, ApiResult, ApproveInventoryActionDto, PaginationResult, WasteSummaryFilterDto,
+    created, ok, ApiResult, ApproveInventoryActionDto, PaginationResult, ReceiptSummaryFilterDto,
+    WasteSummaryFilterDto,
 };
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::models::{
@@ -17,15 +18,16 @@ use crate::models::{
     StockReceipt, StockReceiptFilterDto, StockReceiptWithLines, StockAdjustment,
     StockAdjustmentFilterDto, StockAdjustmentWithLines, StockTransferFilterDto,
     StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent,
-    StockWasteEventWithLines, StockWasteFilterDto, UpdateInventoryLocationDto, WasteSummaryRow,
+    StockWasteEventWithLines, StockWasteFilterDto, UpdateInventoryLocationDto, ReceiptSummaryRow,
+    WasteSummaryRow,
 };
 use crate::openapi::responses::{
     ErrorEnvelope, InventoryLocationEnvelope, InventoryLocationPaginationEnvelope,
     LocationStockPaginationEnvelope, StockReceiptPaginationEnvelope,
-    StockReceiptWithLinesEnvelope, StockAdjustmentEnvelope, StockAdjustmentPaginationEnvelope,
-    StockAdjustmentWithLinesEnvelope, StockTransferEnvelope, StockTransferPaginationEnvelope,
-    StockTransferWithLinesEnvelope, StockWasteEnvelope, StockWastePaginationEnvelope,
-    StockWasteSummaryListEnvelope, StockWasteWithLinesEnvelope,
+    StockReceiptSummaryListEnvelope, StockReceiptWithLinesEnvelope,
+    StockAdjustmentPaginationEnvelope, StockAdjustmentWithLinesEnvelope, StockTransferEnvelope,
+    StockTransferPaginationEnvelope, StockTransferWithLinesEnvelope, StockWasteEnvelope,
+    StockWastePaginationEnvelope, StockWasteSummaryListEnvelope, StockWasteWithLinesEnvelope,
 };
 
 #[utoipa::path(
@@ -513,4 +515,25 @@ pub async fn waste_summary(
     Query(filters): Query<WasteSummaryFilterDto>,
 ) -> ApiResult<Vec<WasteSummaryRow>> {
     ok(state.inventory.waste_summary(filters).await?)
+}
+
+#[utoipa::path(
+    get,
+    path = "/inventory/receipts/summary",
+    params(ReceiptSummaryFilterDto),
+    responses(
+        (status = 200, description = "Stock receipt summary report", body = StockReceiptSummaryListEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "inventory"
+)]
+pub async fn receipt_summary(
+    AdminUser(_claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Query(filters): Query<ReceiptSummaryFilterDto>,
+) -> ApiResult<Vec<ReceiptSummaryRow>> {
+    ok(state.inventory.receipt_summary(filters).await?)
 }

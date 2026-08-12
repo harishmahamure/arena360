@@ -53,6 +53,20 @@ pub struct CreateStockReceiptDto {
 #[serde(rename_all = "camelCase")]
 pub struct StockReceiptFilterDto {
     pub location_id: Option<Uuid>,
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
     pub page: Option<i64>,
     pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptSummaryRow {
+    pub product_id: Uuid,
+    pub product_name: String,
+    pub vendor_id: Option<Uuid>,
+    pub vendor_name: Option<String>,
+    pub total_boxes: i64,
+    pub total_pieces: i64,
+    pub estimated_cost: f64,
 }

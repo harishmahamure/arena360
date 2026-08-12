@@ -480,6 +480,14 @@ impl InventoryRepository {
             builder.push(" AND \"locationId\" = ");
             builder.push_bind(location_id);
         }
+        if let Some(from) = filters.from {
+            builder.push(" AND \"createdAt\" >= ");
+            builder.push_bind(from);
+        }
+        if let Some(to) = filters.to {
+            builder.push(" AND \"createdAt\" <= ");
+            builder.push_bind(to);
+        }
 
         builder.push(" ORDER BY \"createdAt\" DESC LIMIT ");
         builder.push_bind(limit);
@@ -497,9 +505,69 @@ impl InventoryRepository {
             count_builder.push(" AND \"locationId\" = ");
             count_builder.push_bind(location_id);
         }
+        if let Some(from) = filters.from {
+            count_builder.push(" AND \"createdAt\" >= ");
+            count_builder.push_bind(from);
+        }
+        if let Some(to) = filters.to {
+            count_builder.push(" AND \"createdAt\" <= ");
+            count_builder.push_bind(to);
+        }
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
         Ok(PaginationResult::new(rows, total.0, page, limit))
+    }
+
+    pub async fn receipt_summary(
+        &self,
+        location_id: Option<Uuid>,
+        from: Option<chrono::DateTime<chrono::Utc>>,
+        to: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<Vec<crate::models::ReceiptSummaryRow>, AppError> {
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            r#"
+            SELECT rl."productId" as product_id,
+                   p.name as product_name,
+                   sr."vendorId" as vendor_id,
+                   v.name as vendor_name,
+                   SUM(rl."boxQuantity")::bigint as total_boxes,
+                   SUM(rl."piecesAdded")::bigint as total_pieces,
+                   SUM(
+                     rl."boxQuantity"::float8 *
+                     COALESCE(p."purchasePricePerBox", p."purchasePrice", 0)::float8
+                   )::float8 as estimated_cost
+            FROM stock_receipt_lines rl
+            INNER JOIN stock_receipts sr ON sr.id = rl."receiptId"
+            INNER JOIN products p ON p.id = rl."productId"
+            LEFT JOIN vendors v ON v.id = sr."vendorId"
+            WHERE 1=1
+            "#,
+        );
+
+        if let Some(location_id) = location_id {
+            builder.push(" AND sr.\"locationId\" = ");
+            builder.push_bind(location_id);
+        }
+        if let Some(from) = from {
+            builder.push(" AND sr.\"createdAt\" >= ");
+            builder.push_bind(from);
+        }
+        if let Some(to) = to {
+            builder.push(" AND sr.\"createdAt\" <= ");
+            builder.push_bind(to);
+        }
+
+        builder.push(
+            r#"
+            GROUP BY rl."productId", p.name, sr."vendorId", v.name
+            ORDER BY p.name ASC, v.name ASC NULLS LAST
+            "#,
+        );
+
+        Ok(builder
+            .build_query_as::<crate::models::ReceiptSummaryRow>()
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     pub async fn receipt_lines(&self, receipt_id: Uuid) -> Result<Vec<StockReceiptLine>, AppError> {

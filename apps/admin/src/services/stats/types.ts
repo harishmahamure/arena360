@@ -4,6 +4,8 @@
 export interface StatsQueryDto {
   startDate?: string;
   endDate?: string;
+  /** When false, previous-period metrics are omitted. Defaults to true. */
+  compare?: boolean;
 }
 
 export interface StaffStatsQueryDto extends StatsQueryDto {
@@ -15,7 +17,7 @@ export interface StaffStatsQueryDto extends StatsQueryDto {
  */
 export interface PeriodPair<T> {
   current: T;
-  previous: T;
+  previous?: T | null;
 }
 
 /**
@@ -145,23 +147,78 @@ export interface DashboardStatsDto {
     label: string;
     previousLabel: string;
   };
-  revenue: {
-    previous: RevenueByPaymentMethodDto;
-    current: RevenueByPaymentMethodDto;
-  };
-  transactions: {
-    previous: TransactionStatsDto;
-    current: TransactionStatsDto;
-  };
-  usage: {
-    previous: UsageStatsDto;
-    current: UsageStatsDto;
-  };
+  revenue: PeriodPair<RevenueByPaymentMethodDto>;
+  transactions: PeriodPair<TransactionStatsDto>;
+  usage: PeriodPair<UsageStatsDto>;
   users: UserStatsDto;
   plans: PlanStatsDto;
   devices: DeviceStatsDto;
   topPerformers: TopPerformersDto;
   revenueTrend: RevenueTrendDto[];
+}
+
+/** Cash register reconciliation aggregates for a period */
+export interface FinanceReconciliationStatsDto {
+  period: {
+    startDate: string;
+    endDate: string;
+    label: string;
+    previousLabel: string;
+  };
+  metrics: PeriodPair<{
+    openCount: number;
+    closedCount: number;
+    reconciledCount: number;
+    pendingReconcileCount: number;
+    totalDeposited: number;
+  }>;
+}
+
+/** Cash deposit pipeline aggregates for a period */
+export interface FinanceDepositStatsDto {
+  period: {
+    startDate: string;
+    endDate: string;
+    label: string;
+    previousLabel: string;
+  };
+  metrics: PeriodPair<{
+    pendingCount: number;
+    pendingAmount: number;
+    approvedCount: number;
+    approvedAmount: number;
+    rejectedCount: number;
+    rejectedAmount: number;
+    bankAmount: number;
+    homeAmount: number;
+  }>;
+}
+
+/** Cash register variance aggregates for a period */
+export interface FinanceVarianceStatsDto {
+  period: {
+    startDate: string;
+    endDate: string;
+    label: string;
+    previousLabel: string;
+  };
+  metrics: PeriodPair<{
+    totalVariance: number;
+    averageVariance: number;
+    overCount: number;
+    shortCount: number;
+    evenCount: number;
+    registerCount: number;
+  }>;
+  registers: {
+    id: string;
+    shiftId: string;
+    status: string;
+    variance: number;
+    closingBalance?: number | null;
+    expectedClosing?: number | null;
+    updatedAt: string;
+  }[];
 }
 
 export interface StaffPlayerStatsDto {

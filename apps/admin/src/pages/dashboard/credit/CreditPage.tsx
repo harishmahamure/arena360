@@ -1,20 +1,31 @@
 import { type Action, type Column, CurrencyField, DataGrid, GridSkeleton } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
-import { Payment as PaymentIcon } from '@mui/icons-material';
+import {
+  CreditCard as CreditCardIcon,
+  Payment as PaymentIcon,
+  TrendingUp as TrendingUpIcon,
+  AccountBalanceWallet as WalletIcon,
+} from '@mui/icons-material';
 import {
   Alert,
   Box,
   Button,
+  Card,
+  CardContent,
   Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  Grid,
   InputLabel,
+  LinearProgress,
+  Link,
   MenuItem,
   Pagination,
   Select,
+  Skeleton,
   Table,
   TableBody,
   TableCell,
@@ -25,13 +36,14 @@ import {
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   PosOnlinePaymentRefField,
   requiresOnlinePaymentRef,
   validateOnlinePaymentRefLast4,
   validateSplitPaymentAmounts,
 } from '../../../containers/sales';
+import { StatCard } from '../../../containers/stats/StatCard';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -41,10 +53,12 @@ import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   type CreditPlayerRow,
   getCreditAccounts,
+  getCreditSummary,
   getPlayerCredit,
   type OutstandingTxn,
   settleCredit,
 } from '../../../services/credit';
+import { formatDisplayDateTime } from '../../../utils/date';
 
 interface SettlementLine {
   transactionId: string;
@@ -80,6 +94,15 @@ export default function CreditPage() {
         sortBy: 'outstanding',
         sortOrder: 'DESC',
       }),
+  });
+
+  const {
+    data: portfolio,
+    isLoading: summaryLoading,
+    error: summaryError,
+  } = useQuery({
+    queryKey: ['credit-summary'],
+    queryFn: getCreditSummary,
   });
 
   const {
@@ -226,6 +249,7 @@ export default function CreditPage() {
       refetch();
       queryClient.invalidateQueries({ queryKey: ['player-credit'] });
       queryClient.invalidateQueries({ queryKey: ['credit-settlements'] });
+      queryClient.invalidateQueries({ queryKey: ['credit-summary'] });
     } catch (err) {
       setDialogError(err instanceof Error ? err.message : 'Settlement failed');
     } finally {
@@ -302,6 +326,114 @@ export default function CreditPage() {
           Settlement history
         </Button>
       </Box>
+
+      {summaryError && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {summaryError instanceof Error
+            ? summaryError.message
+            : 'Failed to load credit portfolio summary'}
+        </Alert>
+      )}
+
+      {summaryLoading ? (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {['sum-1', 'sum-2', 'sum-3', 'sum-4'].map((id) => (
+            <Grid key={id} size={{ xs: 12, sm: 6, md: 3 }}>
+              <Skeleton variant="rounded" height={140} />
+            </Grid>
+          ))}
+        </Grid>
+      ) : portfolio ? (
+        <Box sx={{ mb: 3 }}>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard
+                title="Total lended"
+                value={formatCurrency(portfolio.totalOutstanding)}
+                subtitle={`${portfolio.playersWithOutstandingCount} members with balance`}
+                icon={<CreditCardIcon sx={{ fontSize: 24 }} />}
+                tone="error"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard
+                title="Total limit"
+                value={formatCurrency(portfolio.totalCreditLimit)}
+                subtitle={`${portfolio.utilizationPercent.toFixed(1)}% utilized`}
+                icon={<WalletIcon sx={{ fontSize: 24 }} />}
+                tone="primary"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard
+                title="Available headroom"
+                value={formatCurrency(portfolio.totalAvailable)}
+                subtitle={`${portfolio.creditEnabledPlayerCount} credit-enabled members`}
+                icon={<TrendingUpIcon sx={{ fontSize: 24 }} />}
+                tone="success"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard
+                title="Last settlement"
+                value={
+                  portfolio.lastSettlement
+                    ? formatCurrency(portfolio.lastSettlement.amount)
+                    : 'None yet'
+                }
+                subtitle={
+                  portfolio.lastSettlement
+                    ? `${formatDisplayDateTime(portfolio.lastSettlement.settledAt)} · @${portfolio.lastSettlement.playerUsername}`
+                    : 'No settlements recorded'
+                }
+                icon={<PaymentIcon sx={{ fontSize: 24 }} />}
+                tone="info"
+              />
+            </Grid>
+          </Grid>
+
+          {portfolio.lastSettlement && (
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              <Link
+                component={RouterLink}
+                to={`/credit/settlements/${portfolio.lastSettlement.id}`}
+                underline="hover"
+              >
+                View last settlement
+              </Link>
+            </Typography>
+          )}
+
+          <Card variant="outlined">
+            <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" fontWeight={500}>
+                  Limit utilization
+                </Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {portfolio.utilizationPercent.toFixed(1)}%
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min(portfolio.utilizationPercent, 100)}
+                color={
+                  portfolio.utilizationPercent > 80
+                    ? 'error'
+                    : portfolio.utilizationPercent > 50
+                      ? 'warning'
+                      : 'success'
+                }
+                sx={{ height: 8, borderRadius: 4 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                {formatCurrency(portfolio.totalOutstanding)} of{' '}
+                {formatCurrency(portfolio.totalCreditLimit)} credit limit in use
+              </Typography>
+            </CardContent>
+          </Card>
+        </Box>
+      ) : null}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>

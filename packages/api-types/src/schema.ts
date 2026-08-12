@@ -436,6 +436,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/credit/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["credit_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices": {
         parameters: {
             query?: never;
@@ -766,6 +782,22 @@ export interface paths {
         get: operations["list_receipts"];
         put?: never;
         post: operations["create_receipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/receipts/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["receipt_summary"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1596,6 +1628,54 @@ export interface paths {
             cookie?: never;
         };
         get: operations["dashboard_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stats/finance/deposits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["finance_deposit_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stats/finance/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["finance_reconciliation_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stats/finance/variance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["finance_variance_stats"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2622,6 +2702,17 @@ export interface components {
             sortBy?: string | null;
             sortOrder?: string | null;
         };
+        CreditLastSettlement: {
+            /** Format: double */
+            amount: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            playerId: string;
+            playerUsername: string;
+            /** Format: date-time */
+            settledAt: string;
+        };
         CreditPlayerPaginationEnvelope: {
             data: components["schemas"]["CreditPlayerPaginationPage"];
             /** Format: int32 */
@@ -2653,6 +2744,31 @@ export interface components {
             /** Format: uuid */
             playerId: string;
             username: string;
+        };
+        CreditPortfolioSummary: {
+            /** Format: int64 */
+            creditEnabledPlayerCount: number;
+            lastSettlement?: null | components["schemas"]["CreditLastSettlement"];
+            /** Format: int64 */
+            playersWithOutstandingCount: number;
+            /** Format: double */
+            totalAvailable: number;
+            /** Format: double */
+            totalCreditLimit: number;
+            /** Format: double */
+            totalOutstanding: number;
+            /**
+             * Format: double
+             * @description 0–100, capped when outstanding exceeds limit.
+             */
+            utilizationPercent: number;
+        };
+        CreditPortfolioSummaryEnvelope: {
+            data: components["schemas"]["CreditPortfolioSummary"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         CreditSettlement: {
             /** Format: double */
@@ -3132,6 +3248,99 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        FinanceDepositMetricsDto: {
+            /** Format: double */
+            approvedAmount: number;
+            /** Format: int64 */
+            approvedCount: number;
+            /** Format: double */
+            bankAmount: number;
+            /** Format: double */
+            homeAmount: number;
+            /** Format: double */
+            pendingAmount: number;
+            /** Format: int64 */
+            pendingCount: number;
+            /** Format: double */
+            rejectedAmount: number;
+            /** Format: int64 */
+            rejectedCount: number;
+        };
+        FinanceDepositStatsDto: {
+            metrics: components["schemas"]["PeriodPair_FinanceDepositMetricsDto"];
+            period: components["schemas"]["PeriodDto"];
+        };
+        FinanceDepositStatsEnvelope: {
+            data: components["schemas"]["FinanceDepositStatsDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        FinanceReconciliationMetricsDto: {
+            /** Format: int64 */
+            closedCount: number;
+            /** Format: int64 */
+            openCount: number;
+            /** Format: int64 */
+            pendingReconcileCount: number;
+            /** Format: int64 */
+            reconciledCount: number;
+            /** Format: double */
+            totalDeposited: number;
+        };
+        FinanceReconciliationStatsDto: {
+            metrics: components["schemas"]["PeriodPair_FinanceReconciliationMetricsDto"];
+            period: components["schemas"]["PeriodDto"];
+        };
+        FinanceReconciliationStatsEnvelope: {
+            data: components["schemas"]["FinanceReconciliationStatsDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        FinanceVarianceMetricsDto: {
+            /** Format: double */
+            averageVariance: number;
+            /** Format: int64 */
+            evenCount: number;
+            /** Format: int64 */
+            overCount: number;
+            /** Format: int64 */
+            registerCount: number;
+            /** Format: int64 */
+            shortCount: number;
+            /** Format: double */
+            totalVariance: number;
+        };
+        FinanceVarianceRegisterRow: {
+            /** Format: double */
+            closingBalance?: number | null;
+            /** Format: double */
+            expectedClosing?: number | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            shiftId: string;
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: double */
+            variance: number;
+        };
+        FinanceVarianceStatsDto: {
+            metrics: components["schemas"]["PeriodPair_FinanceVarianceMetricsDto"];
+            period: components["schemas"]["PeriodDto"];
+            registers: components["schemas"]["FinanceVarianceRegisterRow"][];
+        };
+        FinanceVarianceStatsEnvelope: {
+            data: components["schemas"]["FinanceVarianceStatsDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         /**
          * @description Display-only game catalog entry (DRAFT-0022). Stores branding asset URLs that
          *     the kiosk renders; launching stays client-side (ADR-0019).
@@ -3509,11 +3718,105 @@ export interface components {
         };
         PeriodPairRevenueByPaymentMethod: {
             current: components["schemas"]["RevenueByPaymentMethodDto"];
-            previous: components["schemas"]["RevenueByPaymentMethodDto"];
+            previous?: null | components["schemas"]["RevenueByPaymentMethodDto"];
         };
         PeriodPairUsageStats: {
             current: components["schemas"]["UsageStatsDto"];
-            previous: components["schemas"]["UsageStatsDto"];
+            previous?: null | components["schemas"]["UsageStatsDto"];
+        };
+        PeriodPair_FinanceDepositMetricsDto: {
+            current: {
+                /** Format: double */
+                approvedAmount: number;
+                /** Format: int64 */
+                approvedCount: number;
+                /** Format: double */
+                bankAmount: number;
+                /** Format: double */
+                homeAmount: number;
+                /** Format: double */
+                pendingAmount: number;
+                /** Format: int64 */
+                pendingCount: number;
+                /** Format: double */
+                rejectedAmount: number;
+                /** Format: int64 */
+                rejectedCount: number;
+            };
+            previous?: {
+                /** Format: double */
+                approvedAmount: number;
+                /** Format: int64 */
+                approvedCount: number;
+                /** Format: double */
+                bankAmount: number;
+                /** Format: double */
+                homeAmount: number;
+                /** Format: double */
+                pendingAmount: number;
+                /** Format: int64 */
+                pendingCount: number;
+                /** Format: double */
+                rejectedAmount: number;
+                /** Format: int64 */
+                rejectedCount: number;
+            };
+        };
+        PeriodPair_FinanceReconciliationMetricsDto: {
+            current: {
+                /** Format: int64 */
+                closedCount: number;
+                /** Format: int64 */
+                openCount: number;
+                /** Format: int64 */
+                pendingReconcileCount: number;
+                /** Format: int64 */
+                reconciledCount: number;
+                /** Format: double */
+                totalDeposited: number;
+            };
+            previous?: {
+                /** Format: int64 */
+                closedCount: number;
+                /** Format: int64 */
+                openCount: number;
+                /** Format: int64 */
+                pendingReconcileCount: number;
+                /** Format: int64 */
+                reconciledCount: number;
+                /** Format: double */
+                totalDeposited: number;
+            };
+        };
+        PeriodPair_FinanceVarianceMetricsDto: {
+            current: {
+                /** Format: double */
+                averageVariance: number;
+                /** Format: int64 */
+                evenCount: number;
+                /** Format: int64 */
+                overCount: number;
+                /** Format: int64 */
+                registerCount: number;
+                /** Format: int64 */
+                shortCount: number;
+                /** Format: double */
+                totalVariance: number;
+            };
+            previous?: {
+                /** Format: double */
+                averageVariance: number;
+                /** Format: int64 */
+                evenCount: number;
+                /** Format: int64 */
+                overCount: number;
+                /** Format: int64 */
+                registerCount: number;
+                /** Format: int64 */
+                shortCount: number;
+                /** Format: double */
+                totalVariance: number;
+            };
         };
         PeriodPair_RevenueByPaymentMethodDto: {
             current: {
@@ -3558,7 +3861,7 @@ export interface components {
                 /** Format: double */
                 total?: number;
             };
-            previous: {
+            previous?: {
                 /** Format: double */
                 cashRevenue?: number;
                 /** Format: double */
@@ -3614,7 +3917,7 @@ export interface components {
                 /** Format: int64 */
                 totalTransactions: number;
             };
-            previous: {
+            previous?: {
                 /** Format: double */
                 averageTransactionAmount: number;
                 /** Format: int64 */
@@ -3642,7 +3945,7 @@ export interface components {
                 /** Format: int64 */
                 totalSessions: number;
             };
-            previous: {
+            previous?: {
                 /** Format: int64 */
                 activeSessions: number;
                 /** Format: double */
@@ -4114,6 +4417,28 @@ export interface components {
             /** Format: uuid */
             transactionId?: string | null;
         };
+        ReceiptSummaryFilterDto: {
+            /** Format: date-time */
+            from?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: date-time */
+            to?: string | null;
+        };
+        ReceiptSummaryRow: {
+            /** Format: double */
+            estimatedCost: number;
+            /** Format: uuid */
+            productId: string;
+            productName: string;
+            /** Format: int64 */
+            totalBoxes: number;
+            /** Format: int64 */
+            totalPieces: number;
+            /** Format: uuid */
+            vendorId?: string | null;
+            vendorName?: string | null;
+        };
         ReconcileCashRegisterDto: {
             reconciliationNotes?: string | null;
         };
@@ -4532,6 +4857,8 @@ export interface components {
             balanceId?: string | null;
         };
         StatsQuery: {
+            /** @description When false, previous-period metrics are omitted. Defaults to true. */
+            compare?: boolean | null;
             endDate?: string | null;
             startDate?: string | null;
         };
@@ -4624,12 +4951,16 @@ export interface components {
             timestamp: string;
         };
         StockReceiptFilterDto: {
+            /** Format: date-time */
+            from?: string | null;
             /** Format: int64 */
             limit?: number | null;
             /** Format: uuid */
             locationId?: string | null;
             /** Format: int64 */
             page?: number | null;
+            /** Format: date-time */
+            to?: string | null;
         };
         StockReceiptLine: {
             /** Format: int32 */
@@ -4660,6 +4991,13 @@ export interface components {
             total: number;
             /** Format: int64 */
             totalPages: number;
+        };
+        StockReceiptSummaryListEnvelope: {
+            data: components["schemas"]["ReceiptSummaryRow"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         StockReceiptWithLines: components["schemas"]["StockReceipt"] & {
             lines: components["schemas"]["StockReceiptLine"][];
@@ -7355,6 +7693,53 @@ export interface operations {
             };
         };
     };
+    credit_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Portfolio credit summary (limits vs outstanding) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditPortfolioSummaryEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_devices: {
         parameters: {
             query?: never;
@@ -9271,6 +9656,57 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    receipt_summary: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stock receipt summary report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockReceiptSummaryListEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12485,6 +12921,8 @@ export interface operations {
             query?: {
                 startDate?: string | null;
                 endDate?: string | null;
+                /** @description When false, previous-period metrics are omitted. Defaults to true. */
+                compare?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -12539,11 +12977,196 @@ export interface operations {
             };
         };
     };
+    finance_deposit_stats: {
+        parameters: {
+            query?: {
+                startDate?: string | null;
+                endDate?: string | null;
+                /** @description When false, previous-period metrics are omitted. Defaults to true. */
+                compare?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Finance deposit statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceDepositStatsEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    finance_reconciliation_stats: {
+        parameters: {
+            query?: {
+                startDate?: string | null;
+                endDate?: string | null;
+                /** @description When false, previous-period metrics are omitted. Defaults to true. */
+                compare?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Finance reconciliation statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceReconciliationStatsEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    finance_variance_stats: {
+        parameters: {
+            query?: {
+                startDate?: string | null;
+                endDate?: string | null;
+                /** @description When false, previous-period metrics are omitted. Defaults to true. */
+                compare?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Finance variance statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinanceVarianceStatsEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     revenue_by_payment_method: {
         parameters: {
             query?: {
                 startDate?: string | null;
                 endDate?: string | null;
+                /** @description When false, previous-period metrics are omitted. Defaults to true. */
+                compare?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -12663,6 +13286,8 @@ export interface operations {
             query?: {
                 startDate?: string | null;
                 endDate?: string | null;
+                /** @description When false, previous-period metrics are omitted. Defaults to true. */
+                compare?: boolean | null;
             };
             header?: never;
             path?: never;

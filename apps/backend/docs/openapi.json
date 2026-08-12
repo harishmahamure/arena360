@@ -2605,6 +2605,61 @@
         ]
       }
     },
+    "/credit/summary": {
+      "get": {
+        "tags": [
+          "credit"
+        ],
+        "operationId": "credit_summary",
+        "responses": {
+          "200": {
+            "description": "Portfolio credit summary (limits vs outstanding)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPortfolioSummaryEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/devices": {
       "get": {
         "tags": [
@@ -5065,6 +5120,99 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/receipts/summary": {
+      "get": {
+        "tags": [
+          "inventory"
+        ],
+        "operationId": "receipt_summary",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stock receipt summary report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockReceiptSummaryListEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -9256,6 +9404,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "compare",
+            "in": "query",
+            "description": "When false, previous-period metrics are omitted. Defaults to true.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -9265,6 +9425,309 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DashboardStatsEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/stats/finance/deposits": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "operationId": "finance_deposit_stats",
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "compare",
+            "in": "query",
+            "description": "When false, previous-period metrics are omitted. Defaults to true.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Finance deposit statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinanceDepositStatsEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/stats/finance/reconciliation": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "operationId": "finance_reconciliation_stats",
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "compare",
+            "in": "query",
+            "description": "When false, previous-period metrics are omitted. Defaults to true.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Finance reconciliation statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinanceReconciliationStatsEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/stats/finance/variance": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "operationId": "finance_variance_stats",
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "compare",
+            "in": "query",
+            "description": "When false, previous-period metrics are omitted. Defaults to true.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Finance variance statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinanceVarianceStatsEnvelope"
                 }
               }
             }
@@ -9342,6 +9805,18 @@
             "schema": {
               "type": [
                 "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "compare",
+            "in": "query",
+            "description": "When false, previous-period metrics are omitted. Defaults to true.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
                 "null"
               ]
             }
@@ -9531,6 +10006,18 @@
             "schema": {
               "type": [
                 "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "compare",
+            "in": "query",
+            "description": "When false, previous-period metrics are omitted. Defaults to true.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
                 "null"
               ]
             }
@@ -14251,6 +14738,37 @@
           }
         }
       },
+      "CreditLastSettlement": {
+        "type": "object",
+        "required": [
+          "id",
+          "playerId",
+          "playerUsername",
+          "amount",
+          "settledAt"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "playerUsername": {
+            "type": "string"
+          },
+          "settledAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "CreditPlayerPaginationEnvelope": {
         "type": "object",
         "required": [
@@ -14355,6 +14873,79 @@
             "format": "uuid"
           },
           "username": {
+            "type": "string"
+          }
+        }
+      },
+      "CreditPortfolioSummary": {
+        "type": "object",
+        "required": [
+          "totalCreditLimit",
+          "totalOutstanding",
+          "totalAvailable",
+          "utilizationPercent",
+          "creditEnabledPlayerCount",
+          "playersWithOutstandingCount"
+        ],
+        "properties": {
+          "creditEnabledPlayerCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastSettlement": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CreditLastSettlement"
+              }
+            ]
+          },
+          "playersWithOutstandingCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalAvailable": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalCreditLimit": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalOutstanding": {
+            "type": "number",
+            "format": "double"
+          },
+          "utilizationPercent": {
+            "type": "number",
+            "format": "double",
+            "description": "0–100, capped when outstanding exceeds limit."
+          }
+        }
+      },
+      "CreditPortfolioSummaryEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CreditPortfolioSummary"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
             "type": "string"
           }
         }
@@ -16028,6 +16619,294 @@
           }
         }
       },
+      "FinanceDepositMetricsDto": {
+        "type": "object",
+        "required": [
+          "pendingCount",
+          "pendingAmount",
+          "approvedCount",
+          "approvedAmount",
+          "rejectedCount",
+          "rejectedAmount",
+          "bankAmount",
+          "homeAmount"
+        ],
+        "properties": {
+          "approvedAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "approvedCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "bankAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "homeAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "pendingAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "pendingCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rejectedAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "rejectedCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FinanceDepositStatsDto": {
+        "type": "object",
+        "required": [
+          "period",
+          "metrics"
+        ],
+        "properties": {
+          "metrics": {
+            "$ref": "#/components/schemas/PeriodPair_FinanceDepositMetricsDto"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodDto"
+          }
+        }
+      },
+      "FinanceDepositStatsEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FinanceDepositStatsDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "FinanceReconciliationMetricsDto": {
+        "type": "object",
+        "required": [
+          "openCount",
+          "closedCount",
+          "reconciledCount",
+          "pendingReconcileCount",
+          "totalDeposited"
+        ],
+        "properties": {
+          "closedCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "openCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pendingReconcileCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reconciledCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalDeposited": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "FinanceReconciliationStatsDto": {
+        "type": "object",
+        "required": [
+          "period",
+          "metrics"
+        ],
+        "properties": {
+          "metrics": {
+            "$ref": "#/components/schemas/PeriodPair_FinanceReconciliationMetricsDto"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodDto"
+          }
+        }
+      },
+      "FinanceReconciliationStatsEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FinanceReconciliationStatsDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "FinanceVarianceMetricsDto": {
+        "type": "object",
+        "required": [
+          "totalVariance",
+          "averageVariance",
+          "overCount",
+          "shortCount",
+          "evenCount",
+          "registerCount"
+        ],
+        "properties": {
+          "averageVariance": {
+            "type": "number",
+            "format": "double"
+          },
+          "evenCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "overCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "registerCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "shortCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalVariance": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "FinanceVarianceRegisterRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "shiftId",
+          "status",
+          "variance",
+          "updatedAt"
+        ],
+        "properties": {
+          "closingBalance": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "expectedClosing": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "variance": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "FinanceVarianceStatsDto": {
+        "type": "object",
+        "required": [
+          "period",
+          "metrics",
+          "registers"
+        ],
+        "properties": {
+          "metrics": {
+            "$ref": "#/components/schemas/PeriodPair_FinanceVarianceMetricsDto"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodDto"
+          },
+          "registers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinanceVarianceRegisterRow"
+            }
+          }
+        }
+      },
+      "FinanceVarianceStatsEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FinanceVarianceStatsDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "Game": {
         "type": "object",
         "description": "Display-only game catalog entry (DRAFT-0022). Stores branding asset URLs that\nthe kiosk renders; launching stays client-side (ADR-0019).",
@@ -17289,38 +18168,305 @@
       "PeriodPairRevenueByPaymentMethod": {
         "type": "object",
         "required": [
-          "current",
-          "previous"
+          "current"
         ],
         "properties": {
           "current": {
             "$ref": "#/components/schemas/RevenueByPaymentMethodDto"
           },
           "previous": {
-            "$ref": "#/components/schemas/RevenueByPaymentMethodDto"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RevenueByPaymentMethodDto"
+              }
+            ]
           }
         }
       },
       "PeriodPairUsageStats": {
         "type": "object",
         "required": [
-          "current",
-          "previous"
+          "current"
         ],
         "properties": {
           "current": {
             "$ref": "#/components/schemas/UsageStatsDto"
           },
           "previous": {
-            "$ref": "#/components/schemas/UsageStatsDto"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UsageStatsDto"
+              }
+            ]
+          }
+        }
+      },
+      "PeriodPair_FinanceDepositMetricsDto": {
+        "type": "object",
+        "required": [
+          "current"
+        ],
+        "properties": {
+          "current": {
+            "type": "object",
+            "required": [
+              "pendingCount",
+              "pendingAmount",
+              "approvedCount",
+              "approvedAmount",
+              "rejectedCount",
+              "rejectedAmount",
+              "bankAmount",
+              "homeAmount"
+            ],
+            "properties": {
+              "approvedAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "approvedCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "bankAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "homeAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "pendingAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "pendingCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "rejectedAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "rejectedCount": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          "previous": {
+            "type": "object",
+            "required": [
+              "pendingCount",
+              "pendingAmount",
+              "approvedCount",
+              "approvedAmount",
+              "rejectedCount",
+              "rejectedAmount",
+              "bankAmount",
+              "homeAmount"
+            ],
+            "properties": {
+              "approvedAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "approvedCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "bankAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "homeAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "pendingAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "pendingCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "rejectedAmount": {
+                "type": "number",
+                "format": "double"
+              },
+              "rejectedCount": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          }
+        }
+      },
+      "PeriodPair_FinanceReconciliationMetricsDto": {
+        "type": "object",
+        "required": [
+          "current"
+        ],
+        "properties": {
+          "current": {
+            "type": "object",
+            "required": [
+              "openCount",
+              "closedCount",
+              "reconciledCount",
+              "pendingReconcileCount",
+              "totalDeposited"
+            ],
+            "properties": {
+              "closedCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "openCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "pendingReconcileCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "reconciledCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "totalDeposited": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "previous": {
+            "type": "object",
+            "required": [
+              "openCount",
+              "closedCount",
+              "reconciledCount",
+              "pendingReconcileCount",
+              "totalDeposited"
+            ],
+            "properties": {
+              "closedCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "openCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "pendingReconcileCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "reconciledCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "totalDeposited": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          }
+        }
+      },
+      "PeriodPair_FinanceVarianceMetricsDto": {
+        "type": "object",
+        "required": [
+          "current"
+        ],
+        "properties": {
+          "current": {
+            "type": "object",
+            "required": [
+              "totalVariance",
+              "averageVariance",
+              "overCount",
+              "shortCount",
+              "evenCount",
+              "registerCount"
+            ],
+            "properties": {
+              "averageVariance": {
+                "type": "number",
+                "format": "double"
+              },
+              "evenCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "overCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "registerCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "shortCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "totalVariance": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          "previous": {
+            "type": "object",
+            "required": [
+              "totalVariance",
+              "averageVariance",
+              "overCount",
+              "shortCount",
+              "evenCount",
+              "registerCount"
+            ],
+            "properties": {
+              "averageVariance": {
+                "type": "number",
+                "format": "double"
+              },
+              "evenCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "overCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "registerCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "shortCount": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "totalVariance": {
+                "type": "number",
+                "format": "double"
+              }
+            }
           }
         }
       },
       "PeriodPair_RevenueByPaymentMethodDto": {
         "type": "object",
         "required": [
-          "current",
-          "previous"
+          "current"
         ],
         "properties": {
           "current": {
@@ -17498,8 +18644,7 @@
       "PeriodPair_TransactionStatsDto": {
         "type": "object",
         "required": [
-          "current",
-          "previous"
+          "current"
         ],
         "properties": {
           "current": {
@@ -17571,8 +18716,7 @@
       "PeriodPair_UsageStatsDto": {
         "type": "object",
         "required": [
-          "current",
-          "previous"
+          "current"
         ],
         "properties": {
           "current": {
@@ -19235,6 +20379,76 @@
           }
         }
       },
+      "ReceiptSummaryFilterDto": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ReceiptSummaryRow": {
+        "type": "object",
+        "required": [
+          "productId",
+          "productName",
+          "totalBoxes",
+          "totalPieces",
+          "estimatedCost"
+        ],
+        "properties": {
+          "estimatedCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "totalBoxes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPieces": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "vendorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "vendorName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ReconcileCashRegisterDto": {
         "type": "object",
         "properties": {
@@ -20697,6 +21911,13 @@
       "StatsQuery": {
         "type": "object",
         "properties": {
+          "compare": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "When false, previous-period metrics are omitted. Defaults to true."
+          },
           "endDate": {
             "type": [
               "string",
@@ -21007,6 +22228,13 @@
       "StockReceiptFilterDto": {
         "type": "object",
         "properties": {
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
           "limit": {
             "type": [
               "integer",
@@ -21027,6 +22255,13 @@
               "null"
             ],
             "format": "int64"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -21118,6 +22353,34 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "StockReceiptSummaryListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceiptSummaryRow"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
           }
         }
       },

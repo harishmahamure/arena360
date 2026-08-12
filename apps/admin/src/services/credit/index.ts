@@ -117,6 +117,24 @@ export interface CreditSettlementDetail {
   items: CreditSettlementItemRow[];
 }
 
+export interface CreditLastSettlement {
+  id: string;
+  playerId: string;
+  playerUsername: string;
+  amount: number;
+  settledAt: string;
+}
+
+export interface CreditPortfolioSummary {
+  totalCreditLimit: number;
+  totalOutstanding: number;
+  totalAvailable: number;
+  utilizationPercent: number;
+  creditEnabledPlayerCount: number;
+  playersWithOutstandingCount: number;
+  lastSettlement?: CreditLastSettlement | null;
+}
+
 interface PaginatedCreditSettlements {
   data: CreditSettlementListRow[];
   total: number;
@@ -129,6 +147,8 @@ export const getCreditAccounts = async (filters: Record<string, unknown> = {}) =
   http.get<PaginatedCreditAccounts>('/credit/accounts', {
     params: { limit: 20, page: 1, ...filters },
   });
+
+export const getCreditSummary = async () => http.get<CreditPortfolioSummary>('/credit/summary');
 
 export const getPlayerCredit = async (playerId: string) =>
   http.get<PlayerCreditDetail>(`/credit/players/${playerId}`);

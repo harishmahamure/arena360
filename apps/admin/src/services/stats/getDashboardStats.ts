@@ -13,7 +13,7 @@ export const getDashboardStats = async (filters?: StatsQueryDto) => {
     ...data,
     revenue: {
       current: normalizeRevenue(data.revenue.current),
-      previous: normalizeRevenue(data.revenue.previous),
+      previous: data.revenue.previous ? normalizeRevenue(data.revenue.previous) : null,
     },
   };
 };

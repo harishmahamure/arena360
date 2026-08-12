@@ -7,16 +7,22 @@ use crate::app::AppState;
 use crate::dto::ok;
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::openapi::responses::{
-    DashboardStatsEnvelope, ErrorEnvelope, RevenueByPaymentMethodEnvelope,
-    StaffDashboardStatsEnvelope, UsageStatsEnvelope,
+    DashboardStatsEnvelope, ErrorEnvelope, FinanceDepositStatsEnvelope,
+    FinanceReconciliationStatsEnvelope, FinanceVarianceStatsEnvelope,
+    RevenueByPaymentMethodEnvelope, StaffDashboardStatsEnvelope, UsageStatsEnvelope,
 };
-use crate::services::stats_service::{PeriodPair, RevenueByPaymentMethodDto, StatsService, UsageStatsDto};
+use crate::services::stats_service::{
+    FinanceDepositStatsDto, FinanceReconciliationStatsDto, FinanceVarianceStatsDto, PeriodPair,
+    RevenueByPaymentMethodDto, StatsService, UsageStatsDto,
+};
 
 #[derive(serde::Deserialize, Default, ToSchema, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct StatsQuery {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    /// When false, previous-period metrics are omitted. Defaults to true.
+    pub compare: Option<bool>,
 }
 
 #[derive(serde::Deserialize, Default, ToSchema, utoipa::IntoParams)]
@@ -25,6 +31,10 @@ pub struct StaffStatsQuery {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub shift_start: Option<String>,
+}
+
+fn compare_enabled(compare: Option<bool>) -> bool {
+    compare.unwrap_or(true)
 }
 
 #[utoipa::path(
@@ -48,7 +58,7 @@ pub async fn dashboard_stats(
 ) -> crate::dto::ApiResult<crate::services::stats_service::DashboardStatsDto> {
     let stats = state
         .stats
-        .get_dashboard_stats(query.start_date, query.end_date)
+        .get_dashboard_stats(query.start_date, query.end_date, compare_enabled(query.compare))
         .await?;
     ok(stats)
 }
@@ -98,6 +108,7 @@ pub async fn revenue_by_payment_method(
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<PeriodPair<RevenueByPaymentMethodDto>> {
+    let compare = compare_enabled(query.compare);
     let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
     let diff = (end - start).num_days().max(1);
     let prev_start = start - Duration::days(diff);
@@ -105,7 +116,7 @@ pub async fn revenue_by_payment_method(
 
     let stats = state
         .stats
-        .get_revenue_by_payment_method(start, end, prev_start, prev_end)
+        .get_revenue_by_payment_method(start, end, prev_start, prev_end, compare)
         .await?;
     ok(stats)
 }
@@ -129,6 +140,7 @@ pub async fn usage_stats(
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<PeriodPair<UsageStatsDto>> {
+    let compare = compare_enabled(query.compare);
     let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
     let diff = (end - start).num_days().max(1);
     let prev_start = start - Duration::days(diff);
@@ -136,7 +148,94 @@ pub async fn usage_stats(
 
     let stats = state
         .stats
-        .get_usage_stats(start, end, prev_start, prev_end)
+        .get_usage_stats(start, end, prev_start, prev_end, compare)
         .await?;
     ok(stats)
+}
+
+#[utoipa::path(
+    get,
+    path = "/stats/finance/reconciliation",
+    params(StatsQuery),
+    responses(
+        (status = 200, description = "Finance reconciliation statistics", body = FinanceReconciliationStatsEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "stats"
+)]
+pub async fn finance_reconciliation_stats(
+    AdminUser(_claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<StatsQuery>,
+) -> crate::dto::ApiResult<FinanceReconciliationStatsDto> {
+    ok(state
+        .stats
+        .get_finance_reconciliation_stats(
+            query.start_date,
+            query.end_date,
+            compare_enabled(query.compare),
+        )
+        .await?)
+}
+
+#[utoipa::path(
+    get,
+    path = "/stats/finance/deposits",
+    params(StatsQuery),
+    responses(
+        (status = 200, description = "Finance deposit statistics", body = FinanceDepositStatsEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "stats"
+)]
+pub async fn finance_deposit_stats(
+    AdminUser(_claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<StatsQuery>,
+) -> crate::dto::ApiResult<FinanceDepositStatsDto> {
+    ok(state
+        .stats
+        .get_finance_deposit_stats(
+            query.start_date,
+            query.end_date,
+            compare_enabled(query.compare),
+        )
+        .await?)
+}
+
+#[utoipa::path(
+    get,
+    path = "/stats/finance/variance",
+    params(StatsQuery),
+    responses(
+        (status = 200, description = "Finance variance statistics", body = FinanceVarianceStatsEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "stats"
+)]
+pub async fn finance_variance_stats(
+    AdminUser(_claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<StatsQuery>,
+) -> crate::dto::ApiResult<FinanceVarianceStatsDto> {
+    ok(state
+        .stats
+        .get_finance_variance_stats(
+            query.start_date,
+            query.end_date,
+            compare_enabled(query.compare),
+        )
+        .await?)
 }

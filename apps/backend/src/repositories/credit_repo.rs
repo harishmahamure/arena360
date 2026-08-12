@@ -5,9 +5,9 @@ use uuid::Uuid;
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{
-    CreditAccountFilterDto, CreditPlayerRow, CreditSettlement, CreditSettlementDetail,
-    CreditSettlementFilterDto, CreditSettlementItemRow, CreditSettlementListRow, OutstandingTxnRow,
-    SettleItemDto,
+    compute_utilization_percent, CreditAccountFilterDto, CreditLastSettlement, CreditPlayerRow,
+    CreditPortfolioSummary, CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto,
+    CreditSettlementItemRow, CreditSettlementListRow, OutstandingTxnRow, SettleItemDto,
 };
 
 #[derive(sqlx::FromRow)]
@@ -191,6 +191,83 @@ impl CreditRepository {
         .fetch_one(&self.pool)
         .await?;
         Ok(row.0.unwrap_or(0.0))
+    }
+
+    pub async fn get_portfolio_summary(&self) -> Result<CreditPortfolioSummary, AppError> {
+        #[derive(sqlx::FromRow)]
+        struct AggregateRow {
+            total_credit_limit: f64,
+            total_outstanding: f64,
+            total_available: f64,
+            credit_enabled_player_count: i64,
+            players_with_outstanding_count: i64,
+        }
+
+        let agg = sqlx::query_as::<_, AggregateRow>(
+            r#"
+            WITH outstanding_by_player AS (
+                SELECT
+                    t."playerId" AS player_id,
+                    SUM(t.amount - t."paidAmount")::float8 AS outstanding
+                FROM transactions t
+                WHERE t."paymentMethod" = 'credit'
+                  AND t."paymentStatus" = 'credit'
+                  AND t."deletedAt" IS NULL
+                GROUP BY t."playerId"
+            ),
+            credit_players AS (
+                SELECT
+                    u.id,
+                    u."creditLimit"::float8 AS credit_limit,
+                    COALESCE(o.outstanding, 0)::float8 AS outstanding
+                FROM users u
+                LEFT JOIN outstanding_by_player o ON o.player_id = u.id
+                WHERE u."deletedAt" IS NULL
+                  AND u.role = 'player'
+                  AND u."isActive" = true
+                  AND u."creditLimit" > 0
+            )
+            SELECT
+                (SELECT COALESCE(SUM(credit_limit), 0)::float8 FROM credit_players) AS total_credit_limit,
+                (SELECT COALESCE(SUM(outstanding), 0)::float8 FROM outstanding_by_player) AS total_outstanding,
+                (SELECT COALESCE(SUM(GREATEST(credit_limit - outstanding, 0)), 0)::float8 FROM credit_players) AS total_available,
+                (SELECT COUNT(*)::bigint FROM credit_players) AS credit_enabled_player_count,
+                (SELECT COUNT(*)::bigint FROM outstanding_by_player WHERE outstanding > 0) AS players_with_outstanding_count
+            "#,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let last_settlement = sqlx::query_as::<_, CreditLastSettlement>(
+            r#"
+            SELECT
+                cs.id,
+                cs."playerId" AS player_id,
+                player.username AS player_username,
+                cs.amount::float8 AS amount,
+                cs."settledAt" AS settled_at
+            FROM credit_settlements cs
+            INNER JOIN users player ON player.id = cs."playerId"
+            WHERE cs."deletedAt" IS NULL
+            ORDER BY cs."settledAt" DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(CreditPortfolioSummary {
+            total_credit_limit: agg.total_credit_limit,
+            total_outstanding: agg.total_outstanding,
+            total_available: agg.total_available,
+            utilization_percent: compute_utilization_percent(
+                agg.total_credit_limit,
+                agg.total_outstanding,
+            ),
+            credit_enabled_player_count: agg.credit_enabled_player_count,
+            players_with_outstanding_count: agg.players_with_outstanding_count,
+            last_settlement,
+        })
     }
 
     pub async fn list_credit_players(

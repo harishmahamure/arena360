@@ -11,6 +11,14 @@ pub struct WasteSummaryFilterDto {
     pub to: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptSummaryFilterDto {
+    pub location_id: Option<Uuid>,
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductPricingSnapshot {

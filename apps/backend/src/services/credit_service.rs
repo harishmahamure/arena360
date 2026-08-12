@@ -6,8 +6,8 @@ use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{
     compute_available, validate_settlement_items, CreditAccountFilterDto, CreditPlayerRow,
-    CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto, CreditSettlementListRow,
-    CreditSummary, PlayerCreditDetail, SetCreditLimitDto, SettleCreditDto,
+    CreditPortfolioSummary, CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto,
+    CreditSettlementListRow, CreditSummary, PlayerCreditDetail, SetCreditLimitDto, SettleCreditDto,
 };
 use crate::repositories::CreditRepository;
 use crate::services::CashRegisterService;
@@ -101,6 +101,10 @@ impl CreditService {
         filters: CreditAccountFilterDto,
     ) -> Result<crate::dto::PaginationResult<CreditPlayerRow>, AppError> {
         self.repo.list_credit_players(&filters).await
+    }
+
+    pub async fn portfolio_summary(&self) -> Result<CreditPortfolioSummary, AppError> {
+        self.repo.get_portfolio_summary().await
     }
 
     pub async fn get_player_credit(&self, player_id: Uuid) -> Result<PlayerCreditDetail, AppError> {

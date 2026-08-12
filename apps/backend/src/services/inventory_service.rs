@@ -5,7 +5,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::cache::{get_or_set, keys, CacheService};
-use crate::dto::{PaginationResult, WasteSummaryFilterDto};
+use crate::dto::{PaginationResult, ReceiptSummaryFilterDto, WasteSummaryFilterDto};
 use crate::error::AppError;
 use crate::models::{
     normalize_inventory_location_kind, normalize_stock_waste_reason, CreateInventoryLocationDto,
@@ -15,7 +15,7 @@ use crate::models::{
     StockReceiptWithLines, StockAdjustment, StockAdjustmentFilterDto, StockAdjustmentWithLines,
     StockTransferFilterDto, StockTransferRequest,
     StockTransferRequestWithLines, StockWasteEvent, StockWasteEventWithLines, StockWasteFilterDto,
-    UpdateInventoryLocationDto, WasteSummaryRow,
+    UpdateInventoryLocationDto, ReceiptSummaryRow, WasteSummaryRow,
 };
 use crate::realtime::OutboxService;
 use crate::repositories::InventoryRepository;
@@ -672,6 +672,15 @@ impl InventoryService {
     ) -> Result<Vec<WasteSummaryRow>, AppError> {
         self.repo
             .waste_summary(filters.location_id, filters.from, filters.to)
+            .await
+    }
+
+    pub async fn receipt_summary(
+        &self,
+        filters: ReceiptSummaryFilterDto,
+    ) -> Result<Vec<ReceiptSummaryRow>, AppError> {
+        self.repo
+            .receipt_summary(filters.location_id, filters.from, filters.to)
             .await
     }
 }

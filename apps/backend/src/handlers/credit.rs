@@ -10,14 +10,14 @@ use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::error::AppError;
 use crate::middleware::{require_staff_for_counter, AdminOrStaff, AdminUser};
 use crate::models::{
-    CreditAccountFilterDto, CreditPlayerRow, CreditSettlement, CreditSettlementDetail,
-    CreditSettlementFilterDto, CreditSummary, PlayerCreditDetail, SetCreditLimitDto,
-    SettleCreditDto,
+    CreditAccountFilterDto, CreditPlayerRow, CreditPortfolioSummary, CreditSettlement,
+    CreditSettlementDetail, CreditSettlementFilterDto, CreditSummary, PlayerCreditDetail,
+    SetCreditLimitDto, SettleCreditDto,
 };
 use crate::openapi::responses::{
-    CreditPlayerPaginationEnvelope, CreditSettlementDetailEnvelope,
-    CreditSettlementEnvelope, CreditSettlementPaginationEnvelope, CreditSummaryEnvelope,
-    ErrorEnvelope, PlayerCreditDetailEnvelope,
+    CreditPlayerPaginationEnvelope, CreditPortfolioSummaryEnvelope,
+    CreditSettlementDetailEnvelope, CreditSettlementEnvelope, CreditSettlementPaginationEnvelope,
+    CreditSummaryEnvelope, ErrorEnvelope, PlayerCreditDetailEnvelope,
 };
 
 #[utoipa::path(
@@ -40,6 +40,26 @@ pub async fn list_credit_accounts(
 ) -> ApiResult<PaginationResult<CreditPlayerRow>> {
     let result = state.credit.list_credit_players(filters).await?;
     ok(result)
+}
+
+#[utoipa::path(
+    get,
+    path = "/credit/summary",
+    responses(
+        (status = 200, description = "Portfolio credit summary (limits vs outstanding)", body = CreditPortfolioSummaryEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "credit"
+)]
+pub async fn credit_summary(
+    AdminOrStaff(_claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<CreditPortfolioSummary> {
+    let summary = state.credit.portfolio_summary().await?;
+    ok(summary)
 }
 
 #[utoipa::path(

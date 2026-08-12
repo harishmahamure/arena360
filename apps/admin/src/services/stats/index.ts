@@ -1,6 +1,9 @@
 // Main stats service exports
 export { getDashboardStats } from './getDashboardStats';
 export { getDeviceStats } from './getDeviceStats';
+export { getFinanceDepositStats } from './getFinanceDepositStats';
+export { getFinanceReconciliationStats } from './getFinanceReconciliationStats';
+export { getFinanceVarianceStats } from './getFinanceVarianceStats';
 export { getPlanStats } from './getPlanStats';
 export { getRevenueStats } from './getRevenueStats';
 export { getRevenueTrend } from './getRevenueTrend';
@@ -14,6 +17,9 @@ export { getUserStats } from './getUserStats';
 export type {
   DashboardStatsDto,
   DeviceStatsDto,
+  FinanceDepositStatsDto,
+  FinanceReconciliationStatsDto,
+  FinanceVarianceStatsDto,
   PlanStatsDto,
   RevenueByPaymentMethodDto,
   RevenueTrendDto,

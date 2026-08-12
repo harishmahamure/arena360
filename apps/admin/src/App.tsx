@@ -27,10 +27,14 @@ import DevicesPage from './pages/dashboard/devices/DevicesPage';
 import ExpenseDetailPage from './pages/dashboard/expenses/ExpenseDetailPage';
 import ExpenseNewPage from './pages/dashboard/expenses/ExpenseNewPage';
 import ExpensesPage from './pages/dashboard/expenses/ExpensesPage';
+import FinanceDepositsPage from './pages/dashboard/finance/FinanceDepositsPage';
+import FinanceReconciliationPage from './pages/dashboard/finance/FinanceReconciliationPage';
+import FinanceVariancePage from './pages/dashboard/finance/FinanceVariancePage';
 import GameDetailPage from './pages/dashboard/games/GameDetailPage';
 import GameNewPage from './pages/dashboard/games/GameNewPage';
 import GamesPage from './pages/dashboard/games/GamesPage';
 import InventoryLocationsPage from './pages/dashboard/inventory/InventoryLocationsPage';
+import InventoryReceiptReportPage from './pages/dashboard/inventory/InventoryReceiptReportPage';
 import InventoryStockPage from './pages/dashboard/inventory/InventoryStockPage';
 import InventoryTransferDetailPage from './pages/dashboard/inventory/InventoryTransferDetailPage';
 import InventoryTransferNewPage from './pages/dashboard/inventory/InventoryTransferNewPage';
@@ -231,8 +235,18 @@ function App() {
                         path="/inventory/waste/report"
                         element={<InventoryWasteReportPage />}
                       />
+                      <Route
+                        path="/inventory/receipts/report"
+                        element={<InventoryReceiptReportPage />}
+                      />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.StatsRead} />}>
+                      <Route
+                        path="/finance/reconciliation"
+                        element={<FinanceReconciliationPage />}
+                      />
+                      <Route path="/finance/deposits" element={<FinanceDepositsPage />} />
+                      <Route path="/finance/variance" element={<FinanceVariancePage />} />
                       <Route path="/activity-log" element={<ActivityLogPage />} />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.ConfigRead} />}>

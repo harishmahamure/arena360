@@ -120,6 +120,16 @@ export interface WasteSummaryRow {
   estimatedCost: number;
 }
 
+export interface ReceiptSummaryRow {
+  productId: string;
+  productName: string;
+  vendorId?: string | null;
+  vendorName?: string | null;
+  totalBoxes: number;
+  totalPieces: number;
+  estimatedCost: number;
+}
+
 export const getInventoryLocations = async (filters: Record<string, unknown> = {}) =>
   http.get<ListResponse<InventoryLocation>>('/inventory/locations', { params: filters });
 
@@ -199,3 +209,6 @@ export const rejectWasteEvent = async (id: string, rejectionReason: string) =>
 
 export const getWasteSummary = async (filters: Record<string, unknown> = {}) =>
   http.get<WasteSummaryRow[]>('/inventory/waste/summary', { params: filters });
+
+export const getReceiptSummary = async (filters: Record<string, unknown> = {}) =>
+  http.get<ReceiptSummaryRow[]>('/inventory/receipts/summary', { params: filters });

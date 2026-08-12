@@ -10,23 +10,12 @@ import {
   ShoppingCart,
   SportsEsports,
 } from '@mui/icons-material';
-import {
-  Box,
-  Card,
-  CardContent,
-  Grid,
-  LinearProgress,
-  Skeleton,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from '@mui/material';
-import { subDays } from 'date-fns';
-import { useMemo, useState } from 'react';
+import { Box, Card, CardContent, Grid, LinearProgress, Skeleton, Typography } from '@mui/material';
 import { StatCard, type StatTone } from '../../containers/stats/StatCard';
+import { StatsDateRangeToolbar } from '../../containers/stats/StatsDateRangeToolbar';
 import { TopPerformersList } from '../../containers/stats/TopPerformersList';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
-import { formatStatsDate } from '../../services/stats/formatStatsDate';
+import { useStatsDateRange } from '../../hooks/useStatsDateRange';
 import {
   calculatePeriodChange,
   formatPaymentCountBreakdown,
@@ -34,45 +23,6 @@ import {
   normalizeRevenue,
 } from '../../services/stats/statsHelpers';
 import type { RevenueByPaymentMethodDto } from '../../services/stats/types';
-import { endOfTodayIST, now, startOfTodayIST, toISTString } from '../../utils/date';
-
-type DateRange = 'today' | 'last 7 days' | 'month';
-
-const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'last 7 days', label: '7 days' },
-  { value: 'month', label: 'MTD' },
-];
-
-function DateRangeToggle({
-  value,
-  onChange,
-}: {
-  value: DateRange;
-  onChange: (value: DateRange) => void;
-}) {
-  return (
-    <ToggleButtonGroup
-      exclusive
-      value={value}
-      size="small"
-      onChange={(_event, next: DateRange | null) => {
-        if (next) onChange(next);
-      }}
-      sx={{ flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}
-    >
-      {DATE_RANGE_OPTIONS.map((option) => (
-        <ToggleButton
-          key={option.value}
-          value={option.value}
-          sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 'auto' } }}
-        >
-          {option.label}
-        </ToggleButton>
-      ))}
-    </ToggleButtonGroup>
-  );
-}
 
 function AdminDashboardSkeleton() {
   return (
@@ -106,35 +56,20 @@ function AdminDashboardSkeleton() {
 }
 
 export default function AdminDashboardView() {
-  const [dateRange, setDateRange] = useState<DateRange>('today');
+  const {
+    startDate,
+    endDate,
+    compare,
+    appliedCompare,
+    apiFilters,
+    isDirty,
+    setRange,
+    setCompare,
+    applyPreset,
+    apply,
+  } = useStatsDateRange();
 
-  const dateFilters = useMemo(() => {
-    const current = now();
-
-    switch (dateRange) {
-      case 'today':
-        return {
-          startDate: toISTString(startOfTodayIST()),
-          endDate: toISTString(endOfTodayIST()),
-        };
-      case 'last 7 days':
-        return {
-          startDate: formatStatsDate(subDays(current, 7)),
-          endDate: toISTString(endOfTodayIST()),
-        };
-      case 'month': {
-        const d = new Date(current);
-        d.setDate(1);
-        d.setHours(0, 0, 0, 0);
-        return {
-          startDate: formatStatsDate(d),
-          endDate: toISTString(endOfTodayIST()),
-        };
-      }
-    }
-  }, [dateRange]);
-
-  const { data: dashboardStats, isLoading, error, refetch } = useDashboardStats(dateFilters);
+  const { data: dashboardStats, isLoading, error, refetch } = useDashboardStats(apiFilters);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -146,7 +81,8 @@ export default function AdminDashboardView() {
   const formatPaymentBreakdown = (revenue: RevenueByPaymentMethodDto) =>
     `Cash: ${formatCurrency(revenue.cashRevenue)} | Online: ${formatCurrency(revenue.onlineRevenue)} | Credit: ${formatCurrency(revenue.creditRevenue)}`;
 
-  const calculateChange = calculatePeriodChange;
+  const change = (current: number, previous?: number | null) =>
+    appliedCompare ? calculatePeriodChange(current, previous ?? undefined) : undefined;
 
   if (isLoading) {
     return <AdminDashboardSkeleton />;
@@ -164,13 +100,15 @@ export default function AdminDashboardView() {
   }
 
   const currentRevenue = normalizeRevenue(dashboardStats.revenue.current);
-  const previousRevenue = normalizeRevenue(dashboardStats.revenue.previous);
+  const previousRevenue = dashboardStats.revenue.previous
+    ? normalizeRevenue(dashboardStats.revenue.previous)
+    : null;
 
   const stats = [
     {
       title: 'Total Revenue',
       value: formatCurrency(currentRevenue.total),
-      change: calculateChange(currentRevenue.total, previousRevenue.total),
+      change: change(currentRevenue.total, previousRevenue?.total),
       icon: AttachMoney,
       tone: 'success' as StatTone,
       subtitle: formatPaymentBreakdown(currentRevenue),
@@ -178,7 +116,7 @@ export default function AdminDashboardView() {
     {
       title: 'Plan Transactions',
       value: formatCurrency(currentRevenue.plan),
-      change: calculateChange(currentRevenue.plan, previousRevenue.plan),
+      change: change(currentRevenue.plan, previousRevenue?.plan),
       icon: Receipt,
       tone: 'primary' as StatTone,
       subtitle: formatTypePaymentSubtitle(currentRevenue, 'plan', formatCurrency),
@@ -186,7 +124,7 @@ export default function AdminDashboardView() {
     {
       title: 'Product Transactions',
       value: formatCurrency(currentRevenue.merchandise),
-      change: calculateChange(currentRevenue.merchandise, previousRevenue.merchandise),
+      change: change(currentRevenue.merchandise, previousRevenue?.merchandise),
       icon: ShoppingCart,
       tone: 'info' as StatTone,
       subtitle: formatTypePaymentSubtitle(currentRevenue, 'product', formatCurrency),
@@ -194,33 +132,39 @@ export default function AdminDashboardView() {
     {
       title: 'Cash Revenue',
       value: formatCurrency(currentRevenue.cashRevenue),
-      change: calculateChange(currentRevenue.cashRevenue, previousRevenue.cashRevenue),
-      subtitle: `Previous Period: ${formatCurrency(previousRevenue.cashRevenue)}`,
+      change: change(currentRevenue.cashRevenue, previousRevenue?.cashRevenue),
+      subtitle: previousRevenue
+        ? `Previous Period: ${formatCurrency(previousRevenue.cashRevenue)}`
+        : undefined,
       icon: MonetizationOn,
       tone: 'success' as StatTone,
     },
     {
       title: 'Online Revenue',
       value: formatCurrency(currentRevenue.onlineRevenue),
-      change: calculateChange(currentRevenue.onlineRevenue, previousRevenue.onlineRevenue),
-      subtitle: `Previous Period: ${formatCurrency(previousRevenue.onlineRevenue)}`,
+      change: change(currentRevenue.onlineRevenue, previousRevenue?.onlineRevenue),
+      subtitle: previousRevenue
+        ? `Previous Period: ${formatCurrency(previousRevenue.onlineRevenue)}`
+        : undefined,
       icon: MonetizationOn,
       tone: 'success' as StatTone,
     },
     {
       title: 'Credit Revenue',
       value: formatCurrency(currentRevenue.creditRevenue),
-      change: calculateChange(currentRevenue.creditRevenue, previousRevenue.creditRevenue),
-      subtitle: `Previous Period: ${formatCurrency(previousRevenue.creditRevenue)}`,
+      change: change(currentRevenue.creditRevenue, previousRevenue?.creditRevenue),
+      subtitle: previousRevenue
+        ? `Previous Period: ${formatCurrency(previousRevenue.creditRevenue)}`
+        : undefined,
       icon: CreditCard,
       tone: 'warning' as StatTone,
     },
     {
       title: 'Total Transactions',
       value: dashboardStats.transactions.current.completedTransactions.toLocaleString(),
-      change: calculateChange(
+      change: change(
         dashboardStats.transactions.current.completedTransactions,
-        dashboardStats.transactions.previous.completedTransactions,
+        dashboardStats.transactions.previous?.completedTransactions,
       ),
       icon: ShoppingCart,
       tone: 'info' as StatTone,
@@ -229,7 +173,7 @@ export default function AdminDashboardView() {
     {
       title: 'Active Players',
       value: dashboardStats.users.activePlayers.toLocaleString(),
-      change: calculateChange(dashboardStats.users.activePlayers),
+      change: change(dashboardStats.users.activePlayers),
       icon: People,
       tone: 'primary' as StatTone,
       subtitle: `Total: ${dashboardStats.users.totalPlayers.toLocaleString()}`,
@@ -237,9 +181,9 @@ export default function AdminDashboardView() {
     {
       title: 'Active Sessions',
       value: dashboardStats.usage.current.activeSessions.toLocaleString(),
-      change: calculateChange(
+      change: change(
         dashboardStats.usage.current.activeSessions,
-        dashboardStats.usage.previous.activeSessions,
+        dashboardStats.usage.previous?.activeSessions,
       ),
       icon: AccessTime,
       tone: 'warning' as StatTone,
@@ -248,7 +192,7 @@ export default function AdminDashboardView() {
     {
       title: 'Active Devices',
       value: dashboardStats.devices.activeDevices.toLocaleString(),
-      change: calculateChange(dashboardStats.devices.activeDevices),
+      change: change(dashboardStats.devices.activeDevices),
       icon: Devices,
       tone: 'error' as StatTone,
       subtitle: `Total: ${dashboardStats.devices.totalDevices.toLocaleString()}`,
@@ -256,9 +200,9 @@ export default function AdminDashboardView() {
     {
       title: 'Total Usage Hours',
       value: dashboardStats.usage.current.totalHours.toLocaleString(),
-      change: calculateChange(
+      change: change(
         dashboardStats.usage.current.totalHours,
-        dashboardStats.usage.previous.totalHours,
+        dashboardStats.usage.previous?.totalHours,
       ),
       icon: SportsEsports,
       tone: 'info' as StatTone,
@@ -283,15 +227,26 @@ export default function AdminDashboardView() {
 
   const deviceUtilization = dashboardStats.devices.deviceUtilization.slice(0, 10);
 
+  const description =
+    appliedCompare && dashboardStats.period.previousLabel
+      ? `${dashboardStats.period.label} · compared to ${dashboardStats.period.previousLabel}`
+      : dashboardStats.period.label;
+
   return (
     <PageShell
-      header={
-        <PageHeader
-          title="Dashboard"
-          description={`${dashboardStats.period.label} · compared to ${dashboardStats.period.previousLabel}`}
+      header={<PageHeader title="Dashboard" description={description} />}
+      toolbar={
+        <StatsDateRangeToolbar
+          startDate={startDate}
+          endDate={endDate}
+          compare={compare}
+          onRangeChange={setRange}
+          onCompareChange={setCompare}
+          onPreset={applyPreset}
+          onApply={apply}
+          isDirty={isDirty}
         />
       }
-      toolbar={<DateRangeToggle value={dateRange} onChange={setDateRange} />}
     >
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {stats.map((stat) => (

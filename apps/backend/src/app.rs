@@ -217,6 +217,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::stats::revenue_by_payment_method),
         )
         .route("/stats/usage", get(handlers::stats::usage_stats))
+        .route(
+            "/stats/finance/reconciliation",
+            get(handlers::stats::finance_reconciliation_stats),
+        )
+        .route(
+            "/stats/finance/deposits",
+            get(handlers::stats::finance_deposit_stats),
+        )
+        .route(
+            "/stats/finance/variance",
+            get(handlers::stats::finance_variance_stats),
+        )
         .route("/users", get(handlers::users::list_users))
         .route(
             "/users/{id}",
@@ -498,6 +510,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::inventory::list_receipts).post(handlers::inventory::create_receipt),
         )
         .route(
+            "/inventory/receipts/summary",
+            get(handlers::inventory::receipt_summary),
+        )
+        .route(
             "/inventory/transfer-requests",
             get(handlers::inventory::list_transfer_requests)
                 .post(handlers::inventory::create_transfer_request),
@@ -551,6 +567,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/credit/accounts",
             get(handlers::credit::list_credit_accounts),
+        )
+        .route(
+            "/credit/summary",
+            get(handlers::credit::credit_summary),
         )
         .route(
             "/credit/players/{id}",

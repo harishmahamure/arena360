@@ -1,5 +1,6 @@
 import { type Column, IntegerField, ListPage } from '@gaming-cafe/ui';
 import { toastUtils } from '@gaming-cafe/utils';
+import { Delete } from '@mui/icons-material';
 import {
   Alert,
   Autocomplete,
@@ -7,6 +8,7 @@ import {
   Button,
   Card,
   CardContent,
+  IconButton,
   MenuItem,
   Paper,
   TextField,
@@ -21,7 +23,7 @@ import {
   getInventoryLocations,
   getLocationStock,
 } from '../../../services/inventory';
-import { getProducts } from '../../../services/product/list';
+import { getProducts, type ProductResponse } from '../../../services/product/list';
 
 type StockRow = {
   id: string;
@@ -29,6 +31,13 @@ type StockRow = {
   productSku?: string | null;
   quantityPieces: number;
 };
+
+interface ReceiveLine {
+  productId: string;
+  productName: string;
+  boxQuantity: number;
+  unitsPerBox: number;
+}
 
 export default function InventoryWarehousePage() {
   const { can } = usePermissions();
@@ -64,15 +73,45 @@ export default function InventoryWarehousePage() {
     enabled: canManage,
   });
 
-  const [productId, setProductId] = useState('');
+  const [lines, setLines] = useState<ReceiveLine[]>([]);
+  const [productInput, setProductInput] = useState('');
   const [boxQty, setBoxQty] = useState('1');
   const [vendorId, setVendorId] = useState('');
   const [notes, setNotes] = useState('');
 
-  const selectedProduct = productsData?.data.find((p) => p.id === productId);
-  const unitsPerBox =
-    (selectedProduct as { unitsPerPurchaseUnit?: number })?.unitsPerPurchaseUnit ?? 1;
-  const piecesPreview = Number(boxQty || 0) * unitsPerBox;
+  const productOptions = useMemo(() => {
+    if (productInput.length < 1) return productsData?.data.slice(0, 20) ?? [];
+    return (productsData?.data ?? []).filter((p) =>
+      p.name.toLowerCase().includes(productInput.toLowerCase()),
+    );
+  }, [productsData, productInput]);
+
+  const totalBoxes = lines.reduce((sum, l) => sum + l.boxQuantity, 0);
+  const totalPieces = lines.reduce((sum, l) => sum + l.boxQuantity * l.unitsPerBox, 0);
+
+  const addLine = (product: ProductResponse) => {
+    const unitsPerBox = product.unitsPerPurchaseUnit ?? 1;
+    const qty = Math.max(1, Number(boxQty) || 1);
+    setLines((prev) => {
+      const existing = prev.find((l) => l.productId === product.id);
+      if (existing) {
+        return prev.map((l) =>
+          l.productId === product.id ? { ...l, boxQuantity: l.boxQuantity + qty, unitsPerBox } : l,
+        );
+      }
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          productName: product.name,
+          boxQuantity: qty,
+          unitsPerBox,
+        },
+      ];
+    });
+    setProductInput('');
+    setBoxQty('1');
+  };
 
   const receiveMutation = useMutation({
     mutationFn: async () => {
@@ -81,14 +120,18 @@ export default function InventoryWarehousePage() {
         locationId: warehouse.id,
         vendorId: vendorId || undefined,
         notes: notes || undefined,
-        lines: [{ productId, boxQuantity: Number(boxQty) }],
+        lines: lines.map((l) => ({
+          productId: l.productId,
+          boxQuantity: l.boxQuantity,
+        })),
       });
     },
     onSuccess: () => {
-      toastUtils.success(`Received ${piecesPreview} pieces`);
+      toastUtils.success(
+        `Received ${totalBoxes} box(es) · ${totalPieces} pieces across ${lines.length} product(s)`,
+      );
       queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] });
-      setProductId('');
-      setBoxQty('1');
+      setLines([]);
       setNotes('');
     },
     onError: () => toastUtils.error('Failed to receive stock'),
@@ -146,7 +189,8 @@ export default function InventoryWarehousePage() {
             Receive Stock
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Enter quantity in boxes; pieces are calculated from the product&apos;s units per box.
+            Add multiple products from one vendor delivery. Enter quantity in boxes; pieces are
+            calculated from each product&apos;s units per box.
           </Typography>
           <Card variant="outlined">
             <CardContent>
@@ -155,15 +199,9 @@ export default function InventoryWarehousePage() {
                   display: 'grid',
                   gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
                   gap: 2,
+                  mb: 2,
                 }}
               >
-                <Autocomplete
-                  options={productsData?.data ?? []}
-                  getOptionLabel={(p) => p.name}
-                  value={productsData?.data.find((p) => p.id === productId) ?? null}
-                  onChange={(_, v) => setProductId(v?.id ?? '')}
-                  renderInput={(params) => <TextField {...params} label="Product" required />}
-                />
                 <TextField
                   select
                   label="Vendor (optional)"
@@ -177,13 +215,6 @@ export default function InventoryWarehousePage() {
                     </MenuItem>
                   ))}
                 </TextField>
-                <IntegerField
-                  label="Boxes received"
-                  value={boxQty}
-                  onChange={(e) => setBoxQty(e.target.value)}
-                  inputProps={{ min: 1 }}
-                  required
-                />
                 <TextField
                   label="Notes"
                   value={notes}
@@ -191,16 +222,91 @@ export default function InventoryWarehousePage() {
                   fullWidth
                 />
               </Box>
-              {productId && (
+
+              <Box
+                sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2, alignItems: 'flex-start' }}
+              >
+                <Autocomplete
+                  sx={{ flex: 1, minWidth: 240 }}
+                  options={productOptions}
+                  getOptionLabel={(p) => p.name}
+                  inputValue={productInput}
+                  onInputChange={(_, v) => setProductInput(v)}
+                  onChange={(_, p) => p && addLine(p)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Add product"
+                      placeholder="Search product..."
+                      helperText="Select a product to add a line"
+                    />
+                  )}
+                />
+                <IntegerField
+                  label="Boxes"
+                  value={boxQty}
+                  onChange={(e) => setBoxQty(e.target.value)}
+                  inputProps={{ min: 1 }}
+                  sx={{ width: 120 }}
+                  helperText="Qty per add"
+                />
+              </Box>
+
+              {lines.length === 0 ? (
+                <Typography color="text.secondary" sx={{ mb: 2 }}>
+                  No products added yet. Search above to build the receipt.
+                </Typography>
+              ) : (
+                lines.map((line) => (
+                  <Box
+                    key={line.productId}
+                    sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}
+                  >
+                    <Box sx={{ flex: 1 }}>
+                      <Typography>{line.productName}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {line.boxQuantity} box(es) × {line.unitsPerBox} pcs ={' '}
+                        {line.boxQuantity * line.unitsPerBox} pieces
+                      </Typography>
+                    </Box>
+                    <IntegerField
+                      size="small"
+                      label="Boxes"
+                      value={line.boxQuantity}
+                      onChange={(e) => {
+                        const v = Math.max(1, Number(e.target.value) || 1);
+                        setLines((prev) =>
+                          prev.map((l) =>
+                            l.productId === line.productId ? { ...l, boxQuantity: v } : l,
+                          ),
+                        );
+                      }}
+                      inputProps={{ min: 1 }}
+                      sx={{ width: 100 }}
+                    />
+                    <IconButton
+                      color="error"
+                      onClick={() =>
+                        setLines((prev) => prev.filter((l) => l.productId !== line.productId))
+                      }
+                    >
+                      <Delete />
+                    </IconButton>
+                  </Box>
+                ))
+              )}
+
+              {lines.length > 0 && (
                 <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">
-                  {boxQty || 0} box(es) × {unitsPerBox} pcs/box ={' '}
-                  <strong>{piecesPreview} pieces</strong>
+                  Total: <strong>{totalBoxes}</strong> box(es) · <strong>{totalPieces}</strong>{' '}
+                  pieces · <strong>{lines.length}</strong> product(s)
                 </Typography>
               )}
+
               <Button
                 variant="contained"
                 sx={{ mt: 2 }}
-                disabled={!productId || !boxQty || receiveMutation.isPending}
+                disabled={lines.length === 0 || receiveMutation.isPending}
                 onClick={() => receiveMutation.mutate()}
               >
                 Receive into warehouse

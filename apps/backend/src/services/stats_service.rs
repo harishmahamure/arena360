@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::cache::{get_or_set, keys, CacheService};
 use crate::error::AppError;
@@ -178,19 +179,22 @@ pub struct PeriodDto {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PeriodPair<T> {
     pub current: T,
-    pub previous: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous: Option<T>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PeriodPairRevenueByPaymentMethod {
     pub current: RevenueByPaymentMethodDto,
-    pub previous: RevenueByPaymentMethodDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous: Option<RevenueByPaymentMethodDto>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PeriodPairUsageStats {
     pub current: UsageStatsDto,
-    pub previous: UsageStatsDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous: Option<UsageStatsDto>,
 }
 
 impl From<PeriodPair<RevenueByPaymentMethodDto>> for PeriodPairRevenueByPaymentMethod {
@@ -211,6 +215,74 @@ impl From<PeriodPair<UsageStatsDto>> for PeriodPairUsageStats {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinanceReconciliationMetricsDto {
+    pub open_count: i64,
+    pub closed_count: i64,
+    pub reconciled_count: i64,
+    pub pending_reconcile_count: i64,
+    pub total_deposited: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinanceReconciliationStatsDto {
+    pub period: PeriodDto,
+    pub metrics: PeriodPair<FinanceReconciliationMetricsDto>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinanceDepositMetricsDto {
+    pub pending_count: i64,
+    pub pending_amount: f64,
+    pub approved_count: i64,
+    pub approved_amount: f64,
+    pub rejected_count: i64,
+    pub rejected_amount: f64,
+    pub bank_amount: f64,
+    pub home_amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinanceDepositStatsDto {
+    pub period: PeriodDto,
+    pub metrics: PeriodPair<FinanceDepositMetricsDto>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinanceVarianceMetricsDto {
+    pub total_variance: f64,
+    pub average_variance: f64,
+    pub over_count: i64,
+    pub short_count: i64,
+    pub even_count: i64,
+    pub register_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct FinanceVarianceRegisterRow {
+    pub id: Uuid,
+    pub shift_id: Uuid,
+    pub status: String,
+    pub variance: f64,
+    pub closing_balance: Option<f64>,
+    pub expected_closing: Option<f64>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FinanceVarianceStatsDto {
+    pub period: PeriodDto,
+    pub metrics: PeriodPair<FinanceVarianceMetricsDto>,
+    pub registers: Vec<FinanceVarianceRegisterRow>,
+}
+
 pub struct StatsService {
     pool: PgPool,
     cache: Arc<dyn CacheService>,
@@ -220,6 +292,14 @@ pub struct StatsService {
 struct StatsDashboardKey {
     start: String,
     end: String,
+    compare: bool,
+}
+
+#[derive(Serialize)]
+struct StatsFinanceKey {
+    start: String,
+    end: String,
+    compare: bool,
 }
 
 #[derive(Serialize)]
@@ -325,19 +405,17 @@ impl StatsService {
         &self,
         start_date: Option<String>,
         end_date: Option<String>,
+        compare: bool,
     ) -> Result<DashboardStatsDto, AppError> {
         let now = Utc::now();
         let period_start =
             parse_date_start(start_date.as_deref()).unwrap_or_else(|| start_of_day(now));
         let period_end = parse_date_end(end_date.as_deref()).unwrap_or(now);
 
-        let diff_days = (period_end - period_start).num_days().max(1);
-        let prev_start = period_start - Duration::days(diff_days);
-        let prev_end = period_end - Duration::days(diff_days);
-
         let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsDashboardKey {
             start: format_date_key(period_start),
             end: format_date_key(period_end),
+            compare,
         }));
 
         get_or_set(
@@ -345,7 +423,7 @@ impl StatsService {
             &cache_key,
             keys::ttl::AGGREGATE,
             || async {
-                self.compute_dashboard_stats(period_start, period_end, prev_start, prev_end)
+                self.compute_dashboard_stats(period_start, period_end, compare)
                     .await
             },
         )
@@ -356,15 +434,27 @@ impl StatsService {
         &self,
         period_start: DateTime<Utc>,
         period_end: DateTime<Utc>,
-        prev_start: DateTime<Utc>,
-        prev_end: DateTime<Utc>,
+        compare: bool,
     ) -> Result<DashboardStatsDto, AppError> {
+        let (prev_start, prev_end) = previous_window(period_start, period_end);
         let revenue_current = self.revenue_stats(period_start, period_end).await?;
-        let revenue_previous = self.revenue_stats(prev_start, prev_end).await?;
+        let revenue_previous = if compare {
+            Some(self.revenue_stats(prev_start, prev_end).await?)
+        } else {
+            None
+        };
         let tx_current = self.transaction_stats(period_start, period_end).await?;
-        let tx_previous = self.transaction_stats(prev_start, prev_end).await?;
+        let tx_previous = if compare {
+            Some(self.transaction_stats(prev_start, prev_end).await?)
+        } else {
+            None
+        };
         let usage_current = self.usage_stats(period_start, period_end).await?;
-        let usage_previous = self.usage_stats(prev_start, prev_end).await?;
+        let usage_previous = if compare {
+            Some(self.usage_stats(prev_start, prev_end).await?)
+        } else {
+            None
+        };
         let users = self.user_stats(period_start, period_end).await?;
         let plans = self.plan_stats().await?;
         let devices = self.device_stats(period_start, period_end).await?;
@@ -372,20 +462,7 @@ impl StatsService {
         let revenue_trend = self.revenue_trend_stats(period_start, period_end).await?;
 
         Ok(DashboardStatsDto {
-            period: PeriodDto {
-                start_date: period_start.to_rfc3339(),
-                end_date: period_end.to_rfc3339(),
-                label: format!(
-                    "{} - {}",
-                    period_start.format("%Y-%m-%d"),
-                    period_end.format("%Y-%m-%d")
-                ),
-                previous_label: format!(
-                    "{} - {}",
-                    prev_start.format("%Y-%m-%d"),
-                    prev_end.format("%Y-%m-%d")
-                ),
-            },
+            period: period_dto(period_start, period_end, compare, prev_start, prev_end),
             revenue: PeriodPair {
                 current: revenue_current,
                 previous: revenue_previous,
@@ -512,6 +589,7 @@ impl StatsService {
         end: DateTime<Utc>,
         prev_start: DateTime<Utc>,
         prev_end: DateTime<Utc>,
+        compare: bool,
     ) -> Result<PeriodPair<RevenueByPaymentMethodDto>, AppError> {
         let cache_key = keys::stats_revenue(&keys::filter_hash(&StatsPeriodPairKey {
             start: format_date_key(start),
@@ -527,7 +605,11 @@ impl StatsService {
             || async {
                 Ok(PeriodPair {
                     current: self.revenue_stats(start, end).await?,
-                    previous: self.revenue_stats(prev_start, prev_end).await?,
+                    previous: if compare {
+                        Some(self.revenue_stats(prev_start, prev_end).await?)
+                    } else {
+                        None
+                    },
                 })
             },
         )
@@ -540,6 +622,7 @@ impl StatsService {
         end: DateTime<Utc>,
         prev_start: DateTime<Utc>,
         prev_end: DateTime<Utc>,
+        compare: bool,
     ) -> Result<PeriodPair<UsageStatsDto>, AppError> {
         let cache_key = keys::stats_usage(&keys::filter_hash(&StatsPeriodPairKey {
             start: format_date_key(start),
@@ -555,7 +638,11 @@ impl StatsService {
             || async {
                 Ok(PeriodPair {
                     current: self.usage_stats(start, end).await?,
-                    previous: self.usage_stats(prev_start, prev_end).await?,
+                    previous: if compare {
+                        Some(self.usage_stats(prev_start, prev_end).await?)
+                    } else {
+                        None
+                    },
                 })
             },
         )
@@ -1246,6 +1333,302 @@ impl StatsService {
             available: row.1,
             in_use: row.2,
         })
+    }
+
+    pub async fn get_finance_reconciliation_stats(
+        &self,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        compare: bool,
+    ) -> Result<FinanceReconciliationStatsDto, AppError> {
+        let (period_start, period_end) = Self::resolve_stats_period(start_date, end_date);
+        let (prev_start, prev_end) = previous_window(period_start, period_end);
+
+        let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsFinanceKey {
+            start: format_date_key(period_start),
+            end: format_date_key(period_end),
+            compare,
+        }));
+        let cache_key = format!("{cache_key}:finance-recon");
+
+        get_or_set(
+            &*self.cache,
+            &cache_key,
+            keys::ttl::AGGREGATE,
+            || async {
+                let current = self
+                    .finance_reconciliation_metrics(period_start, period_end)
+                    .await?;
+                let previous = if compare {
+                    Some(
+                        self.finance_reconciliation_metrics(prev_start, prev_end)
+                            .await?,
+                    )
+                } else {
+                    None
+                };
+                Ok(FinanceReconciliationStatsDto {
+                    period: period_dto(period_start, period_end, compare, prev_start, prev_end),
+                    metrics: PeriodPair { current, previous },
+                })
+            },
+        )
+        .await
+    }
+
+    async fn finance_reconciliation_metrics(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<FinanceReconciliationMetricsDto, AppError> {
+        let row: (i64, i64, i64, i64, f64) = sqlx::query_as(
+            r#"
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'open'),
+                COUNT(*) FILTER (WHERE status = 'closed'),
+                COUNT(*) FILTER (WHERE status = 'reconciled'),
+                COUNT(*) FILTER (WHERE status = 'closed'),
+                COALESCE((
+                    SELECT SUM(d.amount)::float8
+                    FROM cash_deposits d
+                    WHERE d.status = 'approved'
+                      AND d."createdAt" BETWEEN $1 AND $2
+                ), 0)
+            FROM cash_registers
+            WHERE "createdAt" BETWEEN $1 AND $2
+            "#,
+        )
+        .bind(start)
+        .bind(end)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(FinanceReconciliationMetricsDto {
+            open_count: row.0,
+            closed_count: row.1,
+            reconciled_count: row.2,
+            pending_reconcile_count: row.3,
+            total_deposited: row.4,
+        })
+    }
+
+    pub async fn get_finance_deposit_stats(
+        &self,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        compare: bool,
+    ) -> Result<FinanceDepositStatsDto, AppError> {
+        let (period_start, period_end) = Self::resolve_stats_period(start_date, end_date);
+        let (prev_start, prev_end) = previous_window(period_start, period_end);
+
+        let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsFinanceKey {
+            start: format_date_key(period_start),
+            end: format_date_key(period_end),
+            compare,
+        }));
+        let cache_key = format!("{cache_key}:finance-deposits");
+
+        get_or_set(
+            &*self.cache,
+            &cache_key,
+            keys::ttl::AGGREGATE,
+            || async {
+                let current = self.finance_deposit_metrics(period_start, period_end).await?;
+                let previous = if compare {
+                    Some(self.finance_deposit_metrics(prev_start, prev_end).await?)
+                } else {
+                    None
+                };
+                Ok(FinanceDepositStatsDto {
+                    period: period_dto(period_start, period_end, compare, prev_start, prev_end),
+                    metrics: PeriodPair { current, previous },
+                })
+            },
+        )
+        .await
+    }
+
+    async fn finance_deposit_metrics(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<FinanceDepositMetricsDto, AppError> {
+        let row: (i64, f64, i64, f64, i64, f64, f64, f64) = sqlx::query_as(
+            r#"
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'pending'),
+                COALESCE(SUM(amount::float8) FILTER (WHERE status = 'pending'), 0),
+                COUNT(*) FILTER (WHERE status = 'approved'),
+                COALESCE(SUM(amount::float8) FILTER (WHERE status = 'approved'), 0),
+                COUNT(*) FILTER (WHERE status = 'rejected'),
+                COALESCE(SUM(amount::float8) FILTER (WHERE status = 'rejected'), 0),
+                COALESCE(SUM(amount::float8) FILTER (
+                    WHERE status = 'approved' AND "depositType" = 'bank'
+                ), 0),
+                COALESCE(SUM(amount::float8) FILTER (
+                    WHERE status = 'approved' AND "depositType" = 'home'
+                ), 0)
+            FROM cash_deposits
+            WHERE "createdAt" BETWEEN $1 AND $2
+            "#,
+        )
+        .bind(start)
+        .bind(end)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(FinanceDepositMetricsDto {
+            pending_count: row.0,
+            pending_amount: row.1,
+            approved_count: row.2,
+            approved_amount: row.3,
+            rejected_count: row.4,
+            rejected_amount: row.5,
+            bank_amount: row.6,
+            home_amount: row.7,
+        })
+    }
+
+    pub async fn get_finance_variance_stats(
+        &self,
+        start_date: Option<String>,
+        end_date: Option<String>,
+        compare: bool,
+    ) -> Result<FinanceVarianceStatsDto, AppError> {
+        let (period_start, period_end) = Self::resolve_stats_period(start_date, end_date);
+        let (prev_start, prev_end) = previous_window(period_start, period_end);
+
+        let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsFinanceKey {
+            start: format_date_key(period_start),
+            end: format_date_key(period_end),
+            compare,
+        }));
+        let cache_key = format!("{cache_key}:finance-variance");
+
+        get_or_set(
+            &*self.cache,
+            &cache_key,
+            keys::ttl::AGGREGATE,
+            || async {
+                let current = self.finance_variance_metrics(period_start, period_end).await?;
+                let previous = if compare {
+                    Some(self.finance_variance_metrics(prev_start, prev_end).await?)
+                } else {
+                    None
+                };
+                let registers = self
+                    .finance_variance_registers(period_start, period_end)
+                    .await?;
+                Ok(FinanceVarianceStatsDto {
+                    period: period_dto(period_start, period_end, compare, prev_start, prev_end),
+                    metrics: PeriodPair { current, previous },
+                    registers,
+                })
+            },
+        )
+        .await
+    }
+
+    async fn finance_variance_metrics(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<FinanceVarianceMetricsDto, AppError> {
+        let row: (f64, f64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                COALESCE(SUM(variance::float8), 0),
+                COALESCE(AVG(variance::float8), 0),
+                COUNT(*) FILTER (WHERE variance::float8 > 0),
+                COUNT(*) FILTER (WHERE variance::float8 < 0),
+                COUNT(*) FILTER (WHERE variance::float8 = 0),
+                COUNT(*)
+            FROM cash_registers
+            WHERE variance IS NOT NULL
+              AND status IN ('closed', 'reconciled')
+              AND "updatedAt" BETWEEN $1 AND $2
+            "#,
+        )
+        .bind(start)
+        .bind(end)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(FinanceVarianceMetricsDto {
+            total_variance: row.0,
+            average_variance: row.1,
+            over_count: row.2,
+            short_count: row.3,
+            even_count: row.4,
+            register_count: row.5,
+        })
+    }
+
+    async fn finance_variance_registers(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<FinanceVarianceRegisterRow>, AppError> {
+        Ok(sqlx::query_as::<_, FinanceVarianceRegisterRow>(
+            r#"
+            SELECT
+                id,
+                "shiftId" as shift_id,
+                status,
+                variance::float8 as variance,
+                "closingBalance"::float8 as closing_balance,
+                "expectedClosing"::float8 as expected_closing,
+                "updatedAt" as updated_at
+            FROM cash_registers
+            WHERE variance IS NOT NULL
+              AND status IN ('closed', 'reconciled')
+              AND "updatedAt" BETWEEN $1 AND $2
+            ORDER BY ABS(variance) DESC, "updatedAt" DESC
+            LIMIT 50
+            "#,
+        )
+        .bind(start)
+        .bind(end)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+}
+
+fn previous_window(
+    period_start: DateTime<Utc>,
+    period_end: DateTime<Utc>,
+) -> (DateTime<Utc>, DateTime<Utc>) {
+    let diff_days = (period_end - period_start).num_days().max(1);
+    (
+        period_start - Duration::days(diff_days),
+        period_end - Duration::days(diff_days),
+    )
+}
+
+fn period_dto(
+    period_start: DateTime<Utc>,
+    period_end: DateTime<Utc>,
+    compare: bool,
+    prev_start: DateTime<Utc>,
+    prev_end: DateTime<Utc>,
+) -> PeriodDto {
+    PeriodDto {
+        start_date: period_start.to_rfc3339(),
+        end_date: period_end.to_rfc3339(),
+        label: format!(
+            "{} - {}",
+            period_start.format("%Y-%m-%d"),
+            period_end.format("%Y-%m-%d")
+        ),
+        previous_label: if compare {
+            format!(
+                "{} - {}",
+                prev_start.format("%Y-%m-%d"),
+                prev_end.format("%Y-%m-%d")
+            )
+        } else {
+            String::new()
+        },
     }
 }
 
