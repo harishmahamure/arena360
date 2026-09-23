@@ -1,12 +1,12 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::cache::keys::MAX_INBOX_NOTIFICATIONS;
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{
     activity_kind, ActivityLog, ActivityLogFilterDto, NotificationFilterDto, NotificationItem,
 };
-use crate::cache::keys::MAX_INBOX_NOTIFICATIONS;
 
 const RETAINED_NOTIFICATION_KIND: &str = activity_kind::KIOSK_ORDER_PLACED;
 
@@ -96,13 +96,9 @@ impl NotificationRepository {
 
         Ok(row
             .map(|(first, last, username)| {
-                let full = format!(
-                    "{} {}",
-                    first.unwrap_or_default(),
-                    last.unwrap_or_default()
-                )
-                .trim()
-                .to_string();
+                let full = format!("{} {}", first.unwrap_or_default(), last.unwrap_or_default())
+                    .trim()
+                    .to_string();
                 if full.is_empty() {
                     username
                 } else {
@@ -179,7 +175,8 @@ impl NotificationRepository {
         list_builder.push(" OFFSET ");
         list_builder.push_bind(offset);
 
-        let items: Vec<NotificationItem> = list_builder.build_query_as().fetch_all(&self.pool).await?;
+        let items: Vec<NotificationItem> =
+            list_builder.build_query_as().fetch_all(&self.pool).await?;
 
         Ok(PaginationResult::new(items, total.0, page, limit))
     }
@@ -290,7 +287,8 @@ impl NotificationRepository {
         let limit = filters.limit.unwrap_or(20).clamp(1, 100);
         let offset = (page - 1) * limit;
 
-        let mut count_builder = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM activity_log al WHERE 1=1");
+        let mut count_builder =
+            sqlx::QueryBuilder::new("SELECT COUNT(*) FROM activity_log al WHERE 1=1");
         let mut list_builder = sqlx::QueryBuilder::new(
             r#"SELECT al.id, al.kind::text as kind, al.title, al.summary, al.payload,
                       al."actorUserId" as actor_user_id, al."entityType" as entity_type,

@@ -111,7 +111,7 @@ export function currentDeductionRatio(
 /** Seconds remaining on the HUD when kiosk/console auto-call session end. */
 export const AUTO_END_REMAINING_SECONDS = 10;
 
-/** Local session countdown tick interval (kiosk, admin, console TV). */
+/** Local session countdown tick interval (kiosk and admin). */
 export const SESSION_CLOCK_TICK_MS = 1_000;
 
 /**

@@ -1,10 +1,7 @@
-# Migrations
+# Database migrations
 
-This Rust backend connects to an existing Postgres database whose schema
-was originally created by TypeORM migrations in the NestJS backend.
-
-**We maintain migrations here** for schema changes introduced by the Rust backend.
-Create raw SQL migration files in this directory using:
+SQLx migrations in this directory define the Arena360 PostgreSQL schema.
+Create a migration from the repository root with:
 
 ```bash
 pnpm migration generate <description>
@@ -24,10 +21,11 @@ pnpm migration revert
 pnpm migration prepare
 ```
 
-For compile-time query checking in CI (offline mode):
+To refresh SQLx offline query metadata:
 
 ```bash
 pnpm migration prepare
 ```
 
-This generates `.sqlx/` query metadata which should be committed.
+Review generated SQL before applying it. Where a reversible change is practical,
+keep the matching `.down.sql` file beside the forward migration.

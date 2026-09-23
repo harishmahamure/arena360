@@ -63,69 +63,6 @@
         ]
       }
     },
-    "/auth/device-pairing": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "operationId": "device_pairing",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DevicePairingDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Pairing JWT for pre-provision WS"
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/auth/login/admin": {
       "post": {
         "tags": [
@@ -465,134 +402,6 @@
           },
           "429": {
             "description": "Too many requests — REGISTRATION_RATE_LIMITED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
-    "/auth/sso/redeem": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "operationId": "redeem_sso_token",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RedeemSsoTokenDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Staff JWT issued",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponseEnvelope"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/sso/tokens": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "operationId": "create_sso_token",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSsoTokenDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "SSO token created"
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -10372,134 +10181,6 @@
         ]
       }
     },
-    "/tv/sessions/current": {
-      "get": {
-        "tags": [
-          "console-tv"
-        ],
-        "operationId": "current_session",
-        "responses": {
-          "200": {
-            "description": "Current TV session or null"
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden — not a PlayStation device",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
-    "/tv/sessions/{id}/end": {
-      "patch": {
-        "tags": [
-          "console-tv"
-        ],
-        "operationId": "end_session",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Session ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EndTvSessionDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Session ended"
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
     "/units": {
       "get": {
         "tags": [
@@ -14288,44 +13969,6 @@
           }
         }
       },
-      "CreateSsoTokenDto": {
-        "type": "object",
-        "required": [
-          "purpose"
-        ],
-        "properties": {
-          "deviceId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "purpose": {
-            "type": "string"
-          }
-        }
-      },
-      "CreateSsoTokenResponseDto": {
-        "type": "object",
-        "required": [
-          "token",
-          "expiresAt"
-        ],
-        "properties": {
-          "deviceId": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "expiresAt": {
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
-          }
-        }
-      },
       "CreateStockAdjustmentDto": {
         "type": "object",
         "required": [
@@ -15825,36 +15468,6 @@
           }
         }
       },
-      "DevicePairingDto": {
-        "type": "object",
-        "required": [
-          "deviceId"
-        ],
-        "properties": {
-          "deviceId": {
-            "type": "string"
-          }
-        }
-      },
-      "DevicePairingResponseDto": {
-        "type": "object",
-        "required": [
-          "accessToken",
-          "expiresAt",
-          "deviceId"
-        ],
-        "properties": {
-          "accessToken": {
-            "type": "string"
-          },
-          "deviceId": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string"
-          }
-        }
-      },
       "DeviceRegisterResponseDto": {
         "type": "object",
         "required": [
@@ -15933,17 +15546,6 @@
               "null"
             ],
             "format": "int32"
-          }
-        }
-      },
-      "EndTvSessionDto": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },
@@ -17675,7 +17277,7 @@
           "remainingMinutes": {
             "type": "number",
             "format": "double",
-            "description": "Server-computed effective display remaining (console TV / legacy)."
+            "description": "Server-computed effective display remaining for legacy clients."
           },
           "resumed": {
             "type": "boolean",
@@ -20345,7 +19947,7 @@
               "string",
               "null"
             ],
-            "description": "When `console-tv`, backend rejects non-PlayStation device types."
+            "description": "Identifies the provisioning client (currently `kiosk`)."
           },
           "serialNumber": {
             "type": [
@@ -20457,17 +20059,6 @@
               "string",
               "null"
             ]
-          }
-        }
-      },
-      "RedeemSsoTokenDto": {
-        "type": "object",
-        "required": [
-          "token"
-        ],
-        "properties": {
-          "token": {
-            "type": "string"
           }
         }
       },
@@ -23773,58 +23364,6 @@
             "type": "boolean"
           },
           "timestamp": {
-            "type": "string"
-          }
-        }
-      },
-      "TvSessionResponseDto": {
-        "type": "object",
-        "required": [
-          "sessionId",
-          "balanceId",
-          "deviceId",
-          "startTime",
-          "remainingMinutes",
-          "cafeTimezone",
-          "expiryDate"
-        ],
-        "properties": {
-          "balanceId": {
-            "type": "string"
-          },
-          "cafeTimezone": {
-            "type": "string"
-          },
-          "deductionProfile": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/DeductionProfile"
-              }
-            ]
-          },
-          "deviceId": {
-            "type": "string"
-          },
-          "expiryDate": {
-            "type": "string"
-          },
-          "playerUsername": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "remainingMinutes": {
-            "type": "number",
-            "format": "double"
-          },
-          "sessionId": {
-            "type": "string"
-          },
-          "startTime": {
             "type": "string"
           }
         }

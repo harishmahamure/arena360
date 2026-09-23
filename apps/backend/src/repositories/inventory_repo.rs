@@ -4,13 +4,12 @@ use uuid::Uuid;
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{
-    CreateInventoryLocationDto, CreateStockReceiptDto,
+    CreateInventoryLocationDto, CreateStockAdjustmentDto, CreateStockReceiptDto,
     CreateStockWasteEventDto, InventoryLocation, InventoryLocationFilterDto,
-    LocationStockFilterDto, LocationStockRow, StockReceipt, StockReceiptFilterDto,
-    StockReceiptLine, StockAdjustment, StockAdjustmentFilterDto, StockAdjustmentLine,
-    CreateStockAdjustmentDto, StockTransferFilterDto, StockTransferLine, StockTransferRequest,
-    StockWasteEvent, StockWasteFilterDto, StockWasteLine, UpdateInventoryLocationDto,
-    WasteSummaryRow,
+    LocationStockFilterDto, LocationStockRow, StockAdjustment, StockAdjustmentFilterDto,
+    StockAdjustmentLine, StockReceipt, StockReceiptFilterDto, StockReceiptLine,
+    StockTransferFilterDto, StockTransferLine, StockTransferRequest, StockWasteEvent,
+    StockWasteFilterDto, StockWasteLine, UpdateInventoryLocationDto, WasteSummaryRow,
 };
 
 pub struct InventoryRepository {
@@ -755,7 +754,9 @@ impl InventoryRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        row.ok_or_else(|| AppError::NotFound(format!("Transfer request {id} not found or not pending")))
+        row.ok_or_else(|| {
+            AppError::NotFound(format!("Transfer request {id} not found or not pending"))
+        })
     }
 
     pub async fn reject_transfer(
@@ -787,7 +788,9 @@ impl InventoryRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        row.ok_or_else(|| AppError::NotFound(format!("Transfer request {id} not found or not pending")))
+        row.ok_or_else(|| {
+            AppError::NotFound(format!("Transfer request {id} not found or not pending"))
+        })
     }
 
     pub async fn fulfill_transfer(
@@ -1220,7 +1223,10 @@ impl InventoryRepository {
                 ORDER BY total_pieces DESC"#,
         );
 
-        Ok(builder.build_query_as::<WasteSummaryRow>().fetch_all(&self.pool).await?)
+        Ok(builder
+            .build_query_as::<WasteSummaryRow>()
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     pub async fn deduct_sale_stock_in_tx(
@@ -1334,12 +1340,11 @@ impl InventoryRepository {
         location_id: Uuid,
         product_id: Uuid,
     ) -> Result<(), AppError> {
-        let kind: Option<(String,)> = sqlx::query_as(
-            r#"SELECT kind::text FROM inventory_locations WHERE id = $1"#,
-        )
-        .bind(location_id)
-        .fetch_optional(&mut **tx)
-        .await?;
+        let kind: Option<(String,)> =
+            sqlx::query_as(r#"SELECT kind::text FROM inventory_locations WHERE id = $1"#)
+                .bind(location_id)
+                .fetch_optional(&mut **tx)
+                .await?;
 
         if kind.map(|(k,)| k) == Some("store".to_string()) {
             let qty: Option<(i32,)> = sqlx::query_as(

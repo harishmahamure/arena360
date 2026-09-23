@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -82,7 +81,10 @@ pub async fn current_session(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Option<KioskSessionResponseDto>> {
     let player_id = player.player_id()?;
-    let open = state.sessions.open_kiosk_session_for_player(player_id).await?;
+    let open = state
+        .sessions
+        .open_kiosk_session_for_player(player_id)
+        .await?;
     ok(open.map(|s| kiosk_session_response(&s, None)))
 }
 
@@ -174,10 +176,8 @@ pub async fn end_session(
             resumed: false,
             endTime: session.end_time.map(|t| t.to_rfc3339()),
             deductionProfile: deduction_profile.and_then(|value| {
-                serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(
-                    value,
-                )
-                .ok()
+                serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value)
+                    .ok()
             }),
             cafeTimezone: state.settings.cafe_timezone.clone(),
             timeCreditsConsumed: time_credits_consumed,
@@ -216,8 +216,7 @@ pub async fn end_session(
         resumed: false,
         endTime: ended.end_time.map(|t| t.to_rfc3339()),
         deductionProfile: deduction_profile.and_then(|value| {
-            serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value)
-                .ok()
+            serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value).ok()
         }),
         cafeTimezone: state.settings.cafe_timezone.clone(),
         timeCreditsConsumed: time_credits_consumed,

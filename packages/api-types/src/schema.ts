@@ -20,22 +20,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/device-pairing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["device_pairing"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/auth/login/admin": {
         parameters: {
             query?: never;
@@ -110,38 +94,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["register_player"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/sso/redeem": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["redeem_sso_token"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/sso/tokens": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["create_sso_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1764,38 +1716,6 @@ export interface paths {
         patch: operations["update_transaction"];
         trace?: never;
     };
-    "/tv/sessions/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["current_session"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tv/sessions/{id}/end": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["end_session"];
-        trace?: never;
-    };
     "/units": {
         parameters: {
             query?: never;
@@ -2588,15 +2508,6 @@ export interface components {
             /** Format: date-time */
             startTime?: string | null;
         };
-        CreateSsoTokenDto: {
-            deviceId?: string | null;
-            purpose: string;
-        };
-        CreateSsoTokenResponseDto: {
-            deviceId?: string | null;
-            expiresAt: string;
-            token: string;
-        };
         CreateStockAdjustmentDto: {
             lines: components["schemas"]["CreateStockAdjustmentLineDto"][];
             /** Format: uuid */
@@ -3021,14 +2932,6 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
-        DevicePairingDto: {
-            deviceId: string;
-        };
-        DevicePairingResponseDto: {
-            accessToken: string;
-            deviceId: string;
-            expiresAt: string;
-        };
         DeviceRegisterResponseDto: {
             accessToken: string;
             device: components["schemas"]["RegisteredDeviceDto"];
@@ -3055,9 +2958,6 @@ export interface components {
             staffTotp?: string | null;
             /** Format: int32 */
             timeCreditsConsumed?: number | null;
-        };
-        EndTvSessionDto: {
-            reason?: string | null;
         };
         ErrorEnvelope: {
             details?: unknown;
@@ -3562,7 +3462,7 @@ export interface components {
             expiryDate: string;
             /**
              * Format: double
-             * @description Server-computed effective display remaining (console TV / legacy).
+             * @description Server-computed effective display remaining for legacy clients.
              */
             remainingMinutes: number;
             /** @description True when an existing open session on this device was resumed (crash recovery). */
@@ -4405,7 +4305,7 @@ export interface components {
             fingerprint: components["schemas"]["DeviceFingerprintDto"];
             location?: string | null;
             name: string;
-            /** @description When `console-tv`, backend rejects non-PlayStation device types. */
+            /** @description Identifies the provisioning client (currently `kiosk`). */
             provisionClient?: string | null;
             serialNumber?: string | null;
         };
@@ -4441,9 +4341,6 @@ export interface components {
         };
         ReconcileCashRegisterDto: {
             reconciliationNotes?: string | null;
-        };
-        RedeemSsoTokenDto: {
-            token: string;
         };
         RegisterDto: {
             firstName?: string | null;
@@ -5400,18 +5297,6 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
-        TvSessionResponseDto: {
-            balanceId: string;
-            cafeTimezone: string;
-            deductionProfile?: null | components["schemas"]["DeductionProfile"];
-            deviceId: string;
-            expiryDate: string;
-            playerUsername?: string | null;
-            /** Format: double */
-            remainingMinutes: number;
-            sessionId: string;
-            startTime: string;
-        };
         Unit: {
             abbreviation: string;
             /** Format: date-time */
@@ -5920,64 +5805,6 @@ export interface operations {
             };
         };
     };
-    device_pairing: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DevicePairingDto"];
-            };
-        };
-        responses: {
-            /** @description Pairing JWT for pre-provision WS */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     login_admin: {
         parameters: {
             query?: never;
@@ -6260,115 +6087,6 @@ export interface operations {
             };
             /** @description Too many requests — REGISTRATION_RATE_LIMITED */
             429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    redeem_sso_token: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RedeemSsoTokenDto"];
-            };
-        };
-        responses: {
-            /** @description Staff JWT issued */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponseEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    create_sso_token: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateSsoTokenDto"];
-            };
-        };
-        responses: {
-            /** @description SSO token created */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13532,112 +13250,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    current_session: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current TV session or null */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden — not a PlayStation device */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    end_session: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Session ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EndTvSessionDto"];
-            };
-        };
-        responses: {
-            /** @description Session ended */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unauthorized */
             401: {

@@ -15,9 +15,9 @@ use crate::models::{
     SetCreditLimitDto, SettleCreditDto,
 };
 use crate::openapi::responses::{
-    CreditPlayerPaginationEnvelope, CreditPortfolioSummaryEnvelope,
-    CreditSettlementDetailEnvelope, CreditSettlementEnvelope, CreditSettlementPaginationEnvelope,
-    CreditSummaryEnvelope, ErrorEnvelope, PlayerCreditDetailEnvelope,
+    CreditPlayerPaginationEnvelope, CreditPortfolioSummaryEnvelope, CreditSettlementDetailEnvelope,
+    CreditSettlementEnvelope, CreditSettlementPaginationEnvelope, CreditSummaryEnvelope,
+    ErrorEnvelope, PlayerCreditDetailEnvelope,
 };
 
 #[utoipa::path(

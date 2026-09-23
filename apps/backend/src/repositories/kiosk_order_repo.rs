@@ -139,10 +139,7 @@ impl KioskOrderRepository {
             list_qb.push_bind(device_id);
         }
 
-        let total: i64 = count_qb
-            .build_query_scalar()
-            .fetch_one(&self.pool)
-            .await?;
+        let total: i64 = count_qb.build_query_scalar().fetch_one(&self.pool).await?;
 
         list_qb.push(r#" ORDER BY ko."createdAt" DESC LIMIT "#);
         list_qb.push_bind(limit);
@@ -318,11 +315,7 @@ impl KioskOrderRepository {
         self.get_with_details(order.id).await
     }
 
-    pub async fn update_status(
-        &self,
-        id: Uuid,
-        status: &str,
-    ) -> Result<KioskOrder, AppError> {
+    pub async fn update_status(&self, id: Uuid, status: &str) -> Result<KioskOrder, AppError> {
         if !matches!(
             status,
             kiosk_order_status::PREPARING | kiosk_order_status::CANCELLED

@@ -25,7 +25,7 @@ export interface SessionRemainingClockInput {
 }
 
 /**
- * Shared session countdown for admin, kiosk, and console TV.
+ * Shared session countdown for admin and kiosk clients.
  *
  * Ticks locally from `sessionStartTime` using backend-aligned
  * `weightedMinutesBetween`. Re-anchors wallet balance when server values change.

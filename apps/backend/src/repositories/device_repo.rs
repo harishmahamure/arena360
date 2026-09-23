@@ -268,10 +268,7 @@ impl DeviceRepository {
     }
 
     /// Match registered device by MAC address stored in the fingerprint snapshot.
-    pub async fn find_registered_by_mac(
-        &self,
-        mac: &str,
-    ) -> Result<Option<Device>, AppError> {
+    pub async fn find_registered_by_mac(&self, mac: &str) -> Result<Option<Device>, AppError> {
         let query = format!(
             r#"
             {} WHERE "deletedAt" IS NULL

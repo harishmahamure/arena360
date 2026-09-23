@@ -7,17 +7,17 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
-use crate::error::AppError;
 use crate::dto::{
     created, ok, ApiResult, DeviceRegisterResponseDto, ProvisionDeviceDto, RegisteredDeviceDto,
 };
+use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, AdminUser};
-use crate::validation::{is_playstation_device_type, require_playstation_device_type};
 use crate::models::{
     normalize_device_type, CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto,
     UpdateDeviceStatusDto,
 };
 use crate::openapi::responses::{DeviceEnvelope, DevicePaginationEnvelope, ErrorEnvelope};
+use crate::validation::is_playstation_device_type;
 
 #[utoipa::path(
     get,
@@ -103,11 +103,9 @@ pub async fn create_device(
 pub async fn provision_device(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Json(mut dto): Json<ProvisionDeviceDto>,
+    Json(dto): Json<ProvisionDeviceDto>,
 ) -> ApiResult<DeviceRegisterResponseDto> {
-    if dto.provisionClient.as_deref() == Some("console-tv") {
-        dto.deviceType = Some(require_playstation_device_type(dto.deviceType)?);
-    } else if let Some(ref device_type) = dto.deviceType {
+    if let Some(ref device_type) = dto.deviceType {
         if normalize_device_type(device_type)
             .is_some_and(|normalized| is_playstation_device_type(&normalized))
         {

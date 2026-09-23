@@ -7,18 +7,19 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 
-use crate::config::{create_pool, load_dotenv, Settings};
 use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
+use crate::config::{create_pool, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::auth_middleware;
 use crate::openapi::ApiDoc;
 use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
-    CreditService, DeviceService, EventService,     ExpenseCategoryService, ExpenseService,
-    GameService, InventoryService, KioskOrderService, NotificationService, PlanService, PlayerPlanService, ProductService, SessionService,
-    ShiftService, StaffGamingAllowanceService, StatsService, StorageConfig, StorageService, TransactionService, UnitService,
-    UserService, VendorService,
+    CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
+    GameService, InventoryService, KioskOrderService, NotificationService, PlanService,
+    PlayerPlanService, ProductService, SessionService, ShiftService, StaffGamingAllowanceService,
+    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
+    VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -219,11 +220,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/login/admin", post(handlers::auth::login_admin))
         .route("/auth/login/staff", post(handlers::auth::login_staff))
         .route("/auth/login/player", post(handlers::auth::login_player))
-        .route("/auth/register/player", post(handlers::auth::register_player))
+        .route(
+            "/auth/register/player",
+            post(handlers::auth::register_player),
+        )
         .route("/auth/register", post(handlers::auth::register))
-        .route("/auth/sso/tokens", post(handlers::auth::create_sso_token))
-        .route("/auth/sso/redeem", post(handlers::auth::redeem_sso_token))
-        .route("/auth/device-pairing", post(handlers::auth::device_pairing))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))
         .route(
             "/stats/staff-dashboard",
@@ -386,26 +387,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/kiosk/orders/current",
             get(handlers::kiosk_orders::current_order),
         )
-        .route(
-            "/kiosk-orders",
-            get(handlers::kiosk_orders::list_orders),
-        )
+        .route("/kiosk-orders", get(handlers::kiosk_orders::list_orders))
         .route(
             "/kiosk-orders/{id}",
-            get(handlers::kiosk_orders::get_order)
-                .patch(handlers::kiosk_orders::update_order),
+            get(handlers::kiosk_orders::get_order).patch(handlers::kiosk_orders::update_order),
         )
         .route(
             "/kiosk-orders/{id}/convert",
             post(handlers::kiosk_orders::convert_order),
-        )
-        .route(
-            "/tv/sessions/current",
-            get(handlers::console_tv::current_session),
-        )
-        .route(
-            "/tv/sessions/{id}/end",
-            patch(handlers::console_tv::end_session),
         )
         .route(
             "/transactions",
@@ -515,8 +504,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/inventory/stock", get(handlers::inventory::list_stock))
         .route(
             "/inventory/adjustments",
-            get(handlers::inventory::list_adjustments)
-                .post(handlers::inventory::create_adjustment),
+            get(handlers::inventory::list_adjustments).post(handlers::inventory::create_adjustment),
         )
         .route(
             "/inventory/adjustments/{id}",
@@ -585,10 +573,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/credit/accounts",
             get(handlers::credit::list_credit_accounts),
         )
-        .route(
-            "/credit/summary",
-            get(handlers::credit::credit_summary),
-        )
+        .route("/credit/summary", get(handlers::credit::credit_summary))
         .route(
             "/credit/players/{id}",
             get(handlers::credit::get_player_credit),
@@ -601,7 +586,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/credit/settlements/{id}",
             get(handlers::credit::get_settlement),
         )
-        .route("/notifications", get(handlers::notifications::list_notifications))
+        .route(
+            "/notifications",
+            get(handlers::notifications::list_notifications),
+        )
         .route(
             "/notifications/unread-count",
             get(handlers::notifications::unread_count),
@@ -614,7 +602,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/notifications/{id}/read",
             patch(handlers::notifications::mark_read),
         )
-        .route("/activity-log", get(handlers::notifications::list_activity_log))
+        .route(
+            "/activity-log",
+            get(handlers::notifications::list_activity_log),
+        )
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
         .route(
             "/realtime/rooms",

@@ -61,42 +61,6 @@ pub struct StaffLoginDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct CreateSsoTokenDto {
-    pub purpose: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deviceId: Option<String>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
-pub struct CreateSsoTokenResponseDto {
-    pub token: String,
-    pub expiresAt: String,
-    pub deviceId: Option<String>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct RedeemSsoTokenDto {
-    pub token: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct DevicePairingDto {
-    pub deviceId: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
-pub struct DevicePairingResponseDto {
-    pub accessToken: String,
-    pub expiresAt: String,
-    pub deviceId: String,
-}
-
-#[allow(non_snake_case)]
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ActiveSessionDto {
     pub id: String,
@@ -179,10 +143,6 @@ impl JwtUserClaims {
 
     pub fn is_device(&self) -> bool {
         self.roles.iter().any(|r| r == "device")
-    }
-
-    pub fn is_device_pairing(&self) -> bool {
-        self.roles.iter().any(|r| r == "device_pairing")
     }
 
     pub fn is_player(&self) -> bool {

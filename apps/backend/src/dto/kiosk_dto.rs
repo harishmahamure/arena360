@@ -26,7 +26,7 @@ pub struct ProvisionDeviceDto {
     pub deviceType: Option<String>,
     pub deviceSubType: Option<String>,
     pub location: Option<String>,
-    /// When `console-tv`, backend rejects non-PlayStation device types.
+    /// Identifies the provisioning client (currently `kiosk`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provisionClient: Option<String>,
 }
@@ -77,7 +77,7 @@ pub struct KioskSessionResponseDto {
     pub balanceId: String,
     pub deviceId: String,
     pub startTime: String,
-    /// Server-computed effective display remaining (console TV / legacy).
+    /// Server-computed effective display remaining for legacy clients.
     pub remainingMinutes: f64,
     /// Raw wallet minutes from `player_plan_balances.remainingMinutes`.
     pub walletBalanceMinutes: f64,
@@ -116,28 +116,6 @@ pub fn kiosk_session_response(
         timeCreditsConsumed: Some(started.time_credits_consumed),
         expiryDate: started.expiry_date.to_rfc3339(),
     }
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
-pub struct TvSessionResponseDto {
-    pub sessionId: String,
-    pub balanceId: String,
-    pub deviceId: String,
-    pub startTime: String,
-    pub remainingMinutes: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub playerUsername: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deductionProfile: Option<DeductionProfile>,
-    pub cafeTimezone: String,
-    pub expiryDate: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Deserialize, Default, ToSchema)]
-pub struct EndTvSessionDto {
-    pub reason: Option<String>,
 }
 
 #[allow(non_snake_case)]

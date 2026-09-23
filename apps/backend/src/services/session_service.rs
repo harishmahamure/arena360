@@ -15,12 +15,13 @@ use crate::realtime::{publish_balance_updated_for_session, OutboxService};
 /// Device-channel `session.ended` must be durable so kiosks replay missed force-ends on reconnect.
 const DEVICE_SESSION_ENDED_DURABLE: bool = true;
 use crate::cache::{self, get_or_set, keys, set_json, CacheService};
-use crate::repositories::SessionRepository;
-use crate::services::deduction_profile::{
-    wall_minutes_between, weighted_minutes_between,
-};
-use crate::services::{BalanceService, DeviceService, EventService, NotificationService, RecordNotification, Recipients};
 use crate::models::activity_kind;
+use crate::repositories::SessionRepository;
+use crate::services::deduction_profile::{wall_minutes_between, weighted_minutes_between};
+use crate::services::{
+    BalanceService, DeviceService, EventService, NotificationService, Recipients,
+    RecordNotification,
+};
 
 /// Result of starting (or resuming) a kiosk session for a player.
 pub struct KioskSessionStart {
@@ -28,7 +29,7 @@ pub struct KioskSessionStart {
     pub balance_id: Uuid,
     /// Raw wallet minutes from `player_plan_balances.remainingMinutes`.
     pub wallet_balance_minutes: i32,
-    /// Server-computed effective display remaining (legacy clients / console TV).
+    /// Server-computed effective display remaining for legacy clients.
     pub remaining_minutes: i32,
     pub resumed: bool,
     pub deduction_profile: Option<Value>,
@@ -171,17 +172,6 @@ impl SessionService {
         let _ = cache::invalidate_stats(&*self.cache).await;
     }
 
-    async fn find_open_session_for_device_cached(
-        &self,
-        device_id: Uuid,
-    ) -> Result<Option<UsageSession>, AppError> {
-        let cache_key = keys::session_device(&device_id);
-        get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION, || async {
-            self.repo.find_open_session_for_device(device_id).await
-        })
-        .await
-    }
-
     fn kiosk_session_start(
         &self,
         session: UsageSession,
@@ -270,13 +260,18 @@ impl SessionService {
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<UsageSessionResponse, AppError> {
         let cache_key = keys::session_enriched(&id);
-        get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION_ENRICHED, || async {
-            self.repo
-                .find_enriched_by_id(id)
-                .await?
-                .map(|s| with_cafe_timezone(s, self.cafe_timezone.as_str()))
-                .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
-        })
+        get_or_set(
+            &*self.cache,
+            &cache_key,
+            keys::ttl::SESSION_ENRICHED,
+            || async {
+                self.repo
+                    .find_enriched_by_id(id)
+                    .await?
+                    .map(|s| with_cafe_timezone(s, self.cafe_timezone.as_str()))
+                    .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
+            },
+        )
         .await
     }
 
@@ -341,11 +336,7 @@ impl SessionService {
 
         self.events.publish_session_started(&session.id.to_string());
 
-        let remaining = display_remaining_for_session(
-            &balance,
-            &session,
-            &self.cafe_timezone,
-        );
+        let remaining = display_remaining_for_session(&balance, &session, &self.cafe_timezone);
         let device_channel = format!("device:{}", dto.device_id);
         let payload = serde_json::json!({
             "sessionId": session.id.to_string(),
@@ -388,8 +379,7 @@ impl SessionService {
                 title: "Session started".to_string(),
                 summary: Some(format!(
                     "Player session on {} · {} min at login",
-                    device.name,
-                    balance.remaining_minutes
+                    device.name, balance.remaining_minutes
                 )),
                 payload: payload.clone(),
                 actor_user_id: None,
@@ -431,12 +421,7 @@ impl SessionService {
                 .await?
                 .ok_or_else(|| AppError::NotFound("Open session vanished".to_string()))?;
             let balance = self.balances.get_raw(open.balance_id).await?;
-            return Ok(self.kiosk_session_start(
-                session,
-                &balance,
-                open.balance_id,
-                true,
-            ));
+            return Ok(self.kiosk_session_start(session, &balance, open.balance_id, true));
         }
 
         let balance = match balance_id {
@@ -584,11 +569,10 @@ impl SessionService {
         let (_, updated_balance) = self
             .charge_session_delta(&session, &balance, Utc::now())
             .await?;
-        let session = self
-            .repo
-            .find_by_id(session_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Session with ID {session_id} not found")))?;
+        let session =
+            self.repo.find_by_id(session_id).await?.ok_or_else(|| {
+                AppError::NotFound(format!("Session with ID {session_id} not found"))
+            })?;
         let _ = self.invalidate_session(&session).await;
         let _ = self.write_through_session_enriched(session_id).await;
         if updated_balance.remaining_minutes <= 0 {
@@ -604,12 +588,7 @@ impl SessionService {
         )
         .await;
 
-        Ok(self.kiosk_session_start(
-            session,
-            &updated_balance,
-            balance_id,
-            true,
-        ))
+        Ok(self.kiosk_session_start(session, &updated_balance, balance_id, true))
     }
 
     /// Close a session and charge the final wallet delta from server time.
@@ -725,7 +704,9 @@ impl SessionService {
             .record_activity(RecordNotification {
                 kind: activity_kind::SESSION_ENDED.to_string(),
                 title: "Session ended".to_string(),
-                summary: reason.clone().or_else(|| Some(format!("Session on device {}", session.device_id))),
+                summary: reason
+                    .clone()
+                    .or_else(|| Some(format!("Session on device {}", session.device_id))),
                 payload: payload.clone(),
                 actor_user_id: None,
                 entity_type: Some("session".to_string()),
@@ -759,117 +740,6 @@ impl SessionService {
         self.invalidate_stats_cache().await;
         Ok(updated)
     }
-
-    pub async fn open_tv_session_for_device(
-        &self,
-        device: &Device,
-    ) -> Result<Option<crate::dto::TvSessionResponseDto>, AppError> {
-        crate::validation::require_playstation_device_type(Some(device.device_type.clone()))?;
-
-        let Some(session) = self
-            .find_open_session_for_device_cached(device.id)
-            .await?
-        else {
-            return Ok(None);
-        };
-
-        let balance_id = session.balance_id;
-        let balance = self.balances.get_raw(balance_id).await?;
-        let remaining =
-            display_remaining_for_session(&balance, &session, &self.cafe_timezone);
-        let deduction_profile = balance
-            .deduction_profile
-            .as_ref()
-            .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok());
-
-        Ok(Some(crate::dto::TvSessionResponseDto {
-            sessionId: session.id.to_string(),
-            balanceId: balance_id.to_string(),
-            deviceId: device.id.to_string(),
-            startTime: session.start_time.to_rfc3339(),
-            remainingMinutes: remaining as f64,
-            playerUsername: None,
-            deductionProfile: deduction_profile,
-            cafeTimezone: self.cafe_timezone.clone(),
-            expiryDate: balance.expiry_date.to_rfc3339(),
-        }))
-    }
-
-    pub async fn end_tv_session_for_device(
-        &self,
-        device: &Device,
-        session_id: Uuid,
-        reason: Option<String>,
-    ) -> Result<crate::dto::TvSessionResponseDto, AppError> {
-        crate::validation::require_playstation_device_type(Some(device.device_type.clone()))?;
-
-        let session = self.get_by_id(session_id).await?;
-        if session.device_id != device.id {
-            return Err(AppError::Forbidden(
-                "Session does not belong to this device".to_string(),
-            ));
-        }
-
-        if session.end_time.is_some() {
-            let balance_id = session.balance_id;
-            let balance = self.balances.get_raw(balance_id).await?;
-            let (remaining, deduction_profile, expiry_date) = (
-                balance.remaining_minutes,
-                balance.deduction_profile.as_ref().and_then(|value| {
-                    serde_json::from_value::<DeductionProfile>(value.clone()).ok()
-                }),
-                balance.expiry_date.to_rfc3339(),
-            );
-            return Ok(crate::dto::TvSessionResponseDto {
-                sessionId: session.id.to_string(),
-                balanceId: balance_id.to_string(),
-                deviceId: device.id.to_string(),
-                startTime: session.start_time.to_rfc3339(),
-                remainingMinutes: remaining as f64,
-                playerUsername: None,
-                deductionProfile: deduction_profile,
-                cafeTimezone: self.cafe_timezone.clone(),
-                expiryDate: expiry_date,
-            });
-        }
-
-        let end_reason = reason.unwrap_or_else(|| "auto".to_string());
-        let ended = self
-            .end(
-                session_id,
-                EndSessionDto {
-                    end_time: None,
-                    time_credits_consumed: None,
-                    staff_totp: None,
-                    reason: Some(end_reason),
-                },
-                None,
-            )
-            .await?;
-
-        let balance_id = ended.balance_id;
-        let balance = self.balances.get_raw(balance_id).await?;
-        let (remaining, deduction_profile, expiry_date) = (
-            balance.remaining_minutes,
-            balance.deduction_profile.as_ref().and_then(|value| {
-                serde_json::from_value::<DeductionProfile>(value.clone()).ok()
-            }),
-            balance.expiry_date.to_rfc3339(),
-        );
-
-        Ok(crate::dto::TvSessionResponseDto {
-            sessionId: ended.id.to_string(),
-            balanceId: balance_id.to_string(),
-            deviceId: device.id.to_string(),
-            startTime: ended.start_time.to_rfc3339(),
-            remainingMinutes: remaining as f64,
-            playerUsername: None,
-            deductionProfile: deduction_profile,
-            cafeTimezone: self.cafe_timezone.clone(),
-            expiryDate: expiry_date,
-        })
-    }
-
 }
 
 #[cfg(test)]

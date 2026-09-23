@@ -42,7 +42,7 @@ pub fn can_subscribe(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), 
         ChannelId::Device(device_id) => {
             if claims.is_admin_or_staff() {
                 Ok(())
-            } else if claims.is_device() || claims.is_device_pairing() {
+            } else if claims.is_device() {
                 let own_id = claims.device_id_uuid();
                 if own_id == Some(*device_id) {
                     Ok(())

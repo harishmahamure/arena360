@@ -540,11 +540,7 @@ impl CreditRepository {
             builder.push_bind(player_id);
         }
 
-        if let Some(payment_method) = filters
-            .payment_method
-            .as_ref()
-            .filter(|s| !s.is_empty())
-        {
+        if let Some(payment_method) = filters.payment_method.as_ref().filter(|s| !s.is_empty()) {
             builder.push(" AND cs.\"paymentMethod\" = ");
             builder.push_bind(payment_method);
         }
@@ -600,10 +596,7 @@ impl CreditRepository {
         Ok(PaginationResult::new(items, total, page, limit))
     }
 
-    pub async fn get_settlement_by_id(
-        &self,
-        id: Uuid,
-    ) -> Result<CreditSettlementDetail, AppError> {
+    pub async fn get_settlement_by_id(&self, id: Uuid) -> Result<CreditSettlementDetail, AppError> {
         let header = sqlx::query_as::<_, CreditSettlementHeaderRow>(
             r#"
             SELECT cs.id,

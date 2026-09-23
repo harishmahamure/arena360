@@ -1,11 +1,10 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { Build, CheckCircle, Error as ErrorIcon, Schedule } from '@mui/icons-material';
-import { Box, Chip, Paper, Typography } from '@mui/material';
+import { Alert, Box, Chip, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ConsoleTvProvisioningCard } from '../../../components/ConsoleTvProvisioningCard';
 import { KioskFingerprintCard } from '../../../components/KioskFingerprintCard';
 import { KioskProvisioningCard } from '../../../components/KioskProvisioningCard';
 import {
@@ -236,10 +235,10 @@ export default function EditDevicePage() {
 
       {deviceData &&
         (deviceData.deviceType === 'PS5' || deviceData.deviceType === 'PS4' ? (
-          <ConsoleTvProvisioningCard
-            deviceName={deviceData.name}
-            registrationStatus={deviceData.registrationStatus}
-          />
+          <Alert severity="info" sx={{ mb: 3 }}>
+            PlayStation stations are managed manually. No Android TV station app or automatic TV
+            input control is configured.
+          </Alert>
         ) : (
           <KioskProvisioningCard
             deviceName={deviceData.name}
@@ -247,7 +246,7 @@ export default function EditDevicePage() {
           />
         ))}
 
-      {deviceData && (
+      {deviceData && deviceData.deviceType !== 'PS5' && deviceData.deviceType !== 'PS4' && (
         <KioskFingerprintCard
           registeredKiosk={deviceData.registeredKiosk}
           registrationStatus={deviceData.registrationStatus}

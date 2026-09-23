@@ -43,20 +43,20 @@ const formatDuration = (minutes?: number | null) => {
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 };
 
-function isConsoleTvDevice(deviceType?: string) {
+function isPlayStationDevice(deviceType?: string) {
   return deviceType === 'PS5' || deviceType === 'PS4';
 }
 
 function forceEndDialogMessage(deviceType?: string) {
-  if (isConsoleTvDevice(deviceType)) {
-    return 'The PlayStation station will end the session immediately and return to the idle screen. Use this for stuck or unattended stations.';
+  if (isPlayStationDevice(deviceType)) {
+    return 'Arena360 will end the PlayStation session immediately. Staff must stop gameplay and manage the TV input manually.';
   }
   return "The player's kiosk will show a 5-minute grace warning and then lock and close their apps. Use this for stuck or unattended stations.";
 }
 
 function forceEndSuccessMessage(deviceType?: string) {
-  if (isConsoleTvDevice(deviceType)) {
-    return 'Session force-ended. The PlayStation station has been notified.';
+  if (isPlayStationDevice(deviceType)) {
+    return 'Session force-ended. Stop gameplay on the PlayStation station manually.';
   }
   return 'Session force-ended. The kiosk has been notified.';
 }

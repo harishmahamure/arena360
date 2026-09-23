@@ -12,20 +12,19 @@ use crate::dto::{
 };
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::models::{
-    CreateInventoryLocationDto, CreateStockReceiptDto, CreateStockTransferRequestDto,
-    CreateStockWasteEventDto, CreateStockAdjustmentDto, InventoryLocation, InventoryLocationFilterDto,
-    LocationStockFilterDto, LocationStockRow, RejectStockTransferDto, RejectStockWasteDto,
-    StockReceipt, StockReceiptFilterDto, StockReceiptWithLines, StockAdjustment,
-    StockAdjustmentFilterDto, StockAdjustmentWithLines, StockTransferFilterDto,
-    StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent,
-    StockWasteEventWithLines, StockWasteFilterDto, UpdateInventoryLocationDto, ReceiptSummaryRow,
-    WasteSummaryRow,
+    CreateInventoryLocationDto, CreateStockAdjustmentDto, CreateStockReceiptDto,
+    CreateStockTransferRequestDto, CreateStockWasteEventDto, InventoryLocation,
+    InventoryLocationFilterDto, LocationStockFilterDto, LocationStockRow, ReceiptSummaryRow,
+    RejectStockTransferDto, RejectStockWasteDto, StockAdjustment, StockAdjustmentFilterDto,
+    StockAdjustmentWithLines, StockReceipt, StockReceiptFilterDto, StockReceiptWithLines,
+    StockTransferFilterDto, StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent,
+    StockWasteEventWithLines, StockWasteFilterDto, UpdateInventoryLocationDto, WasteSummaryRow,
 };
 use crate::openapi::responses::{
     ErrorEnvelope, InventoryLocationEnvelope, InventoryLocationPaginationEnvelope,
-    LocationStockPaginationEnvelope, StockReceiptPaginationEnvelope,
-    StockReceiptSummaryListEnvelope, StockReceiptWithLinesEnvelope,
-    StockAdjustmentPaginationEnvelope, StockAdjustmentWithLinesEnvelope, StockTransferEnvelope,
+    LocationStockPaginationEnvelope, StockAdjustmentPaginationEnvelope,
+    StockAdjustmentWithLinesEnvelope, StockReceiptPaginationEnvelope,
+    StockReceiptSummaryListEnvelope, StockReceiptWithLinesEnvelope, StockTransferEnvelope,
     StockTransferPaginationEnvelope, StockTransferWithLinesEnvelope, StockWasteEnvelope,
     StockWastePaginationEnvelope, StockWasteSummaryListEnvelope, StockWasteWithLinesEnvelope,
 };
@@ -339,12 +338,10 @@ pub async fn reject_transfer_request(
 ) -> ApiResult<StockTransferRequest> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    ok(
-        state
-            .inventory
-            .reject_transfer(id, &dto.rejection_reason, user_id)
-            .await?,
-    )
+    ok(state
+        .inventory
+        .reject_transfer(id, &dto.rejection_reason, user_id)
+        .await?)
 }
 
 #[utoipa::path(
@@ -489,12 +486,10 @@ pub async fn reject_waste_event(
 ) -> ApiResult<StockWasteEvent> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    ok(
-        state
-            .inventory
-            .reject_waste(id, &dto.rejection_reason, user_id)
-            .await?,
-    )
+    ok(state
+        .inventory
+        .reject_waste(id, &dto.rejection_reason, user_id)
+        .await?)
 }
 
 #[utoipa::path(

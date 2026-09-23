@@ -58,7 +58,11 @@ pub async fn dashboard_stats(
 ) -> crate::dto::ApiResult<crate::services::stats_service::DashboardStatsDto> {
     let stats = state
         .stats
-        .get_dashboard_stats(query.start_date, query.end_date, compare_enabled(query.compare))
+        .get_dashboard_stats(
+            query.start_date,
+            query.end_date,
+            compare_enabled(query.compare),
+        )
         .await?;
     ok(stats)
 }

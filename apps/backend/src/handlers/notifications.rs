@@ -1,6 +1,4 @@
-use axum::{
-    extract::{Path, Query, State},
-};
+use axum::extract::{Path, Query, State};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -34,7 +32,10 @@ pub async fn list_notifications(
 ) -> ApiResult<PaginationResult<NotificationItem>> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let result = state.notifications.list_notifications(user_id, filters).await?;
+    let result = state
+        .notifications
+        .list_notifications(user_id, filters)
+        .await?;
     ok(result)
 }
 

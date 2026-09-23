@@ -2,58 +2,54 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::dto::auth_dto::{
-    ActiveSessionDto, AuthResponseDto, AuthUserDto, ChangePasswordDto, CreateSsoTokenDto,
-    CreateSsoTokenResponseDto, DevicePairingDto, DevicePairingResponseDto, KioskRegisterDto,
-    KioskRegisterResponseDto, LoginDto, RedeemSsoTokenDto, RegisterDto, RegisterResponseDto,
+    ActiveSessionDto, AuthResponseDto, AuthUserDto, ChangePasswordDto, KioskRegisterDto,
+    KioskRegisterResponseDto, LoginDto, RegisterDto, RegisterResponseDto,
 };
-use crate::dto::{EndTvSessionDto, TvSessionResponseDto};
-use crate::handlers;
 use crate::dto::{ApproveInventoryActionDto, ReceiptSummaryFilterDto, WasteSummaryFilterDto};
+use crate::handlers;
 use crate::models::{
-    ApproveDepositDto, ApproveExpenseDto, AssignPlanDto, CashDeposit, CashDepositFilterDto,
-    CashRegister, CashRegisterEntry, CashRegisterFilterDto, CashRegisterWithEntries, ClockInDto,
-    ClockOutDto, CloseCashRegisterDto, ConfigFilterDto, Configuration, CreateCashRegisterEntryDto,
-    CreateDeviceDto,     CreateExpenseCategoryDto, CreateExpenseDto, CreateInventoryLocationDto, CreateLineItemDto,
-    CreatePlanDto, CreateProductDto, CreateSessionDto, CreateStockAdjustmentDto,
-    CreateStockReceiptDto,
+    ActivityLog, ActivityLogFilterDto, ApproveDepositDto, ApproveExpenseDto, AssignPlanDto,
+    CashDeposit, CashDepositFilterDto, CashRegister, CashRegisterEntry, CashRegisterFilterDto,
+    CashRegisterWithEntries, ClockInDto, ClockOutDto, CloseCashRegisterDto, ConfigFilterDto,
+    Configuration, ConvertKioskOrderDto, CreateCashRegisterEntryDto, CreateDeviceDto,
+    CreateExpenseCategoryDto, CreateExpenseDto, CreateInventoryLocationDto, CreateKioskOrderDto,
+    CreateKioskOrderLineItemDto, CreateLineItemDto, CreatePlanDto, CreateProductDto,
+    CreateSessionDto, CreateStockAdjustmentDto, CreateStockReceiptDto,
     CreateStockTransferRequestDto, CreateStockWasteEventDto, CreateTransactionDto, CreateUnitDto,
-    CreateVendorDto,
-    CreditAccountFilterDto, CreditLastSettlement, CreditPlayerRow, CreditPortfolioSummary,
-    CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto, CreditSettlementItemRow,
-    CreditSettlementListRow, CreditSummary, Device,
-    DeviceFilterDto, EndSessionDto, Expense, ExpenseCategory, ExpenseCategoryFilterDto,
-    ExpenseFilterDto, ExpenseSummaryDto, HandoverDepositDto, InitiateDepositDto,
-    InventoryLocation, InventoryLocationFilterDto, LocationStockFilterDto, LocationStockRow,
-    OpenCashRegisterDto, OutstandingTxnRow, Plan, PlanFilterDto, PlayerCreditDetail, PlayerPlan,
-    PlayerPlanFilterDto, Product, ProductFilterDto,     ReconcileCashRegisterDto, RejectDepositDto, RejectExpenseDto, RejectStockTransferDto,
-    RejectStockWasteDto, SessionFilterDto, SetCreditLimitDto, SetStaffGamingAllowanceDto,
-    SettleCreditDto, SettleItemDto, StaffGamingAllowanceStatus, StaffGamingAllowanceSummary,
-    Shift, StockAdjustment, StockAdjustmentFilterDto, StockAdjustmentWithLines, StockReceipt,
-    StockReceiptFilterDto, StockReceiptWithLines, StockTransferFilterDto,
-    StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent, StockWasteEventWithLines,
-    StockWasteFilterDto,
-    ShiftCloseDto, ShiftCloseResponseDto, ShiftFilterDto, ShiftHandoverDto,
-    ShiftHandoverResponseDto, TotpSetupResponseDto, Transaction, TransactionFilterDto,
-    TransactionResponse,
-    TransactionProductResponse, TransactionWithLineItems, Unit, UnitFilterDto, UpdateDeviceDto,
-    UpdateDeviceStatusDto,     UpdateExpenseCategoryDto, UpdateExpenseDto, UpdateInventoryLocationDto,
-    UpdateOpeningBalanceDto, UpdatePlanDto, UpdateProductDto, UpdateTransactionDto, UpdateUnitDto,
-    UpdateUserDto,
-    UpdateVendorDto, UpsertConfigDto, UsageSession, UsageSessionResponse, User, UserFilterDto,
-    ValidationResult, Vendor, VendorFilterDto, VerifyTotpSetupDto, ReceiptSummaryRow, WasteSummaryRow,
-    ActivityLog, ActivityLogFilterDto, NotificationFilterDto, NotificationItem, UnreadCountDto,
-    ConvertKioskOrderDto, CreateKioskOrderDto, CreateKioskOrderLineItemDto, KioskMenuProduct,
-    KioskOrderFilterDto, KioskOrderItemResponse, KioskOrderWithItems, UpdateKioskOrderDto,
+    CreateVendorDto, CreditAccountFilterDto, CreditLastSettlement, CreditPlayerRow,
+    CreditPortfolioSummary, CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto,
+    CreditSettlementItemRow, CreditSettlementListRow, CreditSummary, Device, DeviceFilterDto,
+    EndSessionDto, Expense, ExpenseCategory, ExpenseCategoryFilterDto, ExpenseFilterDto,
+    ExpenseSummaryDto, HandoverDepositDto, InitiateDepositDto, InventoryLocation,
+    InventoryLocationFilterDto, KioskMenuProduct, KioskOrderFilterDto, KioskOrderItemResponse,
+    KioskOrderWithItems, LocationStockFilterDto, LocationStockRow, NotificationFilterDto,
+    NotificationItem, OpenCashRegisterDto, OutstandingTxnRow, Plan, PlanFilterDto,
+    PlayerCreditDetail, PlayerPlan, PlayerPlanFilterDto, Product, ProductFilterDto,
+    ReceiptSummaryRow, ReconcileCashRegisterDto, RejectDepositDto, RejectExpenseDto,
+    RejectStockTransferDto, RejectStockWasteDto, SessionFilterDto, SetCreditLimitDto,
+    SetStaffGamingAllowanceDto, SettleCreditDto, SettleItemDto, Shift, ShiftCloseDto,
+    ShiftCloseResponseDto, ShiftFilterDto, ShiftHandoverDto, ShiftHandoverResponseDto,
+    StaffGamingAllowanceStatus, StaffGamingAllowanceSummary, StockAdjustment,
+    StockAdjustmentFilterDto, StockAdjustmentWithLines, StockReceipt, StockReceiptFilterDto,
+    StockReceiptWithLines, StockTransferFilterDto, StockTransferRequest,
+    StockTransferRequestWithLines, StockWasteEvent, StockWasteEventWithLines, StockWasteFilterDto,
+    TotpSetupResponseDto, Transaction, TransactionFilterDto, TransactionProductResponse,
+    TransactionResponse, TransactionWithLineItems, Unit, UnitFilterDto, UnreadCountDto,
+    UpdateDeviceDto, UpdateDeviceStatusDto, UpdateExpenseCategoryDto, UpdateExpenseDto,
+    UpdateInventoryLocationDto, UpdateKioskOrderDto, UpdateOpeningBalanceDto, UpdatePlanDto,
+    UpdateProductDto, UpdateTransactionDto, UpdateUnitDto, UpdateUserDto, UpdateVendorDto,
+    UpsertConfigDto, UsageSession, UsageSessionResponse, User, UserFilterDto, ValidationResult,
+    Vendor, VendorFilterDto, VerifyTotpSetupDto, WasteSummaryRow,
 };
 use crate::openapi::responses::*;
 use crate::realtime::rooms::{AddMemberDto, CreateRoomDto, Room};
 use crate::services::stats_service::{
     DashboardStatsDto, DeviceStatsDto, FinanceDepositMetricsDto, FinanceDepositStatsDto,
     FinanceReconciliationMetricsDto, FinanceReconciliationStatsDto, FinanceVarianceMetricsDto,
-    FinanceVarianceRegisterRow, FinanceVarianceStatsDto, PeriodDto, PeriodPairRevenueByPaymentMethod,
-    PeriodPairUsageStats, PlanStatsDto, PlanTypeStat, RevenueByPaymentMethodDto, RevenueTrendDto,
-    StaffDashboardStatsDto, StaffDeviceStatsDto, StaffPlayerStatsDto, TopPerformersDto,
-    TransactionStatsDto, UsageStatsDto, UserStatsDto,
+    FinanceVarianceRegisterRow, FinanceVarianceStatsDto, PeriodDto,
+    PeriodPairRevenueByPaymentMethod, PeriodPairUsageStats, PlanStatsDto, PlanTypeStat,
+    RevenueByPaymentMethodDto, RevenueTrendDto, StaffDashboardStatsDto, StaffDeviceStatsDto,
+    StaffPlayerStatsDto, TopPerformersDto, TransactionStatsDto, UsageStatsDto, UserStatsDto,
 };
 
 pub mod responses;
@@ -69,7 +65,10 @@ impl Modify for SecurityAddon {
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
                     .bearer_format("JWT")
-                    .description(Some("JWT obtained from POST /auth/login/admin or POST /auth/login/staff".to_string()))
+                    .description(Some(
+                        "JWT obtained from POST /auth/login/admin or POST /auth/login/staff"
+                            .to_string(),
+                    ))
                     .build(),
             ),
         );
@@ -94,9 +93,6 @@ impl Modify for SecurityAddon {
         handlers::auth::login_staff,
         handlers::auth::login_player,
         handlers::auth::register_player,
-        handlers::auth::create_sso_token,
-        handlers::auth::redeem_sso_token,
-        handlers::auth::device_pairing,
         handlers::auth::register,
         handlers::stats::dashboard_stats,
         handlers::stats::staff_dashboard_stats,
@@ -129,8 +125,6 @@ impl Modify for SecurityAddon {
         handlers::kiosk_orders::get_order,
         handlers::kiosk_orders::update_order,
         handlers::kiosk_orders::convert_order,
-        handlers::console_tv::current_session,
-        handlers::console_tv::end_session,
         handlers::plans::list_plans,
         handlers::plans::get_active_plans,
         handlers::plans::get_plan,
@@ -278,13 +272,6 @@ impl Modify for SecurityAddon {
             AuthResponseDto,
             AuthUserDto,
             ActiveSessionDto,
-            CreateSsoTokenDto,
-            CreateSsoTokenResponseDto,
-            RedeemSsoTokenDto,
-            DevicePairingDto,
-            DevicePairingResponseDto,
-            TvSessionResponseDto,
-            EndTvSessionDto,
             AuthResponseEnvelope,
             RegisterResponseDto,
             RegisterResponseEnvelope,

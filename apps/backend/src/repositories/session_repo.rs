@@ -108,16 +108,14 @@ impl SessionRepository {
         &self,
         id: Uuid,
     ) -> Result<Option<UsageSessionResponse>, AppError> {
-        let row = sqlx::query_as::<_, UsageSessionRow>(
-            &format!(
-                r#"{ENRICHED_SELECT}
+        let row = sqlx::query_as::<_, UsageSessionRow>(&format!(
+            r#"{ENRICHED_SELECT}
             {ENRICHED_FROM}
             WHERE s.id = $1 AND s."deletedAt" IS NULL
             "#,
-                ENRICHED_SELECT = Self::ENRICHED_SELECT,
-                ENRICHED_FROM = Self::ENRICHED_FROM,
-            ),
-        )
+            ENRICHED_SELECT = Self::ENRICHED_SELECT,
+            ENRICHED_FROM = Self::ENRICHED_FROM,
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -232,15 +230,13 @@ impl SessionRepository {
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1) * limit;
 
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            &format!(
-                r#"{ENRICHED_SELECT}
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(&format!(
+            r#"{ENRICHED_SELECT}
                {ENRICHED_FROM}
                WHERE s."deletedAt" IS NULL"#,
-                ENRICHED_SELECT = Self::ENRICHED_SELECT,
-                ENRICHED_FROM = Self::ENRICHED_FROM,
-            ),
-        );
+            ENRICHED_SELECT = Self::ENRICHED_SELECT,
+            ENRICHED_FROM = Self::ENRICHED_FROM,
+        ));
 
         Self::apply_filters(&mut builder, filters, "s");
 
@@ -342,15 +338,15 @@ impl SessionRepository {
             returning = Self::SESSION_RETURNING,
         );
         let session = sqlx::query_as::<_, UsageSession>(&query)
-        .bind(dto.balance_id)
-        .bind(dto.device_id)
-        .bind(dto.shift_id)
-        .bind(start_time)
-        .bind(wallet_minutes_at_start)
-        .bind(source_plan_id_at_start)
-        .bind(actor_id)
-        .fetch_one(&self.pool)
-        .await?;
+            .bind(dto.balance_id)
+            .bind(dto.device_id)
+            .bind(dto.shift_id)
+            .bind(start_time)
+            .bind(wallet_minutes_at_start)
+            .bind(source_plan_id_at_start)
+            .bind(actor_id)
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(session)
     }
@@ -363,9 +359,8 @@ impl SessionRepository {
         time_credits_consumed: Option<i32>,
         actor_id: Option<Uuid>,
     ) -> Result<UsageSession, AppError> {
-        let session = sqlx::query_as::<_, UsageSession>(
-            &format!(
-                r#"
+        let session = sqlx::query_as::<_, UsageSession>(&format!(
+            r#"
             UPDATE usage_sessions SET
                 "endTime" = $2,
                 "durationMinutes" = $3,
@@ -375,9 +370,8 @@ impl SessionRepository {
             WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
             {returning}
             "#,
-                returning = Self::SESSION_RETURNING,
-            ),
-        )
+            returning = Self::SESSION_RETURNING,
+        ))
         .bind(id)
         .bind(end_time)
         .bind(duration_minutes)
@@ -394,18 +388,16 @@ impl SessionRepository {
         id: Uuid,
         time_credits_consumed: i32,
     ) -> Result<UsageSession, AppError> {
-        let session = sqlx::query_as::<_, UsageSession>(
-            &format!(
-                r#"
+        let session = sqlx::query_as::<_, UsageSession>(&format!(
+            r#"
             UPDATE usage_sessions SET
                 "timeCreditsConsumed" = $2,
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL AND "endTime" IS NULL
             {returning}
             "#,
-                returning = Self::SESSION_RETURNING,
-            ),
-        )
+            returning = Self::SESSION_RETURNING,
+        ))
         .bind(id)
         .bind(time_credits_consumed)
         .fetch_optional(&self.pool)

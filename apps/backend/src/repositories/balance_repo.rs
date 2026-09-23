@@ -244,14 +244,14 @@ impl BalanceRepository {
                    "deletedAt" as deleted_at"#
         );
         let balance = sqlx::query_as::<_, PlayerPlanBalance>(&query)
-        .bind(id)
-        .bind(minutes)
-        .bind(new_expiry)
-        .bind(source_plan_id)
-        .bind(actor_id)
-        .bind(deduction_profile)
-        .fetch_one(&self.pool)
-        .await?;
+            .bind(id)
+            .bind(minutes)
+            .bind(new_expiry)
+            .bind(source_plan_id)
+            .bind(actor_id)
+            .bind(deduction_profile)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(balance)
     }
 

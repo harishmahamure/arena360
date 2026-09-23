@@ -3,7 +3,6 @@ pub mod balances;
 pub mod cash_deposits;
 pub mod cash_registers;
 pub mod config;
-pub mod console_tv;
 pub mod credit;
 pub mod devices;
 pub mod expense_categories;

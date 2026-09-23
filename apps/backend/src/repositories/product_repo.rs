@@ -133,9 +133,7 @@ impl ProductRepository {
         let is_active = dto.is_active.unwrap_or(true);
         let day_price = dto.day_price.unwrap_or(dto.price);
         let night_price = dto.night_price.unwrap_or(dto.price);
-        let purchase_price_per_box = dto
-            .purchase_price_per_box
-            .or(dto.purchase_price);
+        let purchase_price_per_box = dto.purchase_price_per_box.or(dto.purchase_price);
         let units_per_purchase_unit = dto.units_per_purchase_unit.unwrap_or(1);
 
         let product = sqlx::query_as::<_, Product>(
@@ -199,9 +197,7 @@ impl ProductRepository {
         actor_id: Option<Uuid>,
     ) -> Result<Product, AppError> {
         let synced_day_price = dto.day_price.or(dto.price);
-        let synced_purchase = dto
-            .purchase_price_per_box
-            .or(dto.purchase_price);
+        let synced_purchase = dto.purchase_price_per_box.or(dto.purchase_price);
 
         let product = sqlx::query_as::<_, Product>(
             r#"

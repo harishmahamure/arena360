@@ -18,8 +18,6 @@ const PUBLIC_EXACT: &[&str] = &[
     "/auth/login",
     "/auth/login/admin",
     "/auth/login/staff",
-    "/auth/sso/redeem",
-    "/auth/device-pairing",
     "/health/live",
     "/realtime",
 ];
@@ -303,7 +301,11 @@ where
 
         let player_claims = decode_token(&app_state, player_token)?;
 
-        if !player_claims.roles.iter().any(|r| r == "player" || r == "staff") {
+        if !player_claims
+            .roles
+            .iter()
+            .any(|r| r == "player" || r == "staff")
+        {
             return Err(AppError::Forbidden(
                 "Player or staff access required".to_string(),
             ));
