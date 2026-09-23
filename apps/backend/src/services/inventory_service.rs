@@ -7,21 +7,21 @@ use uuid::Uuid;
 use crate::cache::{get_or_set, keys, CacheService};
 use crate::dto::{PaginationResult, ReceiptSummaryFilterDto, WasteSummaryFilterDto};
 use crate::error::AppError;
+use crate::models::activity_kind;
 use crate::models::{
     normalize_inventory_location_kind, normalize_stock_waste_reason, CreateInventoryLocationDto,
-    CreateStockReceiptDto, CreateStockTransferRequestDto, CreateStockWasteEventDto,
-    CreateStockWasteLineDto, CreateStockAdjustmentDto, InventoryLocation, InventoryLocationFilterDto,
-    LocationStockFilterDto, LocationStockRow, Product, StockReceipt, StockReceiptFilterDto,
-    StockReceiptWithLines, StockAdjustment, StockAdjustmentFilterDto, StockAdjustmentWithLines,
-    StockTransferFilterDto, StockTransferRequest,
-    StockTransferRequestWithLines, StockWasteEvent, StockWasteEventWithLines, StockWasteFilterDto,
-    UpdateInventoryLocationDto, ReceiptSummaryRow, WasteSummaryRow,
+    CreateStockAdjustmentDto, CreateStockReceiptDto, CreateStockTransferRequestDto,
+    CreateStockWasteEventDto, CreateStockWasteLineDto, InventoryLocation,
+    InventoryLocationFilterDto, LocationStockFilterDto, LocationStockRow, Product,
+    ReceiptSummaryRow, StockAdjustment, StockAdjustmentFilterDto, StockAdjustmentWithLines,
+    StockReceipt, StockReceiptFilterDto, StockReceiptWithLines, StockTransferFilterDto,
+    StockTransferRequest, StockTransferRequestWithLines, StockWasteEvent, StockWasteEventWithLines,
+    StockWasteFilterDto, UpdateInventoryLocationDto, WasteSummaryRow,
 };
 use crate::realtime::OutboxService;
 use crate::repositories::InventoryRepository;
 use crate::services::NotificationService;
-use crate::models::activity_kind;
-use crate::services::{RecordNotification, Recipients};
+use crate::services::{Recipients, RecordNotification};
 
 pub struct InventoryService {
     repo: InventoryRepository,
@@ -125,9 +125,8 @@ impl InventoryService {
         dto: CreateInventoryLocationDto,
         actor_id: Option<Uuid>,
     ) -> Result<InventoryLocation, AppError> {
-        let kind = normalize_inventory_location_kind(&dto.kind).ok_or_else(|| {
-            AppError::BadRequest("kind must be warehouse or store".to_string())
-        })?;
+        let kind = normalize_inventory_location_kind(&dto.kind)
+            .ok_or_else(|| AppError::BadRequest("kind must be warehouse or store".to_string()))?;
         let mut dto = dto;
         dto.kind = kind;
         self.repo.create_location(&dto, actor_id).await
@@ -170,12 +169,14 @@ impl InventoryService {
             return Err(AppError::BadRequest("lines must not be empty".to_string()));
         }
 
-        let location = self.get_location(dto.location_id).await?;
-        if location.kind != "warehouse" {
-            return Err(AppError::BadRequest(
-                "Stock receipts must target a warehouse location".to_string(),
+        if dto.exceptional_reason.trim().len() < 5 {
+            return Err(AppError::bad_request_code(
+                "DIRECT_RECEIPT_REASON_REQUIRED",
+                None,
             ));
         }
+
+        self.get_location(dto.location_id).await?;
 
         for line in &dto.lines {
             if line.box_quantity <= 0 {
@@ -444,7 +445,10 @@ impl InventoryService {
             ));
         }
         let existing = self.get_transfer_request(id).await?;
-        let transfer = self.repo.reject_transfer(id, rejection_reason, rejected_by).await?;
+        let transfer = self
+            .repo
+            .reject_transfer(id, rejection_reason, rejected_by)
+            .await?;
         if let Some(requested_by) = existing.request.requested_by {
             let payload = serde_json::json!({
                 "transfer_request_id": transfer.id.to_string(),
@@ -473,8 +477,10 @@ impl InventoryService {
         fulfilled_by: Uuid,
     ) -> Result<StockTransferRequest, AppError> {
         let transfer = self.repo.fulfill_transfer(id, fulfilled_by).await?;
-        self.invalidate_location_stock(transfer.from_location_id).await?;
-        self.invalidate_location_stock(transfer.to_location_id).await?;
+        self.invalidate_location_stock(transfer.from_location_id)
+            .await?;
+        self.invalidate_location_stock(transfer.to_location_id)
+            .await?;
         Ok(transfer)
     }
 
@@ -630,7 +636,10 @@ impl InventoryService {
                 "rejectionReason is required".to_string(),
             ));
         }
-        let event = self.repo.reject_waste(id, rejection_reason, rejected_by).await?;
+        let event = self
+            .repo
+            .reject_waste(id, rejection_reason, rejected_by)
+            .await?;
 
         if let Some(created_by) = event.created_by {
             let payload = serde_json::json!({

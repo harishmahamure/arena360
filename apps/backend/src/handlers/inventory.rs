@@ -130,7 +130,7 @@ pub async fn list_stock(
     tag = "inventory"
 )]
 pub async fn create_receipt(
-    AdminOrStaff(claims): AdminOrStaff,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateStockReceiptDto>,
 ) -> ApiResult<StockReceiptWithLines> {

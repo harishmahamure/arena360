@@ -53,7 +53,7 @@ export default function PlansPage() {
         search: debouncedSearch.length > 2 ? debouncedSearch : undefined,
         page: page,
         planType: planType as PlanTypeValue | undefined,
-        isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
+        isActive: isActive === 'true' ? 1 : isActive === 'false' ? 0 : undefined,
       }),
   });
 

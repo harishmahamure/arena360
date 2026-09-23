@@ -20,9 +20,9 @@ use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
     GameService, InventoryService, KioskOrderService, NotificationService, PlanService,
-    PlayerPlanService, ProductService, SessionService, ShiftService, StaffGamingAllowanceService,
-    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
-    VendorService,
+    PlayerPlanService, ProcurementService, ProductService, SessionService, ShiftService,
+    StaffGamingAllowanceService, StatsService, StorageConfig, StorageService, TransactionService,
+    UnitService, UserService, VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -53,6 +53,7 @@ pub struct AppState {
     pub vendors: VendorService,
     pub expenses: ExpenseService,
     pub inventory: InventoryService,
+    pub procurement: ProcurementService,
     pub stats: StatsService,
     pub credit: Arc<CreditService>,
     pub staff_gaming_allowances: StaffGamingAllowanceService,
@@ -199,6 +200,7 @@ pub async fn build_state() -> Arc<AppState> {
             notifications.clone(),
             cache.clone(),
         ),
+        procurement: ProcurementService::new(pool.clone()),
         stats: StatsService::new(pool.clone(), cache.clone()),
         kiosk_orders: KioskOrderService::new(
             pool.clone(),
@@ -226,6 +228,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/ready", get(handlers::health::ready_check))
         .route("/auth/login/admin", post(handlers::auth::login_admin))
         .route("/auth/login/staff", post(handlers::auth::login_staff))
+        .route("/auth/login/panel", post(handlers::auth::login_panel))
+        .route(
+            "/auth/login/panel/mfa",
+            post(handlers::auth::verify_panel_mfa),
+        )
         .route("/auth/login/player", post(handlers::auth::login_player))
         .route(
             "/auth/register/player",
@@ -354,6 +361,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/shifts/handover", post(handlers::shifts::handover_shift))
         .route("/shifts/close", post(handlers::shifts::close_shift))
         .route("/shifts/clock-in", post(handlers::shifts::clock_in))
+        .route(
+            "/shifts/start-context",
+            get(handlers::shifts::start_context),
+        )
+        .route("/shifts/start", post(handlers::shifts::start_shift))
         .route("/shifts/clock-out", patch(handlers::shifts::clock_out))
         .route("/shifts/active", get(handlers::shifts::get_active_shift))
         .route("/shifts", get(handlers::shifts::list_shifts))
@@ -509,6 +521,52 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             patch(handlers::inventory::update_location),
         )
         .route("/inventory/stock", get(handlers::inventory::list_stock))
+        .route("/inventory/overview", get(handlers::procurement::overview))
+        .route(
+            "/inventory/movements",
+            get(handlers::procurement::list_movements),
+        )
+        .route(
+            "/inventory/reorder-rules",
+            get(handlers::procurement::list_reorder_rules)
+                .post(handlers::procurement::upsert_reorder_rule),
+        )
+        .route(
+            "/inventory/reorder-suggestions",
+            get(handlers::procurement::reorder_suggestions),
+        )
+        .route(
+            "/inventory/purchase-orders",
+            get(handlers::procurement::list_orders).post(handlers::procurement::create_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}",
+            get(handlers::procurement::get_order).patch(handlers::procurement::update_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/submit",
+            post(handlers::procurement::submit_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/approve",
+            post(handlers::procurement::approve_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/reject",
+            post(handlers::procurement::reject_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/mark-ordered",
+            post(handlers::procurement::mark_ordered),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/cancel",
+            post(handlers::procurement::cancel_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/receipts",
+            post(handlers::procurement::receive_order),
+        )
         .route(
             "/inventory/adjustments",
             get(handlers::inventory::list_adjustments).post(handlers::inventory::create_adjustment),

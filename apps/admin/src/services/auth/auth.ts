@@ -1,5 +1,11 @@
 import { http, toastUtils } from '@gaming-cafe/utils';
-import type { VerifyOtpResponseData } from './types';
+import type { PanelLoginResponse, VerifyOtpResponseData } from './types';
+
+export const loginPanelAPI = async (username: string, password: string) =>
+  http.post<PanelLoginResponse>('/auth/login/panel', { username, password });
+
+export const verifyPanelMfaAPI = async (challengeToken: string, code: string) =>
+  http.post<PanelLoginResponse>('/auth/login/panel/mfa', { challengeToken, code });
 
 export const loginAPI = async (username: string, password: string, totp?: string) => {
   try {

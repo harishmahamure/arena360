@@ -183,11 +183,13 @@ impl InventoryRepository {
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT ls.\"locationId\" as location_id, ls.\"productId\" as product_id, \
+            "SELECT ls.\"locationId\" as location_id, l.name as location_name, ls.\"productId\" as product_id, \
              ls.\"quantityPieces\" as quantity_pieces, p.name as product_name, p.sku as product_sku, \
              ls.\"createdAt\" as created_at, ls.\"updatedAt\" as updated_at \
              FROM location_stock ls \
+             INNER JOIN inventory_locations l ON l.id = ls.\"locationId\" AND l.\"deletedAt\" IS NULL \
              INNER JOIN products p ON p.id = ls.\"productId\" AND p.\"deletedAt\" IS NULL \
+             LEFT JOIN inventory_reorder_rules rr ON rr.\"locationId\"=ls.\"locationId\" AND rr.\"productId\"=ls.\"productId\" AND rr.\"isActive\"=true \
              WHERE 1=1",
         );
 
@@ -199,8 +201,34 @@ impl InventoryRepository {
             builder.push(" AND ls.\"productId\" = ");
             builder.push_bind(product_id);
         }
+        if let Some(search) = filters
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            builder.push(" AND (p.name ILIKE ");
+            builder.push_bind(format!("%{search}%"));
+            builder.push(" OR p.sku ILIKE ");
+            builder.push_bind(format!("%{search}%"));
+            builder.push(")");
+        }
+        if filters.low_stock.unwrap_or(false) {
+            builder
+                .push(" AND rr.id IS NOT NULL AND ls.\"quantityPieces\" <= rr.\"minimumPieces\"");
+        }
 
-        builder.push(" ORDER BY p.name ASC LIMIT ");
+        let sort_column = match filters.sort_by.as_deref() {
+            Some("quantity") => "ls.\"quantityPieces\"",
+            Some("location") => "l.name",
+            _ => "p.name",
+        };
+        let sort_order = if filters.sort_order.as_deref() == Some("desc") {
+            "DESC"
+        } else {
+            "ASC"
+        };
+        builder.push(format!(" ORDER BY {sort_column} {sort_order} LIMIT "));
         builder.push_bind(limit);
         builder.push(" OFFSET ");
         builder.push_bind(offset);
@@ -210,8 +238,13 @@ impl InventoryRepository {
             .fetch_all(&self.pool)
             .await?;
 
-        let mut count_builder: QueryBuilder<Postgres> =
-            QueryBuilder::new("SELECT COUNT(*) FROM location_stock ls WHERE 1=1");
+        let mut count_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT COUNT(*) FROM location_stock ls \
+             INNER JOIN inventory_locations l ON l.id=ls.\"locationId\" AND l.\"deletedAt\" IS NULL \
+             INNER JOIN products p ON p.id=ls.\"productId\" AND p.\"deletedAt\" IS NULL \
+             LEFT JOIN inventory_reorder_rules rr ON rr.\"locationId\"=ls.\"locationId\" \
+               AND rr.\"productId\"=ls.\"productId\" AND rr.\"isActive\"=true WHERE 1=1",
+        );
         if let Some(location_id) = filters.location_id {
             count_builder.push(" AND ls.\"locationId\" = ");
             count_builder.push_bind(location_id);
@@ -219,6 +252,22 @@ impl InventoryRepository {
         if let Some(product_id) = filters.product_id {
             count_builder.push(" AND ls.\"productId\" = ");
             count_builder.push_bind(product_id);
+        }
+        if let Some(search) = filters
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            count_builder.push(" AND (p.name ILIKE ");
+            count_builder.push_bind(format!("%{search}%"));
+            count_builder.push(" OR p.sku ILIKE ");
+            count_builder.push_bind(format!("%{search}%"));
+            count_builder.push(")");
+        }
+        if filters.low_stock.unwrap_or(false) {
+            count_builder
+                .push(" AND rr.id IS NOT NULL AND ls.\"quantityPieces\" <= rr.\"minimumPieces\"");
         }
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
@@ -406,8 +455,8 @@ impl InventoryRepository {
 
         let receipt = sqlx::query_as::<_, StockReceipt>(
             r#"
-            INSERT INTO stock_receipts (id, "locationId", "vendorId", notes, "createdBy")
-            VALUES (gen_random_uuid(), $1, $2, $3, $4)
+            INSERT INTO stock_receipts (id, "locationId", "vendorId", notes, "createdBy", "exceptionalReason")
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
             RETURNING id, "locationId" as location_id, "vendorId" as vendor_id, notes,
                       "createdBy" as created_by, "createdAt" as created_at
             "#,
@@ -416,6 +465,7 @@ impl InventoryRepository {
         .bind(dto.vendor_id)
         .bind(&dto.notes)
         .bind(created_by)
+        .bind(dto.exceptional_reason.trim())
         .fetch_one(&mut *tx)
         .await?;
 

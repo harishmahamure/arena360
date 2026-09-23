@@ -13,6 +13,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import { bootstrapAuthFromToken, registerAdminAuthSession } from './lib/authSession';
 import { RealtimeProvider } from './lib/realtime';
 import LoginPage from './pages/auth/LoginPage';
+import ShiftSetupPage from './pages/auth/ShiftSetupPage';
 import ActivityLogPage from './pages/dashboard/ActivityLogPage';
 import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
 import CashRegisterDetailPage from './pages/dashboard/cash-registers/CashRegisterDetailPage';
@@ -34,7 +35,10 @@ import GameDetailPage from './pages/dashboard/games/GameDetailPage';
 import GameNewPage from './pages/dashboard/games/GameNewPage';
 import GamesPage from './pages/dashboard/games/GamesPage';
 import InventoryLocationsPage from './pages/dashboard/inventory/InventoryLocationsPage';
+import InventoryMovementsPage from './pages/dashboard/inventory/InventoryMovementsPage';
+import InventoryOverviewPage from './pages/dashboard/inventory/InventoryOverviewPage';
 import InventoryReceiptReportPage from './pages/dashboard/inventory/InventoryReceiptReportPage';
+import InventoryReorderPage from './pages/dashboard/inventory/InventoryReorderPage';
 import InventoryStockPage from './pages/dashboard/inventory/InventoryStockPage';
 import InventoryTransferDetailPage from './pages/dashboard/inventory/InventoryTransferDetailPage';
 import InventoryTransferNewPage from './pages/dashboard/inventory/InventoryTransferNewPage';
@@ -43,6 +47,9 @@ import InventoryWarehousePage from './pages/dashboard/inventory/InventoryWarehou
 import InventoryWasteNewPage from './pages/dashboard/inventory/InventoryWasteNewPage';
 import InventoryWastePage from './pages/dashboard/inventory/InventoryWastePage';
 import InventoryWasteReportPage from './pages/dashboard/inventory/InventoryWasteReportPage';
+import PurchaseOrderDetailPage from './pages/dashboard/inventory/PurchaseOrderDetailPage';
+import PurchaseOrderNewPage from './pages/dashboard/inventory/PurchaseOrderNewPage';
+import PurchaseOrdersPage from './pages/dashboard/inventory/PurchaseOrdersPage';
 import KioskOrdersPage from './pages/dashboard/kiosk-orders/KioskOrdersPage';
 import PlanTransactionDetailPage from './pages/dashboard/plan-transactions/PlanTransactionDetailPage';
 import PlanTransactionNewPage from './pages/dashboard/plan-transactions/PlanTransactionNewPage';
@@ -107,6 +114,7 @@ function App() {
                 <Routes>
                   <Route element={<AuthLayout />}>
                     <Route path="/login" element={<LoginPage />} />
+                    <Route path="/shift/setup" element={<ShiftSetupPage />} />
                   </Route>
                   <Route element={<DashboardLayout />}>
                     <Route path="/" element={<DashboardPage />} />
@@ -217,9 +225,9 @@ function App() {
                       <Route path="/vendors/new" element={<VendorNewPage />} />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.InventoryRead} />}>
-                      <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
+                      <Route path="/inventory" element={<InventoryOverviewPage />} />
                       <Route path="/inventory/stock" element={<InventoryStockPage />} />
-                      <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
+                      <Route path="/inventory/movements" element={<InventoryMovementsPage />} />
                       <Route path="/inventory/transfers" element={<InventoryTransfersPage />} />
                       <Route
                         path="/inventory/transfers/:id"
@@ -239,6 +247,24 @@ function App() {
                         path="/inventory/receipts/report"
                         element={<InventoryReceiptReportPage />}
                       />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ProcurementRead} />}>
+                      <Route path="/inventory/purchase-orders" element={<PurchaseOrdersPage />} />
+                      <Route
+                        path="/inventory/purchase-orders/:id"
+                        element={<PurchaseOrderDetailPage />}
+                      />
+                      <Route path="/inventory/reorder" element={<InventoryReorderPage />} />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.ProcurementWrite} />}>
+                      <Route
+                        path="/inventory/purchase-orders/new"
+                        element={<PurchaseOrderNewPage />}
+                      />
+                    </Route>
+                    <Route element={<RequirePermission permission={Permission.InventoryManage} />}>
+                      <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
+                      <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
                     </Route>
                     <Route element={<RequirePermission permission={Permission.StatsRead} />}>
                       <Route

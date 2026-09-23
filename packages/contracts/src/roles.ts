@@ -58,6 +58,11 @@ export enum Permission {
   InventoryTransferFulfill = 'inventory:transfer_fulfill',
   InventoryWasteRecord = 'inventory:waste_record',
   InventoryWasteApprove = 'inventory:waste_approve',
+  ProcurementRead = 'procurement:read',
+  ProcurementWrite = 'procurement:write',
+  ProcurementApprove = 'procurement:approve',
+  ProcurementReceive = 'procurement:receive',
+  InventoryReorderManage = 'inventory:reorder_manage',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -92,6 +97,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.InventoryRead,
     Permission.InventoryTransferRequest,
     Permission.InventoryWasteRecord,
+    Permission.ProcurementRead,
+    Permission.ProcurementWrite,
+    Permission.ProcurementReceive,
   ],
   player: [
     Permission.GamesRead,

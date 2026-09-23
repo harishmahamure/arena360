@@ -16,6 +16,7 @@
     "@emotion/styled": "^11.14.1",
     "@fontsource/roboto": "^5.2.9",
     "@gaming-cafe/contracts": "workspace:*",
+    "@gaming-cafe/api-types": "workspace:*",
     "@gaming-cafe/providers": "workspace:*",
     "@gaming-cafe/proto": "workspace:*",
     "@gaming-cafe/theme": "workspace:*",

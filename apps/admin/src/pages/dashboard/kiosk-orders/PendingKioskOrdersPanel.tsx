@@ -18,11 +18,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { formatRelativeTime } from '../../../components/notifications/notificationUtils';
+import { usePermissions } from '../../../hooks/usePermissions';
 import {
   getKioskOrders,
   type KioskOrder,
   updateKioskOrderStatus,
 } from '../../../services/kiosk-orders';
+import { getActiveShift } from '../../../services/shifts';
 
 export const PENDING_KIOSK_ORDERS_QUERY_KEY = ['kiosk-orders', 'open'] as const;
 
@@ -41,7 +43,7 @@ function statusColor(status: string): 'default' | 'warning' | 'success' | 'error
   }
 }
 
-function OrderActions({ order }: { order: KioskOrder }) {
+function OrderActions({ order, canOperate }: { order: KioskOrder; canOperate: boolean }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -60,6 +62,14 @@ function OrderActions({ order }: { order: KioskOrder }) {
         View sale
       </Button>
     ) : null;
+  }
+
+  if (!canOperate) {
+    return (
+      <Typography variant="caption" color="text.secondary">
+        Staff shift required
+      </Typography>
+    );
   }
 
   return (
@@ -99,6 +109,14 @@ interface PendingKioskOrdersPanelProps {
 }
 
 export function PendingKioskOrdersPanel({ variant = 'page' }: PendingKioskOrdersPanelProps) {
+  const { isStaff } = usePermissions();
+  const { data: activeShift } = useQuery({
+    queryKey: ['activeShift'],
+    queryFn: getActiveShift,
+    retry: false,
+    enabled: isStaff,
+  });
+  const canOperate = isStaff && Boolean(activeShift);
   const { data, isLoading, error } = useQuery({
     queryKey: PENDING_KIOSK_ORDERS_QUERY_KEY,
     queryFn: () => getKioskOrders({ limit: 50 }),
@@ -157,7 +175,7 @@ export function PendingKioskOrdersPanel({ variant = 'page' }: PendingKioskOrders
                   <Chip size="small" label={order.status} color={statusColor(order.status)} />
                 </TableCell>
                 <TableCell align="right">
-                  <OrderActions order={order} />
+                  <OrderActions order={order} canOperate={canOperate} />
                 </TableCell>
               </TableRow>
             ))}
@@ -207,6 +225,11 @@ export function PendingKioskOrdersPanel({ variant = 'page' }: PendingKioskOrders
         Food and drink orders placed from gaming stations. Fulfill manually, then convert to a POS
         sale.
       </Typography>
+      {isStaff && !activeShift ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Set up your shift and cash register before processing kiosk orders.
+        </Alert>
+      ) : null}
       {content}
     </Box>
   );

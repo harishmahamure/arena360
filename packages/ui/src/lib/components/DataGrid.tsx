@@ -54,7 +54,7 @@ interface DataGridProps<T = Record<string, unknown>> {
   renderMobileCard?: (row: T, rowActions: Action<T>[]) => ReactNode;
 }
 
-export function DataGrid<T extends Record<string, unknown>>({
+export function DataGrid<T extends object>({
   columns,
   data,
   actions = [],
@@ -75,7 +75,7 @@ export function DataGrid<T extends Record<string, unknown>>({
     if (typeof rowKey === 'function') {
       return rowKey(row);
     }
-    const key = row[rowKey];
+    const key = (row as Record<string, unknown>)[rowKey];
     if (typeof key === 'string' || typeof key === 'number') {
       return key;
     }

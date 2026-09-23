@@ -104,8 +104,8 @@ export default function DashboardLayout() {
   const requireShiftForQuickAction = useCallback(
     (path: string) => {
       if (!activeShift) {
-        toastUtils.warning('Start a shift from the dashboard before using this action.');
-        navigate('/');
+        toastUtils.warning('Confirm or resume your shift before using counter actions.');
+        navigate('/shift/setup');
         return;
       }
       navigate(path);
@@ -140,7 +140,7 @@ export default function DashboardLayout() {
     return {
       active: false,
       label: 'No active shift',
-      onClick: () => navigate('/'),
+      onClick: () => navigate('/shift/setup'),
     };
   }, [activeShift, isStaff, navigate]);
 

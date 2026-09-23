@@ -1,4 +1,4 @@
-import { ErrorPanel, PageHeader, PageShell } from '@gaming-cafe/ui';
+import { ErrorPanel, MetricCard, PageHeader, PageShell } from '@gaming-cafe/ui';
 import {
   AccessTime,
   AttachMoney,
@@ -10,12 +10,25 @@ import {
   ShoppingCart,
   SportsEsports,
 } from '@mui/icons-material';
-import { Box, Card, CardContent, Grid, LinearProgress, Skeleton, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  LinearProgress,
+  Skeleton,
+  Stack,
+  Typography,
+} from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { Link as RouterLink } from 'react-router-dom';
 import { StatCard, type StatTone } from '../../containers/stats/StatCard';
 import { StatsDateRangeToolbar } from '../../containers/stats/StatsDateRangeToolbar';
 import { TopPerformersList } from '../../containers/stats/TopPerformersList';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { useStatsDateRange } from '../../hooks/useStatsDateRange';
+import { getInventoryOverview, getPurchaseOrders } from '../../services/inventory';
 import {
   calculatePeriodChange,
   formatPaymentCountBreakdown,
@@ -56,6 +69,11 @@ function AdminDashboardSkeleton() {
 }
 
 export default function AdminDashboardView() {
+  const inventory = useQuery({ queryKey: ['inventory-overview'], queryFn: getInventoryOverview });
+  const submittedOrders = useQuery({
+    queryKey: ['purchase-orders', 'submitted', 1],
+    queryFn: () => getPurchaseOrders({ status: 'submitted', page: 1, limit: 1 }),
+  });
   const {
     startDate,
     endDate,
@@ -248,6 +266,51 @@ export default function AdminDashboardView() {
         />
       }
     >
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h6">Needs attention</Typography>
+        <Button component={RouterLink} to="/inventory">
+          Open operations control center
+        </Button>
+      </Stack>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
+          gap: 2,
+          mb: 4,
+        }}
+      >
+        <MetricCard
+          label="POs awaiting approval"
+          value={submittedOrders.data?.total ?? '—'}
+          tone={submittedOrders.data?.total ? 'warning' : 'success'}
+        />
+        <MetricCard
+          label="Low stock"
+          value={inventory.data?.lowStockProducts ?? '—'}
+          tone={inventory.data?.lowStockProducts ? 'warning' : 'success'}
+        />
+        <MetricCard
+          label="Out of stock"
+          value={inventory.data?.outOfStockProducts ?? '—'}
+          tone={inventory.data?.outOfStockProducts ? 'error' : 'success'}
+        />
+        <MetricCard
+          label="Pending waste / transfers"
+          value={
+            inventory.data
+              ? inventory.data.pendingWasteEvents + inventory.data.pendingTransfers
+              : '—'
+          }
+          tone={
+            inventory.data &&
+            inventory.data.pendingWasteEvents + inventory.data.pendingTransfers > 0
+              ? 'warning'
+              : 'success'
+          }
+        />
+      </Box>
+
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {stats.map((stat) => (
           <Grid key={stat.title} size={{ xs: 12, sm: 6, md: 4 }}>

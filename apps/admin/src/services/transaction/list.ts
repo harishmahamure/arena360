@@ -31,7 +31,7 @@ export interface Transaction {
   onlineAmount?: number | null;
   onlinePaymentRefLast4?: string | null;
   paymentMethod: string;
-  paymentStatus: string;
+  paymentStatus: PaymentStatusValue;
   notes?: string | null;
   transactionDate: string;
   transactionProducts?: TransactionProduct[];

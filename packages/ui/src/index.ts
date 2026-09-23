@@ -56,6 +56,24 @@ export { ListPage } from './lib/components/ListPage';
 export type { ListViewPageProps } from './lib/components/ListViewPage';
 /** @deprecated Use ListPage instead */
 export { ListViewPage } from './lib/components/ListViewPage';
+export type { StatusTone } from './lib/components/Operations';
+export {
+  ActivityTimeline,
+  ApprovalQueue,
+  AssistedForm,
+  CommandBar,
+  EntityPicker,
+  FilterBar,
+  LineItemEditor,
+  MetricCard,
+  ModuleTabs,
+  OperationState,
+  OperationsShell,
+  ServerDataTable as DataTable,
+  ServerDataTable,
+  StatusBadge,
+  WizardPage,
+} from './lib/components/Operations';
 export type { BreadcrumbItem, PageHeaderProps } from './lib/components/PageHeader';
 export { PageHeader } from './lib/components/PageHeader';
 export type { PageShellProps } from './lib/components/PageShell';

@@ -23,6 +23,38 @@ export interface ShiftListResponse {
 
 export const clockIn = async (notes?: string) => http.post<Shift>('/shifts/clock-in', { notes });
 
+export interface ShiftStartContext {
+  mode: 'start' | 'resume';
+  shift?: Shift | null;
+  cashRegister?: {
+    id: string;
+    shiftId: string;
+    openingBalance: number;
+    status: string;
+  } | null;
+  suggestedOpeningBalance: number;
+}
+
+export interface ShiftStartResponse {
+  resumed: boolean;
+  shift: Shift;
+  cashRegister: {
+    id: string;
+    shiftId: string;
+    openingBalance: number;
+    status: string;
+  };
+}
+
+export const getShiftStartContext = async () =>
+  http.get<ShiftStartContext>('/shifts/start-context');
+
+export const startShift = async (input: {
+  openingBalance: number;
+  openingDenominations?: Record<string, number>;
+  notes?: string;
+}) => http.post<ShiftStartResponse>('/shifts/start', input);
+
 export const clockOut = async (notes?: string) => http.patch<Shift>('/shifts/clock-out', { notes });
 
 export const getActiveShift = async () => http.get<Shift | null>('/shifts/active');

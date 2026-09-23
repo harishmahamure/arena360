@@ -50,15 +50,18 @@ export default function InventoryWarehousePage() {
     queryFn: () => getInventoryLocations({ limit: 50 }),
   });
 
-  const warehouse = useMemo(
-    () => locations?.data.find((l) => l.kind === 'warehouse' && l.isActive),
+  const [selectedLocationId, setSelectedLocationId] = useState('');
+  const activeLocations = useMemo(
+    () => locations?.data.filter((l) => l.isActive) ?? [],
     [locations],
   );
+  const targetLocation =
+    activeLocations.find((location) => location.id === selectedLocationId) ?? activeLocations[0];
 
   const { data: stock, isLoading } = useQuery({
-    queryKey: ['warehouse-stock', warehouse?.id],
-    queryFn: () => getLocationStock({ locationId: warehouse?.id, limit: 100, page: 1 }),
-    enabled: !!warehouse?.id,
+    queryKey: ['exceptional-intake-stock', targetLocation?.id],
+    queryFn: () => getLocationStock({ locationId: targetLocation?.id, limit: 100, page: 1 }),
+    enabled: !!targetLocation?.id,
   });
 
   const { data: productsData } = useQuery({
@@ -78,6 +81,7 @@ export default function InventoryWarehousePage() {
   const [boxQty, setBoxQty] = useState('1');
   const [vendorId, setVendorId] = useState('');
   const [notes, setNotes] = useState('');
+  const [exceptionalReason, setExceptionalReason] = useState('');
 
   const productOptions = useMemo(() => {
     if (productInput.length < 1) return productsData?.data.slice(0, 20) ?? [];
@@ -115,11 +119,12 @@ export default function InventoryWarehousePage() {
 
   const receiveMutation = useMutation({
     mutationFn: async () => {
-      if (!warehouse) throw new Error('No warehouse configured');
+      if (!targetLocation) throw new Error('No inventory location configured');
       return createStockReceipt({
-        locationId: warehouse.id,
+        locationId: targetLocation.id,
         vendorId: vendorId || undefined,
         notes: notes || undefined,
+        exceptionalReason,
         lines: lines.map((l) => ({
           productId: l.productId,
           boxQuantity: l.boxQuantity,
@@ -130,9 +135,11 @@ export default function InventoryWarehousePage() {
       toastUtils.success(
         `Received ${totalBoxes} box(es) · ${totalPieces} pieces across ${lines.length} product(s)`,
       );
-      queryClient.invalidateQueries({ queryKey: ['warehouse-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['exceptional-intake-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['location-stock'] });
       setLines([]);
       setNotes('');
+      setExceptionalReason('');
     },
     onError: () => toastUtils.error('Failed to receive stock'),
   });
@@ -160,10 +167,10 @@ export default function InventoryWarehousePage() {
     },
   ];
 
-  if (!warehouse) {
+  if (!targetLocation) {
     return (
       <Alert severity="warning" sx={{ m: 4 }}>
-        No active warehouse location found. Add one under Inventory → Locations.
+        No active inventory location found. Add one under Inventory → Locations.
       </Alert>
     );
   }
@@ -171,8 +178,8 @@ export default function InventoryWarehousePage() {
   return (
     <>
       <ListPage
-        title={`Warehouse Stock — ${warehouse.name}`}
-        description="Stock levels at the warehouse (pieces)"
+        title={`Exceptional intake — ${targetLocation.name}`}
+        description="Admin-only direct intake for exceptional cases. Routine receiving must use an approved purchase order."
         columns={columns}
         data={rows}
         actions={[]}
@@ -186,11 +193,11 @@ export default function InventoryWarehousePage() {
       {canManage && (
         <Paper sx={{ p: 3, mt: 3, mx: { xs: 2, md: 4 } }}>
           <Typography variant="h6" fontWeight={600} gutterBottom>
-            Receive Stock
+            Exceptional direct receipt
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Add multiple products from one vendor delivery. Enter quantity in boxes; pieces are
-            calculated from each product&apos;s units per box.
+            This bypasses procurement and requires an audit reason. Choose the actual destination
+            location; quantities are never assigned to an implicit first warehouse.
           </Typography>
           <Card variant="outlined">
             <CardContent>
@@ -202,6 +209,18 @@ export default function InventoryWarehousePage() {
                   mb: 2,
                 }}
               >
+                <TextField
+                  select
+                  label="Destination location"
+                  value={targetLocation.id}
+                  onChange={(event) => setSelectedLocationId(event.target.value)}
+                >
+                  {activeLocations.map((location) => (
+                    <MenuItem key={location.id} value={location.id}>
+                      {location.name} ({location.kind})
+                    </MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   select
                   label="Vendor (optional)"
@@ -216,7 +235,15 @@ export default function InventoryWarehousePage() {
                   ))}
                 </TextField>
                 <TextField
-                  label="Notes"
+                  label="Exceptional intake reason"
+                  value={exceptionalReason}
+                  onChange={(e) => setExceptionalReason(e.target.value)}
+                  required
+                  helperText="Explain why this receipt is not linked to a purchase order."
+                  fullWidth
+                />
+                <TextField
+                  label="Additional notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   fullWidth
@@ -306,10 +333,14 @@ export default function InventoryWarehousePage() {
               <Button
                 variant="contained"
                 sx={{ mt: 2 }}
-                disabled={lines.length === 0 || receiveMutation.isPending}
+                disabled={
+                  lines.length === 0 ||
+                  exceptionalReason.trim().length < 5 ||
+                  receiveMutation.isPending
+                }
                 onClick={() => receiveMutation.mutate()}
               >
-                Receive into warehouse
+                Finalize exceptional intake
               </Button>
             </CardContent>
           </Card>

@@ -46,6 +46,7 @@ pub struct CreateStockReceiptDto {
     pub location_id: Uuid,
     pub vendor_id: Option<Uuid>,
     pub notes: Option<String>,
+    pub exceptional_reason: String,
     pub lines: Vec<CreateStockReceiptLineDto>,
 }
 

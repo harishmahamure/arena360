@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct LocationStockRow {
     pub location_id: Uuid,
+    pub location_name: String,
     pub product_id: Uuid,
     pub quantity_pieces: i32,
     pub product_name: Option<String>,
@@ -21,6 +22,10 @@ pub struct LocationStockRow {
 pub struct LocationStockFilterDto {
     pub location_id: Option<Uuid>,
     pub product_id: Option<Uuid>,
+    pub search: Option<String>,
+    pub low_stock: Option<bool>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
     pub page: Option<i64>,
     pub limit: Option<i64>,
 }

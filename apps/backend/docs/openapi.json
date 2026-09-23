@@ -123,6 +123,106 @@
         }
       }
     },
+    "/auth/login/panel": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "login_panel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffLoginDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated or MFA challenge issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelLoginResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login/panel/mfa": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "verify_panel_mfa",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PanelMfaDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "MFA verified and authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelLoginResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired MFA challenge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/login/player": {
       "post": {
         "tags": [
@@ -4847,6 +4947,782 @@
         ]
       }
     },
+    "/inventory/movements": {
+      "get": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "inventory_list_movements",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "productId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "movementType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "referenceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "referenceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockMovementPaginationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/overview": {
+      "get": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "inventory_overview",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryOverviewEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders": {
+      "get": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "purchase_orders_list",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "vendorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "destinationLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderPaginationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "purchase_orders_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePurchaseOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders/{id}": {
+      "get": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "purchase_orders_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "purchase_orders_update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePurchaseOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders/{id}/approve": {
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "approve_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders/{id}/cancel": {
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "cancel_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders/{id}/mark-ordered": {
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "mark_ordered",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders/{id}/receipts": {
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "receive_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceivePurchaseOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderReceiptEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders/{id}/reject": {
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "reject_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectPurchaseOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/purchase-orders/{id}/submit": {
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "submit_order",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/inventory/receipts": {
       "get": {
         "tags": [
@@ -5032,6 +5908,129 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/reorder-rules": {
+      "get": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "list_reorder_rules",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryReorderRuleListEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "upsert_reorder_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertInventoryReorderRuleDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryReorderRuleEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/inventory/reorder-suggestions": {
+      "get": {
+        "tags": [
+          "procurement"
+        ],
+        "operationId": "reorder_suggestions",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorderSuggestionListEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -6267,7 +7266,7 @@
         "tags": [
           "kiosk"
         ],
-        "operationId": "list_products",
+        "operationId": "kiosk_list_products",
         "responses": {
           "200": {
             "description": "Kiosk product menu"
@@ -9015,6 +10014,126 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/shifts/start": {
+      "post": {
+        "tags": [
+          "shifts"
+        ],
+        "operationId": "start_shift",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartShiftDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Shift and register started or resumed atomically",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftStartResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid opening balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Staff only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Concurrent start conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/shifts/start-context": {
+      "get": {
+        "tags": [
+          "shifts"
+        ],
+        "operationId": "start_context",
+        "responses": {
+          "200": {
+            "description": "Resumable shift or carry-forward opening float",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftStartContextEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Staff only",
             "content": {
               "application/json": {
                 "schema": {
@@ -12235,6 +13354,12 @@
           "isActive"
         ],
         "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "firstName": {
             "type": [
               "string",
@@ -13921,6 +15046,57 @@
           }
         }
       },
+      "CreatePurchaseOrderDto": {
+        "type": "object",
+        "required": [
+          "vendorId",
+          "destinationLocationId",
+          "lines"
+        ],
+        "properties": {
+          "destinationLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "discount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "expectedDeliveryDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "freight": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLineInput"
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vendorId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "CreateRoomDto": {
         "type": "object",
         "required": [
@@ -14013,9 +15189,13 @@
         "type": "object",
         "required": [
           "locationId",
+          "exceptionalReason",
           "lines"
         ],
         "properties": {
+          "exceptionalReason": {
+            "type": "string"
+          },
           "lines": {
             "type": "array",
             "items": {
@@ -16973,6 +18153,197 @@
           }
         }
       },
+      "InventoryOverviewDto": {
+        "type": "object",
+        "required": [
+          "totalPieces",
+          "estimatedStockValue",
+          "lowStockProducts",
+          "outOfStockProducts",
+          "openPurchaseOrders",
+          "pendingTransfers",
+          "pendingWasteEvents",
+          "recentMovements"
+        ],
+        "properties": {
+          "estimatedStockValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "lowStockProducts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "openPurchaseOrders": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outOfStockProducts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pendingTransfers": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pendingWasteEvents": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "recentMovements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockMovementRow"
+            }
+          },
+          "totalPieces": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "InventoryOverviewEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/InventoryOverviewDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "InventoryReorderRule": {
+        "type": "object",
+        "required": [
+          "id",
+          "locationId",
+          "productId",
+          "minimumPieces",
+          "targetPieces",
+          "leadTimeDays",
+          "isActive",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "leadTimeDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "minimumPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "preferredVendorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "targetPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "InventoryReorderRuleEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/InventoryReorderRule"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "InventoryReorderRuleListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventoryReorderRule"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "KioskMenuProduct": {
         "type": "object",
         "required": [
@@ -17385,6 +18756,12 @@
             ],
             "format": "uuid"
           },
+          "lowStock": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "page": {
             "type": [
               "integer",
@@ -17398,6 +18775,24 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sortOrder": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -17464,6 +18859,7 @@
         "type": "object",
         "required": [
           "locationId",
+          "locationName",
           "productId",
           "quantityPieces",
           "createdAt",
@@ -17477,6 +18873,9 @@
           "locationId": {
             "type": "string",
             "format": "uuid"
+          },
+          "locationName": {
+            "type": "string"
           },
           "productId": {
             "type": "string",
@@ -17740,6 +19139,99 @@
             "format": "uuid"
           },
           "transactionType": {
+            "type": "string"
+          }
+        }
+      },
+      "PanelLoginResponseDto": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "accessToken",
+              "user",
+              "nextStep",
+              "status"
+            ],
+            "properties": {
+              "accessToken": {
+                "type": "string"
+              },
+              "nextStep": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "authenticated"
+                ]
+              },
+              "user": {
+                "$ref": "#/components/schemas/AuthUserDto"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "challengeToken",
+              "expiresAt",
+              "status"
+            ],
+            "properties": {
+              "challengeToken": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "mfa_required"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "PanelLoginResponseEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PanelLoginResponseDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PanelMfaDto": {
+        "type": "object",
+        "required": [
+          "challengeToken",
+          "code"
+        ],
+        "properties": {
+          "challengeToken": {
+            "type": "string"
+          },
+          "code": {
             "type": "string"
           }
         }
@@ -19981,6 +21473,460 @@
           }
         }
       },
+      "PurchaseOrder": {
+        "type": "object",
+        "required": [
+          "id",
+          "poNumber",
+          "vendorId",
+          "destinationLocationId",
+          "status",
+          "subtotal",
+          "discount",
+          "tax",
+          "freight",
+          "total",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "approvedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "approvedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "cancelledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "cancelledBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "destinationLocationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "discount": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectedDeliveryDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "freight": {
+            "type": "number",
+            "format": "double"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "orderedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "orderedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "poNumber": {
+            "type": "string"
+          },
+          "rejectionReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "submittedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "submittedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "subtotal": {
+            "type": "number",
+            "format": "double"
+          },
+          "tax": {
+            "type": "number",
+            "format": "double"
+          },
+          "total": {
+            "type": "number",
+            "format": "double"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "vendorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PurchaseOrderEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PurchaseOrderWithLines"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PurchaseOrderFilterDto": {
+        "type": "object",
+        "properties": {
+          "destinationLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vendorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "PurchaseOrderLine": {
+        "type": "object",
+        "required": [
+          "id",
+          "purchaseOrderId",
+          "productId",
+          "orderedBoxes",
+          "receivedBoxes",
+          "unitsPerBoxSnapshot",
+          "boxCostSnapshot",
+          "taxRate",
+          "lineSubtotal",
+          "lineTax",
+          "lineTotal"
+        ],
+        "properties": {
+          "boxCostSnapshot": {
+            "type": "number",
+            "format": "double"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lineSubtotal": {
+            "type": "number",
+            "format": "double"
+          },
+          "lineTax": {
+            "type": "number",
+            "format": "double"
+          },
+          "lineTotal": {
+            "type": "number",
+            "format": "double"
+          },
+          "orderedBoxes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "productSku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purchaseOrderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "receivedBoxes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "taxRate": {
+            "type": "number",
+            "format": "double"
+          },
+          "unitsPerBoxSnapshot": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PurchaseOrderLineInput": {
+        "type": "object",
+        "required": [
+          "productId",
+          "orderedBoxes",
+          "boxCost"
+        ],
+        "properties": {
+          "boxCost": {
+            "type": "number",
+            "format": "double"
+          },
+          "orderedBoxes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taxRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "PurchaseOrderPaginationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PurchaseOrderPaginationPage"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PurchaseOrderPaginationPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrder"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PurchaseOrderReceiptEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReceivePurchaseOrderResponse"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PurchaseOrderReceiptLineInput": {
+        "type": "object",
+        "required": [
+          "purchaseOrderLineId",
+          "acceptedBoxes"
+        ],
+        "properties": {
+          "acceptedBoxes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "purchaseOrderLineId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rejectedBoxes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PurchaseOrderWithLines": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PurchaseOrder"
+          },
+          {
+            "type": "object",
+            "required": [
+              "lines"
+            ],
+            "properties": {
+              "lines": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PurchaseOrderLine"
+                }
+              }
+            }
+          }
+        ]
+      },
       "ReceiptSummaryFilterDto": {
         "type": "object",
         "properties": {
@@ -20048,6 +21994,68 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ReceivePurchaseOrderDto": {
+        "type": "object",
+        "required": [
+          "invoiceReference",
+          "paymentMethod",
+          "lines"
+        ],
+        "properties": {
+          "invoiceReference": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderReceiptLineInput"
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paymentAccount": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "receiptDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ReceivePurchaseOrderResponse": {
+        "type": "object",
+        "required": [
+          "purchaseOrder",
+          "receiptId",
+          "expenseId"
+        ],
+        "properties": {
+          "expenseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purchaseOrder": {
+            "$ref": "#/components/schemas/PurchaseOrderWithLines"
+          },
+          "receiptId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -20188,6 +22196,17 @@
           }
         }
       },
+      "RejectPurchaseOrderDto": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
       "RejectStockTransferDto": {
         "type": "object",
         "required": [
@@ -20206,6 +22225,96 @@
         ],
         "properties": {
           "rejectionReason": {
+            "type": "string"
+          }
+        }
+      },
+      "ReorderSuggestion": {
+        "type": "object",
+        "required": [
+          "ruleId",
+          "locationId",
+          "locationName",
+          "productId",
+          "productName",
+          "currentPieces",
+          "minimumPieces",
+          "targetPieces",
+          "suggestedPieces",
+          "leadTimeDays"
+        ],
+        "properties": {
+          "currentPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "leadTimeDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "minimumPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "preferredVendorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "suggestedPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "targetPieces": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ReorderSuggestionListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReorderSuggestion"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
             "type": "string"
           }
         }
@@ -21242,6 +23351,111 @@
           }
         }
       },
+      "ShiftStartContextDto": {
+        "type": "object",
+        "required": [
+          "mode",
+          "suggestedOpeningBalance"
+        ],
+        "properties": {
+          "cashRegister": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CashRegister"
+              }
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "shift": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Shift"
+              }
+            ]
+          },
+          "suggestedOpeningBalance": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "ShiftStartContextEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ShiftStartContextDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "ShiftStartResponseDto": {
+        "type": "object",
+        "required": [
+          "resumed",
+          "shift",
+          "cashRegister"
+        ],
+        "properties": {
+          "cashRegister": {
+            "$ref": "#/components/schemas/CashRegister"
+          },
+          "resumed": {
+            "type": "boolean"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/Shift"
+          }
+        }
+      },
+      "ShiftStartResponseEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ShiftStartResponseDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "StaffDashboardStatsDto": {
         "type": "object",
         "required": [
@@ -21499,6 +23713,25 @@
           }
         }
       },
+      "StartShiftDto": {
+        "type": "object",
+        "required": [
+          "openingBalance"
+        ],
+        "properties": {
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "openingBalance": {
+            "type": "number",
+            "format": "double"
+          },
+          "openingDenominations": {}
+        }
+      },
       "StatsQuery": {
         "type": "object",
         "properties": {
@@ -21746,6 +23979,202 @@
           },
           "timestamp": {
             "type": "string"
+          }
+        }
+      },
+      "StockMovementFilterDto": {
+        "type": "object",
+        "properties": {
+          "actorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "movementType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "productId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "referenceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "referenceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "StockMovementPaginationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StockMovementPaginationPage"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "StockMovementPaginationPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockMovementRow"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "StockMovementRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "locationId",
+          "locationName",
+          "productId",
+          "productName",
+          "delta",
+          "movementType",
+          "createdAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "delta": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "movementType": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "referenceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "referenceType": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -24056,6 +26485,68 @@
           }
         }
       },
+      "UpdatePurchaseOrderDto": {
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "destinationLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "discount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "expectedDeliveryDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "freight": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "lines": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderLineInput"
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vendorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "UpdateTransactionDto": {
         "type": "object",
         "properties": {
@@ -24215,6 +26706,53 @@
             ]
           },
           "value": {}
+        }
+      },
+      "UpsertInventoryReorderRuleDto": {
+        "type": "object",
+        "required": [
+          "locationId",
+          "productId",
+          "minimumPieces",
+          "targetPieces"
+        ],
+        "properties": {
+          "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "leadTimeDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "minimumPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "preferredVendorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetPieces": {
+            "type": "integer",
+            "format": "int32"
+          }
         }
       },
       "UsageSession": {
@@ -25105,7 +27643,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "JWT obtained from POST /auth/login/admin or POST /auth/login/staff"
+        "description": "JWT obtained from POST /auth/login/panel (legacy admin/staff login wrappers remain available during migration)"
       }
     }
   },
@@ -25205,6 +27743,10 @@
     {
       "name": "inventory",
       "description": "Inventory locations, stock, transfers, and waste"
+    },
+    {
+      "name": "procurement",
+      "description": "Purchase orders, receiving, reorder controls, and stock movement ledger"
     },
     {
       "name": "notifications",

@@ -1,4 +1,4 @@
-import { adminNavItems } from '../constants/navItems';
+import { moduleRegistry } from '../constants/navItems';
 
 const EXACT_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -14,7 +14,12 @@ const EXACT_TITLES: Record<string, string> = {
   '/products': 'Products',
   '/products/new': 'Add product',
   '/inventory/locations': 'Inventory locations',
+  '/inventory': 'Inventory control center',
   '/inventory/stock': 'Stock overview',
+  '/inventory/movements': 'Stock movement ledger',
+  '/inventory/purchase-orders': 'Purchase orders',
+  '/inventory/purchase-orders/new': 'New purchase order',
+  '/inventory/reorder': 'Reorder controls',
   '/inventory/warehouse': 'Warehouse stock',
   '/inventory/transfers': 'Transfer requests',
   '/inventory/transfers/new': 'New transfer',
@@ -46,6 +51,7 @@ const DETAIL_TITLES: Array<{ prefix: string; title: string }> = [
   { prefix: '/plan-transactions/', title: 'Plan sale' },
   { prefix: '/product-transactions/', title: 'POS sale' },
   { prefix: '/products/', title: 'Product' },
+  { prefix: '/inventory/purchase-orders/', title: 'Purchase order' },
   { prefix: '/games/', title: 'Game' },
   { prefix: '/devices/', title: 'Device' },
   { prefix: '/plans/', title: 'Plan' },
@@ -57,7 +63,13 @@ const DETAIL_TITLES: Array<{ prefix: string; title: string }> = [
 
 function matchNavParentTitle(pathname: string): string | undefined {
   let best: { path: string; title: string } | undefined;
-  for (const item of adminNavItems) {
+  for (const item of moduleRegistry) {
+    for (const child of item.children ?? []) {
+      const childPath = child.path.split('?')[0] ?? child.path;
+      if (pathname === childPath && (!best || childPath.length > best.path.length)) {
+        best = { path: childPath, title: child.title };
+      }
+    }
     if (item.path === '/') continue;
     if (pathname === item.path || pathname.startsWith(`${item.path}/`)) {
       if (!best || item.path.length > best.path.length) {

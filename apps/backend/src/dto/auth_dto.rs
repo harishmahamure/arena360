@@ -61,6 +61,31 @@ pub struct StaffLoginDto {
 }
 
 #[allow(non_snake_case)]
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PanelMfaDto {
+    pub challengeToken: String,
+    pub code: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum PanelLoginResponseDto {
+    Authenticated {
+        #[serde(rename = "accessToken")]
+        access_token: String,
+        user: AuthUserDto,
+        #[serde(rename = "nextStep")]
+        next_step: String,
+    },
+    MfaRequired {
+        #[serde(rename = "challengeToken")]
+        challenge_token: String,
+        #[serde(rename = "expiresAt")]
+        expires_at: DateTime<Utc>,
+    },
+}
+
+#[allow(non_snake_case)]
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ActiveSessionDto {
     pub id: String,
@@ -94,6 +119,8 @@ pub struct AuthResponseDto {
 pub struct AuthUserDto {
     pub id: String,
     pub username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phoneNumber: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

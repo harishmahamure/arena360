@@ -2,7 +2,6 @@ import { isUserRole, type UserRole } from '@gaming-cafe/contracts';
 import {
   phoneDigitsSchema,
   trimmedOptionalString,
-  trimmedString,
   usernameSchema,
   validationMessages,
 } from '@gaming-cafe/utils';

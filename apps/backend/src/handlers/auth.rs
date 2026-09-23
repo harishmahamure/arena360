@@ -5,14 +5,52 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{
     created, ok, ApiResult, AuthResponseDto, KioskRegisterDto, KioskRegisterResponseDto, LoginDto,
-    PlayerLoginDto, RegisterDto, RegisterResponseDto, StaffLoginDto,
+    PanelLoginResponseDto, PanelMfaDto, PlayerLoginDto, RegisterDto, RegisterResponseDto,
+    StaffLoginDto,
 };
 use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, DeviceUser};
 use crate::openapi::responses::{
-    AuthResponseEnvelope, ErrorEnvelope, KioskRegisterResponseEnvelope, RegisterResponseEnvelope,
+    AuthResponseEnvelope, ErrorEnvelope, KioskRegisterResponseEnvelope, PanelLoginResponseEnvelope,
+    RegisterResponseEnvelope,
 };
 use crate::services::KioskRegistrationRateLimiter;
+
+#[utoipa::path(
+    post,
+    path = "/auth/login/panel",
+    request_body = StaffLoginDto,
+    responses(
+        (status = 200, description = "Authenticated or MFA challenge issued", body = PanelLoginResponseEnvelope),
+        (status = 401, description = "Invalid credentials", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    tag = "auth"
+)]
+pub async fn login_panel(
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<StaffLoginDto>,
+) -> ApiResult<PanelLoginResponseDto> {
+    ok(state.auth.login_panel(dto).await?)
+}
+
+#[utoipa::path(
+    post,
+    path = "/auth/login/panel/mfa",
+    request_body = PanelMfaDto,
+    responses(
+        (status = 200, description = "MFA verified and authenticated", body = PanelLoginResponseEnvelope),
+        (status = 401, description = "Invalid or expired MFA challenge", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    tag = "auth"
+)]
+pub async fn verify_panel_mfa(
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<PanelMfaDto>,
+) -> ApiResult<PanelLoginResponseDto> {
+    ok(state.auth.verify_panel_mfa(dto).await?)
+}
 
 #[utoipa::path(
     post,

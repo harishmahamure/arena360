@@ -1,77 +1,98 @@
 import { permissionsForRole } from '@gaming-cafe/contracts';
 import { FormButton, OtpField, PasswordField, UsernameField } from '@gaming-cafe/ui';
-import { local, normalizeUsername, toastUtils, trimValue } from '@gaming-cafe/utils';
-import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { isApiError, local, normalizeUsername, toastUtils, trimValue } from '@gaming-cafe/utils';
+import { Alert, Box, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../../hooks/store';
 import type { Permission } from '../../hooks/usePermissions';
-import { loginAPI, loginStaffAPI } from '../../services/auth/auth';
-import type { VerifyOtpResponseUser } from '../../services/auth/types';
+import { loginPanelAPI, verifyPanelMfaAPI } from '../../services/auth/auth';
+import type { PanelLoginResponse, VerifyOtpResponseUser } from '../../services/auth/types';
 import { getDefaultHomePath } from '../../utils/homePath';
-
-type LoginMode = 'admin' | 'staff';
 
 function isPanelRole(role: string): role is 'admin' | 'staff' {
   return role === 'admin' || role === 'staff';
 }
 
+function loginErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.message === 'AUTH_INVALID_CREDENTIALS') return 'Username or password is incorrect.';
+    if (error.message === 'AUTH_INVALID_MFA') return 'That authenticator code is not valid.';
+    if (error.message === 'AUTH_CHALLENGE_EXPIRED') {
+      return 'Your verification session expired. Sign in again.';
+    }
+  }
+  return error instanceof Error ? error.message : 'Unable to sign in. Please try again.';
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
-  const [loginMode, setLoginMode] = useState<LoginMode>('admin');
-  const [panelLoginStep, setPanelLoginStep] = useState<1 | 2>(1);
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const dispatch = useDispatch();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!local.get('accessToken')) {
-      dispatch({ type: 'Reset' });
-    }
+    if (!local.get('accessToken')) dispatch({ type: 'Reset' });
   }, [dispatch]);
 
-  const completeLogin = (accessToken: string, user: VerifyOtpResponseUser) => {
+  const completeLogin = (response: Extract<PanelLoginResponse, { status: 'authenticated' }>) => {
+    const user: VerifyOtpResponseUser = response.user;
     if (!isPanelRole(user.role)) {
-      toastUtils.error('Forbidden Access: User is not authorized for this panel');
+      setError('This account cannot access the operations panel.');
       return;
     }
-
-    local.set('accessToken', accessToken);
+    local.set('accessToken', response.accessToken);
     dispatch({
       type: 'SetAuthDetail',
       payload: {
-        ...user,
+        id: user.id,
+        email: user.email ?? '',
+        username: user.username,
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        role: user.role,
+        isActive: user.isActive,
       },
     });
+
+    if (response.nextStep === 'shift_setup') {
+      navigate('/shift/setup', { replace: true });
+      return;
+    }
     const permissions = permissionsForRole(user.role);
     const can = (permission: Permission) => permissions.includes(permission);
-    navigate(getDefaultHomePath(can));
+    navigate(getDefaultHomePath(can), { replace: true });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleResponse = (response: PanelLoginResponse) => {
+    if (response.status === 'mfa_required') {
+      setChallengeToken(response.challengeToken);
+      setTotp('');
+      setError(null);
+      return;
+    }
+    completeLogin(response);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setSubmitting(true);
-
+    setError(null);
     try {
-      const normalizedUsername = normalizeUsername(username);
-      const trimmedPassword = trimValue(password);
-      const totpCode = panelLoginStep === 2 ? trimValue(totp) : undefined;
-      const response =
-        loginMode === 'admin'
-          ? await loginAPI(normalizedUsername, trimmedPassword, totpCode)
-          : await loginStaffAPI(normalizedUsername, trimmedPassword, totpCode);
-      completeLogin(response.accessToken, response.user);
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
-
-      if (panelLoginStep === 1 && message === 'TOTP code is required') {
-        setPanelLoginStep(2);
-        toastUtils.info('Please enter your authenticator code');
-      } else {
-        toastUtils.error(message);
+      const response = challengeToken
+        ? await verifyPanelMfaAPI(challengeToken, trimValue(totp))
+        : await loginPanelAPI(normalizeUsername(username), trimValue(password));
+      handleResponse(response);
+    } catch (caught) {
+      const message = loginErrorMessage(caught);
+      setError(message);
+      if (isApiError(caught) && caught.message === 'AUTH_CHALLENGE_EXPIRED') {
+        setChallengeToken(null);
+        setTotp('');
       }
     } finally {
       setSubmitting(false);
@@ -79,71 +100,50 @@ export default function LoginPage() {
   };
 
   return (
-    <Box component="form" onSubmit={handleSubmit}>
+    <Box component="form" onSubmit={handleSubmit} noValidate>
       <Typography variant="h4" fontWeight={700} gutterBottom>
-        Welcome back
+        {challengeToken ? 'Verify your identity' : 'Welcome back'}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Enter your credentials to access your account
+        {challengeToken
+          ? 'Enter the six-digit code from your authenticator app.'
+          : 'Use your Arena360 account. We’ll open the right workspace automatically.'}
       </Typography>
 
-      <ToggleButtonGroup
-        value={loginMode}
-        exclusive
-        fullWidth
-        onChange={(_event, value: LoginMode | null) => {
-          if (value) {
-            setLoginMode(value);
-            setPanelLoginStep(1);
-            setTotp('');
-          }
-        }}
-        sx={{ mb: 3 }}
-      >
-        <ToggleButton value="admin">Admin</ToggleButton>
-        <ToggleButton value="staff">Staff</ToggleButton>
-      </ToggleButtonGroup>
+      {error ? (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      ) : null}
 
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-        Staff login starts your shift and unlocks POS and counter tools.
-      </Typography>
-
-      {panelLoginStep === 1 && (
+      {!challengeToken ? (
         <>
           <UsernameField
             fullWidth
-            variant="outlined"
             label="Username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(event) => setUsername(event.target.value)}
+            autoComplete="username"
             sx={{ mb: 2.5 }}
-            inputProps={{
-              autoComplete: 'new-password',
-              form: { autoComplete: 'off' },
-            }}
+            required
           />
-
           <PasswordField
             fullWidth
             label="Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
             sx={{ mb: 1.5 }}
-            inputProps={{
-              autoComplete: 'new-password',
-              form: { autoComplete: 'off' },
-            }}
+            required
           />
         </>
-      )}
-
-      {panelLoginStep === 2 && (
+      ) : (
         <OtpField
+          autoFocus
           fullWidth
-          variant="outlined"
-          label="TOTP Code"
+          label="Authenticator code"
           value={totp}
-          onChange={(e) => setTotp(e.target.value)}
+          onChange={(event) => setTotp(event.target.value)}
           sx={{ mb: 1.5 }}
         />
       )}
@@ -153,23 +153,28 @@ export default function LoginPage() {
         variant="contained"
         fullWidth
         size="large"
-        disabled={submitting}
-        sx={{ py: 1.5, mb: 3, mt: 2 }}
+        disabled={submitting || (challengeToken ? totp.trim().length < 6 : !username || !password)}
+        sx={{ py: 1.5, mb: 2, mt: 2 }}
       >
-        {panelLoginStep === 2 ? 'Verify TOTP' : 'Sign in'}
+        {submitting ? 'Please wait…' : challengeToken ? 'Verify and continue' : 'Continue'}
       </FormButton>
 
-      {panelLoginStep === 2 && (
+      {challengeToken ? (
         <FormButton
+          type="button"
           variant="text"
           fullWidth
-          onClick={() => setPanelLoginStep(1)}
           disabled={submitting}
-          sx={{ mb: 3 }}
+          onClick={() => {
+            setChallengeToken(null);
+            setTotp('');
+            setError(null);
+            toastUtils.info('Enter your credentials to start again.');
+          }}
         >
-          Back to login
+          Back to sign in
         </FormButton>
-      )}
+      ) : null}
     </Box>
   );
 }

@@ -58,6 +58,7 @@ import {
   type OutstandingTxn,
   settleCredit,
 } from '../../../services/credit';
+import { getActiveShift } from '../../../services/shifts';
 import { formatDisplayDateTime } from '../../../utils/date';
 
 interface SettlementLine {
@@ -73,8 +74,14 @@ export default function CreditPage() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
-  const { can } = usePermissions();
-  const canSettle = can(Permission.CreditWrite);
+  const { can, isStaff } = usePermissions();
+  const { data: activeShift, isLoading: shiftLoading } = useQuery({
+    queryKey: ['activeShift'],
+    queryFn: getActiveShift,
+    retry: false,
+    enabled: isStaff,
+  });
+  const canSettle = can(Permission.CreditWrite) && isStaff && Boolean(activeShift);
 
   const [settlePlayer, setSettlePlayer] = useState<CreditPlayerRow | null>(null);
   const [lines, setLines] = useState<SettlementLine[]>([]);
@@ -334,6 +341,12 @@ export default function CreditPage() {
             : 'Failed to load credit portfolio summary'}
         </Alert>
       )}
+
+      {isStaff && !shiftLoading && !activeShift ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Set up your shift and cash register before settling a running tab.
+        </Alert>
+      ) : null}
 
       {summaryLoading ? (
         <Grid container spacing={2} sx={{ mb: 3 }}>

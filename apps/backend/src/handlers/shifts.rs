@@ -9,11 +9,79 @@ use crate::middleware::{AdminOrStaff, AdminUser, StaffUser};
 use crate::models::{
     ClockInDto, ClockOutDto, CloseCashRegisterDto, InitiateDepositDto, Shift, ShiftCloseDto,
     ShiftCloseResponseDto, ShiftFilterDto, ShiftHandoverDto, ShiftHandoverResponseDto,
+    ShiftStartContextDto, ShiftStartResponseDto, StartShiftDto,
 };
 use crate::openapi::responses::{
     ErrorEnvelope, ShiftCloseResponseEnvelope, ShiftEnvelope, ShiftHandoverResponseEnvelope,
-    ShiftPaginationEnvelope,
+    ShiftPaginationEnvelope, ShiftStartContextEnvelope, ShiftStartResponseEnvelope,
 };
+
+#[utoipa::path(
+    get,
+    path = "/shifts/start-context",
+    responses(
+        (status = 200, description = "Resumable shift or carry-forward opening float", body = ShiftStartContextEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Staff only", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "shifts"
+)]
+pub async fn start_context(
+    StaffUser(claims): StaffUser,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<ShiftStartContextDto> {
+    let user_id: Uuid = claims
+        .userId
+        .parse()
+        .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
+    if let Some(shift) = state.shifts.get_active(user_id).await? {
+        if let Ok(register_with_entries) = state.cash_registers.get_by_shift(shift.id).await {
+            let register = register_with_entries.register;
+            if register.status == "open" {
+                return ok(ShiftStartContextDto {
+                    mode: "resume".to_string(),
+                    suggested_opening_balance: register.opening_balance,
+                    shift: Some(shift),
+                    cash_register: Some(register),
+                });
+            }
+        }
+    }
+    let suggested = state.cash_registers.preview_carry_forward_balance().await?;
+    ok(ShiftStartContextDto {
+        mode: "start".to_string(),
+        shift: None,
+        cash_register: None,
+        suggested_opening_balance: suggested,
+    })
+}
+
+#[utoipa::path(
+    post,
+    path = "/shifts/start",
+    request_body = StartShiftDto,
+    responses(
+        (status = 200, description = "Shift and register started or resumed atomically", body = ShiftStartResponseEnvelope),
+        (status = 400, description = "Invalid opening balance", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Staff only", body = ErrorEnvelope),
+        (status = 409, description = "Concurrent start conflict", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "shifts"
+)]
+pub async fn start_shift(
+    StaffUser(claims): StaffUser,
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<StartShiftDto>,
+) -> ApiResult<ShiftStartResponseDto> {
+    let user_id: Uuid = claims
+        .userId
+        .parse()
+        .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
+    ok(state.shifts.start_confirmed(user_id, dto, user_id).await?)
+}
 
 #[utoipa::path(
     post,

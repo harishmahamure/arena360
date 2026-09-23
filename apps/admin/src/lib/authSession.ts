@@ -11,7 +11,7 @@ export interface AuthExpiredContext {
 
 const TOKEN_AUTH_MESSAGES = new Set(['Invalid or expired token', 'Authentication required']);
 
-const CREDENTIAL_ENTRY_PATHS = ['/auth/login/admin', '/auth/login/staff'];
+const CREDENTIAL_ENTRY_PATHS = ['/auth/login/admin', '/auth/login/staff', '/auth/login/panel'];
 
 interface JwtPayload {
   userId?: string;

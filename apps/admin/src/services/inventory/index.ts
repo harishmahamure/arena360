@@ -1,3 +1,4 @@
+import type { components } from '@gaming-cafe/api-types';
 import { http } from '@gaming-cafe/utils';
 
 export interface ListResponse<T> {
@@ -19,6 +20,7 @@ export interface InventoryLocation {
 
 export interface LocationStockRow {
   locationId: string;
+  locationName: string;
   productId: string;
   quantityPieces: number;
   productName?: string | null;
@@ -130,6 +132,29 @@ export interface ReceiptSummaryRow {
   estimatedCost: number;
 }
 
+export type StockMovementRow = components['schemas']['StockMovementRow'];
+export type InventoryOverview = components['schemas']['InventoryOverviewDto'];
+
+export type PurchaseOrderStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
+  | 'rejected'
+  | 'ordered'
+  | 'partially_received'
+  | 'received'
+  | 'cancelled';
+
+export type PurchaseOrderLine = components['schemas']['PurchaseOrderLine'];
+type GeneratedPurchaseOrder = components['schemas']['PurchaseOrder'];
+export type PurchaseOrder = Omit<GeneratedPurchaseOrder, 'status'> & {
+  status: PurchaseOrderStatus;
+};
+export type PurchaseOrderWithLines = PurchaseOrder & { lines: PurchaseOrderLine[] };
+export type PurchaseOrderLineInput = components['schemas']['PurchaseOrderLineInput'];
+export type InventoryReorderRule = components['schemas']['InventoryReorderRule'];
+export type ReorderSuggestion = components['schemas']['ReorderSuggestion'];
+
 export const getInventoryLocations = async (filters: Record<string, unknown> = {}) =>
   http.get<ListResponse<InventoryLocation>>('/inventory/locations', { params: filters });
 
@@ -163,6 +188,7 @@ export const createStockReceipt = async (data: {
   locationId: string;
   vendorId?: string;
   notes?: string;
+  exceptionalReason: string;
   lines: { productId: string; boxQuantity: number }[];
 }) => http.post<StockReceipt>('/inventory/receipts', data);
 
@@ -212,3 +238,66 @@ export const getWasteSummary = async (filters: Record<string, unknown> = {}) =>
 
 export const getReceiptSummary = async (filters: Record<string, unknown> = {}) =>
   http.get<ReceiptSummaryRow[]>('/inventory/receipts/summary', { params: filters });
+
+export const getInventoryOverview = async () => http.get<InventoryOverview>('/inventory/overview');
+
+export const getStockMovements = async (filters: Record<string, unknown> = {}) =>
+  http.get<ListResponse<StockMovementRow>>('/inventory/movements', { params: filters });
+
+export const getPurchaseOrders = async (filters: Record<string, unknown> = {}) =>
+  http.get<ListResponse<PurchaseOrder>>('/inventory/purchase-orders', { params: filters });
+
+export const getPurchaseOrder = async (id: string) =>
+  http.get<PurchaseOrderWithLines>(`/inventory/purchase-orders/${id}`);
+
+export const createPurchaseOrder = async (data: {
+  vendorId: string;
+  destinationLocationId: string;
+  expectedDeliveryDate?: string;
+  discount?: number;
+  freight?: number;
+  notes?: string;
+  lines: PurchaseOrderLineInput[];
+}) => http.post<PurchaseOrderWithLines>('/inventory/purchase-orders', data);
+
+export const updatePurchaseOrder = async (
+  id: string,
+  data: Partial<PurchaseOrder> & { version: number; lines?: PurchaseOrderLineInput[] },
+) => http.patch<PurchaseOrderWithLines>(`/inventory/purchase-orders/${id}`, data);
+
+export const submitPurchaseOrder = async (id: string) =>
+  http.post<PurchaseOrderWithLines>(`/inventory/purchase-orders/${id}/submit`, {});
+export const approvePurchaseOrder = async (id: string) =>
+  http.post<PurchaseOrderWithLines>(`/inventory/purchase-orders/${id}/approve`, {});
+export const rejectPurchaseOrder = async (id: string, reason: string) =>
+  http.post<PurchaseOrderWithLines>(`/inventory/purchase-orders/${id}/reject`, { reason });
+export const markPurchaseOrderOrdered = async (id: string) =>
+  http.post<PurchaseOrderWithLines>(`/inventory/purchase-orders/${id}/mark-ordered`, {});
+export const cancelPurchaseOrder = async (id: string) =>
+  http.post<PurchaseOrderWithLines>(`/inventory/purchase-orders/${id}/cancel`, {});
+
+export const receivePurchaseOrder = async (
+  id: string,
+  data: {
+    invoiceReference: string;
+    paymentMethod: string;
+    paymentAccount?: string;
+    receiptDate?: string;
+    notes?: string;
+    lines: { purchaseOrderLineId: string; acceptedBoxes: number; rejectedBoxes?: number }[];
+  },
+) => http.post(`/inventory/purchase-orders/${id}/receipts`, data);
+
+export const getReorderRules = async () =>
+  http.get<InventoryReorderRule[]>('/inventory/reorder-rules');
+export const saveReorderRule = async (data: {
+  locationId: string;
+  productId: string;
+  minimumPieces: number;
+  targetPieces: number;
+  preferredVendorId?: string;
+  leadTimeDays?: number;
+  isActive?: boolean;
+}) => http.post<InventoryReorderRule>('/inventory/reorder-rules', data);
+export const getReorderSuggestions = async () =>
+  http.get<ReorderSuggestion[]>('/inventory/reorder-suggestions');

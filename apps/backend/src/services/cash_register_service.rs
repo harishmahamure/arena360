@@ -5,13 +5,13 @@ use uuid::Uuid;
 use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::dto::PaginationResult;
 use crate::error::AppError;
+use crate::models::activity_kind;
 use crate::models::{
     CashRegister, CashRegisterEntry, CashRegisterFilterDto, CashRegisterWithEntries,
     CloseCashRegisterDto, CreateCashRegisterEntryDto, OpenCashRegisterDto,
 };
 use crate::repositories::CashRegisterRepository;
-use crate::services::{NotificationService, RecordNotification, Recipients};
-use crate::models::activity_kind;
+use crate::services::{NotificationService, Recipients, RecordNotification};
 
 const OPENING_BALANCE_EPSILON: f64 = 0.01;
 
@@ -38,11 +38,7 @@ impl CashRegisterService {
     }
 
     async fn invalidate_register(&self, register_id: Uuid) -> Result<(), AppError> {
-        cache::invalidate(
-            &*self.cache,
-            &[keys::cash_register_totals(&register_id)],
-        )
-        .await
+        cache::invalidate(&*self.cache, &[keys::cash_register_totals(&register_id)]).await
     }
 
     pub async fn open(
@@ -273,6 +269,13 @@ impl CashRegisterService {
         };
         self.ensure_open_for_shift(new_shift_id, actor_id, opening)
             .await
+    }
+
+    pub async fn preview_carry_forward_balance(&self) -> Result<f64, AppError> {
+        match self.repo.find_last_closed_register().await? {
+            Some(ref register) => self.compute_carry_forward_opening(register).await,
+            None => Ok(0.0),
+        }
     }
 
     /// Carry forward opening from a specific closed register (e.g. handover predecessor).

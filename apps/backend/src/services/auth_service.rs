@@ -4,12 +4,14 @@ use bcrypt::verify;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::dto::{
-    ActiveSessionDto, AuthResponseDto, JwtUserClaims, LoginDto, RateLimitClaims, StaffLoginDto,
+    ActiveSessionDto, AuthResponseDto, JwtUserClaims, LoginDto, PanelLoginResponseDto, PanelMfaDto,
+    RateLimitClaims, StaffLoginDto,
 };
 use crate::error::AppError;
 use crate::models::{deduction_profile::DeductionProfile, Device, User};
@@ -20,6 +22,7 @@ use crate::services::{BalanceService, UserService};
 use crate::validation::{normalize_username, trim_secret};
 
 pub struct AuthService {
+    pool: PgPool,
     users: Arc<UserService>,
     session_repo: SessionRepository,
     shift_repo: ShiftRepository,
@@ -35,6 +38,7 @@ impl AuthService {
         users: Arc<UserService>,
     ) -> Self {
         Self {
+            pool: pool.clone(),
             users,
             session_repo: SessionRepository::new(pool.clone()),
             shift_repo: ShiftRepository::new(pool),
@@ -70,6 +74,145 @@ impl AuthService {
             user: user.to_auth_user(),
             shiftId: None,
             activeSession: None,
+        })
+    }
+
+    pub async fn login_panel(&self, dto: StaffLoginDto) -> Result<PanelLoginResponseDto, AppError> {
+        let user = self
+            .authenticate_panel(
+                &normalize_username(&dto.username),
+                &trim_secret(&dto.password),
+            )
+            .await
+            .map_err(|_| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
+
+        if user.totp_enabled {
+            let now = Utc::now();
+            let expires_at = now + Duration::minutes(5);
+            let challenge_token = format!(
+                "pch_{}_{}",
+                Uuid::new_v4().simple(),
+                Uuid::new_v4().simple()
+            );
+            let token_hash = Self::panel_challenge_hash(&challenge_token);
+            sqlx::query(
+                r#"INSERT INTO panel_auth_challenges
+                    ("tokenHash", "userId", "expiresAt", attempts, "createdAt")
+                   VALUES ($1, $2, $3, 0, NOW())
+                   ON CONFLICT ("userId") DO UPDATE SET
+                     "tokenHash" = EXCLUDED."tokenHash",
+                     "expiresAt" = EXCLUDED."expiresAt",
+                     attempts = 0,
+                     "createdAt" = NOW()"#,
+            )
+            .bind(token_hash)
+            .bind(user.id)
+            .bind(expires_at)
+            .execute(&self.pool)
+            .await?;
+            return Ok(PanelLoginResponseDto::MfaRequired {
+                challenge_token,
+                expires_at,
+            });
+        }
+
+        self.panel_authenticated_response(&user)
+    }
+
+    pub async fn verify_panel_mfa(
+        &self,
+        dto: PanelMfaDto,
+    ) -> Result<PanelLoginResponseDto, AppError> {
+        let token_hash = Self::panel_challenge_hash(dto.challengeToken.trim());
+        let mut tx = self.pool.begin().await?;
+        let challenge: Option<(Uuid, chrono::DateTime<Utc>, i32)> = sqlx::query_as(
+            r#"SELECT "userId", "expiresAt", attempts
+               FROM panel_auth_challenges WHERE "tokenHash" = $1 FOR UPDATE"#,
+        )
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((user_id, expires_at, attempts)) = challenge else {
+            return Err(AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"));
+        };
+        if expires_at <= Utc::now() || attempts >= 5 {
+            sqlx::query(r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#)
+                .bind(&token_hash)
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            return Err(AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"));
+        }
+        let user = self
+            .users
+            .get_by_id(user_id)
+            .await
+            .map_err(|_| AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"))?;
+
+        if !matches!(user.role.as_deref(), Some("admin" | "staff")) || !user.is_active {
+            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
+        }
+        let secret = user
+            .totp_secret
+            .as_deref()
+            .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_MFA"))?;
+        if !verify_totp_code(secret, dto.code.trim(), &user.username)? {
+            if attempts >= 4 {
+                sqlx::query(r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#)
+                    .bind(&token_hash)
+                    .execute(&mut *tx)
+                    .await?;
+            } else {
+                sqlx::query(
+                    r#"UPDATE panel_auth_challenges SET attempts = attempts + 1
+                       WHERE "tokenHash" = $1"#,
+                )
+                .bind(&token_hash)
+                .execute(&mut *tx)
+                .await?;
+            }
+            tx.commit().await?;
+            return Err(AppError::unauthorized_code("AUTH_INVALID_MFA"));
+        }
+
+        sqlx::query(r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#)
+            .bind(&token_hash)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        self.panel_authenticated_response(&user)
+    }
+
+    fn panel_challenge_hash(token: &str) -> String {
+        hex::encode(Sha256::digest(token.as_bytes()))
+    }
+
+    async fn authenticate_panel(&self, username: &str, password: &str) -> Result<User, AppError> {
+        let user = self
+            .users
+            .find_by_username_for_auth(username)
+            .await?
+            .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
+        if !matches!(user.role.as_deref(), Some("admin" | "staff")) {
+            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
+        }
+        self.verify_password(password, user.password_hash.as_deref())?;
+        self.ensure_active(&user)?;
+        Ok(user)
+    }
+
+    fn panel_authenticated_response(&self, user: &User) -> Result<PanelLoginResponseDto, AppError> {
+        let token = self.generate_access_token(user)?;
+        let next_step = if user.role.as_deref() == Some("staff") {
+            "shift_setup"
+        } else {
+            "dashboard"
+        };
+        Ok(PanelLoginResponseDto::Authenticated {
+            access_token: token,
+            user: user.to_auth_user(),
+            next_step: next_step.to_string(),
         })
     }
 
@@ -639,6 +782,16 @@ mod access_token_tests {
             updated_at: now,
             deleted_at: None,
         }
+    }
+
+    #[test]
+    fn panel_challenge_hash_is_deterministic_and_does_not_store_the_token() {
+        let token = "pch_private-single-use-token";
+        let hash = AuthService::panel_challenge_hash(token);
+        assert_eq!(hash.len(), 64);
+        assert_ne!(hash, token);
+        assert_eq!(hash, AuthService::panel_challenge_hash(token));
+        assert_ne!(hash, AuthService::panel_challenge_hash("pch_other-token"));
     }
 
     #[tokio::test]

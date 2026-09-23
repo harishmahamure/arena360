@@ -16,6 +16,7 @@ use crate::openapi::responses::ErrorEnvelope;
 
 #[utoipa::path(
     get,
+    operation_id = "kiosk_list_products",
     path = "/kiosk/products",
     responses(
         (status = 200, description = "Kiosk product menu"),
@@ -140,6 +141,12 @@ pub async fn update_order(
     Json(dto): Json<UpdateKioskOrderDto>,
 ) -> ApiResult<KioskOrderWithItems> {
     require_staff_for_counter(&claims)?;
+    let user_id = claims.user_id_uuid().ok_or_else(|| {
+        crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
+    })?;
+    state.shifts.get_active(user_id).await?.ok_or_else(|| {
+        crate::error::AppError::BadRequest("No active shift found for current user".to_string())
+    })?;
     let order = state.kiosk_orders.update_status(id, &dto.status).await?;
     ok(order)
 }

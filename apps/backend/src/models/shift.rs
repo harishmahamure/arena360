@@ -31,6 +31,31 @@ pub struct ClockInDto {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct StartShiftDto {
+    pub opening_balance: f64,
+    pub opening_denominations: Option<serde_json::Value>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftStartContextDto {
+    pub mode: String,
+    pub shift: Option<Shift>,
+    pub cash_register: Option<CashRegister>,
+    pub suggested_opening_balance: f64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftStartResponseDto {
+    pub resumed: bool,
+    pub shift: Shift,
+    pub cash_register: CashRegister,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ClockOutDto {
     pub notes: Option<String>,
 }

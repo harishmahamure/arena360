@@ -73,6 +73,10 @@ macro_rules! pagination_envelope {
 success_envelope!(HealthEnvelope, crate::handlers::health::HealthData);
 success_envelope!(LiveHealthEnvelope, crate::handlers::health::LiveHealthData);
 success_envelope!(AuthResponseEnvelope, AuthResponseDto);
+success_envelope!(
+    PanelLoginResponseEnvelope,
+    crate::dto::PanelLoginResponseDto
+);
 success_envelope!(RegisterResponseEnvelope, RegisterResponseDto);
 success_envelope!(KioskRegisterResponseEnvelope, KioskRegisterResponseDto);
 success_envelope!(DashboardStatsEnvelope, DashboardStatsDto);
@@ -127,6 +131,14 @@ success_envelope!(ConfigurationEnvelope, crate::models::Configuration);
 success_envelope!(ConfigurationListEnvelope, Vec<crate::models::Configuration>);
 success_envelope!(ShiftEnvelope, crate::models::Shift);
 success_envelope!(ShiftActiveEnvelope, Option<crate::models::Shift>);
+success_envelope!(
+    ShiftStartContextEnvelope,
+    crate::models::ShiftStartContextDto
+);
+success_envelope!(
+    ShiftStartResponseEnvelope,
+    crate::models::ShiftStartResponseDto
+);
 
 pagination_envelope!(DevicePaginationEnvelope, DevicePaginationPage, Device);
 pagination_envelope!(PlanPaginationEnvelope, PlanPaginationPage, Plan);
@@ -258,6 +270,37 @@ pagination_envelope!(
     LocationStockRow
 );
 success_envelope!(StockReceiptEnvelope, StockReceipt);
+success_envelope!(
+    InventoryOverviewEnvelope,
+    crate::models::InventoryOverviewDto
+);
+success_envelope!(PurchaseOrderEnvelope, crate::models::PurchaseOrderWithLines);
+success_envelope!(
+    PurchaseOrderReceiptEnvelope,
+    crate::models::ReceivePurchaseOrderResponse
+);
+success_envelope!(
+    InventoryReorderRuleEnvelope,
+    crate::models::InventoryReorderRule
+);
+success_envelope!(
+    InventoryReorderRuleListEnvelope,
+    Vec<crate::models::InventoryReorderRule>
+);
+success_envelope!(
+    ReorderSuggestionListEnvelope,
+    Vec<crate::models::ReorderSuggestion>
+);
+pagination_envelope!(
+    PurchaseOrderPaginationEnvelope,
+    PurchaseOrderPaginationPage,
+    crate::models::PurchaseOrder
+);
+pagination_envelope!(
+    StockMovementPaginationEnvelope,
+    StockMovementPaginationPage,
+    crate::models::StockMovementRow
+);
 success_envelope!(StockReceiptWithLinesEnvelope, StockReceiptWithLines);
 pagination_envelope!(
     StockReceiptPaginationEnvelope,

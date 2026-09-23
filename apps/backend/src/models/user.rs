@@ -39,6 +39,7 @@ impl User {
         crate::dto::AuthUserDto {
             id: self.id.to_string(),
             username: self.username.clone(),
+            email: self.email.clone(),
             phoneNumber: self.phone_number.clone(),
             firstName: self.first_name.clone(),
             lastName: self.last_name.clone(),
