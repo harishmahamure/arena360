@@ -92,40 +92,31 @@ impl DeliveryService {
             .collect())
     }
 
-    /// Retention: remove old rows.
-    pub async fn cleanup(
-        pool: &PgPool,
-        acked_days: i64,
-        unacked_days: i64,
-    ) -> Result<u64, AppError> {
-        let acked_cutoff = Utc::now() - chrono::Duration::days(acked_days);
-        let unacked_cutoff = Utc::now() - chrono::Duration::days(unacked_days);
-
-        let r1 = sqlx::query(
-            r#"DELETE FROM realtime_deliveries WHERE ack_at IS NOT NULL AND ack_at < $1"#,
-        )
-        .bind(acked_cutoff)
-        .execute(pool)
-        .await?;
-
-        let r2 = sqlx::query(
-            r#"DELETE FROM realtime_deliveries
-               WHERE ack_at IS NULL AND delivered_at IS NOT NULL AND delivered_at < $1"#,
-        )
-        .bind(unacked_cutoff)
-        .execute(pool)
-        .await?;
-
-        let r3 = sqlx::query(
+    /// Keep a rolling outbox window. Delivery rows are removed by ON DELETE CASCADE.
+    pub async fn cleanup(pool: &PgPool, retention_days: i64) -> Result<u64, AppError> {
+        let cutoff = Utc::now() - chrono::Duration::days(retention_days);
+        let disallowed_notifications = sqlx::query(
             r#"DELETE FROM realtime_outbox o
-               WHERE NOT EXISTS (
-                   SELECT 1 FROM realtime_deliveries d WHERE d.outbox_id = o.id
-               ) AND o.created_at < $1"#,
+               WHERE o.event_type = 'notification.created'
+                 AND (
+                     o.payload->>'kind' IS DISTINCT FROM 'kiosk_order_placed'
+                     OR NOT EXISTS (
+                         SELECT 1 FROM users u
+                         WHERE u.id = o.audience_user_id
+                           AND u.role = 'staff'
+                           AND u."isActive" = true
+                           AND u."deletedAt" IS NULL
+                     )
+                 )"#,
         )
-        .bind(acked_cutoff)
         .execute(pool)
         .await?;
 
-        Ok(r1.rows_affected() + r2.rows_affected() + r3.rows_affected())
+        let expired = sqlx::query(r#"DELETE FROM realtime_outbox WHERE created_at < $1"#)
+            .bind(cutoff)
+            .execute(pool)
+            .await?;
+
+        Ok(disallowed_notifications.rows_affected() + expired.rows_affected())
     }
 }

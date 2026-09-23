@@ -53,7 +53,7 @@ impl ShiftService {
         let shift = self.repo.create(user_id, notes.clone(), actor_id).await?;
         if let Some(ref notifications) = self.notifications {
             let _ = notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::SHIFT_CLOCK_IN.to_string(),
                     title: "Shift started".to_string(),
                     summary: notes,
@@ -140,7 +140,7 @@ impl ShiftService {
         let shift = self.repo.close(active.id, dto.notes.clone(), actor_id).await?;
         if let Some(ref notifications) = self.notifications {
             let _ = notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::SHIFT_CLOCK_OUT.to_string(),
                     title: "Shift ended".to_string(),
                     summary: dto.notes.clone(),

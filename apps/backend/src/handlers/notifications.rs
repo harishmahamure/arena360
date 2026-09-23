@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{ok, ApiResult, PaginationResult};
-use crate::middleware::AdminOrStaff;
+use crate::middleware::{AdminOrStaff, StaffUser};
 use crate::models::{
     ActivityLog, ActivityLogFilterDto, NotificationFilterDto, NotificationItem, UnreadCountDto,
 };
@@ -28,7 +28,7 @@ use crate::openapi::responses::{
     tag = "notifications"
 )]
 pub async fn list_notifications(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<NotificationFilterDto>,
 ) -> ApiResult<PaginationResult<NotificationItem>> {
@@ -51,7 +51,7 @@ pub async fn list_notifications(
     tag = "notifications"
 )]
 pub async fn unread_count(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<NotificationFilterDto>,
 ) -> ApiResult<UnreadCountDto> {
@@ -77,7 +77,7 @@ pub async fn unread_count(
     tag = "notifications"
 )]
 pub async fn mark_read(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<UnreadCountDto> {
@@ -108,7 +108,7 @@ pub async fn mark_read(
     tag = "notifications"
 )]
 pub async fn mark_all_read(
-    AdminOrStaff(claims): AdminOrStaff,
+    StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<UnreadCountDto> {
     let user_id = Uuid::parse_str(&claims.userId)

@@ -364,7 +364,7 @@ impl InventoryService {
                 .await;
             let _ = self
                 .notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::INVENTORY_TRANSFER_REQUESTED.to_string(),
                     title: "Stock transfer submitted".to_string(),
                     summary: Some("Awaiting admin approval".to_string()),
@@ -520,7 +520,7 @@ impl InventoryService {
                 .await;
             let _ = self
                 .notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::INVENTORY_WASTE_RECORDED.to_string(),
                     title: "Stock waste recorded".to_string(),
                     summary: Some("Awaiting admin approval".to_string()),

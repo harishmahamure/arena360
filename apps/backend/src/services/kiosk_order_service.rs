@@ -293,7 +293,7 @@ impl KioskOrderService {
             let details = self.repo.get_with_details(order.id).await?;
             let _ = self
                 .notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::KIOSK_ORDER_CANCELLED.to_string(),
                     title: format!(
                         "Order cancelled — {}",
@@ -323,7 +323,7 @@ impl KioskOrderService {
         let details = self.repo.get_with_details(order.id).await?;
         let _ = self
             .notifications
-            .record(RecordNotification {
+            .record_activity(RecordNotification {
                 kind: activity_kind::KIOSK_ORDER_FULFILLED.to_string(),
                 title: format!(
                     "Order fulfilled — {}",

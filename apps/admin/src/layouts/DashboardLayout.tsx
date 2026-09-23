@@ -167,7 +167,7 @@ export default function DashboardLayout() {
         onLogout={handleLogout}
         appBarQuickActions={appBarQuickActions}
         settingsPath={isAdmin && can(Permission.ConfigRead) ? '/settings' : undefined}
-        notificationSlot={<NotificationBell />}
+        notificationSlot={isStaff ? <NotificationBell /> : undefined}
       >
         <Outlet key={outletKey} />
       </BaseDashboardLayout>

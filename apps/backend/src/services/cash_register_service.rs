@@ -65,7 +65,7 @@ impl CashRegisterService {
         self.invalidate_register(result.id).await?;
         if let Some(ref notifications) = self.notifications {
             let _ = notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::CASH_REGISTER_OPENED.to_string(),
                     title: "Cash register opened".to_string(),
                     summary: None,
@@ -104,7 +104,7 @@ impl CashRegisterService {
         self.invalidate_register(id).await?;
         if let Some(ref notifications) = self.notifications {
             let _ = notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::CASH_REGISTER_CLOSED.to_string(),
                     title: "Cash register closed".to_string(),
                     summary: dto.notes.clone(),

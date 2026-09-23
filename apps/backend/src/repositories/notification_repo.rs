@@ -8,6 +8,8 @@ use crate::models::{
 };
 use crate::cache::keys::MAX_INBOX_NOTIFICATIONS;
 
+const RETAINED_NOTIFICATION_KIND: &str = activity_kind::KIOSK_ORDER_PLACED;
+
 #[derive(Clone)]
 pub struct NotificationRepository {
     pool: PgPool,
@@ -73,20 +75,10 @@ impl NotificationRepository {
         Ok(notification_ids)
     }
 
-    pub async fn list_admin_user_ids(&self) -> Result<Vec<Uuid>, AppError> {
-        let rows: Vec<(Uuid,)> = sqlx::query_as(
-            r#"SELECT id FROM users
-               WHERE role = 'admin' AND "isActive" = true AND "deletedAt" IS NULL"#,
-        )
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows.into_iter().map(|r| r.0).collect())
-    }
-
     pub async fn list_staff_user_ids(&self) -> Result<Vec<Uuid>, AppError> {
         let rows: Vec<(Uuid,)> = sqlx::query_as(
             r#"SELECT id FROM users
-               WHERE role IN ('admin', 'staff') AND "isActive" = true AND "deletedAt" IS NULL"#,
+               WHERE role = 'staff' AND "isActive" = true AND "deletedAt" IS NULL"#,
         )
         .fetch_all(&self.pool)
         .await?;
@@ -140,6 +132,9 @@ impl NotificationRepository {
                WHERE un."userId" = "#,
         );
         count_builder.push_bind(user_id);
+        count_builder.push(r#" AND al.kind::text = "#);
+        count_builder.push_bind(RETAINED_NOTIFICATION_KIND);
+        count_builder.push(r#" AND un."createdAt" >= NOW() - INTERVAL '7 days'"#);
         if unread_only {
             count_builder.push(r#" AND un."readAt" IS NULL"#);
         }
@@ -164,6 +159,9 @@ impl NotificationRepository {
                WHERE un."userId" = "#,
         );
         list_builder.push_bind(user_id);
+        list_builder.push(r#" AND al.kind::text = "#);
+        list_builder.push_bind(RETAINED_NOTIFICATION_KIND);
+        list_builder.push(r#" AND un."createdAt" >= NOW() - INTERVAL '7 days'"#);
         if unread_only {
             list_builder.push(r#" AND un."readAt" IS NULL"#);
         }
@@ -196,20 +194,27 @@ impl NotificationRepository {
                 r#"SELECT COUNT(*) FROM user_notifications un
                    INNER JOIN activity_log al ON al.id = un."activityId"
                    WHERE un."userId" = $1 AND un."readAt" IS NULL
-                     AND al.kind::text = ANY($2)"#,
+                     AND al.kind::text = ANY($2)
+                     AND al.kind::text = $3
+                     AND un."createdAt" >= NOW() - INTERVAL '7 days'"#,
             )
             .bind(user_id)
             .bind(kinds)
+            .bind(RETAINED_NOTIFICATION_KIND)
             .fetch_one(&self.pool)
             .await?;
             return Ok(row.0);
         }
 
         let row: (i64,) = sqlx::query_as(
-            r#"SELECT COUNT(*) FROM user_notifications
-               WHERE "userId" = $1 AND "readAt" IS NULL"#,
+            r#"SELECT COUNT(*) FROM user_notifications un
+               INNER JOIN activity_log al ON al.id = un."activityId"
+               WHERE un."userId" = $1 AND un."readAt" IS NULL
+                 AND al.kind::text = $2
+                 AND un."createdAt" >= NOW() - INTERVAL '7 days'"#,
         )
         .bind(user_id)
+        .bind(RETAINED_NOTIFICATION_KIND)
         .fetch_one(&self.pool)
         .await?;
         Ok(row.0)
@@ -218,10 +223,17 @@ impl NotificationRepository {
     pub async fn mark_read(&self, notification_id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
         let result = sqlx::query(
             r#"UPDATE user_notifications SET "readAt" = NOW()
-               WHERE id = $1 AND "userId" = $2 AND "readAt" IS NULL"#,
+               WHERE id = $1 AND "userId" = $2 AND "readAt" IS NULL
+                 AND "createdAt" >= NOW() - INTERVAL '7 days'
+                 AND EXISTS (
+                     SELECT 1 FROM activity_log al
+                     WHERE al.id = user_notifications."activityId"
+                       AND al.kind::text = $3
+                 )"#,
         )
         .bind(notification_id)
         .bind(user_id)
+        .bind(RETAINED_NOTIFICATION_KIND)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() > 0)
@@ -230,12 +242,42 @@ impl NotificationRepository {
     pub async fn mark_all_read(&self, user_id: Uuid) -> Result<i64, AppError> {
         let result = sqlx::query(
             r#"UPDATE user_notifications SET "readAt" = NOW()
-               WHERE "userId" = $1 AND "readAt" IS NULL"#,
+               WHERE "userId" = $1 AND "readAt" IS NULL
+                 AND "createdAt" >= NOW() - INTERVAL '7 days'
+                 AND EXISTS (
+                     SELECT 1 FROM activity_log al
+                     WHERE al.id = user_notifications."activityId"
+                       AND al.kind::text = $2
+                 )"#,
         )
         .bind(user_id)
+        .bind(RETAINED_NOTIFICATION_KIND)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() as i64)
+    }
+
+    pub async fn cleanup_notifications(&self, retention_days: i64) -> Result<u64, AppError> {
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(retention_days);
+        let result = sqlx::query(
+            r#"DELETE FROM user_notifications un
+               USING activity_log al, users u
+               WHERE un."activityId" = al.id
+                 AND un."userId" = u.id
+                 AND (
+                     al.kind::text <> $1
+                     OR u.role <> 'staff'
+                     OR u."isActive" = false
+                     OR u."deletedAt" IS NOT NULL
+                     OR un."createdAt" < $2
+                 )"#,
+        )
+        .bind(RETAINED_NOTIFICATION_KIND)
+        .bind(cutoff)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
     }
 
     pub async fn list_activity_log(

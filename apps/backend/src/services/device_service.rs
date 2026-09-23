@@ -303,7 +303,7 @@ impl DeviceService {
             .await;
         let _ = self
             .notifications
-            .record(RecordNotification {
+            .record_activity(RecordNotification {
                 kind: activity_kind::DEVICE_STATUS_CHANGED.to_string(),
                 title: format!("Device status: {}", device.status),
                 summary: Some(format!("{} is now {}", device.name, device.status)),

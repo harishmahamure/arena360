@@ -41,7 +41,7 @@ impl Dispatcher {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
             loop {
                 interval.tick().await;
-                match DeliveryService::cleanup(&pool_for_cleanup, 7, 30).await {
+                match DeliveryService::cleanup(&pool_for_cleanup, 7).await {
                     Ok(count) if count > 0 => {
                         tracing::info!("Realtime retention cleanup: removed {count} rows");
                     }

@@ -104,7 +104,7 @@ impl CashDepositService {
             .await;
         let _ = self
             .notifications
-            .record(RecordNotification {
+            .record_activity(RecordNotification {
                 kind: activity_kind::CASH_DEPOSIT_INITIATED.to_string(),
                 title: format!("Cash deposit initiated: ₹{:.2}", deposit.amount),
                 summary: Some("Pending admin approval".to_string()),

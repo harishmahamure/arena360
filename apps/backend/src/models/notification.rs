@@ -36,14 +36,7 @@ pub mod activity_kind {
     ];
 
     /// Actionable alerts for staff bell badge and default inbox filter.
-    pub const STAFF_IMPORTANT: &[&str] = &[
-        APPROVAL_REQUESTED,
-        APPROVAL_DECIDED,
-        KIOSK_ORDER_PLACED,
-        KIOSK_ORDER_CANCELLED,
-        CASH_DEPOSIT_INITIATED,
-        INVENTORY_TRANSFER_REQUESTED,
-    ];
+    pub const STAFF_IMPORTANT: &[&str] = &[KIOSK_ORDER_PLACED];
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]

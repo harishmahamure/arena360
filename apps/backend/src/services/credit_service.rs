@@ -205,7 +205,7 @@ impl CreditService {
                 "paymentMethod": dto.payment_method,
             });
             let _ = notifications
-                .record(RecordNotification {
+                .record_activity(RecordNotification {
                     kind: activity_kind::CREDIT_SETTLEMENT.to_string(),
                     title: format!("Credit settlement: ₹{total:.2}"),
                     summary: dto.notes.clone(),

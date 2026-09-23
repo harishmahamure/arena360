@@ -49,19 +49,9 @@ impl NotificationService {
         }
     }
 
-    async fn resolve_recipients(&self, recipients: Recipients) -> Result<Vec<Uuid>, AppError> {
-        match recipients {
-            Recipients::AllAdmins => self.repo.list_admin_user_ids().await,
-            Recipients::AllStaff => self.repo.list_staff_user_ids().await,
-            Recipients::Users(ids) => Ok(ids),
-            Recipients::AdminAndUsers(mut ids) => {
-                let mut admins = self.repo.list_admin_user_ids().await?;
-                ids.append(&mut admins);
-                ids.sort_unstable();
-                ids.dedup();
-                Ok(ids)
-            }
-        }
+    fn is_staff_kiosk_order_notification(input: &RecordNotification) -> bool {
+        input.kind == crate::models::activity_kind::KIOSK_ORDER_PLACED
+            && matches!(&input.recipients, Recipients::AllStaff)
     }
 
     async fn invalidate_user_cache(&self, user_id: Uuid) -> Result<(), AppError> {
@@ -77,9 +67,8 @@ impl NotificationService {
         Ok(())
     }
 
-    pub async fn record(&self, input: RecordNotification) -> Result<ActivityLog, AppError> {
-        let activity = self
-            .repo
+    async fn insert_activity(&self, input: &RecordNotification) -> Result<ActivityLog, AppError> {
+        self.repo
             .insert_activity(
                 &input.kind,
                 &input.title,
@@ -89,9 +78,29 @@ impl NotificationService {
                 input.entity_type.as_deref(),
                 input.entity_id,
             )
+            .await
+    }
+
+    /// Record an audit/activity entry without creating an inbox notification.
+    pub async fn record_activity(&self, input: RecordNotification) -> Result<ActivityLog, AppError> {
+        self.insert_activity(&input).await
+    }
+
+    /// Record an activity and notify staff when a player places an order from a kiosk.
+    ///
+    /// This policy is intentionally enforced here so future call sites cannot create
+    /// unrelated inbox notifications or accidentally notify admins.
+    pub async fn record(&self, input: RecordNotification) -> Result<ActivityLog, AppError> {
+        let should_notify = Self::is_staff_kiosk_order_notification(&input);
+        let activity = self
+            .insert_activity(&input)
             .await?;
 
-        let user_ids = self.resolve_recipients(input.recipients).await?;
+        if !should_notify {
+            return Ok(activity);
+        }
+
+        let user_ids = self.repo.list_staff_user_ids().await?;
         let notification_ids = self
             .repo
             .insert_user_notifications(activity.id, &user_ids)
@@ -126,6 +135,14 @@ impl NotificationService {
         }
 
         Ok(activity)
+    }
+
+    pub async fn cleanup(&self, retention_days: i64) -> Result<u64, AppError> {
+        let removed = self.repo.cleanup_notifications(retention_days).await?;
+        if removed > 0 {
+            self.cache.invalidate_prefix(keys::NOTIFICATIONS_PREFIX).await?;
+        }
+        Ok(removed)
     }
 
     pub async fn list_notifications(
@@ -206,7 +223,7 @@ impl NotificationService {
         payload: Value,
         actor_user_id: Option<Uuid>,
     ) -> Result<ActivityLog, AppError> {
-        self.record(RecordNotification {
+        self.record_activity(RecordNotification {
             kind: crate::models::activity_kind::APPROVAL_REQUESTED.to_string(),
             title: title.to_string(),
             summary: Some("Awaiting admin approval".to_string()),
@@ -229,7 +246,7 @@ impl NotificationService {
         requester_id: Uuid,
         actor_user_id: Option<Uuid>,
     ) -> Result<ActivityLog, AppError> {
-        self.record(RecordNotification {
+        self.record_activity(RecordNotification {
             kind: crate::models::activity_kind::APPROVAL_DECIDED.to_string(),
             title: title.to_string(),
             summary: Some(format!("Status: {status}")),
@@ -296,7 +313,7 @@ impl NotificationService {
             "Product sale"
         };
 
-        self.record(RecordNotification {
+        self.record_activity(RecordNotification {
             kind: kind.to_string(),
             title: format!("{sale_label} · ₹{:.2}", transaction.amount),
             summary: Some(format!(
@@ -339,5 +356,29 @@ mod tests {
     fn payment_method_labels() {
         assert_eq!(payment_method_label("cash"), "Cash");
         assert_eq!(payment_method_label("credit"), "Credit");
+    }
+
+    #[test]
+    fn only_staff_kiosk_order_placed_is_delivered() {
+        let input = RecordNotification {
+            kind: crate::models::activity_kind::KIOSK_ORDER_PLACED.to_string(),
+            title: "Order placed".to_string(),
+            summary: None,
+            payload: json!({}),
+            actor_user_id: None,
+            entity_type: Some("kiosk_order".to_string()),
+            entity_id: Some(Uuid::new_v4()),
+            recipients: Recipients::AllStaff,
+        };
+
+        assert!(NotificationService::is_staff_kiosk_order_notification(&input));
+
+        let mut non_order = input.clone();
+        non_order.kind = crate::models::activity_kind::KIOSK_ORDER_CANCELLED.to_string();
+        assert!(!NotificationService::is_staff_kiosk_order_notification(&non_order));
+
+        let mut admin_order = input;
+        admin_order.recipients = Recipients::AllAdmins;
+        assert!(!NotificationService::is_staff_kiosk_order_notification(&admin_order));
     }
 }

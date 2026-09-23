@@ -16,6 +16,18 @@ async fn setup() -> Option<Arc<gaming_cafe_api::app::AppState>> {
     Some(build_state().await)
 }
 
+async fn active_staff_user_id(state: &gaming_cafe_api::app::AppState) -> Option<Uuid> {
+    sqlx::query_scalar(
+        r#"SELECT id FROM users
+           WHERE role = 'staff' AND "isActive" = true AND "deletedAt" IS NULL
+           LIMIT 1"#,
+    )
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten()
+}
+
 #[tokio::test]
 #[ignore = "requires DATABASE_URL"]
 async fn record_and_list_notifications_for_user() {
@@ -23,24 +35,26 @@ async fn record_and_list_notifications_for_user() {
         return;
     };
 
-    let user_id = Uuid::new_v4();
+    let Some(user_id) = active_staff_user_id(&state).await else {
+        return;
+    };
 
     let activity = state
         .notifications
         .record(RecordNotification {
-            kind: "credit_settlement".to_string(),
-            title: "Test settlement".to_string(),
+            kind: "kiosk_order_placed".to_string(),
+            title: "Test kiosk order".to_string(),
             summary: Some("Integration test".to_string()),
             payload: serde_json::json!({ "test": true }),
-            actor_user_id: Some(user_id),
-            entity_type: Some("credit_settlement".to_string()),
+            actor_user_id: None,
+            entity_type: Some("kiosk_order".to_string()),
             entity_id: Some(Uuid::new_v4()),
-            recipients: Recipients::Users(vec![user_id]),
+            recipients: Recipients::AllStaff,
         })
         .await
         .expect("record notification");
 
-    assert_eq!(activity.title, "Test settlement");
+    assert_eq!(activity.title, "Test kiosk order");
 
     let inbox = state
         .notifications
@@ -69,14 +83,16 @@ async fn record_and_list_notifications_for_user() {
 
 #[tokio::test]
 #[ignore = "requires DATABASE_URL"]
-async fn important_only_unread_count_excludes_routine_events() {
+async fn non_order_activities_do_not_create_notifications() {
     let Some(state) = setup().await else {
         return;
     };
 
-    let user_id = Uuid::new_v4();
+    let Some(user_id) = active_staff_user_id(&state).await else {
+        return;
+    };
 
-    state
+    let session_activity = state
         .notifications
         .record(RecordNotification {
             kind: "session_started".to_string(),
@@ -89,9 +105,9 @@ async fn important_only_unread_count_excludes_routine_events() {
             recipients: Recipients::Users(vec![user_id]),
         })
         .await
-        .expect("record session");
+        .expect("record session activity");
 
-    state
+    let approval_activity = state
         .notifications
         .record(RecordNotification {
             kind: "approval_requested".to_string(),
@@ -104,49 +120,62 @@ async fn important_only_unread_count_excludes_routine_events() {
             recipients: Recipients::Users(vec![user_id]),
         })
         .await
-        .expect("record approval");
+        .expect("record approval activity");
 
-    let all_unread = state
+    let order_activity = state
         .notifications
-        .unread_count(user_id, NotificationFilterDto::default())
+        .record(RecordNotification {
+            kind: "kiosk_order_placed".to_string(),
+            title: "Kiosk order".to_string(),
+            summary: None,
+            payload: serde_json::json!({}),
+            actor_user_id: None,
+            entity_type: Some("kiosk_order".to_string()),
+            entity_id: Some(Uuid::new_v4()),
+            recipients: Recipients::AllStaff,
+        })
         .await
-        .expect("all unread");
-    assert!(all_unread.count >= 2);
+        .expect("record kiosk order");
 
-    let important_unread = state
+    let inbox = state
         .notifications
-        .unread_count(
+        .list_notifications(
             user_id,
             NotificationFilterDto {
-                important_only: Some(true),
+                limit: Some(10),
                 ..Default::default()
             },
         )
         .await
-        .expect("important unread");
-    assert_eq!(important_unread.count, 1);
+        .expect("list notifications");
+
+    assert!(inbox.data.iter().any(|n| n.activity_id == order_activity.id));
+    assert!(!inbox.data.iter().any(|n| n.activity_id == session_activity.id));
+    assert!(!inbox.data.iter().any(|n| n.activity_id == approval_activity.id));
 }
 
 #[tokio::test]
 #[ignore = "requires DATABASE_URL"]
-async fn mark_notification_read_clears_unread_count() {
+async fn mark_notification_read_removes_order_from_unread_inbox() {
     let Some(state) = setup().await else {
         return;
     };
 
-    let user_id = Uuid::new_v4();
+    let Some(user_id) = active_staff_user_id(&state).await else {
+        return;
+    };
 
-    state
+    let activity = state
         .notifications
         .record(RecordNotification {
-            kind: "shift_clock_in".to_string(),
-            title: "Shift started".to_string(),
+            kind: "kiosk_order_placed".to_string(),
+            title: "Kiosk order".to_string(),
             summary: None,
             payload: serde_json::json!({}),
-            actor_user_id: Some(user_id),
-            entity_type: None,
-            entity_id: None,
-            recipients: Recipients::Users(vec![user_id]),
+            actor_user_id: None,
+            entity_type: Some("kiosk_order".to_string()),
+            entity_id: Some(Uuid::new_v4()),
+            recipients: Recipients::AllStaff,
         })
         .await
         .expect("record");
@@ -163,7 +192,12 @@ async fn mark_notification_read_clears_unread_count() {
         .await
         .expect("list");
 
-    let notification_id = inbox.data[0].id;
+    let notification_id = inbox
+        .data
+        .iter()
+        .find(|notification| notification.activity_id == activity.id)
+        .expect("new order notification")
+        .id;
     let updated = state
         .notifications
         .mark_read(notification_id, user_id)
@@ -173,10 +207,16 @@ async fn mark_notification_read_clears_unread_count() {
 
     let unread = state
         .notifications
-        .unread_count(user_id, NotificationFilterDto::default())
+        .list_notifications(
+            user_id,
+            NotificationFilterDto {
+                unread_only: Some(true),
+                ..Default::default()
+            },
+        )
         .await
-        .expect("unread");
-    assert_eq!(unread.count, 0);
+        .expect("list unread");
+    assert!(!unread.data.iter().any(|n| n.activity_id == activity.id));
 }
 
 #[test]

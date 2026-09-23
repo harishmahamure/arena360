@@ -383,7 +383,7 @@ impl SessionService {
             .await;
         let _ = self
             .notifications
-            .record(RecordNotification {
+            .record_activity(RecordNotification {
                 kind: activity_kind::SESSION_STARTED.to_string(),
                 title: "Session started".to_string(),
                 summary: Some(format!(
@@ -722,7 +722,7 @@ impl SessionService {
             .await;
         let _ = self
             .notifications
-            .record(RecordNotification {
+            .record_activity(RecordNotification {
                 kind: activity_kind::SESSION_ENDED.to_string(),
                 title: "Session ended".to_string(),
                 summary: reason.clone().or_else(|| Some(format!("Session on device {}", session.device_id))),

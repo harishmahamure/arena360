@@ -101,6 +101,23 @@ pub async fn build_state() -> Arc<AppState> {
     let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
     tokio::spawn(dispatcher.run());
 
+    let notifications_for_cleanup = notifications.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+        loop {
+            interval.tick().await;
+            match notifications_for_cleanup.cleanup(7).await {
+                Ok(count) if count > 0 => {
+                    tracing::info!("Notification retention cleanup: removed {count} rows");
+                }
+                Err(e) => {
+                    tracing::warn!("Notification retention cleanup failed: {e}");
+                }
+                _ => {}
+            }
+        }
+    });
+
     let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
 
     let mut shifts = ShiftService::new(pool.clone());

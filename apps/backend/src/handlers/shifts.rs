@@ -335,7 +335,7 @@ pub async fn handover_shift(
 
     let _ = state
         .notifications
-        .record(crate::services::RecordNotification {
+        .record_activity(crate::services::RecordNotification {
             kind: crate::models::activity_kind::SHIFT_HANDOVER.to_string(),
             title: "Shift handover completed".to_string(),
             summary: dto.notes.clone(),
