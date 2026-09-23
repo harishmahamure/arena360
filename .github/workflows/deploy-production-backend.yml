@@ -78,24 +78,6 @@ jobs:
           DATABASE_URL: "${{ secrets.MIGRATION_DATABASE_URL }}"
         run: |
           echo "Running database migrations from the CI runner..."
-          invalid_indexes="$(psql "$DATABASE_URL" -Atc "
-            SELECT format('%I.%I', n.nspname, c.relname)
-            FROM pg_index i
-            JOIN pg_class c ON c.oid = i.indexrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE NOT i.indisvalid AND c.relname IN (
-              'idx_transactions_active_date_id', 'idx_transactions_active_shift_date_id',
-              'idx_sessions_active_start_id', 'idx_user_notifications_user_created_id_cover',
-              'idx_activity_log_kind_created_id', 'idx_activity_log_actor_created_id',
-              'idx_stock_receipts_location_created_id', 'idx_stock_transfer_status_created_id',
-              'idx_stock_transfer_from_created_id', 'idx_stock_transfer_to_created_id',
-              'idx_stock_waste_location_status_created_id'
-            )")"
-          while IFS= read -r invalid_index; do
-            [ -z "$invalid_index" ] && continue
-            echo "Dropping interrupted concurrent index build: $invalid_index"
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP INDEX CONCURRENTLY IF EXISTS $invalid_index"
-          done <<< "$invalid_indexes"
           sqlx migrate run --source apps/backend/migrations
           echo "Database migrations completed"
 
@@ -113,7 +95,6 @@ jobs:
         id: deploy
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_LISTENER_URL: ${{ secrets.DATABASE_LISTENER_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ZEPTOMAIL_TOKEN: ${{ secrets.ZEPTOMAIL_TOKEN }}
@@ -136,14 +117,9 @@ jobs:
           REDIS_URL="${REDIS_URL:-redis://arena360-redis.${NAMESPACE}.svc.cluster.local:6379}"
 
           db_url="$(strip_cr "$DATABASE_URL")"
-          listener_url="$(strip_cr "$DATABASE_LISTENER_URL")"
           jwt_secret="$(strip_cr "$JWT_SECRET")"
           if [ -z "$db_url" ]; then
             echo "::error::DATABASE_URL secret is empty"
-            exit 1
-          fi
-          if [ -z "$listener_url" ]; then
-            echo "::error::DATABASE_LISTENER_URL must point directly to PostgreSQL (not PgBouncer)"
             exit 1
           fi
           if [ -z "$jwt_secret" ]; then
@@ -158,7 +134,6 @@ jobs:
           # Build Helm overrides as a file — avoids shell-quoting bugs with --set-json.
           jq -n \
             --arg DATABASE_URL "$db_url" \
-            --arg DATABASE_LISTENER_URL "$listener_url" \
             --arg REDIS_URL "$(strip_cr "$REDIS_URL")" \
             --arg JWT_SECRET "$jwt_secret" \
             --arg ZEPTOMAIL_TOKEN "$(strip_cr "$ZEPTOMAIL_TOKEN")" \
@@ -174,7 +149,6 @@ jobs:
               inlineSecretEnv: (
                 {
                   DATABASE_URL: $DATABASE_URL,
-                  DATABASE_LISTENER_URL: $DATABASE_LISTENER_URL,
                   REDIS_URL: $REDIS_URL,
                   JWT_SECRET: $JWT_SECRET,
                   ZEPTOMAIL_TOKEN: $ZEPTOMAIL_TOKEN,
