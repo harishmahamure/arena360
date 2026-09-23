@@ -77,6 +77,8 @@ docker-compose.override.yaml
 *.pem
 *.p12
 *.pfx
+/apps/kiosk/kiosk.key
+/apps/kiosk/kiosk.key.pub
 
 # Temporary files
 tmp/
