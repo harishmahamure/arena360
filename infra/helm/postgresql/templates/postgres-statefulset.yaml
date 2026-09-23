@@ -31,6 +31,32 @@ spec:
         - name: postgresql
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
           imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          args:
+            - postgres
+            - -c
+            - shared_buffers={{ .Values.postgresql.config.sharedBuffers }}
+            - -c
+            - effective_cache_size={{ .Values.postgresql.config.effectiveCacheSize }}
+            - -c
+            - work_mem={{ .Values.postgresql.config.workMem }}
+            - -c
+            - maintenance_work_mem={{ .Values.postgresql.config.maintenanceWorkMem }}
+            - -c
+            - wal_buffers={{ .Values.postgresql.config.walBuffers }}
+            - -c
+            - checkpoint_completion_target={{ .Values.postgresql.config.checkpointCompletionTarget }}
+            - -c
+            - max_wal_size={{ .Values.postgresql.config.maxWalSize }}
+            - -c
+            - max_connections={{ .Values.postgresql.config.maxConnections }}
+            - -c
+            - shared_preload_libraries={{ .Values.postgresql.config.sharedPreloadLibraries }}
+            - -c
+            - track_io_timing={{ .Values.postgresql.config.trackIoTiming }}
+            - -c
+            - log_min_duration_statement={{ .Values.postgresql.config.logMinDurationStatement }}
+            - -c
+            - log_autovacuum_min_duration={{ .Values.postgresql.config.logAutovacuumMinDuration }}
           ports:
             - name: postgres
               containerPort: {{ .Values.postgresql.service.port }}

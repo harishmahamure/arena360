@@ -257,17 +257,18 @@ impl NotificationRepository {
     pub async fn cleanup_notifications(&self, retention_days: i64) -> Result<u64, AppError> {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(retention_days);
         let result = sqlx::query(
-            r#"DELETE FROM user_notifications un
-               USING activity_log al, users u
-               WHERE un."activityId" = al.id
-                 AND un."userId" = u.id
-                 AND (
-                     al.kind::text <> $1
+            r#"DELETE FROM user_notifications WHERE id IN (
+               SELECT un.id FROM user_notifications un
+               JOIN activity_log al ON un."activityId" = al.id
+               JOIN users u ON un."userId" = u.id
+               WHERE (
+                     al.kind <> $1::activity_kind
                      OR u.role <> 'staff'
                      OR u."isActive" = false
                      OR u."deletedAt" IS NOT NULL
                      OR un."createdAt" < $2
-                 )"#,
+                 ) ORDER BY un.id LIMIT 5000
+               )"#,
         )
         .bind(RETAINED_NOTIFICATION_KIND)
         .bind(cutoff)

@@ -93,6 +93,13 @@ env:
   PORT: "3000"
   RUST_ENV: production
   DATABASE_MAX_CONNECTIONS: "10"
+  DATABASE_MIN_CONNECTIONS: "2"
+  DATABASE_ACQUIRE_TIMEOUT_SECONDS: "2"
+  DATABASE_IDLE_TIMEOUT_SECONDS: "600"
+  DATABASE_MAX_LIFETIME_SECONDS: "1800"
+  MAX_CONCURRENT_REQUESTS: "256"
+  LEGACY_REST_ENABLED: "false"
+  TRUSTED_PROXY_CIDRS: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   REDIS_URL: "redis://arena360-redis:6379"
   JWT_ACCESS_EXPIRATION: 15m
   JWT_PLAYER_EXPIRATION: 24h
@@ -106,6 +113,10 @@ envFromSecrets:
   - envName: DATABASE_URL
     name: arena360-backend-secrets
     key: DATABASE_URL
+  - envName: DATABASE_LISTENER_URL
+    name: arena360-backend-secrets
+    key: DATABASE_LISTENER_URL
+    optional: true
   - envName: REDIS_URL
     name: arena360-redis-secrets
     key: REDIS_URL

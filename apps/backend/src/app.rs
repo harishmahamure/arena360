@@ -5,12 +5,15 @@ use axum::{
 };
 use sqlx::PgPool;
 use std::sync::Arc;
-use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+use tower::limit::ConcurrencyLimitLayer;
+use tower_http::{
+    compression::CompressionLayer, cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer,
+};
 
 use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
 use crate::config::{create_pool, load_dotenv, Settings};
 use crate::handlers;
-use crate::middleware::auth_middleware;
+use crate::middleware::{auth_middleware, global_rate_limit, request_context, request_deadline};
 use crate::openapi::ApiDoc;
 use crate::realtime::{Dispatcher, OutboxService, RoomService};
 use crate::services::{
@@ -29,6 +32,7 @@ pub struct AppState {
     pub db: PgPool,
     pub cache: Arc<dyn CacheService>,
     pub settings: Arc<Settings>,
+    pub metrics: Arc<crate::metrics::Metrics>,
     pub auth: AuthService,
     pub config: ConfigService,
     pub users: Arc<UserService>,
@@ -57,9 +61,7 @@ pub struct AppState {
     pub kiosk_orders: KioskOrderService,
     pub outbox: OutboxService,
     pub rooms: RoomService,
-    pub ws_connections: Arc<
-        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
-    >,
+    pub ws_connections: Arc<crate::realtime::registry::ConnectionRegistry>,
 }
 
 pub async fn build_state() -> Arc<AppState> {
@@ -67,6 +69,7 @@ pub async fn build_state() -> Arc<AppState> {
     let settings = Arc::new(Settings::from_env());
     let pool = create_pool(settings.as_ref()).await;
     let cache = create_cache(settings.redis_url.as_deref()).await;
+    let metrics = Arc::new(crate::metrics::Metrics::default());
     spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);
@@ -74,9 +77,7 @@ pub async fn build_state() -> Arc<AppState> {
     let outbox = OutboxService::new(pool.clone());
     let notifications = NotificationService::new(pool.clone(), outbox.clone(), cache.clone());
     let rooms = RoomService::new(pool.clone());
-    let ws_connections: Arc<
-        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
-    > = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
 
     let devices = DeviceService::new(
         pool.clone(),
@@ -99,7 +100,12 @@ pub async fn build_state() -> Arc<AppState> {
     );
 
     // Spawn the realtime dispatcher
-    let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
+    let dispatcher = Dispatcher::new(
+        pool.clone(),
+        ws_connections.clone(),
+        settings.database_listener_url.clone(),
+        metrics.clone(),
+    );
     tokio::spawn(dispatcher.run());
 
     let notifications_for_cleanup = notifications.clone();
@@ -207,6 +213,7 @@ pub async fn build_state() -> Arc<AppState> {
         db: pool,
         cache,
         settings,
+        metrics,
         events,
     })
 }
@@ -607,6 +614,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::notifications::list_activity_log),
         )
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
+        .route("/metrics", get(crate::metrics::prometheus))
         .route(
             "/realtime/rooms",
             get(handlers::realtime_rooms::list_rooms).post(handlers::realtime_rooms::create_room),
@@ -630,9 +638,23 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         ))
         .with_state(state.clone());
 
-    let mut router = Router::new().merge(api);
+    let rpc = crate::rpc::router(api.clone(), state.metrics.clone());
+    let mut router = if state.settings.legacy_rest_enabled {
+        tracing::warn!("LEGACY_REST_ENABLED is active; business REST endpoints are public");
+        Router::new().merge(api).merge(rpc)
+    } else {
+        Router::new()
+            .route("/", get(|| async { "Game Zone API" }))
+            .route("/health", get(handlers::health::health_check_legacy))
+            .route("/health/live", get(handlers::health::live_check))
+            .route("/health/ready", get(handlers::health::ready_check))
+            .route("/realtime", get(crate::realtime::handler::ws_upgrade))
+            .route("/metrics", get(crate::metrics::prometheus))
+            .with_state(state.clone())
+            .merge(rpc)
+    };
 
-    if !state.settings.is_production() {
+    if state.settings.legacy_rest_enabled && !state.settings.is_production() {
         router = router
             .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()));
     }
@@ -641,7 +663,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .merge(router)
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
+        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
+        .layer(middleware::from_fn(request_deadline))
+        .layer(ConcurrencyLimitLayer::new(
+            state.settings.max_concurrent_requests,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            global_rate_limit,
+        ))
         .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn(request_context))
 }
 
 pub async fn create_app() -> Router {

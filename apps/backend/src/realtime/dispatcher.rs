@@ -1,26 +1,38 @@
 use sqlx::PgPool;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::connection::Connection;
 use super::deliveries::DeliveryService;
 use super::frame::ServerFrame;
 use super::outbox::OutboxService;
+use super::registry::ConnectionRegistry;
 
 pub struct Dispatcher {
     pool: PgPool,
-    connections: Arc<RwLock<Vec<Arc<RwLock<Connection>>>>>,
+    registry: Arc<ConnectionRegistry>,
+    listener_url: String,
+    metrics: Arc<crate::metrics::Metrics>,
 }
 
 impl Dispatcher {
-    pub fn new(pool: PgPool, connections: Arc<RwLock<Vec<Arc<RwLock<Connection>>>>>) -> Self {
-        Self { pool, connections }
+    pub fn new(
+        pool: PgPool,
+        registry: Arc<ConnectionRegistry>,
+        listener_url: String,
+        metrics: Arc<crate::metrics::Metrics>,
+    ) -> Self {
+        Self {
+            pool,
+            registry,
+            listener_url,
+            metrics,
+        }
     }
 
     /// Start the PgListener loop. Runs forever; call from `tokio::spawn`.
     pub async fn run(self) {
-        let mut listener = match sqlx::postgres::PgListener::connect_with(&self.pool).await {
+        let mut listener = match sqlx::postgres::PgListener::connect(&self.listener_url).await {
             Ok(l) => l,
             Err(e) => {
                 tracing::error!("Failed to connect PgListener: {e}");
@@ -87,25 +99,37 @@ impl Dispatcher {
             payload: row.payload.clone(),
             ts: row.created_at,
         };
+        self.metrics.set_outbox_lag(
+            chrono::Utc::now()
+                .signed_duration_since(row.created_at)
+                .num_milliseconds()
+                .max(0) as u64,
+        );
 
-        let conns = self.connections.read().await;
-
-        for conn_lock in conns.iter() {
+        let conns = self.registry.subscribers(&row.channel).await;
+        let mut durable_recipients = Vec::new();
+        for conn_lock in conns {
             let conn = conn_lock.read().await;
-
-            if !conn.matches_channel(&row.channel) {
-                continue;
-            }
-
             if !self.passes_audience_filter(&conn, &row) {
                 continue;
             }
-
             if row.durable {
-                let _ = DeliveryService::insert_delivery(&self.pool, row.id, conn.user_id).await;
+                durable_recipients.push(conn.user_id);
             }
-
-            let _ = conn.outgoing_tx.send(event_frame.clone());
+            if matches!(
+                conn.outgoing_tx.try_send(event_frame.clone()),
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+            ) {
+                conn.slow_consumer.notify_one();
+                self.metrics.slow_consumer_dropped();
+            }
+        }
+        if row.durable {
+            if let Err(error) =
+                DeliveryService::insert_deliveries(&self.pool, row.id, &durable_recipients).await
+            {
+                tracing::warn!(%error, outbox_id = row.id, "failed to batch durable deliveries");
+            }
         }
     }
 

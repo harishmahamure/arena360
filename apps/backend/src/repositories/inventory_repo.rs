@@ -64,8 +64,9 @@ impl InventoryRepository {
         );
 
         if let Some(kind) = &filters.kind {
-            builder.push(" AND kind::text = ");
+            builder.push(" AND kind = ");
             builder.push_bind(kind);
+            builder.push("::inventory_location_kind");
         }
         if let Some(is_active) = filters.is_active {
             builder.push(" AND \"isActive\" = ");
@@ -86,8 +87,9 @@ impl InventoryRepository {
             "SELECT COUNT(*) FROM inventory_locations WHERE \"deletedAt\" IS NULL",
         );
         if let Some(kind) = &filters.kind {
-            count_builder.push(" AND kind::text = ");
+            count_builder.push(" AND kind = ");
             count_builder.push_bind(kind);
+            count_builder.push("::inventory_location_kind");
         }
         if let Some(is_active) = filters.is_active {
             count_builder.push(" AND \"isActive\" = ");
@@ -687,8 +689,9 @@ impl InventoryRepository {
         );
 
         if let Some(status) = &filters.status {
-            builder.push(" AND status::text = ");
+            builder.push(" AND status = ");
             builder.push_bind(status);
+            builder.push("::stock_transfer_status");
         }
         if let Some(from) = filters.from_location_id {
             builder.push(" AND \"fromLocationId\" = ");
@@ -712,8 +715,9 @@ impl InventoryRepository {
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM stock_transfer_requests WHERE 1=1");
         if let Some(status) = &filters.status {
-            count_builder.push(" AND status::text = ");
+            count_builder.push(" AND status = ");
             count_builder.push_bind(status);
+            count_builder.push("::stock_transfer_status");
         }
         if let Some(from) = filters.from_location_id {
             count_builder.push(" AND \"fromLocationId\" = ");
@@ -1001,8 +1005,9 @@ impl InventoryRepository {
         );
 
         if let Some(status) = &filters.status {
-            builder.push(" AND status::text = ");
+            builder.push(" AND status = ");
             builder.push_bind(status);
+            builder.push("::stock_waste_status");
         }
         if let Some(location_id) = filters.location_id {
             builder.push(" AND \"locationId\" = ");
@@ -1030,8 +1035,9 @@ impl InventoryRepository {
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM stock_waste_events WHERE 1=1");
         if let Some(status) = &filters.status {
-            count_builder.push(" AND status::text = ");
+            count_builder.push(" AND status = ");
             count_builder.push_bind(status);
+            count_builder.push("::stock_waste_status");
         }
         if let Some(location_id) = filters.location_id {
             count_builder.push(" AND \"locationId\" = ");

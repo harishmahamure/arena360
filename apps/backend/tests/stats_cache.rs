@@ -31,11 +31,12 @@ async fn dashboard_stats_populates_and_reuses_cache() {
     let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsDashboardKey {
         start: start.clone(),
         end: end.clone(),
+        compare: false,
     }));
 
     let first = state
         .stats
-        .get_dashboard_stats(Some(start.clone()), Some(end.clone()))
+        .get_dashboard_stats(Some(start.clone()), Some(end.clone()), false)
         .await
         .expect("dashboard stats");
 
@@ -51,15 +52,12 @@ async fn dashboard_stats_populates_and_reuses_cache() {
 
     let second = state
         .stats
-        .get_dashboard_stats(Some(start), Some(end))
+        .get_dashboard_stats(Some(start), Some(end), false)
         .await
         .expect("cached dashboard stats");
 
     assert_eq!(first.users.total_users, second.users.total_users);
-    assert_eq!(
-        first.revenue.current.total,
-        second.revenue.current.total
-    );
+    assert_eq!(first.revenue.current.total, second.revenue.current.total);
 }
 
 #[tokio::test]
@@ -74,22 +72,21 @@ async fn invalidate_stats_clears_dashboard_cache() {
     let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsDashboardKey {
         start: start.clone(),
         end: end.clone(),
+        compare: false,
     }));
 
     state
         .stats
-        .get_dashboard_stats(Some(start.clone()), Some(end.clone()))
+        .get_dashboard_stats(Some(start.clone()), Some(end.clone()), false)
         .await
         .expect("dashboard stats");
 
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
+    assert!(state
+        .cache
+        .get_value(&cache_key)
+        .await
+        .expect("redis read")
+        .is_some());
 
     cache::invalidate_stats(&*state.cache)
         .await
@@ -110,4 +107,5 @@ async fn invalidate_stats_clears_dashboard_cache() {
 struct StatsDashboardKey {
     start: String,
     end: String,
+    compare: bool,
 }

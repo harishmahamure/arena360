@@ -1,5 +1,3 @@
-import type { AxiosRequestConfig } from 'axios';
-
 export interface SuccessEnvelope<T> {
   success: boolean;
   statusCode: number;
@@ -24,7 +22,12 @@ export interface CreateHttpClientOptions {
   headers?: Record<string, string>;
 }
 
-export type HttpRequestConfig = AxiosRequestConfig;
+export interface HttpRequestConfig {
+  params?: object;
+  headers?: Record<string, string>;
+  timeout?: number;
+  responseType?: 'json' | 'blob' | 'arraybuffer';
+}
 
 export interface HttpClient {
   get: <T = unknown>(url: string, config?: HttpRequestConfig) => Promise<T>;
@@ -39,5 +42,4 @@ export interface HttpClient {
     onUploadProgress?: (progressEvent: unknown) => void,
   ) => Promise<T>;
   download: (url: string, filename?: string, config?: HttpRequestConfig) => Promise<void>;
-  instance: import('axios').AxiosInstance;
 }

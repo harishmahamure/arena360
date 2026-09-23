@@ -69,7 +69,7 @@ async fn revenue_stats_includes_settlement_collections_for_period() {
 
     let revenue = state
         .stats
-        .get_revenue_by_payment_method(start, end, prev_start, prev_end)
+        .get_revenue_by_payment_method(start, end, prev_start, prev_end, false)
         .await
         .expect("revenue stats");
 

@@ -155,8 +155,9 @@ impl TransactionRepository {
             builder.push_bind(player_id);
         }
         if let Some(transaction_type) = filters.transaction_type.clone() {
-            builder.push(format!(r#" AND {table_alias}."transactionType"::text = "#));
+            builder.push(format!(r#" AND {table_alias}."transactionType" = "#));
             builder.push_bind(transaction_type);
+            builder.push("::transactions_transactiontype_enum");
         }
         if let Some(plan_id) = filters.plan_id {
             builder.push(format!(r#" AND {table_alias}."planId" = "#));
@@ -167,12 +168,14 @@ impl TransactionRepository {
             builder.push_bind(shift_id);
         }
         if let Some(payment_method) = filters.payment_method.clone() {
-            builder.push(format!(r#" AND {table_alias}."paymentMethod"::text = "#));
+            builder.push(format!(r#" AND {table_alias}."paymentMethod" = "#));
             builder.push_bind(payment_method);
+            builder.push("::transactions_paymentmethod_enum");
         }
         if let Some(payment_status) = filters.payment_status.clone() {
-            builder.push(format!(r#" AND {table_alias}."paymentStatus"::text = "#));
+            builder.push(format!(r#" AND {table_alias}."paymentStatus" = "#));
             builder.push_bind(payment_status);
+            builder.push("::transactions_paymentstatus_enum");
         }
         if let Some(from) = filters.transaction_date_from {
             builder.push(format!(r#" AND {table_alias}."transactionDate" >= "#));

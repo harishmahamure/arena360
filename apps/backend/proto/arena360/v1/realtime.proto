@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package arena360.v1;
+
+message Subscribe { repeated string channels = 1; }
+message Unsubscribe { repeated string channels = 1; }
+message Ack { int64 msg_id = 1; }
+message Publish {
+  string channel = 1;
+  bytes payload_json = 2;
+}
+message Ping {}
+
+message ClientFrame {
+  oneof frame {
+    Subscribe subscribe = 1;
+    Unsubscribe unsubscribe = 2;
+    Ack ack = 3;
+    Publish publish = 4;
+    Ping ping = 5;
+  }
+}
+
+message Welcome {
+  string user_id = 1;
+  repeated string roles = 2;
+}
+message Subscribed { repeated string channels = 1; }
+message Unsubscribed { repeated string channels = 1; }
+message Event {
+  int64 msg_id = 1;
+  string channel = 2;
+  string event_type = 3;
+  bytes payload_json = 4;
+  int64 timestamp_ms = 5;
+}
+message Error {
+  string code = 1;
+  string message = 2;
+}
+message Pong {}
+
+message ServerFrame {
+  oneof frame {
+    Welcome welcome = 1;
+    Subscribed subscribed = 2;
+    Unsubscribed unsubscribed = 3;
+    Event event = 4;
+    Error error = 5;
+    Pong pong = 6;
+  }
+}
+

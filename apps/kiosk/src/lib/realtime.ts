@@ -1,3 +1,4 @@
+import { type ClientRealtimeFrame, decodeServerFrame, encodeClientFrame } from '@gaming-cafe/proto';
 import { appendKioskLog } from './bootDiagnostics';
 import { realtimeUrl } from './config';
 import { tokenCache } from './http';
@@ -52,7 +53,8 @@ export class KioskRealtimeClient {
     const gen = ++this.connectionGen;
     let socket: WebSocket;
     try {
-      socket = new WebSocket(realtimeUrl(), ['bearer', token]);
+      socket = new WebSocket(realtimeUrl(), ['arena360.protobuf.v1', 'bearer', token]);
+      socket.binaryType = 'arraybuffer';
     } catch (e) {
       void appendKioskLog('warn', `[realtime] WebSocket construct failed: ${String(e)}`);
       this.scheduleReconnect();
@@ -75,7 +77,7 @@ export class KioskRealtimeClient {
       if (gen !== this.connectionGen || this.ws !== socket) return;
       let frame: ServerFrame;
       try {
-        frame = JSON.parse(event.data as string);
+        frame = decodeServerFrame(new Uint8Array(event.data as ArrayBuffer));
       } catch {
         void appendKioskLog('warn', '[realtime] malformed WebSocket frame');
         return;
@@ -203,9 +205,9 @@ export class KioskRealtimeClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  private sendOn(socket: WebSocket, data: Record<string, unknown>): void {
+  private sendOn(socket: WebSocket, data: ClientRealtimeFrame): void {
     if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(data));
+      socket.send(encodeClientFrame(data));
     }
   }
 

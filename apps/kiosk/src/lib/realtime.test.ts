@@ -63,17 +63,20 @@ describe('KioskRealtimeClient failure logging', () => {
 
     try {
       client.connect();
-      await vi.runOnlyPendingTimersAsync();
-      for (let i = 0; i < 3; i++) {
-        await vi.runOnlyPendingTimersAsync();
+      await vi.advanceTimersByTimeAsync(0);
+      for (const delay of [1_000, 2_000, 4_000]) {
+        await vi.advanceTimersByTimeAsync(delay);
       }
       const reconnectLogs = vi
         .mocked(appendKioskLog)
         .mock.calls.filter(
           ([level, msg]) => level === 'warn' && String(msg).includes('reconnect attempt'),
         );
-      expect(reconnectLogs).toHaveLength(1);
-      expect(reconnectLogs[0]?.[1]).toContain('reconnect attempt 1');
+      const attempts = reconnectLogs.map(([, message]) =>
+        Number(String(message).match(/attempt (\d+)/)?.[1]),
+      );
+      expect(attempts[0]).toBe(1);
+      expect(attempts.every((attempt) => attempt === 1 || attempt % 5 === 0)).toBe(true);
     } finally {
       globalThis.WebSocket = originalWebSocket;
       vi.useRealTimers();

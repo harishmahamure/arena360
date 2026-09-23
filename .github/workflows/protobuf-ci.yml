@@ -1,0 +1,47 @@
+name: Protobuf and backend CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/backend/**', 'packages/proto/**', 'packages/utils/**', 'buf.yaml', 'buf.gen.yaml', 'pnpm-lock.yaml']
+  pull_request:
+    paths: ['apps/backend/**', 'packages/proto/**', 'packages/utils/**', 'buf.yaml', 'buf.gen.yaml', 'pnpm-lock.yaml']
+  workflow_dispatch:
+
+jobs:
+  protobuf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.15.9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:proto
+      - name: Check breaking protobuf changes
+        if: github.event_name == 'pull_request'
+        run: |
+          if git cat-file -e origin/main:apps/backend/proto 2>/dev/null; then
+            pnpm exec buf breaking --against '.git#branch=origin/main,subdir=apps/backend/proto'
+          else
+            echo "No protobuf baseline exists on main yet; lint and generation checks still apply."
+          fi
+      - name: Generated protobuf is current
+        run: |
+          pnpm gen:proto
+          git diff --exit-code -- packages/proto/src/gen
+      - run: pnpm --filter @gaming-cafe/proto typecheck
+      - run: pnpm --filter @gaming-cafe/utils typecheck
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt, clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: apps/backend }
+      - run: cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml
+      - run: cargo test --manifest-path apps/backend/Cargo.toml

@@ -587,7 +587,12 @@ mod access_token_tests {
     fn test_settings(jwt_access_expiration: &str) -> Arc<Settings> {
         Arc::new(Settings {
             database_url: "postgres://localhost:5432/test".to_string(),
+            database_listener_url: "postgres://localhost:5432/test".to_string(),
+            database_min_connections: 0,
             database_max_connections: 1,
+            database_acquire_timeout_seconds: 2,
+            database_idle_timeout_seconds: 600,
+            database_max_lifetime_seconds: 1800,
             redis_url: None,
             jwt_secret: "your-jwt-secret-change-this-my-secret-sova".to_string(),
             jwt_access_expiration: jwt_access_expiration.to_string(),
@@ -597,6 +602,9 @@ mod access_token_tests {
             port: 3000,
             cafe_timezone: "UTC".to_string(),
             zeptomail_token: None,
+            legacy_rest_enabled: false,
+            trusted_proxy_cidrs: Vec::new(),
+            max_concurrent_requests: 256,
         })
     }
 

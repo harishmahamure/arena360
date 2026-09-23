@@ -1,3 +1,4 @@
+import { type ClientRealtimeFrame, decodeServerFrame, encodeClientFrame } from '@gaming-cafe/proto';
 import { local } from '@gaming-cafe/utils';
 
 export interface ServerFrame {
@@ -41,7 +42,8 @@ export class RealtimeClient {
     if (!token) return;
 
     try {
-      this.ws = new WebSocket(this.url, ['bearer', token]);
+      this.ws = new WebSocket(this.url, ['arena360.protobuf.v1', 'bearer', token]);
+      this.ws.binaryType = 'arraybuffer';
     } catch {
       this.scheduleReconnect();
       return;
@@ -57,7 +59,7 @@ export class RealtimeClient {
     this.ws.onmessage = (event) => {
       let frame: ServerFrame;
       try {
-        frame = JSON.parse(event.data as string);
+        frame = decodeServerFrame(new Uint8Array(event.data as ArrayBuffer));
       } catch {
         return;
       }
@@ -146,9 +148,9 @@ export class RealtimeClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  private send(data: Record<string, unknown>): void {
+  private send(data: ClientRealtimeFrame): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
+      this.ws.send(encodeClientFrame(data));
     }
   }
 

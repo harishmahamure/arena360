@@ -1,5 +1,5 @@
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -14,6 +14,13 @@ use crate::error::AppError;
 pub mod keys;
 
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379";
+
+#[derive(Debug, Clone, Copy)]
+pub struct RateLimitDecision {
+    pub allowed: bool,
+    pub remaining: u32,
+    pub retry_after_ms: u64,
+}
 
 #[async_trait]
 pub trait CacheService: Send + Sync {
@@ -31,6 +38,15 @@ pub trait CacheService: Send + Sync {
     async fn invalidate_prefix(&self, prefix: &str) -> Result<(), AppError>;
 
     async fn publish_invalidation(&self, keys: &[String]) -> Result<(), AppError>;
+
+    /// Atomically consumes one token. `None` means Redis enforcement is not
+    /// available and callers must use the configured fail-open behaviour.
+    async fn consume_ip_token(
+        &self,
+        key: &str,
+        capacity: u32,
+        refill_window: Duration,
+    ) -> Result<Option<RateLimitDecision>, AppError>;
 
     fn is_available(&self) -> bool;
 }
@@ -62,6 +78,15 @@ impl CacheService for NoopCache {
 
     async fn publish_invalidation(&self, _keys: &[String]) -> Result<(), AppError> {
         Ok(())
+    }
+
+    async fn consume_ip_token(
+        &self,
+        _key: &str,
+        _capacity: u32,
+        _refill_window: Duration,
+    ) -> Result<Option<RateLimitDecision>, AppError> {
+        Ok(None)
     }
 
     fn is_available(&self) -> bool {
@@ -159,9 +184,10 @@ impl CacheService for RedisCache {
             }
         };
 
-        let _: () = conn.del(keys).await.map_err(|e| {
-            AppError::Internal(format!("Redis DEL failed: {e}"))
-        })?;
+        let _: () = conn
+            .del(keys)
+            .await
+            .map_err(|e| AppError::Internal(format!("Redis DEL failed: {e}")))?;
         Ok(())
     }
 
@@ -189,9 +215,10 @@ impl CacheService for RedisCache {
 
             if !keys.is_empty() {
                 let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
-                let _: () = conn.del(&key_refs).await.map_err(|e| {
-                    AppError::Internal(format!("Redis DEL failed: {e}"))
-                })?;
+                let _: () = conn
+                    .del(&key_refs)
+                    .await
+                    .map_err(|e| AppError::Internal(format!("Redis DEL failed: {e}")))?;
             }
 
             cursor = next;
@@ -223,6 +250,57 @@ impl CacheService for RedisCache {
             .await
             .map_err(|e| AppError::Internal(format!("Redis PUBLISH failed: {e}")))?;
         Ok(())
+    }
+
+    async fn consume_ip_token(
+        &self,
+        key: &str,
+        capacity: u32,
+        refill_window: Duration,
+    ) -> Result<Option<RateLimitDecision>, AppError> {
+        // Redis TIME avoids clock skew between backend pods. The hash stores
+        // fractional tokens and the last refill time; the script is atomic.
+        const TOKEN_BUCKET_LUA: &str = r#"
+local now = redis.call('TIME')
+local now_ms = (now[1] * 1000) + math.floor(now[2] / 1000)
+local capacity = tonumber(ARGV[1])
+local window_ms = tonumber(ARGV[2])
+local refill_per_ms = capacity / window_ms
+local bucket = redis.call('HMGET', KEYS[1], 'tokens', 'updated_ms')
+local tokens = tonumber(bucket[1]) or capacity
+local updated_ms = tonumber(bucket[2]) or now_ms
+tokens = math.min(capacity, tokens + math.max(0, now_ms - updated_ms) * refill_per_ms)
+local allowed = 0
+local retry_ms = 0
+if tokens >= 1 then
+  tokens = tokens - 1
+  allowed = 1
+else
+  retry_ms = math.ceil((1 - tokens) / refill_per_ms)
+end
+redis.call('HSET', KEYS[1], 'tokens', tokens, 'updated_ms', now_ms)
+redis.call('PEXPIRE', KEYS[1], window_ms * 2)
+return {allowed, math.floor(tokens), retry_ms}
+"#;
+
+        let mut conn = self.pool.get().await.map_err(|error| {
+            AppError::Internal(format!("Redis rate-limit connection failed: {error}"))
+        })?;
+        let result: (i64, i64, i64) = redis::Script::new(TOKEN_BUCKET_LUA)
+            .key(key)
+            .arg(capacity)
+            .arg(refill_window.as_millis() as u64)
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|error| {
+                AppError::Internal(format!("Redis rate-limit script failed: {error}"))
+            })?;
+
+        Ok(Some(RateLimitDecision {
+            allowed: result.0 == 1,
+            remaining: result.1.max(0) as u32,
+            retry_after_ms: result.2.max(0) as u64,
+        }))
     }
 
     fn is_available(&self) -> bool {
@@ -290,9 +368,65 @@ where
         return Ok(cached);
     }
 
-    let value = fetch().await?;
-    set_json(cache, key, &value, ttl).await?;
+    static FLIGHTS: OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    > = OnceLock::new();
+    let flight = {
+        let flights = FLIGHTS.get_or_init(Default::default);
+        let mut flights = flights.lock().expect("single-flight lock poisoned");
+        flights
+            .entry(key.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    };
+    let guard = flight.lock().await;
+    match get_json::<T>(cache, key).await {
+        Ok(Some(cached)) => {
+            drop(guard);
+            remove_flight(FLIGHTS.get(), key, &flight);
+            return Ok(cached);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            drop(guard);
+            remove_flight(FLIGHTS.get(), key, &flight);
+            return Err(error);
+        }
+    }
+
+    let value = match fetch().await {
+        Ok(value) => value,
+        Err(error) => {
+            drop(guard);
+            remove_flight(FLIGHTS.get(), key, &flight);
+            return Err(error);
+        }
+    };
+    let base_ms = ttl.as_millis() as u64;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos() as u64;
+    let jitter_percent = 90 + (nanos % 21);
+    let jittered_ttl = Duration::from_millis((base_ms * jitter_percent / 100).max(1));
+    let cache_result = set_json(cache, key, &value, jittered_ttl).await;
+    drop(guard);
+    remove_flight(FLIGHTS.get(), key, &flight);
+    cache_result?;
     Ok(value)
+}
+
+type FlightMap = std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
+
+fn remove_flight(flights: Option<&FlightMap>, key: &str, flight: &Arc<tokio::sync::Mutex<()>>) {
+    let Some(flights) = flights else { return };
+    let mut flights = flights.lock().expect("single-flight lock poisoned");
+    if flights
+        .get(key)
+        .is_some_and(|current| Arc::ptr_eq(current, flight))
+    {
+        flights.remove(key);
+    }
 }
 
 pub fn spawn_invalidation_listener(cache: Arc<dyn CacheService>, redis_url: Option<String>) {
@@ -333,9 +467,9 @@ async fn run_invalidation_listener(
     let mut stream = pubsub.into_on_message();
     use futures::StreamExt;
     while let Some(msg) = stream.next().await {
-        let payload: String = msg.get_payload().map_err(|e| {
-            AppError::Internal(format!("Invalidation payload error: {e}"))
-        })?;
+        let payload: String = msg
+            .get_payload()
+            .map_err(|e| AppError::Internal(format!("Invalidation payload error: {e}")))?;
         if let Ok(keys) = serde_json::from_str::<Vec<String>>(&payload) {
             let refs: Vec<&str> = keys.iter().map(String::as_str).collect();
             let _ = cache.delete(&refs).await;
@@ -358,5 +492,7 @@ pub async fn invalidate(cache: &dyn CacheService, keys: &[String]) -> Result<(),
 
 /// Bust all dashboard stats snapshots (keyed under `stats:`).
 pub async fn invalidate_stats(cache: &dyn CacheService) -> Result<(), AppError> {
-    cache.invalidate_prefix(crate::cache::keys::STATS_PREFIX).await
+    cache
+        .invalidate_prefix(crate::cache::keys::STATS_PREFIX)
+        .await
 }

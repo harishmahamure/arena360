@@ -9,19 +9,22 @@ use super::outbox::OutboxRow;
 pub struct DeliveryService;
 
 impl DeliveryService {
-    pub async fn insert_delivery(
+    pub async fn insert_deliveries(
         pool: &PgPool,
         outbox_id: i64,
-        subscriber_id: Uuid,
+        subscriber_ids: &[Uuid],
     ) -> Result<(), AppError> {
+        if subscriber_ids.is_empty() {
+            return Ok(());
+        }
         sqlx::query(
             r#"INSERT INTO realtime_deliveries (outbox_id, subscriber_id, delivered_at)
-               VALUES ($1, $2, $3)
+               SELECT $1, subscriber_id, $2 FROM UNNEST($3::uuid[]) AS subscriber_id
                ON CONFLICT (outbox_id, subscriber_id) DO NOTHING"#,
         )
         .bind(outbox_id)
-        .bind(subscriber_id)
         .bind(Utc::now())
+        .bind(subscriber_ids)
         .execute(pool)
         .await?;
         Ok(())
@@ -96,26 +99,32 @@ impl DeliveryService {
     pub async fn cleanup(pool: &PgPool, retention_days: i64) -> Result<u64, AppError> {
         let cutoff = Utc::now() - chrono::Duration::days(retention_days);
         let disallowed_notifications = sqlx::query(
-            r#"DELETE FROM realtime_outbox o
-               WHERE o.event_type = 'notification.created'
+            r#"DELETE FROM realtime_outbox o WHERE o.id IN (
+               SELECT candidate.id FROM realtime_outbox candidate
+               WHERE candidate.event_type = 'notification.created'
                  AND (
-                     o.payload->>'kind' IS DISTINCT FROM 'kiosk_order_placed'
+                     candidate.payload->>'kind' IS DISTINCT FROM 'kiosk_order_placed'
                      OR NOT EXISTS (
                          SELECT 1 FROM users u
-                         WHERE u.id = o.audience_user_id
+                         WHERE u.id = candidate.audience_user_id
                            AND u.role = 'staff'
                            AND u."isActive" = true
                            AND u."deletedAt" IS NULL
                      )
-                 )"#,
+                 ) ORDER BY candidate.id LIMIT 5000
+               )"#,
         )
         .execute(pool)
         .await?;
 
-        let expired = sqlx::query(r#"DELETE FROM realtime_outbox WHERE created_at < $1"#)
-            .bind(cutoff)
-            .execute(pool)
-            .await?;
+        let expired = sqlx::query(
+            r#"DELETE FROM realtime_outbox WHERE id IN (
+            SELECT id FROM realtime_outbox WHERE created_at < $1 ORDER BY id LIMIT 5000
+        )"#,
+        )
+        .bind(cutoff)
+        .execute(pool)
+        .await?;
 
         Ok(disallowed_notifications.rows_affected() + expired.rows_affected())
     }

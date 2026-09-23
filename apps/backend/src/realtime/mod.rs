@@ -7,11 +7,10 @@ mod dispatcher;
 pub mod frame;
 pub mod handler;
 pub mod outbox;
+pub mod registry;
 pub mod rooms;
 
-pub use balance_events::{
-    publish_balance_updated_for_player, publish_balance_updated_for_session,
-};
+pub use balance_events::{publish_balance_updated_for_player, publish_balance_updated_for_session};
 pub use dispatcher::Dispatcher;
 pub use outbox::OutboxService;
 pub use rooms::RoomService;
