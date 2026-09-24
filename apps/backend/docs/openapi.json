@@ -7847,6 +7847,870 @@
         ]
       }
     },
+    "/organizations/{org_id}/configuration-snapshot": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "configuration_snapshot",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "sinceRevision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigurationSnapshotEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/locations": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "venue_locations",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueLocationListEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/pricing-rule-sets": {
+      "get": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "list_rule_sets",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleSetListEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "create_rule_set",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePricingRuleSetDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleSetDraftEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions": {
+      "get": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "list_versions",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleVersionListEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "create_version",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePricingRuleVersionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleVersionEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/publish": {
+      "post": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "publish_version",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishPricingRuleVersionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleVersionEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/rollback": {
+      "post": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "rollback_version",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleVersionEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/simulate": {
+      "post": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "simulate_version",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingSimulationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingSimulationEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/validate": {
+      "post": {
+        "tags": [
+          "pricing-rules"
+        ],
+        "operationId": "validate_version",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleVersionEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/settings/catalog": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "settings_catalog",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingCatalogEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/settings/effective": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "effective_settings",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedSettingListEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/settings/history": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "setting_history",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingRevisionListEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/settings/overrides/{key}": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "upsert_setting_override",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSettingOverrideDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOverrideEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "delete_setting_override",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "expectedRevision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/plans": {
       "get": {
         "tags": [
@@ -14488,6 +15352,71 @@
           }
         }
       },
+      "ConfigurationSnapshot": {
+        "type": "object",
+        "required": [
+          "organizationId",
+          "revision",
+          "etag",
+          "generatedAt",
+          "settings"
+        ],
+        "properties": {
+          "etag": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResolvedSetting"
+            }
+          }
+        }
+      },
+      "ConfigurationSnapshotEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConfigurationSnapshot"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "ConvertKioskOrderDto": {
         "type": "object",
         "required": [
@@ -14947,6 +15876,45 @@
               "null"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "CreatePricingRuleSetDto": {
+        "type": "object",
+        "required": [
+          "name",
+          "policy"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/PricingPolicy"
+          }
+        }
+      },
+      "CreatePricingRuleVersionDto": {
+        "type": "object",
+        "required": [
+          "policy"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/PricingPolicy"
           }
         }
       },
@@ -21121,6 +22089,515 @@
           }
         }
       },
+      "PricingAction": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "value",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "fixed"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "value",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "multiplier"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "PricingPolicy": {
+        "type": "object",
+        "required": [
+          "baseRate"
+        ],
+        "properties": {
+          "baseRate": {
+            "type": "string",
+            "description": "Decimal amount encoded as a string to avoid floating-point money errors."
+          },
+          "maximumPrice": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "minimumPrice": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "roundingScale": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRule"
+            }
+          }
+        }
+      },
+      "PricingRule": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "priority",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PricingAction"
+          },
+          "deviceTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "endTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "startTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "weekdays": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "PricingRuleSet": {
+        "type": "object",
+        "required": [
+          "id",
+          "organizationId",
+          "name",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "activeVersionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PricingRuleSetDraft": {
+        "type": "object",
+        "required": [
+          "ruleSet",
+          "version"
+        ],
+        "properties": {
+          "ruleSet": {
+            "$ref": "#/components/schemas/PricingRuleSet"
+          },
+          "version": {
+            "$ref": "#/components/schemas/PricingRuleVersion"
+          }
+        }
+      },
+      "PricingRuleSetDraftEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PricingRuleSetDraft"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PricingRuleSetListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRuleSet"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PricingRuleVersion": {
+        "type": "object",
+        "required": [
+          "id",
+          "ruleSetId",
+          "version",
+          "status",
+          "policy",
+          "createdAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "effectiveAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "policy": {},
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "publishedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "ruleSetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "simulationHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "validatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PricingRuleVersionEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PricingRuleVersion"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PricingRuleVersionListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRuleVersion"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PricingSimulationDto": {
+        "type": "object",
+        "required": [
+          "at"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "baseRate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "PricingSimulationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PricingSimulationResult"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "PricingSimulationResult": {
+        "type": "object",
+        "required": [
+          "baseRate",
+          "finalPrice",
+          "currency",
+          "timezone",
+          "trace",
+          "simulationHash"
+        ],
+        "properties": {
+          "baseRate": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "finalPrice": {
+            "type": "string"
+          },
+          "simulationHash": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "trace": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingTraceStep"
+            }
+          }
+        }
+      },
+      "PricingTraceStep": {
+        "type": "object",
+        "required": [
+          "ruleId",
+          "ruleName",
+          "action",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "ruleName": {
+            "type": "string"
+          }
+        }
+      },
       "Product": {
         "type": "object",
         "required": [
@@ -21446,6 +22923,18 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "PublishPricingRuleVersionDto": {
+        "type": "object",
+        "properties": {
+          "effectiveAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -22319,6 +23808,74 @@
           }
         }
       },
+      "ResolvedSetting": {
+        "type": "object",
+        "required": [
+          "key",
+          "value",
+          "sourceScope",
+          "revision",
+          "overridden"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sourceId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "sourceScope": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "value": {}
+        }
+      },
+      "ResolvedSettingListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResolvedSetting"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "RevenueByPaymentMethodDto": {
         "type": "object",
         "properties": {
@@ -22854,6 +24411,268 @@
             "format": "double"
           }
         }
+      },
+      "SettingCatalogEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingDefinition"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "SettingDefinition": {
+        "type": "object",
+        "required": [
+          "key",
+          "category",
+          "description",
+          "valueType",
+          "defaultValue",
+          "allowedScopes",
+          "validation",
+          "sensitive",
+          "owner"
+        ],
+        "properties": {
+          "allowedScopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingScope"
+            }
+          },
+          "category": {
+            "type": "string"
+          },
+          "defaultValue": {},
+          "description": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "sensitive": {
+            "type": "boolean"
+          },
+          "validation": {},
+          "valueType": {
+            "$ref": "#/components/schemas/SettingValueType"
+          }
+        }
+      },
+      "SettingOverride": {
+        "type": "object",
+        "required": [
+          "id",
+          "organizationId",
+          "key",
+          "value",
+          "revision",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "value": {}
+        }
+      },
+      "SettingOverrideEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SettingOverride"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "SettingRevision": {
+        "type": "object",
+        "required": [
+          "id",
+          "organizationId",
+          "key",
+          "revision",
+          "operation",
+          "reason",
+          "createdAt"
+        ],
+        "properties": {
+          "actorUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "key": {
+            "type": "string"
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "newValue": {},
+          "oldValue": {},
+          "operation": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SettingRevisionListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingRevision"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "SettingScope": {
+        "type": "string",
+        "enum": [
+          "organization",
+          "location"
+        ]
+      },
+      "SettingValueType": {
+        "type": "string",
+        "enum": [
+          "string",
+          "number",
+          "integer",
+          "boolean",
+          "uuid",
+          "timezone",
+          "currency"
+        ]
       },
       "SettleCreditDto": {
         "type": "object",
@@ -26755,6 +28574,33 @@
           }
         }
       },
+      "UpsertSettingOverrideDto": {
+        "type": "object",
+        "required": [
+          "value",
+          "reason"
+        ],
+        "properties": {
+          "expectedRevision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "value": {}
+        }
+      },
       "UsageSession": {
         "type": "object",
         "required": [
@@ -27558,6 +29404,71 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "VenueLocation": {
+        "type": "object",
+        "required": [
+          "id",
+          "organizationId",
+          "slug",
+          "name",
+          "timezone",
+          "currency",
+          "isActive"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        }
+      },
+      "VenueLocationListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VenueLocation"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
           }
         }
       },

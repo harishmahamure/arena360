@@ -13,9 +13,12 @@ const TOKEN_AUTH_MESSAGES = new Set(['Invalid or expired token', 'Authentication
 
 const CREDENTIAL_ENTRY_PATHS = ['/auth/login/admin', '/auth/login/staff', '/auth/login/panel'];
 
-interface JwtPayload {
+export interface JwtPayload {
   userId?: string;
   roles?: string[];
+  permissions?: string[];
+  tenantId?: string;
+  orgIds?: string[];
   exp?: number;
 }
 

@@ -129,6 +129,44 @@ success_envelope!(
 success_envelope!(UserEnvelope, User);
 success_envelope!(ConfigurationEnvelope, crate::models::Configuration);
 success_envelope!(ConfigurationListEnvelope, Vec<crate::models::Configuration>);
+success_envelope!(
+    SettingCatalogEnvelope,
+    Vec<crate::models::SettingDefinition>
+);
+success_envelope!(
+    ResolvedSettingListEnvelope,
+    Vec<crate::models::ResolvedSetting>
+);
+success_envelope!(SettingOverrideEnvelope, crate::models::SettingOverride);
+success_envelope!(
+    SettingRevisionListEnvelope,
+    Vec<crate::models::SettingRevision>
+);
+success_envelope!(
+    ConfigurationSnapshotEnvelope,
+    crate::models::ConfigurationSnapshot
+);
+success_envelope!(VenueLocationListEnvelope, Vec<crate::models::VenueLocation>);
+success_envelope!(
+    PricingRuleSetListEnvelope,
+    Vec<crate::models::PricingRuleSet>
+);
+success_envelope!(
+    PricingRuleSetDraftEnvelope,
+    crate::models::PricingRuleSetDraft
+);
+success_envelope!(
+    PricingRuleVersionEnvelope,
+    crate::models::PricingRuleVersion
+);
+success_envelope!(
+    PricingRuleVersionListEnvelope,
+    Vec<crate::models::PricingRuleVersion>
+);
+success_envelope!(
+    PricingSimulationEnvelope,
+    crate::models::PricingSimulationResult
+);
 success_envelope!(ShiftEnvelope, crate::models::Shift);
 success_envelope!(ShiftActiveEnvelope, Option<crate::models::Shift>);
 success_envelope!(

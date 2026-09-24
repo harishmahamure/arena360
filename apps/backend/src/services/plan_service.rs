@@ -9,6 +9,7 @@ use crate::models::{
     parse_deduction_profile, parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto,
 };
 use crate::repositories::{PlanCreateValues, PlanRepository};
+use crate::services::ConfigService;
 use crate::validation::{optional_device_sub_type, optional_device_type};
 
 const VALID_DAYS: &[&str] = &[
@@ -24,13 +25,15 @@ const VALID_DAYS: &[&str] = &[
 pub struct PlanService {
     repo: PlanRepository,
     cache: Arc<dyn CacheService>,
+    settings: Arc<ConfigService>,
 }
 
 impl PlanService {
-    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
+    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>, settings: Arc<ConfigService>) -> Self {
         Self {
             repo: PlanRepository::new(pool),
             cache,
+            settings,
         }
     }
 
@@ -80,10 +83,33 @@ impl PlanService {
         dto: CreatePlanDto,
         actor_id: Option<Uuid>,
     ) -> Result<Plan, AppError> {
-        self.validate_create(&dto)?;
-
-        let validity_days = dto.validity_days.unwrap_or(30);
-        let time_credits = dto.time_credits.unwrap_or(60);
+        let validity_days = match dto.validity_days {
+            Some(value) => value,
+            None => self
+                .settings
+                .resolve_value(
+                    crate::models::DEFAULT_ORGANIZATION_ID,
+                    None,
+                    "plans.default_validity_days",
+                )
+                .await?
+                .as_i64()
+                .unwrap_or(30) as i32,
+        };
+        let time_credits = match dto.time_credits {
+            Some(value) => value,
+            None => self
+                .settings
+                .resolve_value(
+                    crate::models::DEFAULT_ORGANIZATION_ID,
+                    None,
+                    "plans.default_time_credits",
+                )
+                .await?
+                .as_i64()
+                .unwrap_or(60) as i32,
+        };
+        self.validate_create(&dto, validity_days, time_credits)?;
 
         let time_window_start = dto
             .time_window_start
@@ -91,8 +117,10 @@ impl PlanService {
             .map(parse_time)
             .transpose()?;
         let time_window_end = dto.time_window_end.as_deref().map(parse_time).transpose()?;
-        let (dynamic_deduction_enabled, deduction_profile) =
-            Self::resolve_deduction_fields(&dto.dynamic_deduction_enabled, dto.deduction_profile.as_ref())?;
+        let (dynamic_deduction_enabled, deduction_profile) = Self::resolve_deduction_fields(
+            &dto.dynamic_deduction_enabled,
+            dto.deduction_profile.as_ref(),
+        )?;
 
         let plan = self
             .repo
@@ -181,10 +209,8 @@ impl PlanService {
                 .as_ref()
                 .or(existing.deduction_profile.as_ref())
         };
-        let (dynamic_deduction_enabled, deduction_profile) = Self::resolve_deduction_fields(
-            &Some(dynamic_enabled),
-            profile_value,
-        )?;
+        let (dynamic_deduction_enabled, deduction_profile) =
+            Self::resolve_deduction_fields(&Some(dynamic_enabled), profile_value)?;
 
         let plan = self
             .repo
@@ -210,15 +236,17 @@ impl PlanService {
         self.invalidate_plans(Some(id)).await
     }
 
-    fn validate_create(&self, dto: &CreatePlanDto) -> Result<(), AppError> {
+    fn validate_create(
+        &self,
+        dto: &CreatePlanDto,
+        validity_days: i32,
+        time_credits: i32,
+    ) -> Result<(), AppError> {
         if dto.price <= 0.0 {
             return Err(AppError::BadRequest(
                 "price must be greater than 0".to_string(),
             ));
         }
-
-        let validity_days = dto.validity_days.unwrap_or(30);
-        let time_credits = dto.time_credits.unwrap_or(60);
 
         self.validate_plan_type(
             &dto.plan_type,

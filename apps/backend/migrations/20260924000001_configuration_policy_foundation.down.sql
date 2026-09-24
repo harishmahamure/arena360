@@ -1,0 +1,12 @@
+ALTER TABLE IF EXISTS pricing_rule_sets DROP CONSTRAINT IF EXISTS pricing_rule_sets_active_version_fk;
+DROP TRIGGER IF EXISTS users_default_membership_trigger ON users;
+DROP FUNCTION IF EXISTS arena360_assign_default_membership();
+DROP TABLE IF EXISTS pricing_rule_versions;
+DROP TABLE IF EXISTS pricing_rule_sets;
+DROP TYPE IF EXISTS pricing_rule_version_status;
+DROP TABLE IF EXISTS setting_revisions;
+DROP TABLE IF EXISTS setting_overrides;
+DROP TABLE IF EXISTS location_access_assignments;
+DROP TABLE IF EXISTS organization_memberships;
+DROP TABLE IF EXISTS venue_locations;
+DROP TABLE IF EXISTS organizations;

@@ -10,8 +10,13 @@ use crate::models::{
     TransactionResponse, TransactionWithLineItems, UpdateTransactionDto,
 };
 use crate::realtime::{publish_balance_updated_for_player, OutboxService};
-use crate::repositories::{InventoryRepository, TransactionProductRepository, TransactionRepository};
-use crate::services::{BalanceService, CreditService, EventService, InventoryService, NotificationService};
+use crate::repositories::{
+    InventoryRepository, TransactionProductRepository, TransactionRepository,
+};
+use crate::services::{
+    BalanceService, ConfigService, CreditService, EventService, NotificationService,
+    PricingPolicyService,
+};
 use crate::validation::{
     optional_payment_status, require_payment_method, require_payment_status,
     require_transaction_type, validate_online_payment_ref_last4,
@@ -28,6 +33,7 @@ pub struct TransactionService {
     notifications: NotificationService,
     cafe_timezone: String,
     cache: Arc<dyn CacheService>,
+    settings: Arc<ConfigService>,
 }
 
 impl TransactionService {
@@ -40,6 +46,7 @@ impl TransactionService {
         notifications: NotificationService,
         cafe_timezone: String,
         cache: Arc<dyn CacheService>,
+        settings: Arc<ConfigService>,
     ) -> Self {
         Self {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
@@ -52,6 +59,7 @@ impl TransactionService {
             notifications,
             cafe_timezone,
             cache,
+            settings,
         }
     }
 
@@ -207,12 +215,25 @@ impl TransactionService {
 
         let mut db_tx = self.repo.pool.begin().await?;
         let now = dto.transaction_date.unwrap_or_else(Utc::now);
+        let (timezone, night_start, night_end) = self
+            .settings
+            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .await
+            .unwrap_or_else(|_| {
+                (
+                    self.cafe_timezone.clone(),
+                    "23:00".to_string(),
+                    "08:00".to_string(),
+                )
+            });
 
         let resolved_items = Self::resolve_and_validate_stock(
             &mut db_tx,
             line_items,
             sale_location_id,
-            &self.cafe_timezone,
+            &timezone,
+            &night_start,
+            &night_end,
             now,
         )
         .await?;
@@ -338,6 +359,8 @@ impl TransactionService {
         line_items: &[CreateLineItemDto],
         sale_location_id: Uuid,
         cafe_timezone: &str,
+        night_start: &str,
+        night_end: &str,
         now: chrono::DateTime<Utc>,
     ) -> Result<Vec<(Uuid, i32, f64)>, AppError> {
         let mut resolved = Vec::with_capacity(line_items.len());
@@ -376,12 +399,14 @@ impl TransactionService {
                 )));
             }
 
-            let unit_price = InventoryService::effective_product_price(
+            let unit_price = PricingPolicyService::evaluate_legacy_product_price(
                 day_price,
                 night_price,
                 now,
                 cafe_timezone,
-            );
+                night_start,
+                night_end,
+            )?;
             resolved.push((item.product_id, item.quantity, unit_price));
         }
         Ok(resolved)
@@ -482,10 +507,7 @@ impl TransactionService {
         }
 
         if is_credit {
-            let _ = self
-                .credit
-                .invalidate_player_credit(dto.player_id)
-                .await;
+            let _ = self.credit.invalidate_player_credit(dto.player_id).await;
         }
 
         self.apply_cash_register_effects(&transaction, actor_id, cash_registers)
@@ -544,10 +566,8 @@ impl TransactionService {
         let updated = self.repo.update(id, &dto, actor_id).await?;
 
         if old_txn.payment_status != "completed" && updated.payment_status == "completed" {
-            let plan_already_granted = Self::should_grant_plan_benefit(
-                &old_txn.payment_method,
-                &old_txn.payment_status,
-            );
+            let plan_already_granted =
+                Self::should_grant_plan_benefit(&old_txn.payment_method, &old_txn.payment_status);
             if updated.transaction_type == "plan_purchase"
                 && !plan_already_granted
                 && Self::should_grant_plan_benefit(&updated.payment_method, &updated.payment_status)

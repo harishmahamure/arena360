@@ -5,14 +5,15 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{
-    activity_kind, ConvertKioskOrderDto, CreateKioskOrderDto, CreateLineItemDto,
-    CreateTransactionDto, KioskMenuProduct, KioskOrderFilterDto, KioskOrderWithItems,
-    kiosk_order_status,
+    activity_kind, kiosk_order_status, ConvertKioskOrderDto, CreateKioskOrderDto,
+    CreateLineItemDto, CreateTransactionDto, KioskMenuProduct, KioskOrderFilterDto,
+    KioskOrderWithItems,
 };
 use crate::realtime::OutboxService;
 use crate::repositories::{InventoryRepository, KioskOrderRepository, SessionRepository};
 use crate::services::{
-    InventoryService, NotificationService, Recipients, RecordNotification, TransactionService,
+    ConfigService, NotificationService, PricingPolicyService, Recipients, RecordNotification,
+    TransactionService,
 };
 
 pub struct KioskOrderService {
@@ -22,6 +23,7 @@ pub struct KioskOrderService {
     notifications: NotificationService,
     outbox: OutboxService,
     cafe_timezone: String,
+    settings: Arc<ConfigService>,
 }
 
 impl KioskOrderService {
@@ -30,6 +32,7 @@ impl KioskOrderService {
         notifications: NotificationService,
         outbox: OutboxService,
         cafe_timezone: String,
+        settings: Arc<ConfigService>,
     ) -> Self {
         Self {
             repo: KioskOrderRepository::new(pool.clone()),
@@ -38,6 +41,7 @@ impl KioskOrderService {
             notifications,
             outbox,
             cafe_timezone,
+            settings,
         }
     }
 
@@ -48,6 +52,17 @@ impl KioskOrderService {
             .await?;
 
         let now = Utc::now();
+        let (timezone, night_start, night_end) = self
+            .settings
+            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .await
+            .unwrap_or_else(|_| {
+                (
+                    self.cafe_timezone.clone(),
+                    "23:00".to_string(),
+                    "08:00".to_string(),
+                )
+            });
         let rows = sqlx::query_as::<_, (Uuid, String, Option<String>, String, f64, f64, i32)>(
             r#"
             SELECT p.id,
@@ -70,17 +85,18 @@ impl KioskOrderService {
         .fetch_all(self.repo.pool())
         .await?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(
                 |(id, name, description, category, day_price, night_price, stock)| {
-                    let price = InventoryService::effective_product_price(
+                    let price = PricingPolicyService::evaluate_legacy_product_price(
                         day_price,
                         night_price,
                         now,
-                        &self.cafe_timezone,
-                    );
-                    KioskMenuProduct {
+                        &timezone,
+                        &night_start,
+                        &night_end,
+                    )?;
+                    Ok(KioskMenuProduct {
                         id,
                         name,
                         description,
@@ -88,10 +104,10 @@ impl KioskOrderService {
                         price,
                         stock_available: stock,
                         in_stock: stock > 0,
-                    }
+                    })
                 },
             )
-            .collect())
+            .collect::<Result<Vec<_>, AppError>>()
     }
 
     pub async fn place_order(
@@ -122,6 +138,17 @@ impl KioskOrderService {
             .await?;
 
         let now = Utc::now();
+        let (timezone, night_start, night_end) = self
+            .settings
+            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .await
+            .unwrap_or_else(|_| {
+                (
+                    self.cafe_timezone.clone(),
+                    "23:00".to_string(),
+                    "08:00".to_string(),
+                )
+            });
         let mut resolved: Vec<(Uuid, i32, String, f64)> = Vec::new();
 
         for item in &dto.line_items {
@@ -157,12 +184,14 @@ impl KioskOrderService {
                 )));
             }
 
-            let unit_price = InventoryService::effective_product_price(
+            let unit_price = PricingPolicyService::evaluate_legacy_product_price(
                 day_price,
                 night_price,
                 now,
-                &self.cafe_timezone,
-            );
+                &timezone,
+                &night_start,
+                &night_end,
+            )?;
 
             resolved.push((item.product_id, item.quantity, name, unit_price));
         }
@@ -171,13 +200,7 @@ impl KioskOrderService {
 
         let order = self
             .repo
-            .create_with_items(
-                open.session_id,
-                player_id,
-                device_id,
-                dto.note,
-                &resolved,
-            )
+            .create_with_items(open.session_id, player_id, device_id, dto.note, &resolved)
             .await?;
 
         self.notify_order_placed(&order).await?;
@@ -186,7 +209,10 @@ impl KioskOrderService {
     }
 
     async fn notify_order_placed(&self, order: &KioskOrderWithItems) -> Result<(), AppError> {
-        let device_name = order.device_name.clone().unwrap_or_else(|| "Unknown PC".to_string());
+        let device_name = order
+            .device_name
+            .clone()
+            .unwrap_or_else(|| "Unknown PC".to_string());
         let username = order
             .player_username
             .clone()
@@ -275,7 +301,10 @@ impl KioskOrderService {
         }
     }
 
-    pub async fn list(&self, filters: KioskOrderFilterDto) -> Result<crate::dto::PaginationResult<KioskOrderWithItems>, AppError> {
+    pub async fn list(
+        &self,
+        filters: KioskOrderFilterDto,
+    ) -> Result<crate::dto::PaginationResult<KioskOrderWithItems>, AppError> {
         self.repo.list(&filters).await
     }
 

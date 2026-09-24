@@ -1,0 +1,98 @@
+schema_version: 1
+plan_version: 0.1.0
+status: draft
+last_reviewed: 2026-09-24
+
+product:
+  name: Arena360
+  positioning: Run. Automate. Optimize.
+  vision_source: docs/PRODUCT_VISION.md
+  baseline_source: docs/SYSTEM.md
+  planning_index: docs/planning/README.md
+
+scope:
+  implementation_reuse:
+    - apps/backend
+    - apps/kiosk
+  reference_only:
+    - apps/admin
+    - packages/api-types
+    - packages/contracts
+    - packages/providers
+    - packages/theme
+    - packages/ui
+    - packages/utils
+  build_new:
+    - arena360_admin
+    - arena360_owner
+    - arena360_staff
+    - arena360_player_self_service
+    - arena360_marketing_website
+    - arena_edge
+    - arena_hub
+    - intelligence
+    - partner_portal
+  rule: Backend and kiosk internals may be reused, but no existing API, schema, workflow, URL, or UI contract is a backward-compatibility requirement.
+
+defaults:
+  currency: INR
+  timezone: Asia/Kolkata
+  language: en-IN
+  deployment: cloud_first
+  local_deployment: supported_product_tier
+  tenant_hierarchy:
+    - organization
+    - location
+    - zone
+    - station
+
+product_guardrails:
+  - Use Station as the product term for every playable resource.
+  - Scope every business record to an organization and, where relevant, a location.
+  - Keep PostgreSQL authoritative; caches and edge replicas are reconstructable.
+  - Make sensitive mutations auditable with actor, reason, before, and after values.
+  - Design one coherent contract for the new Cloud, Local, Edge, kiosk, and app system.
+  - Make offline behavior explicit for every critical venue workflow.
+  - Explain price, eligibility, balance, and automation decisions to operators.
+  - Require human approval before intelligence can change prices or policies.
+  - Rate-limit record creation, including unlimited plans, and publish fair-use and abuse controls.
+  - Do not store secrets in venue configuration or audit payloads.
+
+delivery_guardrails:
+  documentation_only_until_approved: true
+  no_implementation_in_current_planning_cycle: true
+  backward_compatibility_required: false
+  greenfield_contracts_allowed: true
+  contract_first: true
+  ux_validation_before_build: true
+  thin_vertical_slices: true
+  release_behind_flags: true
+  migrations_must_be_reversible: true
+
+legacy_data_migration:
+  owner: user
+  delivery: separate_migration_tool
+  included_in_product_milestones: false
+  constrains_new_system_design: false
+  target: versioned_new_system_import_contract
+  direct_legacy_compatibility_required: false
+
+quality_gates:
+  - tenant_isolation
+  - authorization
+  - auditability
+  - accessibility
+  - offline_and_recovery
+  - observability
+  - performance_budget
+  - abuse_and_rate_limits
+  - operator_supportability
+
+planning:
+  milestone_manifest: planning/milestones.yml
+  capability_baseline: docs/planning/CAPABILITY_BASELINE.md
+  product_surfaces: docs/planning/PRODUCT_SURFACES.md
+  data_migration_boundary: docs/planning/DATA_MIGRATION_BOUNDARY.md
+  ux_plan: docs/planning/UX_PLAN.md
+  delivery_management: docs/planning/DELIVERY_MANAGEMENT.md
+  decision_log: docs/planning/DECISIONS.md

@@ -15,6 +15,7 @@ pub mod kiosk_orders;
 pub mod notifications;
 pub mod plans;
 pub mod player_plans;
+pub mod pricing_rules;
 pub mod procurement;
 pub mod products;
 pub mod realtime_rooms;

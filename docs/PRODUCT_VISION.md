@@ -2386,3 +2386,5 @@ The long-term objective is for a gaming venue owner to think:
 > But Arena360 is the system my entire venue runs on.
 
 That is when Arena360 becomes difficult to replace.
+
+Keeping record creation rate limits for customers for who are using unlimied plan and mentioning them in policy to prevent. Abuse policy to be added.

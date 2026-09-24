@@ -18,6 +18,8 @@ layer; the backend continues with a no-op cache if Redis is unavailable.
 ## Documentation
 
 - [Current system and capabilities](docs/SYSTEM.md)
+- [Product vision](docs/PRODUCT_VISION.md)
+- [Product planning and milestones](docs/planning/README.md)
 - [Local development](docs/DEVELOPMENT.md)
 - [Deployment and operations](docs/DEPLOYMENT.md)
 

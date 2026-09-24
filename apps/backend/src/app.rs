@@ -20,9 +20,9 @@ use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
     GameService, InventoryService, KioskOrderService, NotificationService, PlanService,
-    PlayerPlanService, ProcurementService, ProductService, SessionService, ShiftService,
-    StaffGamingAllowanceService, StatsService, StorageConfig, StorageService, TransactionService,
-    UnitService, UserService, VendorService,
+    PlayerPlanService, PricingPolicyService, ProcurementService, ProductService, SessionService,
+    ShiftService, StaffGamingAllowanceService, StatsService, StorageConfig, StorageService,
+    TransactionService, UnitService, UserService, VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -34,10 +34,11 @@ pub struct AppState {
     pub settings: Arc<Settings>,
     pub metrics: Arc<crate::metrics::Metrics>,
     pub auth: AuthService,
-    pub config: ConfigService,
+    pub config: Arc<ConfigService>,
     pub users: Arc<UserService>,
     pub devices: DeviceService,
     pub plans: PlanService,
+    pub pricing_rules: PricingPolicyService,
     pub player_plans: Arc<PlayerPlanService>,
     pub balances: Arc<BalanceService>,
     pub units: UnitService,
@@ -76,6 +77,12 @@ pub async fn build_state() -> Arc<AppState> {
     let events = EventService::new(broadcaster);
 
     let outbox = OutboxService::new(pool.clone());
+    let config_service = Arc::new(ConfigService::new(
+        pool.clone(),
+        cache.clone(),
+        settings.cafe_timezone.clone(),
+    ));
+    let pricing_rules = PricingPolicyService::new(pool.clone());
     let notifications = NotificationService::new(pool.clone(), outbox.clone(), cache.clone());
     let rooms = RoomService::new(pool.clone());
     let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
@@ -109,6 +116,17 @@ pub async fn build_state() -> Arc<AppState> {
     );
     tokio::spawn(dispatcher.run());
 
+    let scheduled_pricing = pricing_rules.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            if let Err(error) = scheduled_pricing.activate_due().await {
+                tracing::warn!(%error, "Scheduled pricing activation failed");
+            }
+        }
+    });
+
     let notifications_for_cleanup = notifications.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
@@ -139,10 +157,11 @@ pub async fn build_state() -> Arc<AppState> {
             balances_for_auth,
             users.clone(),
         ),
-        config: ConfigService::new(pool.clone(), cache.clone()),
+        config: config_service.clone(),
         users: users.clone(),
         devices: devices.clone(),
-        plans: PlanService::new(pool.clone(), cache.clone()),
+        plans: PlanService::new(pool.clone(), cache.clone(), config_service.clone()),
+        pricing_rules,
         player_plans: player_plans.clone(),
         balances: balances.clone(),
         units: UnitService::new(pool.clone(), cache.clone()),
@@ -173,6 +192,7 @@ pub async fn build_state() -> Arc<AppState> {
             notifications.clone(),
             settings.cafe_timezone.clone(),
             cache.clone(),
+            config_service.clone(),
         ),
         credit,
         staff_gaming_allowances: StaffGamingAllowanceService::new(
@@ -180,6 +200,7 @@ pub async fn build_state() -> Arc<AppState> {
             users.clone(),
             balances.clone(),
             cache.clone(),
+            config_service.clone(),
         ),
         products: ProductService::new(pool.clone(), cache.clone()),
         games: GameService::new(pool.clone(), cache.clone()),
@@ -207,6 +228,7 @@ pub async fn build_state() -> Arc<AppState> {
             notifications.clone(),
             outbox.clone(),
             settings.cafe_timezone.clone(),
+            config_service.clone(),
         ),
         notifications,
         outbox,
@@ -689,6 +711,57 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/config/{key}",
             get(handlers::config::get_config).put(handlers::config::upsert_config),
+        )
+        .route(
+            "/organizations/{org_id}/settings/catalog",
+            get(handlers::config::settings_catalog),
+        )
+        .route(
+            "/organizations/{org_id}/locations",
+            get(handlers::config::venue_locations),
+        )
+        .route(
+            "/organizations/{org_id}/settings/effective",
+            get(handlers::config::effective_settings),
+        )
+        .route(
+            "/organizations/{org_id}/settings/history",
+            get(handlers::config::setting_history),
+        )
+        .route(
+            "/organizations/{org_id}/settings/overrides/{key}",
+            put(handlers::config::upsert_setting_override)
+                .delete(handlers::config::delete_setting_override),
+        )
+        .route(
+            "/organizations/{org_id}/configuration-snapshot",
+            get(handlers::config::configuration_snapshot),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets",
+            get(handlers::pricing_rules::list_rule_sets)
+                .post(handlers::pricing_rules::create_rule_set),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions",
+            get(handlers::pricing_rules::list_versions)
+                .post(handlers::pricing_rules::create_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/validate",
+            post(handlers::pricing_rules::validate_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/simulate",
+            post(handlers::pricing_rules::simulate_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/publish",
+            post(handlers::pricing_rules::publish_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/rollback",
+            post(handlers::pricing_rules::rollback_version),
         )
         .layer(middleware::from_fn_with_state(
             state.clone(),

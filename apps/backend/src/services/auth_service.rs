@@ -14,7 +14,7 @@ use crate::dto::{
     RateLimitClaims, StaffLoginDto,
 };
 use crate::error::AppError;
-use crate::models::{deduction_profile::DeductionProfile, Device, User};
+use crate::models::{deduction_profile::DeductionProfile, Device, User, DEFAULT_ORGANIZATION_ID};
 use crate::repositories::{SessionRepository, ShiftRepository};
 use crate::services::session_service::display_remaining_for_session;
 use crate::services::totp_util::verify_totp_code;
@@ -52,7 +52,7 @@ impl AuthService {
         let password = trim_secret(&dto.password);
         let user = self.authenticate_admin(&username, &password).await?;
         Self::verify_totp_if_enabled(&user, dto.totp.as_deref())?;
-        self.issue_auth_response(&user)
+        self.issue_auth_response(&user).await
     }
 
     pub async fn login_staff(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
@@ -68,7 +68,7 @@ impl AuthService {
 
         Self::verify_totp_if_enabled(&user, dto.totp.as_deref())?;
 
-        let token = self.generate_access_token(&user)?;
+        let token = self.generate_access_token(&user).await?;
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),
@@ -116,7 +116,7 @@ impl AuthService {
             });
         }
 
-        self.panel_authenticated_response(&user)
+        self.panel_authenticated_response(&user).await
     }
 
     pub async fn verify_panel_mfa(
@@ -181,7 +181,7 @@ impl AuthService {
             .await?;
         tx.commit().await?;
 
-        self.panel_authenticated_response(&user)
+        self.panel_authenticated_response(&user).await
     }
 
     fn panel_challenge_hash(token: &str) -> String {
@@ -202,8 +202,11 @@ impl AuthService {
         Ok(user)
     }
 
-    fn panel_authenticated_response(&self, user: &User) -> Result<PanelLoginResponseDto, AppError> {
-        let token = self.generate_access_token(user)?;
+    async fn panel_authenticated_response(
+        &self,
+        user: &User,
+    ) -> Result<PanelLoginResponseDto, AppError> {
+        let token = self.generate_access_token(user).await?;
         let next_step = if user.role.as_deref() == Some("staff") {
             "shift_setup"
         } else {
@@ -374,17 +377,17 @@ impl AuthService {
         let claims = JwtUserClaims {
             sub: id.clone(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: id.clone(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
             roles: vec!["device".to_string()],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![],
+            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             deviceId: Some(id),
         };
 
@@ -404,17 +407,17 @@ impl AuthService {
         let claims = JwtUserClaims {
             sub: user.id.to_string(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: user.id.to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
             roles: vec![role],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![],
+            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             deviceId: Some(device_id.to_string()),
         };
 
@@ -495,8 +498,8 @@ impl AuthService {
         }
     }
 
-    pub fn issue_auth_response(&self, user: &User) -> Result<AuthResponseDto, AppError> {
-        let token = self.generate_access_token(user)?;
+    pub async fn issue_auth_response(&self, user: &User) -> Result<AuthResponseDto, AppError> {
+        let token = self.generate_access_token(user).await?;
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),
@@ -594,25 +597,64 @@ impl AuthService {
         }
     }
 
-    fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
+    async fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
+        let memberships: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
+            r#"SELECT "organizationId", permissions
+               FROM organization_memberships
+               WHERE "userId" = $1 AND "isActive" = TRUE
+               ORDER BY "createdAt""#,
+        )
+        .bind(user.id)
+        .fetch_all(&self.pool)
+        .await?;
+        if memberships.is_empty() {
+            return Err(AppError::Forbidden(
+                "User has no active organization membership".to_string(),
+            ));
+        }
+        self.encode_access_token(user, &memberships)
+    }
+
+    fn encode_access_token(
+        &self,
+        user: &User,
+        memberships: &[(Uuid, serde_json::Value)],
+    ) -> Result<String, AppError> {
         let role = user.role.clone().unwrap_or_else(|| "player".to_string());
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_access_expiration);
+        let org_ids: Vec<String> = memberships.iter().map(|(id, _)| id.to_string()).collect();
+        let permissions: Vec<String> = memberships
+            .iter()
+            .flat_map(|(_, value)| {
+                value
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|permission| permission.as_str().map(str::to_string))
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let tenant_id = org_ids
+            .first()
+            .cloned()
+            .ok_or_else(|| AppError::Forbidden("No active organization selected".to_string()))?;
 
         let claims = JwtUserClaims {
             sub: user.id.to_string(),
-            permissions: vec![],
-            allowedTenants: vec![],
+            permissions,
+            allowedTenants: org_ids.clone(),
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: user.id.to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: tenant_id,
             roles: vec![role],
             appId: "game-zone-backend".to_string(),
-            orgIds: vec![],
+            orgIds: org_ids,
             deviceId: None,
         };
 
@@ -800,7 +842,15 @@ mod access_token_tests {
         let auth = test_auth_service(settings);
         let user = test_user();
 
-        let token = auth.generate_access_token(&user).expect("token");
+        let token = auth
+            .encode_access_token(
+                &user,
+                &[(
+                    DEFAULT_ORGANIZATION_ID,
+                    serde_json::json!(["settings:read"]),
+                )],
+            )
+            .expect("token");
         let mut validation = Validation::default();
         validation.validate_exp = false;
         validation.set_audience(&["gamezone"]);

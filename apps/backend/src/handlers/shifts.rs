@@ -398,7 +398,7 @@ pub async fn handover_shift(
             .await?;
     }
 
-    let mut auth_response = state.auth.issue_auth_response(&validator)?;
+    let mut auth_response = state.auth.issue_auth_response(&validator).await?;
     auth_response.shiftId = Some(new_shift.id.to_string());
 
     let _ = state

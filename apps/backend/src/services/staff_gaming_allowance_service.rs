@@ -10,6 +10,7 @@ use crate::models::{
     StaffGamingAllowanceStatus, StaffGamingAllowanceSummary, STAFF_ALLOWANCE_PERIOD_DAYS,
 };
 use crate::repositories::{BalanceRepository, LedgerRepository};
+use crate::services::ConfigService;
 use crate::services::{BalanceService, UserService};
 
 pub struct StaffGamingAllowanceService {
@@ -18,6 +19,7 @@ pub struct StaffGamingAllowanceService {
     users: Arc<UserService>,
     balance_service: Arc<BalanceService>,
     cache: Arc<dyn CacheService>,
+    settings: Arc<ConfigService>,
 }
 
 impl StaffGamingAllowanceService {
@@ -26,6 +28,7 @@ impl StaffGamingAllowanceService {
         users: Arc<UserService>,
         balance_service: Arc<BalanceService>,
         cache: Arc<dyn CacheService>,
+        settings: Arc<ConfigService>,
     ) -> Self {
         Self {
             balances: BalanceRepository::new(pool.clone()),
@@ -33,6 +36,7 @@ impl StaffGamingAllowanceService {
             users,
             balance_service,
             cache,
+            settings,
         }
     }
 
@@ -93,7 +97,10 @@ impl StaffGamingAllowanceService {
         }
     }
 
-    pub async fn get_summary(&self, user_id: Uuid) -> Result<StaffGamingAllowanceSummary, AppError> {
+    pub async fn get_summary(
+        &self,
+        user_id: Uuid,
+    ) -> Result<StaffGamingAllowanceSummary, AppError> {
         self.ensure_staff_user(user_id).await?;
         let now = Utc::now();
 
@@ -162,7 +169,17 @@ impl StaffGamingAllowanceService {
         }
 
         let now = Utc::now();
-        let expiry = now + Duration::days(STAFF_ALLOWANCE_PERIOD_DAYS);
+        let period_days = self
+            .settings
+            .resolve_value(
+                crate::models::DEFAULT_ORGANIZATION_ID,
+                None,
+                "staff.allowance_period_days",
+            )
+            .await?
+            .as_i64()
+            .unwrap_or(STAFF_ALLOWANCE_PERIOD_DAYS);
+        let expiry = now + Duration::days(period_days);
         let balance = self
             .balances
             .create_staff_allowance(user_id, allotted_minutes, expiry, actor_id)

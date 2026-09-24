@@ -195,6 +195,7 @@ impl JwtUserClaims {
 #[cfg(test)]
 mod jwt_tests {
     use super::*;
+    use crate::models::DEFAULT_ORGANIZATION_ID;
     use chrono::{Duration, Utc};
     use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
@@ -202,17 +203,17 @@ mod jwt_tests {
         JwtUserClaims {
             sub: "user-id".to_string(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(iat),
             exp: Some((now + Duration::minutes(15)).timestamp()),
             userId: "user-id".to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
             roles: vec!["admin".to_string()],
             appId: "game-zone-backend".to_string(),
-            orgIds: vec![],
+            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             deviceId: None,
         }
     }
@@ -221,17 +222,17 @@ mod jwt_tests {
         JwtUserClaims {
             sub: "player-id".to_string(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + Duration::hours(24)).timestamp()),
             userId: "player-id".to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
             roles: vec!["player".to_string()],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![],
+            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             deviceId: Some(device_id.to_string()),
         }
     }

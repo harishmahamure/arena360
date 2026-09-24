@@ -1396,6 +1396,198 @@ export interface paths {
         patch: operations["mark_read"];
         trace?: never;
     };
+    "/organizations/{org_id}/configuration-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["configuration_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["venue_locations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_rule_sets"];
+        put?: never;
+        post: operations["create_rule_set"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_versions"];
+        put?: never;
+        post: operations["create_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["publish_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rollback_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["simulate_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["validate_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["settings_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["effective_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["setting_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/overrides/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["upsert_setting_override"];
+        post?: never;
+        delete: operations["delete_setting_override"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plans": {
         parameters: {
             query?: never;
@@ -2614,6 +2806,25 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        ConfigurationSnapshot: {
+            etag: string;
+            /** Format: date-time */
+            generatedAt: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: int64 */
+            revision: number;
+            settings: components["schemas"]["ResolvedSetting"][];
+        };
+        ConfigurationSnapshotEnvelope: {
+            data: components["schemas"]["ConfigurationSnapshot"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         ConvertKioskOrderDto: {
             /** Format: double */
             cashAmount?: number | null;
@@ -2725,6 +2936,16 @@ export interface components {
             timeWindowStart?: string | null;
             /** Format: int32 */
             validityDays?: number | null;
+        };
+        CreatePricingRuleSetDto: {
+            description?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            name: string;
+            policy: components["schemas"]["PricingPolicy"];
+        };
+        CreatePricingRuleVersionDto: {
+            policy: components["schemas"]["PricingPolicy"];
         };
         CreateProductDto: {
             category?: string | null;
@@ -4575,6 +4796,142 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        PricingAction: {
+            /** @enum {string} */
+            type: "fixed";
+            value: string;
+        } | {
+            /** @enum {string} */
+            type: "multiplier";
+            value: string;
+        };
+        PricingPolicy: {
+            /** @description Decimal amount encoded as a string to avoid floating-point money errors. */
+            baseRate: string;
+            maximumPrice?: string | null;
+            minimumPrice?: string | null;
+            /** Format: int32 */
+            roundingScale?: number;
+            rules?: components["schemas"]["PricingRule"][];
+        };
+        PricingRule: {
+            action: components["schemas"]["PricingAction"];
+            deviceTypes?: string[];
+            endTime?: string | null;
+            /** Format: date-time */
+            endsAt?: string | null;
+            id: string;
+            name: string;
+            /** Format: int32 */
+            priority: number;
+            startTime?: string | null;
+            /** Format: date-time */
+            startsAt?: string | null;
+            weekdays?: number[];
+        };
+        PricingRuleSet: {
+            /** Format: uuid */
+            activeVersionId?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            description?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            name: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PricingRuleSetDraft: {
+            ruleSet: components["schemas"]["PricingRuleSet"];
+            version: components["schemas"]["PricingRuleVersion"];
+        };
+        PricingRuleSetDraftEnvelope: {
+            data: components["schemas"]["PricingRuleSetDraft"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingRuleSetListEnvelope: {
+            data: components["schemas"]["PricingRuleSet"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingRuleVersion: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            effectiveAt?: string | null;
+            /** Format: uuid */
+            id: string;
+            policy: unknown;
+            /** Format: date-time */
+            publishedAt?: string | null;
+            /** Format: uuid */
+            publishedBy?: string | null;
+            /** Format: uuid */
+            ruleSetId: string;
+            simulationHash?: string | null;
+            status: string;
+            /** Format: date-time */
+            validatedAt?: string | null;
+            /** Format: int32 */
+            version: number;
+        };
+        PricingRuleVersionEnvelope: {
+            data: components["schemas"]["PricingRuleVersion"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingRuleVersionListEnvelope: {
+            data: components["schemas"]["PricingRuleVersion"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingSimulationDto: {
+            /** Format: date-time */
+            at: string;
+            baseRate?: string | null;
+            deviceType?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
+        };
+        PricingSimulationEnvelope: {
+            data: components["schemas"]["PricingSimulationResult"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingSimulationResult: {
+            baseRate: string;
+            currency: string;
+            finalPrice: string;
+            simulationHash: string;
+            timezone: string;
+            trace: components["schemas"]["PricingTraceStep"][];
+        };
+        PricingTraceStep: {
+            action: string;
+            after: string;
+            before: string;
+            ruleId: string;
+            ruleName: string;
+        };
         Product: {
             category: string;
             /** Format: date-time */
@@ -4669,6 +5026,10 @@ export interface components {
             /** @description Identifies the provisioning client (currently `kiosk`). */
             provisionClient?: string | null;
             serialNumber?: string | null;
+        };
+        PublishPricingRuleVersionDto: {
+            /** Format: date-time */
+            effectiveAt?: string | null;
         };
         PurchaseBalanceDto: {
             /** Format: uuid */
@@ -4928,6 +5289,25 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        ResolvedSetting: {
+            key: string;
+            overridden: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            sourceId?: string | null;
+            sourceScope: string;
+            /** Format: date-time */
+            updatedAt?: string | null;
+            value: unknown;
+        };
+        ResolvedSettingListEnvelope: {
+            data: components["schemas"]["ResolvedSetting"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         RevenueByPaymentMethodDto: {
             /** Format: double */
             cashRevenue?: number;
@@ -5098,6 +5478,82 @@ export interface components {
             /** Format: double */
             allottedHours: number;
         };
+        SettingCatalogEnvelope: {
+            data: components["schemas"]["SettingDefinition"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        SettingDefinition: {
+            allowedScopes: components["schemas"]["SettingScope"][];
+            category: string;
+            defaultValue: unknown;
+            description: string;
+            key: string;
+            owner: string;
+            sensitive: boolean;
+            validation: unknown;
+            valueType: components["schemas"]["SettingValueType"];
+        };
+        SettingOverride: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            key: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            value: unknown;
+        };
+        SettingOverrideEnvelope: {
+            data: components["schemas"]["SettingOverride"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        SettingRevision: {
+            /** Format: uuid */
+            actorUserId?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            id: number;
+            key: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            newValue?: unknown;
+            oldValue?: unknown;
+            operation: string;
+            /** Format: uuid */
+            organizationId: string;
+            reason: string;
+            requestId?: string | null;
+            /** Format: int64 */
+            revision: number;
+        };
+        SettingRevisionListEnvelope: {
+            data: components["schemas"]["SettingRevision"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        /** @enum {string} */
+        SettingScope: "organization" | "location";
+        /** @enum {string} */
+        SettingValueType: "string" | "number" | "integer" | "boolean" | "uuid" | "timezone" | "currency";
         SettleCreditDto: {
             /** Format: double */
             cashAmount?: number | null;
@@ -6173,6 +6629,14 @@ export interface components {
             /** Format: int32 */
             targetPieces: number;
         };
+        UpsertSettingOverrideDto: {
+            /** Format: int64 */
+            expectedRevision?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            reason: string;
+            value: unknown;
+        };
         UsageSession: {
             /** Format: uuid */
             balanceId: string;
@@ -6402,6 +6866,24 @@ export interface components {
             total: number;
             /** Format: int64 */
             totalPages: number;
+        };
+        VenueLocation: {
+            currency: string;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            name: string;
+            /** Format: uuid */
+            organizationId: string;
+            slug: string;
+            timezone: string;
+        };
+        VenueLocationListEnvelope: {
+            data: components["schemas"]["VenueLocation"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         VerifyTotpSetupDto: {
             code: string;
@@ -12047,6 +12529,409 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    configuration_snapshot: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                sinceRevision?: number | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigurationSnapshotEnvelope"];
+                };
+            };
+        };
+    };
+    venue_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueLocationListEnvelope"];
+                };
+            };
+        };
+    };
+    list_rule_sets: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleSetListEnvelope"];
+                };
+            };
+        };
+    };
+    create_rule_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePricingRuleSetDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleSetDraftEnvelope"];
+                };
+            };
+        };
+    };
+    list_versions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionListEnvelope"];
+                };
+            };
+        };
+    };
+    create_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePricingRuleVersionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    publish_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishPricingRuleVersionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    rollback_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    simulate_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PricingSimulationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingSimulationEnvelope"];
+                };
+            };
+        };
+    };
+    validate_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    settings_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingCatalogEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    effective_settings: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                category?: string | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedSettingListEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setting_history: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                key?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingRevisionListEnvelope"];
+                };
+            };
+        };
+    };
+    upsert_setting_override: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertSettingOverrideDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingOverrideEnvelope"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_setting_override: {
+        parameters: {
+            query: {
+                locationId?: string | null;
+                expectedRevision?: number | null;
+                reason: string;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

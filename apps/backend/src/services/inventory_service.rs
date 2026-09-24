@@ -1,4 +1,4 @@
-use chrono::{DateTime, Timelike, Utc};
+use chrono::{DateTime, NaiveTime, Utc};
 use chrono_tz::Tz;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -75,9 +75,25 @@ impl InventoryService {
     }
 
     pub fn is_night_pricing_window(now: DateTime<Utc>, cafe_tz: &str) -> bool {
-        let local = Self::to_local_datetime(now, cafe_tz);
-        let hour = local.hour();
-        hour >= 23 || hour < 8
+        Self::is_night_pricing_window_with_bounds(now, cafe_tz, "23:00", "08:00")
+    }
+
+    pub fn is_night_pricing_window_with_bounds(
+        now: DateTime<Utc>,
+        cafe_tz: &str,
+        start: &str,
+        end: &str,
+    ) -> bool {
+        let local_time = Self::to_local_datetime(now, cafe_tz).time();
+        let start = NaiveTime::parse_from_str(start, "%H:%M")
+            .unwrap_or_else(|_| NaiveTime::from_hms_opt(23, 0, 0).expect("valid default"));
+        let end = NaiveTime::parse_from_str(end, "%H:%M")
+            .unwrap_or_else(|_| NaiveTime::from_hms_opt(8, 0, 0).expect("valid default"));
+        if start <= end {
+            local_time >= start && local_time < end
+        } else {
+            local_time >= start || local_time < end
+        }
     }
 
     pub fn effective_product_price(
@@ -86,7 +102,25 @@ impl InventoryService {
         now: DateTime<Utc>,
         cafe_tz: &str,
     ) -> f64 {
-        if Self::is_night_pricing_window(now, cafe_tz) {
+        Self::effective_product_price_with_window(
+            day_price,
+            night_price,
+            now,
+            cafe_tz,
+            "23:00",
+            "08:00",
+        )
+    }
+
+    pub fn effective_product_price_with_window(
+        day_price: f64,
+        night_price: f64,
+        now: DateTime<Utc>,
+        cafe_tz: &str,
+        start: &str,
+        end: &str,
+    ) -> f64 {
+        if Self::is_night_pricing_window_with_bounds(now, cafe_tz, start, end) {
             night_price
         } else {
             day_price

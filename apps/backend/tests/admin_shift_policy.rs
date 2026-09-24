@@ -73,6 +73,7 @@ async fn admin_bearer_token(
     state
         .auth
         .issue_auth_response(&user)
+        .await
         .ok()
         .map(|r| r.accessToken)
 }
@@ -134,6 +135,7 @@ async fn admin_login_response_has_no_shift_id() {
     let response = state
         .auth
         .issue_auth_response(&user)
+        .await
         .expect("issue auth response");
 
     assert!(response.shiftId.is_none());

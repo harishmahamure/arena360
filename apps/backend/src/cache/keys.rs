@@ -53,6 +53,24 @@ pub fn configs_all() -> &'static str {
     "configs:all"
 }
 
+pub fn settings_effective(
+    organization_id: &uuid::Uuid,
+    location_id: Option<&uuid::Uuid>,
+    category: Option<&str>,
+) -> String {
+    format!(
+        "settings:{organization_id}:{}:{}",
+        location_id
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "organization".to_string()),
+        category.unwrap_or("all")
+    )
+}
+
+pub fn settings_prefix(organization_id: &uuid::Uuid) -> String {
+    format!("settings:{organization_id}:")
+}
+
 pub fn expense_categories_tree() -> &'static str {
     "expense_categories:tree"
 }

@@ -364,8 +364,10 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<T, AppError>>,
 {
-    if let Some(cached) = get_json::<T>(cache, key).await? {
-        return Ok(cached);
+    match get_json::<T>(cache, key).await {
+        Ok(Some(cached)) => return Ok(cached),
+        Ok(None) => {}
+        Err(error) => warn!(%error, key, "Cache read failed; falling back to source of truth"),
     }
 
     static FLIGHTS: OnceLock<
@@ -387,11 +389,7 @@ where
             return Ok(cached);
         }
         Ok(None) => {}
-        Err(error) => {
-            drop(guard);
-            remove_flight(FLIGHTS.get(), key, &flight);
-            return Err(error);
-        }
+        Err(error) => warn!(%error, key, "Cache recheck failed; falling back to source of truth"),
     }
 
     let value = match fetch().await {
@@ -412,7 +410,9 @@ where
     let cache_result = set_json(cache, key, &value, jittered_ttl).await;
     drop(guard);
     remove_flight(FLIGHTS.get(), key, &flight);
-    cache_result?;
+    if let Err(error) = cache_result {
+        warn!(%error, key, "Cache write failed; returning source-of-truth value");
+    }
     Ok(value)
 }
 
@@ -495,4 +495,66 @@ pub async fn invalidate_stats(cache: &dyn CacheService) -> Result<(), AppError> 
     cache
         .invalidate_prefix(crate::cache::keys::STATS_PREFIX)
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct FailingCache;
+
+    #[async_trait]
+    impl CacheService for FailingCache {
+        async fn get_value(&self, _key: &str) -> Result<Option<serde_json::Value>, AppError> {
+            Err(AppError::Internal("cache unavailable".to_string()))
+        }
+
+        async fn set_value(
+            &self,
+            _key: &str,
+            _value: &serde_json::Value,
+            _ttl: Duration,
+        ) -> Result<(), AppError> {
+            Err(AppError::Internal("cache unavailable".to_string()))
+        }
+
+        async fn delete(&self, _keys: &[&str]) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn invalidate_prefix(&self, _prefix: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn publish_invalidation(&self, _keys: &[String]) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn consume_ip_token(
+            &self,
+            _key: &str,
+            _capacity: u32,
+            _refill_window: Duration,
+        ) -> Result<Option<RateLimitDecision>, AppError> {
+            Ok(None)
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn cache_aside_returns_database_value_when_cache_fails() {
+        let value = get_or_set(
+            &FailingCache,
+            "test:postgres-authoritative",
+            Duration::from_secs(30),
+            || async { Ok::<_, AppError>(serde_json::json!({"source": "postgres"})) },
+        )
+        .await
+        .expect("source-of-truth value should be returned");
+
+        assert_eq!(value, serde_json::json!({"source": "postgres"}));
+    }
 }
