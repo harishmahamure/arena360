@@ -82,6 +82,7 @@ pub async fn panel_session_active(
         r#"SELECT EXISTS (
             SELECT 1 FROM users u
             JOIN organization_memberships m ON m."userId" = u.id
+            JOIN organizations o ON o.id=m."organizationId" AND o."isActive"
             WHERE u.id = $1 AND u."isActive" = TRUE AND u."deletedAt" IS NULL
               AND u.role = ANY($2) AND m."organizationId" = $3 AND m."isActive" = TRUE
         )"#,
@@ -91,9 +92,13 @@ pub async fn panel_session_active(
     .bind(organization_id)
     .fetch_one(pool)
     .await?;
-    if !active { return Ok(false); }
+    if !active {
+        return Ok(false);
+    }
     let current = crate::access::effective(pool, organization_id, user_id).await?;
-    let mut issued = claims.permissions.clone(); issued.sort(); issued.dedup();
+    let mut issued = claims.permissions.clone();
+    issued.sort();
+    issued.dedup();
     Ok(current == issued)
 }
 
@@ -116,7 +121,9 @@ pub fn require_admin_or_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
 }
 
 pub fn require_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write") || !crate::access::managed(claims) && claims.is_staff() {
+    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write")
+        || !crate::access::managed(claims) && claims.is_staff()
+    {
         Ok(())
     } else {
         Err(AppError::Forbidden("Shifts are staff-only".to_string()))
@@ -124,7 +131,9 @@ pub fn require_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
 }
 
 pub fn require_staff_for_counter(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write") || !crate::access::managed(claims) && claims.is_staff() {
+    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write")
+        || !crate::access::managed(claims) && claims.is_staff()
+    {
         Ok(())
     } else {
         Err(AppError::Forbidden(

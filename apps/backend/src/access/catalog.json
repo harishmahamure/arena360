@@ -1,5 +1,17 @@
 [
   {
+    "key": "notifications",
+    "name": "Notifications",
+    "required": false,
+    "permissions": [
+      {
+        "key": "notifications:read",
+        "label": "Notifications Read",
+        "description": ""
+      }
+    ]
+  },
+  {
     "key": "access",
     "name": "Access administration",
     "required": true,

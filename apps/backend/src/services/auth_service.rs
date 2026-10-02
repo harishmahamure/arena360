@@ -207,7 +207,11 @@ impl AuthService {
         user: &User,
     ) -> Result<PanelLoginResponseDto, AppError> {
         let token = self.generate_access_token(user).await?;
-        let next_step = if user.role.as_deref() == Some("staff") {
+        let organization: Uuid = sqlx::query_scalar(r#"SELECT "organizationId" FROM organization_memberships WHERE "userId"=$1 AND "isActive" AND EXISTS (SELECT 1 FROM organizations o WHERE o.id="organizationId" AND o."isActive") ORDER BY "createdAt" LIMIT 1"#).bind(user.id).fetch_one(&self.pool).await?;
+        let permissions = crate::access::effective(&self.pool, organization, user.id).await?;
+        let next_step = if permissions.iter().any(|p| p == "shifts:write")
+            && !permissions.iter().any(|p| p == "access:manage")
+        {
             "shift_setup"
         } else {
             "dashboard"
@@ -602,6 +606,7 @@ impl AuthService {
             r#"SELECT "organizationId", permissions
                FROM organization_memberships
                WHERE "userId" = $1 AND "isActive" = TRUE
+                 AND EXISTS (SELECT 1 FROM organizations o WHERE o.id="organizationId" AND o."isActive")
                ORDER BY "createdAt""#,
         )
         .bind(user.id)
@@ -629,7 +634,8 @@ impl AuthService {
         let exp_duration = parse_duration(&self.settings.jwt_access_expiration);
         let org_ids: Vec<String> = memberships.iter().map(|(id, _)| id.to_string()).collect();
         let permissions: Vec<String> = memberships
-            .iter().take(1)
+            .iter()
+            .take(1)
             .flat_map(|(_, value)| {
                 value
                     .as_array()

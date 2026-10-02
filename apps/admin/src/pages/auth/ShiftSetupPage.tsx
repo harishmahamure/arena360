@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { GuidedForm, GuidedStep } from '../../components/GuidedForm';
-import { useSelector } from '../../hooks/store';
+import { usePermissions } from '../../hooks/usePermissions';
 import { getShiftStartContext, startShift } from '../../services/shifts';
 import { formatDisplayDateTime } from '../../utils/date';
 
@@ -15,14 +15,14 @@ const formatCurrency = (value: number) =>
 export default function ShiftSetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const role = useSelector((state) => state.auth.role);
+  const { isStaff } = usePermissions();
   const [openingBalance, setOpeningBalance] = useState<string>('');
   const [notes, setNotes] = useState('');
 
   const contextQuery = useQuery({
     queryKey: ['shift-start-context'],
     queryFn: getShiftStartContext,
-    enabled: Boolean(local.get('accessToken') && role === 'staff'),
+    enabled: Boolean(local.get('accessToken') && isStaff),
     retry: false,
   });
   const context = contextQuery.data;
@@ -47,7 +47,7 @@ export default function ShiftSetupPage() {
   });
 
   if (!local.get('accessToken')) return <Navigate to="/login" replace />;
-  if (role && role !== 'staff') return <Navigate to="/" replace />;
+  if (!isStaff) return <Navigate to="/" replace />;
 
   if (contextQuery.isLoading) {
     return (

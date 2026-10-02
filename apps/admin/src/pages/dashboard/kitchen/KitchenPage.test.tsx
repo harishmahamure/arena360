@@ -11,7 +11,10 @@ import {
 } from '../../../services/operations';
 import KitchenPage from './KitchenPage';
 
-vi.mock('../../../hooks/usePermissions', () => ({ usePermissions: () => ({ isAdmin: true }) }));
+vi.mock('../../../hooks/usePermissions', () => ({
+  Permission: { KitchenManage: 'kitchen:manage', KitchenWrite: 'kitchen:write' },
+  usePermissions: () => ({ can: () => true }),
+}));
 vi.mock('../../../services/operations', () => ({
   getKitchenMenu: vi.fn(),
   getKitchenTickets: vi.fn(),

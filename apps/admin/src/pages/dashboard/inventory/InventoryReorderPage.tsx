@@ -18,7 +18,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   getInventoryLocations,
   getReorderRules,
@@ -29,7 +29,8 @@ import { getProducts, type ProductResponse } from '../../../services/product/lis
 import { getVendors } from '../../../services/vendors';
 
 export default function InventoryReorderPage() {
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const isAdmin = can(Permission.InventoryReorderManage);
   const client = useQueryClient();
   const [locationId, setLocationId] = useState('');
   const [product, setProduct] = useState<ProductResponse | null>(null);

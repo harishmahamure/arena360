@@ -40,33 +40,7 @@ impl SettingsRepository {
         user_id: Uuid,
         permission: &str,
     ) -> Result<(), AppError> {
-        let legacy_permission = match permission {
-            "settings:read" | "rules:read" => Some("config:read"),
-            "settings:write" | "rules:edit" | "rules:publish" => Some("config:write"),
-            _ => None,
-        };
-        let allowed: (bool,) = sqlx::query_as(
-            r#"SELECT EXISTS (
-                 SELECT 1 FROM organization_memberships
-                 WHERE "organizationId" = $1
-                   AND "userId" = $2
-                   AND "isActive" = TRUE
-                   AND (role = 'admin' OR permissions ? $3 OR permissions ? $4)
-               )"#,
-        )
-        .bind(organization_id)
-        .bind(user_id)
-        .bind(permission)
-        .bind(legacy_permission.unwrap_or("__no_legacy_permission__"))
-        .fetch_one(&self.pool)
-        .await?;
-        if allowed.0 {
-            Ok(())
-        } else {
-            Err(AppError::Forbidden(format!(
-                "Missing '{permission}' access for organization {organization_id}"
-            )))
-        }
+        crate::access::require(&self.pool, organization_id, user_id, permission).await
     }
 
     pub async fn ensure_location_access(

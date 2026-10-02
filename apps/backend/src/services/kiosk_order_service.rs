@@ -422,7 +422,9 @@ impl KioskOrderService {
             payment_method: convert.payment_method.clone(),
             payment_status: convert.payment_status.clone(),
             notes: match (&order.player_note, &convert.notes) {
-                (Some(player), Some(counter)) => Some(format!("Customer: {player}\nCounter: {counter}")),
+                (Some(player), Some(counter)) => {
+                    Some(format!("Customer: {player}\nCounter: {counter}"))
+                }
                 (Some(player), None) => Some(format!("Customer: {player}")),
                 (None, notes) => notes.clone(),
             },

@@ -130,7 +130,6 @@ impl BalanceService {
         dto: PurchaseBalanceDto,
         actor_id: Option<Uuid>,
     ) -> Result<PlayerPlanBalance, AppError> {
-
         let plan = self
             .plan_repo
             .find_by_id(dto.plan_id)
@@ -342,10 +341,7 @@ impl BalanceService {
         balance: &PlayerPlanBalance,
         result: BalanceValidationResult,
     ) -> AppError {
-        AppError::forbidden_code(Self::validation_failure_code_for_balance(
-            balance,
-            &result,
-        ))
+        AppError::forbidden_code(Self::validation_failure_code_for_balance(balance, &result))
     }
 
     pub async fn require_staff_allowance_for_device(
@@ -365,8 +361,7 @@ impl BalanceService {
         }
 
         Err(Self::validation_to_app_error_for_balance(
-            &balance,
-            validation,
+            &balance, validation,
         ))
     }
 

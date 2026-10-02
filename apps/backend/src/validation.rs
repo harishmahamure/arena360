@@ -30,10 +30,7 @@ pub fn trim_secret(value: &str) -> String {
 
 /// Collapse whitespace runs to underscores after trim.
 pub fn normalize_username(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("_")
+    value.split_whitespace().collect::<Vec<_>>().join("_")
 }
 
 fn username_has_invalid_chars(value: &str) -> bool {
@@ -262,16 +259,10 @@ mod tests {
 
     #[test]
     fn online_ref_required_for_split_with_online_amount() {
-        assert!(
-            validate_online_payment_ref_last4("split_payment", Some(50.0), None).is_err()
-        );
+        assert!(validate_online_payment_ref_last4("split_payment", Some(50.0), None).is_err());
         assert_eq!(
-            validate_online_payment_ref_last4(
-                "split_payment",
-                Some(50.0),
-                Some(" 9876 ".into())
-            )
-            .unwrap(),
+            validate_online_payment_ref_last4("split_payment", Some(50.0), Some(" 9876 ".into()))
+                .unwrap(),
             Some("9876".into())
         );
     }

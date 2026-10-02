@@ -11,6 +11,7 @@ import { useDispatch, useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
 import { usePermissions } from '../hooks/usePermissions';
 import { clearAdminSession } from '../lib/authSession';
+import { getMyAccess } from '../services/access';
 import { getSessions } from '../services/sessions/list';
 import { getActiveShift } from '../services/shifts';
 import { formatDuration, now } from '../utils/date';
@@ -24,12 +25,17 @@ export default function DashboardLayout() {
   const location = useLocation();
   const outletKey = `${location.pathname}${location.search}`;
 
-  const { email, firstName, lastName, role } = useSelector((state) => state.auth);
-  const { can, isStaff, isAdmin } = usePermissions();
+  const { email, firstName, lastName, username, role } = useSelector((state) => state.auth);
+  const { can, isStaff } = usePermissions();
   const [handoverOpen, setHandoverOpen] = useState(false);
 
   const accessToken = local.get('accessToken');
   const isAuthenticated = Boolean(accessToken && role);
+  const { data: myAccess } = useQuery({
+    queryKey: ['myAccess'],
+    queryFn: getMyAccess,
+    enabled: isAuthenticated,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['sessions'],
@@ -153,11 +159,15 @@ export default function DashboardLayout() {
         navItems={filteredNavItems}
         pageTitle={pageTitle}
         shiftBadge={shiftBadge}
-        user={{ name: `${firstName} ${lastName}`, email, role }}
+        user={{
+          name: `${firstName} ${lastName}`.trim() || username,
+          email,
+          role: myAccess?.roles.join(', ') || 'Team member',
+        }}
         onLogout={handleLogout}
         appBarQuickActions={appBarQuickActions}
-        settingsPath={isAdmin && can(Permission.SettingsRead) ? '/settings' : undefined}
-        notificationSlot={isStaff ? <NotificationBell /> : undefined}
+        settingsPath={can(Permission.SettingsRead) ? '/settings' : undefined}
+        notificationSlot={can(Permission.NotificationsRead) ? <NotificationBell /> : undefined}
       >
         <Suspense key={location.pathname} fallback={<LinearProgress aria-label="Loading page" />}>
           <Outlet />

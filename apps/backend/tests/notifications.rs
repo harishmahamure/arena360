@@ -4,7 +4,7 @@
 use gaming_cafe_api::app::build_state;
 use gaming_cafe_api::config::load_dotenv;
 use gaming_cafe_api::models::NotificationFilterDto;
-use gaming_cafe_api::services::{RecordNotification, Recipients};
+use gaming_cafe_api::services::{Recipients, RecordNotification};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -149,9 +149,18 @@ async fn non_order_activities_do_not_create_notifications() {
         .await
         .expect("list notifications");
 
-    assert!(inbox.data.iter().any(|n| n.activity_id == order_activity.id));
-    assert!(!inbox.data.iter().any(|n| n.activity_id == session_activity.id));
-    assert!(!inbox.data.iter().any(|n| n.activity_id == approval_activity.id));
+    assert!(inbox
+        .data
+        .iter()
+        .any(|n| n.activity_id == order_activity.id));
+    assert!(!inbox
+        .data
+        .iter()
+        .any(|n| n.activity_id == session_activity.id));
+    assert!(!inbox
+        .data
+        .iter()
+        .any(|n| n.activity_id == approval_activity.id));
 }
 
 #[tokio::test]

@@ -29,17 +29,16 @@ impl ExpenseCategoryService {
             cache_keys.push(keys::expense_category(&id));
         }
         cache::invalidate(&*self.cache, &cache_keys).await?;
-        self.cache.invalidate_prefix("expense_categories:list:").await
+        self.cache
+            .invalidate_prefix("expense_categories:list:")
+            .await
     }
 
     pub async fn list(
         &self,
         filters: ExpenseCategoryFilterDto,
     ) -> Result<PaginationResult<ExpenseCategory>, AppError> {
-        let cache_key = format!(
-            "expense_categories:list:{}",
-            keys::filter_hash(&filters)
-        );
+        let cache_key = format!("expense_categories:list:{}", keys::filter_hash(&filters));
         get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
             self.repo.list(&filters).await
         })
@@ -49,10 +48,9 @@ impl ExpenseCategoryService {
     pub async fn get_by_id(&self, id: Uuid) -> Result<ExpenseCategory, AppError> {
         let cache_key = keys::expense_category(&id);
         get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
-            self.repo
-                .find_by_id(id)
-                .await?
-                .ok_or_else(|| AppError::NotFound(format!("Expense category with ID {id} not found")))
+            self.repo.find_by_id(id).await?.ok_or_else(|| {
+                AppError::NotFound(format!("Expense category with ID {id} not found"))
+            })
         })
         .await
     }

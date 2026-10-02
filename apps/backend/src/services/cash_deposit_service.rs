@@ -1,10 +1,11 @@
+use serde_json::json;
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
-use serde_json::json;
 
 use crate::dto::PaginationResult;
 use crate::error::AppError;
+use crate::models::activity_kind;
 use crate::models::{
     CashDeposit, CashDepositFilterDto, CreateCashRegisterEntryDto, InitiateDepositDto,
 };
@@ -12,8 +13,7 @@ use crate::realtime::OutboxService;
 use crate::repositories::{CashDepositRepository, CashRegisterRepository};
 use crate::services::CashRegisterService;
 use crate::services::NotificationService;
-use crate::models::activity_kind;
-use crate::services::{RecordNotification, Recipients};
+use crate::services::{Recipients, RecordNotification};
 
 pub struct CashDepositService {
     repo: CashDepositRepository,

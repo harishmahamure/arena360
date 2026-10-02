@@ -23,7 +23,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   approvePurchaseOrder,
   cancelPurchaseOrder,
@@ -50,7 +50,8 @@ const tones: Record<PurchaseOrderStatus, StatusTone> = {
 
 export default function PurchaseOrderDetailPage() {
   const { id = '' } = useParams();
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const isAdmin = can(Permission.ProcurementApprove);
   const client = useQueryClient();
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [invoice, setInvoice] = useState('');
@@ -124,7 +125,7 @@ export default function PurchaseOrderDetailPage() {
 
   const actions = (
     <Stack direction="row" gap={1} flexWrap="wrap" justifyContent="flex-end">
-      {['draft', 'rejected'].includes(data.status) ? (
+      {can(Permission.ProcurementWrite) && ['draft', 'rejected'].includes(data.status) ? (
         <Button variant="contained" onClick={() => action.mutate('submit')}>
           Submit for approval
         </Button>
@@ -139,12 +140,13 @@ export default function PurchaseOrderDetailPage() {
           </Button>
         </>
       ) : null}
-      {isAdmin && data.status === 'approved' ? (
+      {can(Permission.ProcurementWrite) && data.status === 'approved' ? (
         <Button variant="contained" onClick={() => action.mutate('ordered')}>
           Mark ordered
         </Button>
       ) : null}
-      {['approved', 'ordered', 'partially_received'].includes(data.status) ? (
+      {can(Permission.ProcurementReceive) &&
+      ['approved', 'ordered', 'partially_received'].includes(data.status) ? (
         <Button
           variant="contained"
           onClick={() => {
@@ -155,7 +157,8 @@ export default function PurchaseOrderDetailPage() {
           Receive delivery
         </Button>
       ) : null}
-      {isAdmin && ['draft', 'submitted', 'approved', 'ordered'].includes(data.status) ? (
+      {can(Permission.ProcurementWrite) &&
+      ['draft', 'submitted', 'approved', 'ordered'].includes(data.status) ? (
         <Button color="error" onClick={() => action.mutate('cancel')}>
           Cancel PO
         </Button>

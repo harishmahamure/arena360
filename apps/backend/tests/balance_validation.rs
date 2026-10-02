@@ -233,7 +233,10 @@ fn ledger_reason_constants() {
     assert_eq!(ledger_reason::EXPIRY, "expiry");
     assert_eq!(ledger_reason::ADJUSTMENT, "adjustment");
     assert_eq!(ledger_reason::MIGRATION, "migration");
-    assert_eq!(ledger_reason::STAFF_ALLOWANCE_GRANT, "staff_allowance_grant");
+    assert_eq!(
+        ledger_reason::STAFF_ALLOWANCE_GRANT,
+        "staff_allowance_grant"
+    );
     assert_eq!(
         ledger_reason::STAFF_ALLOWANCE_RENEWAL,
         "staff_allowance_renewal"

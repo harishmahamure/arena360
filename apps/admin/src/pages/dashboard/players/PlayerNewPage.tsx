@@ -1,14 +1,12 @@
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { USERNAME_HELPER_TEXT, useAsyncAction } from '@gaming-cafe/utils';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  adminCreateRoleOptions,
   type CreatePlayerFormData,
   createPlayerDefaultValues,
   createPlayerSchema,
 } from '../../../../src/containers/players/schemas/player-schema';
-import { usePermissions } from '../../../hooks/usePermissions';
 import { addPlayer } from '../../../services/players/add';
 
 const basePlayerFormFields: FieldConfig<CreatePlayerFormData>[] = [
@@ -68,30 +66,13 @@ const basePlayerFormFields: FieldConfig<CreatePlayerFormData>[] = [
 
 export default function AddNewPlayerPage() {
   const navigate = useNavigate();
-  const { isAdmin } = usePermissions();
   const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
     throttleMs: 1000,
     lockOnSuccess: true,
   });
   const [error, setError] = useState<string | undefined>();
 
-  const playerFormFields = useMemo<FieldConfig<CreatePlayerFormData>[]>(() => {
-    if (!isAdmin) {
-      return basePlayerFormFields;
-    }
-
-    return [
-      ...basePlayerFormFields,
-      {
-        name: 'role',
-        label: 'Role',
-        type: 'select',
-        gridCols: 6,
-        options: adminCreateRoleOptions,
-        helperText: 'Only admins can create staff accounts',
-      },
-    ];
-  }, [isAdmin]);
+  const playerFormFields = basePlayerFormFields;
 
   const handleSubmit = async (data: CreatePlayerFormData) => {
     setError(undefined);
@@ -108,7 +89,7 @@ export default function AddNewPlayerPage() {
         phoneNumber: data.phoneNumber,
         firstName: data.firstName || undefined,
         lastName: data.lastName || undefined,
-        role: isAdmin ? data.role : 'player',
+        role: 'player',
       });
 
       setTimeout(() => {

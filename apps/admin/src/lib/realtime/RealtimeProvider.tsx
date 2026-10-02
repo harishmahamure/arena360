@@ -55,12 +55,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     });
 
     const channels: string[] = ['public'];
-    if (role === 'admin') {
-      channels.push('admin', 'staff');
-    } else if (role === 'staff') {
-      channels.push('staff');
-    }
     const permissions = sessionPermissions();
+    if (permissions.includes(Permission.EventsAdmin)) channels.push('admin');
+    if (permissions.includes(Permission.EventsStaff)) channels.push('staff');
+    if (permissions.includes(Permission.KitchenRead)) channels.push('kitchen');
     if (permissions.includes(Permission.SettingsRead) || permissions.includes(Permission.RulesRead))
       channels.push('configuration');
     if (userId) {

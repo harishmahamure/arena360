@@ -105,11 +105,8 @@ pub fn parse_deduction_profile(
     value: &Value,
 ) -> Result<crate::models::deduction_profile::DeductionProfile, AppError> {
     let profile: crate::models::deduction_profile::DeductionProfile =
-        serde_json::from_value(value.clone()).map_err(|e| {
-            AppError::BadRequest(format!("Invalid deductionProfile JSON: {e}"))
-        })?;
-    profile
-        .validate()
-        .map_err(AppError::BadRequest)?;
+        serde_json::from_value(value.clone())
+            .map_err(|e| AppError::BadRequest(format!("Invalid deductionProfile JSON: {e}")))?;
+    profile.validate().map_err(AppError::BadRequest)?;
     Ok(profile)
 }

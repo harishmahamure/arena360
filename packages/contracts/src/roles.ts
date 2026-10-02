@@ -22,6 +22,7 @@ export enum Permission {
   ActivityRead = 'activity:read',
   EventsAdmin = 'events:admin',
   EventsStaff = 'events:staff',
+  NotificationsRead = 'notifications:read',
 
   DevicesRead = 'devices:read',
   DevicesWrite = 'devices:write',

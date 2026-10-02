@@ -418,15 +418,10 @@ impl StatsService {
             compare,
         }));
 
-        get_or_set(
-            &*self.cache,
-            &cache_key,
-            keys::ttl::AGGREGATE,
-            || async {
-                self.compute_dashboard_stats(period_start, period_end, compare)
-                    .await
-            },
-        )
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            self.compute_dashboard_stats(period_start, period_end, compare)
+                .await
+        })
         .await
     }
 
@@ -500,20 +495,10 @@ impl StatsService {
             shift_start: shift_start.clone(),
         }));
 
-        get_or_set(
-            &*self.cache,
-            &cache_key,
-            keys::ttl::AGGREGATE,
-            || async {
-                self.compute_staff_dashboard_stats(
-                    period_start,
-                    period_end,
-                    shift_start,
-                    now,
-                )
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            self.compute_staff_dashboard_stats(period_start, period_end, shift_start, now)
                 .await
-            },
-        )
+        })
         .await
     }
 
@@ -577,8 +562,7 @@ impl StatsService {
         end_date: Option<String>,
     ) -> (DateTime<Utc>, DateTime<Utc>) {
         let now = Utc::now();
-        let start =
-            parse_date_start(start_date.as_deref()).unwrap_or_else(|| start_of_day(now));
+        let start = parse_date_start(start_date.as_deref()).unwrap_or_else(|| start_of_day(now));
         let end = parse_date_end(end_date.as_deref()).unwrap_or(now);
         (start, end)
     }
@@ -598,21 +582,16 @@ impl StatsService {
             prev_end: format_date_key(prev_end),
         }));
 
-        get_or_set(
-            &*self.cache,
-            &cache_key,
-            keys::ttl::AGGREGATE,
-            || async {
-                Ok(PeriodPair {
-                    current: self.revenue_stats(start, end).await?,
-                    previous: if compare {
-                        Some(self.revenue_stats(prev_start, prev_end).await?)
-                    } else {
-                        None
-                    },
-                })
-            },
-        )
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            Ok(PeriodPair {
+                current: self.revenue_stats(start, end).await?,
+                previous: if compare {
+                    Some(self.revenue_stats(prev_start, prev_end).await?)
+                } else {
+                    None
+                },
+            })
+        })
         .await
     }
 
@@ -631,21 +610,16 @@ impl StatsService {
             prev_end: format_date_key(prev_end),
         }));
 
-        get_or_set(
-            &*self.cache,
-            &cache_key,
-            keys::ttl::AGGREGATE,
-            || async {
-                Ok(PeriodPair {
-                    current: self.usage_stats(start, end).await?,
-                    previous: if compare {
-                        Some(self.usage_stats(prev_start, prev_end).await?)
-                    } else {
-                        None
-                    },
-                })
-            },
-        )
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            Ok(PeriodPair {
+                current: self.usage_stats(start, end).await?,
+                previous: if compare {
+                    Some(self.usage_stats(prev_start, prev_end).await?)
+                } else {
+                    None
+                },
+            })
+        })
         .await
     }
 
@@ -1351,28 +1325,23 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-recon");
 
-        get_or_set(
-            &*self.cache,
-            &cache_key,
-            keys::ttl::AGGREGATE,
-            || async {
-                let current = self
-                    .finance_reconciliation_metrics(period_start, period_end)
-                    .await?;
-                let previous = if compare {
-                    Some(
-                        self.finance_reconciliation_metrics(prev_start, prev_end)
-                            .await?,
-                    )
-                } else {
-                    None
-                };
-                Ok(FinanceReconciliationStatsDto {
-                    period: period_dto(period_start, period_end, compare, prev_start, prev_end),
-                    metrics: PeriodPair { current, previous },
-                })
-            },
-        )
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            let current = self
+                .finance_reconciliation_metrics(period_start, period_end)
+                .await?;
+            let previous = if compare {
+                Some(
+                    self.finance_reconciliation_metrics(prev_start, prev_end)
+                        .await?,
+                )
+            } else {
+                None
+            };
+            Ok(FinanceReconciliationStatsDto {
+                period: period_dto(period_start, period_end, compare, prev_start, prev_end),
+                metrics: PeriodPair { current, previous },
+            })
+        })
         .await
     }
 
@@ -1428,23 +1397,20 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-deposits");
 
-        get_or_set(
-            &*self.cache,
-            &cache_key,
-            keys::ttl::AGGREGATE,
-            || async {
-                let current = self.finance_deposit_metrics(period_start, period_end).await?;
-                let previous = if compare {
-                    Some(self.finance_deposit_metrics(prev_start, prev_end).await?)
-                } else {
-                    None
-                };
-                Ok(FinanceDepositStatsDto {
-                    period: period_dto(period_start, period_end, compare, prev_start, prev_end),
-                    metrics: PeriodPair { current, previous },
-                })
-            },
-        )
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            let current = self
+                .finance_deposit_metrics(period_start, period_end)
+                .await?;
+            let previous = if compare {
+                Some(self.finance_deposit_metrics(prev_start, prev_end).await?)
+            } else {
+                None
+            };
+            Ok(FinanceDepositStatsDto {
+                period: period_dto(period_start, period_end, compare, prev_start, prev_end),
+                metrics: PeriodPair { current, previous },
+            })
+        })
         .await
     }
 
@@ -1505,27 +1471,24 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-variance");
 
-        get_or_set(
-            &*self.cache,
-            &cache_key,
-            keys::ttl::AGGREGATE,
-            || async {
-                let current = self.finance_variance_metrics(period_start, period_end).await?;
-                let previous = if compare {
-                    Some(self.finance_variance_metrics(prev_start, prev_end).await?)
-                } else {
-                    None
-                };
-                let registers = self
-                    .finance_variance_registers(period_start, period_end)
-                    .await?;
-                Ok(FinanceVarianceStatsDto {
-                    period: period_dto(period_start, period_end, compare, prev_start, prev_end),
-                    metrics: PeriodPair { current, previous },
-                    registers,
-                })
-            },
-        )
+        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
+            let current = self
+                .finance_variance_metrics(period_start, period_end)
+                .await?;
+            let previous = if compare {
+                Some(self.finance_variance_metrics(prev_start, prev_end).await?)
+            } else {
+                None
+            };
+            let registers = self
+                .finance_variance_registers(period_start, period_end)
+                .await?;
+            Ok(FinanceVarianceStatsDto {
+                period: period_dto(period_start, period_end, compare, prev_start, prev_end),
+                metrics: PeriodPair { current, previous },
+                registers,
+            })
+        })
         .await
     }
 

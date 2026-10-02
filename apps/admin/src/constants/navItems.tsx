@@ -31,6 +31,13 @@ import type { AdminNavItem } from '../utils/filterNavItems';
  */
 export const moduleRegistry: AdminNavItem[] = [
   {
+    title: 'Access management',
+    path: '/access',
+    icon: <People />,
+    section: 'Administration',
+    requiredPermission: Permission.AccessRead,
+  },
+  {
     title: 'Overview',
     path: '/',
     icon: <Dashboard />,
@@ -66,7 +73,7 @@ export const moduleRegistry: AdminNavItem[] = [
     path: '/kitchen',
     icon: <Restaurant />,
     section: 'Floor Operations',
-    requiredPermission: Permission.TransactionsRead,
+    requiredPermission: Permission.KitchenRead,
   },
   {
     title: 'Plan sales',
@@ -138,8 +145,6 @@ export const moduleRegistry: AdminNavItem[] = [
         path: '/players/new',
         requiredPermission: Permission.PlayersWrite,
       },
-      { title: 'Staff', path: '/players?role=staff' },
-      { title: 'Admins', path: '/players?role=admin' },
       { title: 'Inactive', path: '/players?active=false' },
     ],
   },
@@ -267,7 +272,7 @@ export const moduleRegistry: AdminNavItem[] = [
     path: '/finance/reports',
     icon: <Assessment />,
     section: 'Finance',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.FinanceRead,
   },
   {
     title: 'Shifts',
@@ -281,21 +286,21 @@ export const moduleRegistry: AdminNavItem[] = [
     path: '/finance/reconciliation',
     icon: <PointOfSale />,
     section: 'Finance',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.FinanceRead,
   },
   {
     title: 'Deposit dashboard',
     path: '/finance/deposits',
     icon: <AccountBalanceWallet />,
     section: 'Finance',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.FinanceRead,
   },
   {
     title: 'Variance',
     path: '/finance/variance',
     icon: <Balance />,
     section: 'Finance',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.FinanceRead,
   },
   {
     title: 'Cash Registers',
@@ -345,7 +350,7 @@ export const moduleRegistry: AdminNavItem[] = [
     path: '/activity-log',
     icon: <History />,
     section: 'Administration',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.ActivityRead,
   },
   {
     title: 'Configuration',

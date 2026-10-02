@@ -97,7 +97,7 @@ describe('panel session lifecycle', () => {
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ payload: expect.objectContaining({ role: 'staff' }) }),
     );
-    expect(sessionPermissions()).toContain(Permission.SessionsWrite);
+    expect(sessionPermissions()).not.toContain(Permission.SessionsWrite);
     expect(sessionPermissions()).toContain(Permission.SettingsRead);
     expect(sessionPermissions()).not.toContain(Permission.SettingsWrite);
     expect(sessionPermissions()).not.toContain(Permission.DevicesWrite);
@@ -109,7 +109,7 @@ describe('panel session lifecycle', () => {
       permissions: [],
       exp: Date.now() / 1000 + 60,
     };
-    expect(sessionPermissions(claims)).toContain(Permission.DevicesWrite);
+    expect(sessionPermissions(claims)).not.toContain(Permission.DevicesWrite);
     expect(sessionPermissions(claims)).not.toContain(Permission.RulesPublish);
   });
   it('expires proactively and cleans up its timer', async () => {

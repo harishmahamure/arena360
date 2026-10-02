@@ -72,13 +72,6 @@ pub async fn publish_balance_updated_for_session(
         )
         .await;
     let _ = outbox
-        .publish(
-            "staff",
-            "balance.updated",
-            payload,
-            None,
-            None,
-            false,
-        )
+        .publish("staff", "balance.updated", payload, None, None, false)
         .await;
 }

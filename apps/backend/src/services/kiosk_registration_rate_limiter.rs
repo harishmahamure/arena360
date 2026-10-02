@@ -25,7 +25,9 @@ impl KioskRegistrationRateLimiter {
         let current: Option<i64> = cache::get_json(&*self.cache, &key).await?;
         let attempts = current.unwrap_or(0) + 1;
         if attempts as usize > MAX_ATTEMPTS {
-            return Err(AppError::too_many_requests_code("REGISTRATION_RATE_LIMITED"));
+            return Err(AppError::too_many_requests_code(
+                "REGISTRATION_RATE_LIMITED",
+            ));
         }
 
         cache::set_json(

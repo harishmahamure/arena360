@@ -130,12 +130,18 @@ export function WorkspaceShell({
         </span>
       </Link>
       <Box className="workspace-context">
-        <span className="workspace-context-icon">A</span>
-        <div>
+        <span className="workspace-context-icon" style={{ flexShrink: 0 }}>
+          A
+        </span>
+        <div style={{ minWidth: 0 }}>
           <strong>Arena360</strong>
-          <small>{user.role === 'admin' ? 'Administration' : 'Counter operations'}</small>
+          <small
+            title={user.role}
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {user.role}
+          </small>
         </div>
-        <Chip label={user.role} size="small" />
       </Box>
       <Button className="sidebar-search" startIcon={<Search />} onClick={() => setSearchOpen(true)}>
         Find a page <kbd>⌘ K</kbd>
@@ -209,10 +215,10 @@ export function WorkspaceShell({
             {user.name.trim() || user.email || 'Account'}
           </Typography>
           <Typography fontSize="0.6875rem" color="#91a39b">
-            {user.role === 'admin' ? 'Administrator' : 'Staff member'}
+            {user.role}
           </Typography>
         </Box>
-        <Tooltip title={user.role === 'staff' ? 'End shift and sign out' : 'Sign out'}>
+        <Tooltip title={shiftBadge?.active ? 'End shift and sign out' : 'Sign out'}>
           <IconButton onClick={onLogout} aria-label="Sign out" sx={{ color: '#a9bab3' }}>
             <Logout fontSize="small" />
           </IconButton>
@@ -304,7 +310,7 @@ export function WorkspaceShell({
                 ? 'Connecting to live updates…'
                 : 'Live updates offline — reconnecting automatically'}
           </span>
-          <span>{user.role === 'admin' ? 'Administration workspace' : 'Staff workspace'}</span>
+          <span>{'Team workspace'}</span>
         </Box>
       </Box>
       <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} fullWidth maxWidth="sm">

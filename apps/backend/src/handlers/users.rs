@@ -25,10 +25,13 @@ use crate::openapi::responses::{ErrorEnvelope, UserEnvelope, UserPaginationEnvel
     tag = "users"
 )]
 pub async fn list_users(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<UserFilterDto>,
+    Query(mut filters): Query<UserFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<User>> {
+    if !crate::access::has(&claims, "team:read") {
+        filters.role = Some("player".into());
+    }
     let result = state.users.list(filters).await?;
     ok(result)
 }
@@ -48,8 +51,17 @@ pub async fn list_users(
     security(("bearer_auth" = [])),
     tag = "users"
 )]
-pub async fn get_user(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<User> {
+pub async fn get_user(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<User> {
     let user = state.users.get_by_id(id).await?;
+    if user.role.as_deref() != Some("player") && !crate::access::has(&claims, "team:read") {
+        return Err(crate::error::AppError::Forbidden(
+            "Team read permission required".into(),
+        ));
+    }
     ok(user)
 }
 
@@ -77,6 +89,29 @@ pub async fn update_user(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUserDto>,
 ) -> ApiResult<User> {
+    let target = state.users.get_by_id(id).await?;
+    if dto
+        .role
+        .as_deref()
+        .is_some_and(|r| Some(r) != target.role.as_deref())
+    {
+        return Err(crate::error::AppError::Forbidden(
+            "Manage panel roles through Access management; account types cannot be changed here"
+                .into(),
+        ));
+    }
+    if target.role.as_deref() != Some("player") {
+        if dto.is_active.is_some() {
+            return Err(crate::error::AppError::Forbidden(
+                "Manage team access through Access management".into(),
+            ));
+        }
+        if !crate::access::has(&claims, "team:write") {
+            return Err(crate::error::AppError::Forbidden(
+                "Team write permission required".into(),
+            ));
+        }
+    }
     let user = state.users.update(id, dto, claims.user_id_uuid()).await?;
     ok(user)
 }

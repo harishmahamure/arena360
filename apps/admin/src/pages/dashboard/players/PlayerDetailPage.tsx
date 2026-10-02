@@ -1,4 +1,3 @@
-import type { UserRole } from '@gaming-cafe/contracts';
 import {
   CurrencyField,
   DetailPage,
@@ -39,10 +38,8 @@ import TotpQrCode from '../../../components/TotpQrCode';
 import { PlayerActivePlansSection } from '../../../containers/players/PlayerActivePlansSection';
 import { PlayerExhaustedPlansSection } from '../../../containers/players/PlayerExhaustedPlansSection';
 import {
-  adminCreateRoleOptions,
   type UpdatePlayerFormData,
   updatePlayerSchema,
-  userRoleOptions,
 } from '../../../containers/players/schemas/player-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { usePlayerProfile } from '../../../hooks/usePlayerProfile';
@@ -64,10 +61,14 @@ export default function PlayerDetailPage() {
   const { can, isAdmin } = usePermissions();
   const canWrite = can(Permission.PlayersWrite);
   const canSetCreditLimit = can(Permission.CreditLimitWrite);
-  const canManageStaffAllowance = isAdmin;
+  const canManageStaffAllowance = can(Permission.StaffGamingAllowanceWrite);
   const canBuyPlan = can(Permission.PlayerPlansWrite);
   const canStartSession = can(Permission.SessionsWrite);
-  const roleOptions = isAdmin ? userRoleOptions : adminCreateRoleOptions;
+  const roleOptions = [
+    { label: 'Player', value: 'player' },
+    { label: 'Team member', value: 'staff' },
+    { label: 'Team member', value: 'admin' },
+  ];
 
   const {
     player,
@@ -124,21 +125,23 @@ export default function PlayerDetailPage() {
       },
       {
         name: 'role',
-        label: 'Role',
+        label: 'Account type',
+        disabled: true,
         type: 'select',
         gridCols: 6,
         options: roleOptions,
-        helperText: 'User role in the system',
+        helperText: 'Manage custom roles and team access in Access management',
       },
       {
         name: 'isActive',
         label: 'Account Active',
+        disabled: player?.role !== 'player',
         type: 'switch',
         gridCols: 6,
         helperText: 'Toggle to activate/deactivate the account',
       },
     ],
-    [roleOptions],
+    [roleOptions, player?.role],
   );
 
   const [formError, setFormError] = useState<string | undefined>();
@@ -232,8 +235,8 @@ export default function PlayerDetailPage() {
         phoneNumber: data.phoneNumber,
         firstName: data.firstName || undefined,
         lastName: data.lastName || undefined,
-        role: data.role as UserRole,
-        isActive: data.isActive,
+
+        isActive: player?.role === 'player' ? data.isActive : undefined,
       });
 
       setSuccess('Player updated successfully!');

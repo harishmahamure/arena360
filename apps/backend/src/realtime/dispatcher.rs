@@ -111,6 +111,14 @@ impl Dispatcher {
         let mut durable_recipients = Vec::new();
         for conn_lock in conns {
             let conn = conn_lock.read().await;
+            if conn.claims.is_admin_or_staff()
+                && !matches!(
+                    crate::middleware::auth::panel_session_active(&self.pool, &conn.claims).await,
+                    Ok(true)
+                )
+            {
+                continue;
+            }
             if !self.passes_audience_filter(&conn, &row) {
                 continue;
             }

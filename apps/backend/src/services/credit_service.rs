@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
+use crate::models::activity_kind;
 use crate::models::{
     compute_available, validate_settlement_items, CreditAccountFilterDto, CreditPlayerRow,
     CreditPortfolioSummary, CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto,
@@ -11,8 +12,7 @@ use crate::models::{
 };
 use crate::repositories::CreditRepository;
 use crate::services::CashRegisterService;
-use crate::services::{NotificationService, RecordNotification, Recipients};
-use crate::models::activity_kind;
+use crate::services::{NotificationService, Recipients, RecordNotification};
 use crate::validation::validate_online_payment_ref_last4;
 
 pub struct CreditService {
@@ -36,11 +36,7 @@ impl CreditService {
     }
 
     async fn invalidate_credit(&self, player_id: Uuid) -> Result<(), AppError> {
-        cache::invalidate(
-            &*self.cache,
-            &[keys::credit_outstanding(&player_id)],
-        )
-        .await
+        cache::invalidate(&*self.cache, &[keys::credit_outstanding(&player_id)]).await
     }
 
     async fn sum_outstanding_cached(&self, player_id: Uuid) -> Result<f64, AppError> {

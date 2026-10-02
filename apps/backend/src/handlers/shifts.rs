@@ -185,7 +185,7 @@ pub async fn list_shifts(
     State(state): State<Arc<AppState>>,
     Query(mut filters): Query<ShiftFilterDto>,
 ) -> ApiResult<PaginationResult<Shift>> {
-    if !claims.is_admin() {
+    if !crate::access::has(&claims, "finance:read") {
         let user_id: Uuid = claims.userId.parse().map_err(|_| {
             crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
         })?;
@@ -218,7 +218,7 @@ pub async fn get_shift(
 ) -> ApiResult<Shift> {
     let shift = state.shifts.get_by_id(id).await?;
 
-    if !claims.is_admin() {
+    if !crate::access::has(&claims, "finance:read") {
         let user_id: Uuid = claims.userId.parse().map_err(|_| {
             crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
         })?;

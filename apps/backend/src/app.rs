@@ -256,10 +256,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/access", get(handlers::access::snapshot))
         .route("/access/self", get(handlers::access::self_access))
         .route("/access/roles", post(handlers::access::create_role))
-        .route("/access/roles/{id}", put(handlers::access::update_role).delete(handlers::access::delete_role))
+        .route(
+            "/access/roles/{id}/delete",
+            post(handlers::access::delete_role),
+        )
+        .route(
+            "/access/roles/{id}",
+            put(handlers::access::update_role).delete(handlers::access::delete_role),
+        )
         .route("/access/members", post(handlers::access::create_member))
         .route("/access/members/{id}", put(handlers::access::save_member))
-        .route("/access/modules/{module}", put(handlers::access::save_module))
+        .route(
+            "/access/modules/{module}",
+            put(handlers::access::save_module),
+        )
         .route("/auth/login/panel", post(handlers::auth::login_panel))
         .route(
             "/auth/login/panel/mfa",
@@ -438,11 +448,23 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/kiosk/orders/current",
             get(handlers::kiosk_orders::current_order),
         )
-        .route("/kiosk-orders/kitchen/tickets", get(handlers::kitchen::list))
-        .route("/kiosk-orders/kitchen/tickets/{id}", patch(handlers::kitchen::advance))
+        .route(
+            "/kiosk-orders/kitchen/tickets",
+            get(handlers::kitchen::list),
+        )
+        .route(
+            "/kiosk-orders/kitchen/tickets/{id}",
+            patch(handlers::kitchen::advance),
+        )
         .route("/kiosk-orders/kitchen/menu", get(handlers::kitchen::menu))
-        .route("/kiosk-orders/kitchen/menu/{id}", put(handlers::kitchen::save_menu))
-        .route("/stats/finance/report", get(handlers::finance_report::report))
+        .route(
+            "/kiosk-orders/kitchen/menu/{id}",
+            put(handlers::kitchen::save_menu),
+        )
+        .route(
+            "/stats/finance/report",
+            get(handlers::finance_report::report),
+        )
         .route("/kiosk-orders", get(handlers::kiosk_orders::list_orders))
         .route(
             "/kiosk-orders/{id}",

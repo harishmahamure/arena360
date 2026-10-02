@@ -68,9 +68,15 @@ async fn tickets_are_atomic_idempotent_opt_in_and_reports_use_exact_totals() {
     assert_eq!(items[0]["name"], "Kitchen test");
     let category = Uuid::new_v4();
     sqlx::query("INSERT INTO expense_categories(id,name) VALUES($1,'Kitchen QA ingredients')")
-        .bind(category).execute(&mut *tx).await.unwrap();
-    for (status, amount, at) in [("approved", "0.20", "1901-01-01T12:00:00Z"),
-        ("pending", "0.40", "1901-01-01T12:00:00Z"), ("approved", "99.00", "1901-01-03T00:00:00Z")] {
+        .bind(category)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    for (status, amount, at) in [
+        ("approved", "0.20", "1901-01-01T12:00:00Z"),
+        ("pending", "0.40", "1901-01-01T12:00:00Z"),
+        ("approved", "99.00", "1901-01-03T00:00:00Z"),
+    ] {
         sqlx::query(r#"INSERT INTO expenses("categoryId",amount,"paymentMethod","approvalStatus","expenseDate")
             VALUES($1,$2::text::numeric,'cash',$3,$4::text::timestamptz)"#)
             .bind(category).bind(amount).bind(status).bind(at).execute(&mut *tx).await.unwrap();

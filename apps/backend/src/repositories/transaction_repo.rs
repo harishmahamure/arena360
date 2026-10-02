@@ -273,7 +273,8 @@ impl TransactionRepository {
             .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;
 
         if !matches!(previous_status.as_str(), "completed" | "credit")
-            && matches!(transaction.payment_status.as_str(), "completed" | "credit") {
+            && matches!(transaction.payment_status.as_str(), "completed" | "credit")
+        {
             crate::services::kitchen_service::enqueue(&mut db_tx, transaction.id, actor_id).await?;
         }
         db_tx.commit().await?;

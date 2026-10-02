@@ -14,8 +14,8 @@ export function usePermissions() {
     role,
     permissions,
     can,
-    isAdmin: role === 'admin',
-    isStaff: role === 'staff',
+    isAdmin: can(Permission.AccessManage),
+    isStaff: can(Permission.ShiftsWrite),
   };
 }
 

@@ -26,7 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   advanceKitchenTicket,
   getKitchenMenu,
@@ -56,7 +56,8 @@ const actions: Partial<Record<KitchenStatus, string>> = {
 };
 
 export default function KitchenPage() {
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const isAdmin = can(Permission.KitchenManage);
   const client = useQueryClient();
   const [tab, setTab] = useState('queue');
   const [search, setSearch] = useState('');
@@ -180,7 +181,12 @@ export default function KitchenPage() {
               fullWidth
               variant="contained"
               sx={{ mt: 2 }}
-              disabled={advance.isPending || tickets.isError || !validPayment}
+              disabled={
+                !can(Permission.KitchenWrite) ||
+                advance.isPending ||
+                tickets.isError ||
+                !validPayment
+              }
               onClick={() => advance.mutate({ ticket, status: next[ticket.status]! })}
             >
               {actions[ticket.status]}
@@ -194,7 +200,7 @@ export default function KitchenPage() {
               <Button
                 size="small"
                 color="error"
-                disabled={advance.isPending}
+                disabled={!can(Permission.KitchenWrite) || advance.isPending}
                 onClick={() => {
                   advance.reset();
                   setCancel(ticket);
@@ -229,9 +235,11 @@ export default function KitchenPage() {
         >
           Refresh
         </Button>
-        <Button component={Link} to="/kiosk-orders">
-          Kiosk orders
-        </Button>
+        {can(Permission.TransactionsRead) && (
+          <Button component={Link} to="/kiosk-orders">
+            Kiosk orders
+          </Button>
+        )}
       </Stack>
       <Tabs
         value={tab}
@@ -395,9 +403,11 @@ export default function KitchenPage() {
               <Typography>
                 {details.customer} · #{details.id.slice(0, 8)}
               </Typography>
-              <Button component={Link} to={`/product-transactions/${details.transactionId}`}>
-                Open sale
-              </Button>
+              {can(Permission.TransactionsRead) && (
+                <Button component={Link} to={`/product-transactions/${details.transactionId}`}>
+                  Open sale
+                </Button>
+              )}
               <Divider />
               {details.events.map((event, i) => (
                 <Box key={i}>

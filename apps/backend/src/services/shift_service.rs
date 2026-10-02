@@ -317,8 +317,7 @@ impl ShiftService {
                 .await?;
 
         match row.and_then(|(role,)| role).as_deref() {
-            Some("staff") => Ok(()),
-            Some("admin") => Err(AppError::Forbidden("Admins cannot open shifts".to_string())),
+            Some("staff" | "admin") => Ok(()),
             _ => Err(AppError::Forbidden(
                 "Only staff can open shifts".to_string(),
             )),

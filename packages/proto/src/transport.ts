@@ -63,7 +63,7 @@ function domainForPath(path: string): keyof typeof DOMAIN_SERVICES {
     return 'shifts';
   if (segment === 'inventory') return 'inventory';
   if (['notifications', 'activity-log'].includes(segment)) return 'notifications';
-  if (segment === 'config' || segment === 'organizations') return 'config';
+  if (segment === 'config' || segment === 'organizations' || segment === 'access') return 'config';
   if (segment === 'stats') return 'stats';
   return 'uploads';
 }

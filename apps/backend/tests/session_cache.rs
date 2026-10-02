@@ -105,14 +105,12 @@ async fn session_heartbeat_invalidates_list_cache() {
     let cache_key = keys::sessions_list(&keys::filter_hash(&filters));
 
     let _ = state.sessions.list_active().await.expect("warm list cache");
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
+    assert!(state
+        .cache
+        .get_value(&cache_key)
+        .await
+        .expect("redis read")
+        .is_some());
 
     let session = state
         .sessions
@@ -153,14 +151,12 @@ async fn balance_mutation_invalidates_list_cache() {
     let cache_key = keys::sessions_list(&keys::filter_hash(&filters));
 
     let _ = state.sessions.list_active().await.expect("warm list cache");
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
+    assert!(state
+        .cache
+        .get_value(&cache_key)
+        .await
+        .expect("redis read")
+        .is_some());
 
     state
         .balances

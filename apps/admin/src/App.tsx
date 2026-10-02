@@ -94,6 +94,7 @@ const PurchaseOrderDetailPage = lazy(
 );
 const PurchaseOrderNewPage = lazy(() => import('./pages/dashboard/inventory/PurchaseOrderNewPage'));
 const PurchaseOrdersPage = lazy(() => import('./pages/dashboard/inventory/PurchaseOrdersPage'));
+const AccessPage = lazy(() => import('./pages/dashboard/access/AccessPage'));
 const KitchenPage = lazy(() => import('./pages/dashboard/kitchen/KitchenPage'));
 const FinanceReportPage = lazy(() => import('./pages/dashboard/finance/FinanceReportPage'));
 const KioskOrdersPage = lazy(() => import('./pages/dashboard/kiosk-orders/KioskOrdersPage'));
@@ -280,7 +281,6 @@ function App() {
                       <Route
                         element={<RequirePermission permission={Permission.TransactionsRead} />}
                       >
-                        <Route path="/kitchen" element={<KitchenPage />} />
                         <Route path="/kiosk-orders" element={<KioskOrdersPage />} />
                         <Route path="/product-transactions" element={<ProductTransactionsPage />} />
                         <Route
@@ -381,7 +381,16 @@ function App() {
                         <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
                         <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
                       </Route>
-                      <Route element={<RequirePermission permission={Permission.StatsRead} />}>
+                      <Route element={<RequirePermission permission={Permission.AccessRead} />}>
+                        <Route path="/access" element={<AccessPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.KitchenRead} />}>
+                        <Route path="/kitchen" element={<KitchenPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.ActivityRead} />}>
+                        <Route path="/activity-log" element={<ActivityLogPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.FinanceRead} />}>
                         <Route
                           path="/finance/reconciliation"
                           element={<FinanceReconciliationPage />}
@@ -389,7 +398,6 @@ function App() {
                         <Route path="/finance/reports" element={<FinanceReportPage />} />
                         <Route path="/finance/deposits" element={<FinanceDepositsPage />} />
                         <Route path="/finance/variance" element={<FinanceVariancePage />} />
-                        <Route path="/activity-log" element={<ActivityLogPage />} />
                       </Route>
                       <Route element={<RequirePermission permission={Permission.SettingsRead} />}>
                         <Route path="/settings" element={<SettingsPage />} />

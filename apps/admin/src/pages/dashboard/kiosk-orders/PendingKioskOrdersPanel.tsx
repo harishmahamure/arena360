@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { formatRelativeTime } from '../../../components/notifications/notificationUtils';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   getKioskOrders,
   type KioskOrder,
@@ -109,14 +109,14 @@ interface PendingKioskOrdersPanelProps {
 }
 
 export function PendingKioskOrdersPanel({ variant = 'page' }: PendingKioskOrdersPanelProps) {
-  const { isStaff } = usePermissions();
+  const { isStaff, can } = usePermissions();
   const { data: activeShift } = useQuery({
     queryKey: ['activeShift'],
     queryFn: getActiveShift,
     retry: false,
     enabled: isStaff,
   });
-  const canOperate = isStaff && Boolean(activeShift);
+  const canOperate = can(Permission.TransactionsWrite) && isStaff && Boolean(activeShift);
   const { data, isLoading, error } = useQuery({
     queryKey: PENDING_KIOSK_ORDERS_QUERY_KEY,
     queryFn: () => getKioskOrders({ limit: 50 }),

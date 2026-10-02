@@ -6,7 +6,41 @@ use crate::dto::JwtUserClaims;
 use crate::error::AppError;
 
 pub fn can_subscribe(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), AppError> {
+    if crate::access::managed(claims) {
+        if claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string()
+            && matches!(
+                channel,
+                ChannelId::Admin | ChannelId::Staff | ChannelId::Kitchen | ChannelId::Device(_)
+            )
+        {
+            return Err(AppError::Forbidden(
+                "Operational events are limited to their owning venue".into(),
+            ));
+        }
+        let allowed = match channel {
+            ChannelId::Public => true,
+            ChannelId::Kitchen => {
+                crate::access::has(claims, "kitchen:read")
+                    && claims.tenantId == crate::models::DEFAULT_ORGANIZATION_ID.to_string()
+            }
+            ChannelId::Configuration => {
+                crate::access::has(claims, "settings:read")
+                    || crate::access::has(claims, "rules:read")
+            }
+            ChannelId::Admin => crate::access::has(claims, "events:admin"),
+            ChannelId::Staff => crate::access::has(claims, "events:staff"),
+            ChannelId::User(id) => claims.user_id_uuid() == Some(*id),
+            ChannelId::Device(_) => crate::access::has(claims, "devices:read"),
+            ChannelId::Room(_) => true,
+        };
+        return if allowed {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden("Channel permission required".into()))
+        };
+    }
     match channel {
+        ChannelId::Kitchen => Err(AppError::Forbidden("Kitchen permission required".into())),
         ChannelId::Configuration => {
             if claims.is_admin_or_staff()
                 && claims
@@ -79,8 +113,16 @@ pub fn can_subscribe(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), 
 }
 
 pub fn can_publish(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), AppError> {
+    if crate::access::managed(claims)
+        && matches!(channel, ChannelId::User(id) if claims.user_id_uuid()!=Some(*id))
+    {
+        return Err(AppError::Forbidden(
+            "Cannot publish to another member's channel".into(),
+        ));
+    }
     match channel {
-        ChannelId::Configuration
+        ChannelId::Kitchen
+        | ChannelId::Configuration
         | ChannelId::Public
         | ChannelId::Admin
         | ChannelId::Staff
@@ -149,11 +191,36 @@ pub async fn is_room_member(
 
 /// Apply audience restrictions to both live delivery and durable replay.
 pub fn event_matches_claims(claims: &JwtUserClaims, row: &super::outbox::OutboxRow) -> bool {
-    if row
-        .audience_role
-        .as_ref()
-        .is_some_and(|role| !claims.roles.contains(role))
+    if crate::access::managed(claims)
+        && claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string()
+        && (matches!(row.channel.as_str(), "admin" | "staff" | "kitchen")
+            || row.channel.starts_with("device:"))
     {
+        return false;
+    }
+    if row.channel == "kitchen"
+        && (!crate::access::has(claims, "kitchen:read")
+            || claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string())
+    {
+        return false;
+    }
+    if crate::access::managed(claims)
+        && ((row.channel == "admin" && !crate::access::has(claims, "events:admin"))
+            || (row.channel == "staff" && !crate::access::has(claims, "events:staff")))
+    {
+        return false;
+    }
+    if row.audience_role.as_ref().is_some_and(|role| {
+        if crate::access::managed(claims) {
+            match role.as_str() {
+                "admin" => !crate::access::has(claims, "events:admin"),
+                "staff" => !crate::access::has(claims, "events:staff"),
+                _ => !claims.roles.contains(role),
+            }
+        } else {
+            !claims.roles.contains(role)
+        }
+    }) {
         return false;
     }
     if row
@@ -224,5 +291,29 @@ mod configuration_tests {
         row = event();
         row.payload = serde_json::json!({});
         assert!(!event_matches_claims(&claims, &row));
+    }
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+    #[test]
+    fn legacy_operational_channels_cannot_cross_venue_boundaries() {
+        let mut claims: JwtUserClaims = serde_json::from_value(serde_json::json!({
+            "sub": Uuid::new_v4(), "userId": Uuid::new_v4(), "roles": ["staff"],
+            "tenantId": Uuid::new_v4(), "permissions": [crate::access::MANAGED, "events:admin", "events:staff", "kitchen:read", "devices:read"],
+            "iss": "gamezone", "aud": "gamezone", "appId": "test", "orgIds": [], "allowedTenants": []
+        })).unwrap();
+        for channel in [
+            ChannelId::Admin,
+            ChannelId::Staff,
+            ChannelId::Kitchen,
+            ChannelId::Device(Uuid::new_v4()),
+        ] {
+            assert!(can_subscribe(&claims, &channel).is_err());
+        }
+        claims.tenantId = crate::models::DEFAULT_ORGANIZATION_ID.to_string();
+        assert!(can_subscribe(&claims, &ChannelId::Admin).is_ok());
+        assert!(can_subscribe(&claims, &ChannelId::Kitchen).is_ok());
     }
 }

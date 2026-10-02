@@ -6,7 +6,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{self, get_or_set, keys, set_json, CacheService};
-use crate::dto::{JwtUserClaims, KioskRegisterDto, KioskRegisterResponseDto, PaginationResult, RegisterDto, RegisterResponseDto};
+use crate::dto::{
+    JwtUserClaims, KioskRegisterDto, KioskRegisterResponseDto, PaginationResult, RegisterDto,
+    RegisterResponseDto,
+};
 use crate::error::AppError;
 use crate::models::{UpdateUserDto, User, UserFilterDto};
 use crate::repositories::{CreatePlayerParams, UserRepository};
@@ -33,10 +36,7 @@ impl UserService {
         user: &User,
         previous_username: Option<&str>,
     ) -> Result<(), AppError> {
-        let mut cache_keys = vec![
-            keys::user_id(&user.id),
-            keys::user_username(&user.username),
-        ];
+        let mut cache_keys = vec![keys::user_id(&user.id), keys::user_username(&user.username)];
         if let Some(old) = previous_username {
             if old != user.username {
                 cache_keys.push(keys::user_username(old));
@@ -76,7 +76,8 @@ impl UserService {
     ) -> Result<Option<User>, AppError> {
         let cache_key = keys::user_username(username);
 
-        if let Some(cached) = cache::get_json::<AuthUserCacheEntry>(&*self.cache, &cache_key).await?
+        if let Some(cached) =
+            cache::get_json::<AuthUserCacheEntry>(&*self.cache, &cache_key).await?
         {
             let user = User::from(cached);
             if user.password_hash.is_some() {
@@ -168,7 +169,7 @@ impl UserService {
                 "Cannot register users with admin role".to_string(),
             ));
         }
-        if role == "staff" && !claims.is_admin() {
+        if role == "staff" && !crate::access::has(claims, "access:manage") {
             return Err(AppError::Forbidden(
                 "Only admins can create staff accounts".to_string(),
             ));
@@ -292,7 +293,7 @@ impl UserService {
             ));
         }
 
-        if target_role == "staff" && !caller_claims.is_admin() {
+        if target_role == "staff" && !crate::access::has(caller_claims, "team:write") {
             return Err(AppError::Forbidden(
                 "Only admins can change staff passwords".to_string(),
             ));

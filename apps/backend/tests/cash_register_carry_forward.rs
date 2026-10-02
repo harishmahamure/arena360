@@ -20,13 +20,11 @@ async fn setup() -> Option<Arc<gaming_cafe_api::app::AppState>> {
 }
 
 async fn find_staff_user_id(pool: &PgPool) -> Option<Uuid> {
-    sqlx::query_scalar(
-        r#"SELECT id FROM users WHERE role = 'staff' AND "isActive" = true LIMIT 1"#,
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
+    sqlx::query_scalar(r#"SELECT id FROM users WHERE role = 'staff' AND "isActive" = true LIMIT 1"#)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
 }
 
 async fn find_second_staff_user_id(pool: &PgPool, exclude: Uuid) -> Option<Uuid> {
@@ -41,13 +39,11 @@ async fn find_second_staff_user_id(pool: &PgPool, exclude: Uuid) -> Option<Uuid>
 }
 
 async fn find_admin_user_id(pool: &PgPool) -> Option<Uuid> {
-    sqlx::query_scalar(
-        r#"SELECT id FROM users WHERE role = 'admin' AND "isActive" = true LIMIT 1"#,
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
+    sqlx::query_scalar(r#"SELECT id FROM users WHERE role = 'admin' AND "isActive" = true LIMIT 1"#)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
 }
 
 async fn cleanup_active_shift(

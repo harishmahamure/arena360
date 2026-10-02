@@ -26,10 +26,7 @@ pub fn weighted_minutes_between(
         let ratio = ratio_at_time(local.time(), profile);
         let next_minute = cursor + Duration::minutes(1);
         let segment_end = if next_minute > end { end } else { next_minute };
-        let secs = segment_end
-            .signed_duration_since(cursor)
-            .num_milliseconds() as f64
-            / 1000.0;
+        let secs = segment_end.signed_duration_since(cursor).num_milliseconds() as f64 / 1000.0;
         total += (secs / 60.0) * ratio;
         cursor = segment_end;
     }
@@ -67,7 +64,10 @@ mod tests {
         let start = Utc.with_ymd_and_hms(2026, 6, 7, 2, 30, 0).unwrap();
         let end = start + Duration::minutes(60);
         let weighted = weighted_minutes_between(start, end, &profile, "Asia/Kolkata");
-        assert!((weighted - 48.0).abs() < 0.1, "expected ~48 wallet min, got {weighted}");
+        assert!(
+            (weighted - 48.0).abs() < 0.1,
+            "expected ~48 wallet min, got {weighted}"
+        );
     }
 
     #[test]
@@ -76,7 +76,10 @@ mod tests {
         let start = Utc.with_ymd_and_hms(2026, 6, 7, 13, 0, 0).unwrap();
         let end = start + Duration::minutes(60);
         let weighted = weighted_minutes_between(start, end, &profile, "Asia/Kolkata");
-        assert!((weighted - 90.0).abs() < 0.1, "expected ~90 wallet min, got {weighted}");
+        assert!(
+            (weighted - 90.0).abs() < 0.1,
+            "expected ~90 wallet min, got {weighted}"
+        );
     }
 
     #[test]
@@ -85,6 +88,9 @@ mod tests {
         let start = Utc.with_ymd_and_hms(2026, 6, 7, 8, 0, 0).unwrap();
         let end = start + Duration::minutes(30);
         let weighted = weighted_minutes_between(start, end, &profile, "Asia/Kolkata");
-        assert!((weighted - 30.0).abs() < 0.1, "expected ~30 wallet min, got {weighted}");
+        assert!(
+            (weighted - 30.0).abs() < 0.1,
+            "expected ~30 wallet min, got {weighted}"
+        );
     }
 }

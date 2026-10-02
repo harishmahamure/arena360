@@ -32,6 +32,7 @@ import { StatCard } from '../../containers/stats/StatCard';
 import { StatsDateRangeToolbar } from '../../containers/stats/StatsDateRangeToolbar';
 import { TopPerformersList } from '../../containers/stats/TopPerformersList';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { Permission, usePermissions } from '../../hooks/usePermissions';
 import { useStatsDateRange } from '../../hooks/useStatsDateRange';
 import { getInventoryOverview, getPurchaseOrders } from '../../services/inventory';
 import { calculatePeriodChange, normalizeRevenue } from '../../services/stats/statsHelpers';
@@ -117,8 +118,14 @@ function RevenueChart({ rows }: { rows: RevenueTrendDto[] }) {
 }
 
 export default function AdminDashboardView() {
-  const inventory = useQuery({ queryKey: ['inventory-overview'], queryFn: getInventoryOverview });
+  const { can } = usePermissions();
+  const inventory = useQuery({
+    enabled: can(Permission.InventoryRead),
+    queryKey: ['inventory-overview'],
+    queryFn: getInventoryOverview,
+  });
   const orders = useQuery({
+    enabled: can(Permission.ProcurementRead),
     queryKey: ['purchase-orders', 'submitted', 1],
     queryFn: () => getPurchaseOrders({ status: 'submitted', page: 1, limit: 1 }),
   });

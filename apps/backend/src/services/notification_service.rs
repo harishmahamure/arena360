@@ -82,7 +82,10 @@ impl NotificationService {
     }
 
     /// Record an audit/activity entry without creating an inbox notification.
-    pub async fn record_activity(&self, input: RecordNotification) -> Result<ActivityLog, AppError> {
+    pub async fn record_activity(
+        &self,
+        input: RecordNotification,
+    ) -> Result<ActivityLog, AppError> {
         self.insert_activity(&input).await
     }
 
@@ -92,9 +95,7 @@ impl NotificationService {
     /// unrelated inbox notifications or accidentally notify admins.
     pub async fn record(&self, input: RecordNotification) -> Result<ActivityLog, AppError> {
         let should_notify = Self::is_staff_kiosk_order_notification(&input);
-        let activity = self
-            .insert_activity(&input)
-            .await?;
+        let activity = self.insert_activity(&input).await?;
 
         if !should_notify {
             return Ok(activity);
@@ -140,7 +141,9 @@ impl NotificationService {
     pub async fn cleanup(&self, retention_days: i64) -> Result<u64, AppError> {
         let removed = self.repo.cleanup_notifications(retention_days).await?;
         if removed > 0 {
-            self.cache.invalidate_prefix(keys::NOTIFICATIONS_PREFIX).await?;
+            self.cache
+                .invalidate_prefix(keys::NOTIFICATIONS_PREFIX)
+                .await?;
         }
         Ok(removed)
     }
@@ -155,9 +158,7 @@ impl NotificationService {
             &*self.cache,
             &cache_key,
             keys::ttl::NOTIFICATIONS,
-            || async {
-                self.repo.list_notifications(user_id, &filters).await
-            },
+            || async { self.repo.list_notifications(user_id, &filters).await },
         )
         .await
     }
@@ -169,10 +170,7 @@ impl NotificationService {
     ) -> Result<UnreadCountDto, AppError> {
         let important_only = filters.important_only.unwrap_or(false);
         let cache_key = if important_only {
-            format!(
-                "{}:important",
-                keys::notifications_unread(&user_id)
-            )
+            format!("{}:important", keys::notifications_unread(&user_id))
         } else {
             keys::notifications_unread(&user_id)
         };
@@ -371,14 +369,20 @@ mod tests {
             recipients: Recipients::AllStaff,
         };
 
-        assert!(NotificationService::is_staff_kiosk_order_notification(&input));
+        assert!(NotificationService::is_staff_kiosk_order_notification(
+            &input
+        ));
 
         let mut non_order = input.clone();
         non_order.kind = crate::models::activity_kind::KIOSK_ORDER_CANCELLED.to_string();
-        assert!(!NotificationService::is_staff_kiosk_order_notification(&non_order));
+        assert!(!NotificationService::is_staff_kiosk_order_notification(
+            &non_order
+        ));
 
         let mut admin_order = input;
         admin_order.recipients = Recipients::AllAdmins;
-        assert!(!NotificationService::is_staff_kiosk_order_notification(&admin_order));
+        assert!(!NotificationService::is_staff_kiosk_order_notification(
+            &admin_order
+        ));
     }
 }

@@ -131,12 +131,15 @@ async fn purchase_or_recharge_write_through_balance_raw_cache() {
     let cached_balance: PlayerPlanBalance =
         serde_json::from_value(cached).expect("deserialize cached balance");
     assert_eq!(
-        cached_balance.remaining_minutes,
-        updated.remaining_minutes,
+        cached_balance.remaining_minutes, updated.remaining_minutes,
         "write-through cache should match post-recharge balance"
     );
 
-    let fresh = state.balances.get_raw(row.id).await.expect("reload balance");
+    let fresh = state
+        .balances
+        .get_raw(row.id)
+        .await
+        .expect("reload balance");
     assert_eq!(fresh.remaining_minutes, updated.remaining_minutes);
 }
 
@@ -232,7 +235,11 @@ async fn purchase_or_recharge_overwrites_stale_warmed_cache() {
         "recharge should not preserve stale cached minutes"
     );
 
-    let fresh = state.balances.get_raw(row.id).await.expect("reload balance");
+    let fresh = state
+        .balances
+        .get_raw(row.id)
+        .await
+        .expect("reload balance");
     assert_eq!(
         fresh.remaining_minutes, updated.remaining_minutes,
         "get_raw should return post-recharge value, not stale cache"
@@ -265,14 +272,12 @@ async fn deduct_minutes_write_through_balance_raw_cache() {
 
     let warmed = state.balances.get_raw(row.id).await.expect("warm cache");
     assert_eq!(warmed.remaining_minutes, row.remaining_minutes);
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
+    assert!(state
+        .cache
+        .get_value(&cache_key)
+        .await
+        .expect("redis read")
+        .is_some());
 
     let deduct = 1;
     let updated = state
@@ -292,11 +297,14 @@ async fn deduct_minutes_write_through_balance_raw_cache() {
     let cached_balance: PlayerPlanBalance =
         serde_json::from_value(cached).expect("deserialize cached balance");
     assert_eq!(
-        cached_balance.remaining_minutes,
-        updated.remaining_minutes,
+        cached_balance.remaining_minutes, updated.remaining_minutes,
         "write-through cache should match post-deduct balance"
     );
 
-    let fresh = state.balances.get_raw(row.id).await.expect("reload balance");
+    let fresh = state
+        .balances
+        .get_raw(row.id)
+        .await
+        .expect("reload balance");
     assert_eq!(fresh.remaining_minutes, updated.remaining_minutes);
 }

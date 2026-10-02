@@ -47,13 +47,12 @@ async fn enriched_session_omits_balance_when_wallet_missing() {
     };
 
     let orphan_id = uuid::Uuid::new_v4();
-    let device_id: Option<(uuid::Uuid,)> = sqlx::query_as(
-        r#"SELECT id FROM devices WHERE "deletedAt" IS NULL LIMIT 1"#,
-    )
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
+    let device_id: Option<(uuid::Uuid,)> =
+        sqlx::query_as(r#"SELECT id FROM devices WHERE "deletedAt" IS NULL LIMIT 1"#)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
 
     let Some((device_id,)) = device_id else {
         eprintln!("skip: no device fixture");

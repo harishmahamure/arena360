@@ -1,4 +1,4 @@
-import { Permission, permissionsForRole } from '@gaming-cafe/contracts';
+import { Permission } from '@gaming-cafe/contracts';
 import { local } from '@gaming-cafe/utils';
 import type { Dispatch } from 'react';
 import type { AuthAction } from '../store/auth/action';
@@ -111,19 +111,8 @@ export function panelClaims(token = local.get<string>('accessToken')): JwtPayloa
 
 export function sessionPermissions(claims = panelClaims()): Permission[] {
   if (!claims) return [];
-  const role = claims.roles?.includes('admin') ? 'admin' : 'staff';
-  // Legacy operational handlers are role-authorized. Configuration handlers use membership grants.
-  const scoped = new Set([
-    Permission.ConfigRead,
-    Permission.ConfigWrite,
-    Permission.SettingsRead,
-    Permission.SettingsWrite,
-    Permission.RulesRead,
-    Permission.RulesEdit,
-    Permission.RulesPublish,
-  ]);
-  return permissionsForRole(role).filter(
-    (permission) => !scoped.has(permission) || claims.permissions?.includes(permission),
+  return (claims.permissions ?? []).filter((permission): permission is Permission =>
+    Object.values(Permission).includes(permission as Permission),
   );
 }
 

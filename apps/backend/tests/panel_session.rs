@@ -28,7 +28,9 @@ async fn rejects_disabled_deleted_role_changed_and_revoked_membership_sessions()
         roles: vec!["staff".into()],
         tenantId: organization.to_string(),
         orgIds: vec![organization.to_string()],
-        permissions: vec![],
+        permissions: gaming_cafe_api::access::effective(&pool, organization, id)
+            .await
+            .unwrap(),
         allowedTenants: vec![],
         rateLimit: None,
         iss: "gamezone".into(),
@@ -59,6 +61,11 @@ async fn rejects_disabled_deleted_role_changed_and_revoked_membership_sessions()
         .await
         .unwrap();
     assert!(!panel_session_active(&pool, &claims).await.unwrap());
+    sqlx::query("DELETE FROM access_assignments WHERE user_id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)
         .execute(&pool)

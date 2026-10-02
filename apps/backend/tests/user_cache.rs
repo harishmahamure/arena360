@@ -74,14 +74,12 @@ async fn user_update_invalidates_list_cache() {
 
     let original_first_name = player.first_name.clone();
 
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
+    assert!(state
+        .cache
+        .get_value(&cache_key)
+        .await
+        .expect("redis read")
+        .is_some());
 
     state
         .users
@@ -171,7 +169,10 @@ async fn auth_username_lookup_populates_cache() {
         .expect("redis read")
         .expect("expected auth profile cached under {cache_key}");
     assert!(
-        cached_value.get("password_hash").and_then(|v| v.as_str()).is_some(),
+        cached_value
+            .get("password_hash")
+            .and_then(|v| v.as_str())
+            .is_some(),
         "auth cache must include password_hash for login"
     );
 

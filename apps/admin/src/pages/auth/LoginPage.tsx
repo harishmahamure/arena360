@@ -4,7 +4,7 @@ import { Alert, Box, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../../hooks/store';
-import type { Permission } from '../../hooks/usePermissions';
+import { Permission } from '../../hooks/usePermissions';
 import { sessionPermissions, setAdminToken } from '../../lib/authSession';
 import { loginPanelAPI, verifyPanelMfaAPI } from '../../services/auth/auth';
 import type { PanelLoginResponse, VerifyOtpResponseUser } from '../../services/auth/types';
@@ -59,7 +59,10 @@ export default function LoginPage() {
       },
     });
 
-    if (response.nextStep === 'shift_setup') {
+    if (
+      response.nextStep === 'shift_setup' &&
+      sessionPermissions().includes(Permission.ShiftsWrite)
+    ) {
       navigate('/shift/setup', { replace: true });
       return;
     }

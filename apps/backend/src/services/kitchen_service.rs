@@ -14,6 +14,17 @@ pub fn valid_transition(from: &str, to: &str) -> bool {
 }
 
 pub async fn publish(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<(), AppError> {
+    OutboxService::publish_in_tx(
+        tx,
+        "kitchen",
+        "kitchen.changed",
+        json!({"ticketId": id}),
+        None,
+        None,
+        None,
+        true,
+    )
+    .await?;
     for role in ["admin", "staff"] {
         OutboxService::publish_in_tx(
             tx,

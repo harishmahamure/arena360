@@ -5,13 +5,13 @@ use uuid::Uuid;
 use crate::cache::{self, keys, CacheService};
 use crate::dto::{DeviceFingerprintDto, ProvisionDeviceDto};
 use crate::error::AppError;
+use crate::models::activity_kind;
 use crate::models::{
     CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
 };
 use crate::realtime::OutboxService;
 use crate::repositories::DeviceRepository;
-use crate::services::{EventService, NotificationService, RecordNotification, Recipients};
-use crate::models::activity_kind;
+use crate::services::{EventService, NotificationService, Recipients, RecordNotification};
 use crate::validation::{
     optional_device_status, optional_device_sub_type, optional_device_type,
     require_device_sub_type, require_device_type,
@@ -44,11 +44,7 @@ impl DeviceService {
     }
 
     async fn invalidate_device_cache(&self, device_id: &Uuid) {
-        let _ = cache::invalidate(
-            &*self.cache,
-            &[keys::session_device(device_id)],
-        )
-        .await;
+        let _ = cache::invalidate(&*self.cache, &[keys::session_device(device_id)]).await;
         let _ = self
             .cache
             .invalidate_prefix(keys::SESSIONS_LIST_PREFIX)
@@ -123,11 +119,7 @@ impl DeviceService {
             )));
         }
 
-        match self
-            .repo
-            .provision(&dto, &fingerprint_json, actor_id)
-            .await
-        {
+        match self.repo.provision(&dto, &fingerprint_json, actor_id).await {
             Ok(device) => {
                 self.events
                     .publish_device_status(&device.id.to_string(), &device.status);
@@ -342,10 +334,7 @@ pub fn mac_addresses_match(
     stored: &DeviceFingerprintDto,
     presented: &DeviceFingerprintDto,
 ) -> bool {
-    stored
-        .mac
-        .trim()
-        .eq_ignore_ascii_case(presented.mac.trim())
+    stored.mac.trim().eq_ignore_ascii_case(presented.mac.trim())
 }
 
 /// MAC values that must not be used as a station lookup key.
@@ -457,9 +446,7 @@ fn map_device_unique_violation(err: sqlx::Error) -> AppError {
                         .to_string(),
                 );
             }
-            return AppError::Conflict(
-                "A device with these details already exists.".to_string(),
-            );
+            return AppError::Conflict("A device with these details already exists.".to_string());
         }
     }
     AppError::Database(err)

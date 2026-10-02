@@ -60,7 +60,7 @@ describe('unified panel login', () => {
     });
     vi.mocked(verifyPanelMfaAPI).mockResolvedValue({
       status: 'authenticated',
-      accessToken: 'token',
+      accessToken: `header.${btoa(JSON.stringify({ userId: '1', roles: ['staff'], permissions: ['shifts:write'], exp: Date.now() / 1000 + 60 }))}.signature`,
       nextStep: 'shift_setup',
       user: {
         id: '1',
