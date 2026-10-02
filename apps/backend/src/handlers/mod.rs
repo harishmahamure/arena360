@@ -28,3 +28,8 @@ pub mod units;
 pub mod uploads;
 pub mod users;
 pub mod vendors;
+
+pub mod kitchen;
+pub mod finance_report;
+
+pub mod access;

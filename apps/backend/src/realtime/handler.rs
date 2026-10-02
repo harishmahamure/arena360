@@ -21,6 +21,11 @@ pub async fn ws_upgrade(
 ) -> Result<impl IntoResponse, AppError> {
     let token = extract_ws_token(&headers)?;
     let claims = decode_token_for_ws(&state, &token)?;
+    if !crate::middleware::auth::panel_session_active(&state.db, &claims).await? {
+        return Err(AppError::Unauthorized(
+            "Account or organization access changed; sign in again".into(),
+        ));
+    }
 
     let pool = state.db.clone();
     let registry = state.ws_connections.clone();
@@ -70,6 +75,7 @@ fn decode_token_for_ws(
 
     let mut validation = Validation::default();
     validation.validate_exp = true;
+    validation.leeway = 0;
     validation.set_audience(&["gamezone"]);
     validation.set_issuer(&["gamezone"]);
 

@@ -3,6 +3,7 @@
 import { Pagination } from '@mui/material';
 import type { ReactNode } from 'react';
 import type { Action, Column } from '../DataGrid';
+import { ErrorPanel } from '../ErrorPanel';
 import { PageHeader } from '../PageHeader';
 import { PageShell, type PageShellProps } from '../PageShell';
 import { ListPageContent } from './ListPageContent';
@@ -20,6 +21,8 @@ export interface ListPageProps<T extends { id: string | number }> {
   columns: Column<T>[];
   actions?: Action<T>[];
   isLoading: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   /** Filter chips / FilterBar — maps to PageShell `toolbar` */
   filters?: ReactNode;
   showSearch?: boolean;
@@ -61,6 +64,8 @@ export function ListPage<T extends { id: string | number }>({
   columns,
   actions,
   isLoading,
+  error,
+  onRetry,
   filters,
   showSearch = false,
   searchValue,
@@ -90,26 +95,35 @@ export function ListPage<T extends { id: string | number }>({
     ) : undefined);
 
   return (
-    <PageShell dense={dense} maxWidth={maxWidth} toolbar={filters} footer={resolvedFooter}>
-      <PageHeader title={title} description={description} />
-      <ListPageContent<T>
-        data={data}
-        columns={columns}
-        actions={actions}
-        isLoading={isLoading}
-        showSearch={showSearch}
-        searchValue={searchValue}
-        onSearchChange={onSearchChange}
-        onSearchClear={onSearchClear}
-        onAddClick={onAddClick}
-        addButtonLabel={addButtonLabel}
-        emptyMessage={emptyMessage}
-        emptyDescription={emptyDescription}
-        emptyActionLabel={emptyActionLabel}
-        onEmptyAction={onEmptyAction}
-        maxHeight={maxHeight}
-        mobileCardRender={mobileCardRender}
-      />
+    <PageShell
+      dense={dense}
+      maxWidth={maxWidth}
+      header={<PageHeader title={title} description={description} />}
+      toolbar={filters}
+      footer={resolvedFooter}
+    >
+      {error ? (
+        <ErrorPanel message={error} onRetry={onRetry} />
+      ) : (
+        <ListPageContent<T>
+          data={data}
+          columns={columns}
+          actions={actions}
+          isLoading={isLoading}
+          showSearch={showSearch}
+          searchValue={searchValue}
+          onSearchChange={onSearchChange}
+          onSearchClear={onSearchClear}
+          onAddClick={onAddClick}
+          addButtonLabel={addButtonLabel}
+          emptyMessage={emptyMessage}
+          emptyDescription={emptyDescription}
+          emptyActionLabel={emptyActionLabel}
+          onEmptyAction={onEmptyAction}
+          maxHeight={maxHeight}
+          mobileCardRender={mobileCardRender}
+        />
+      )}
     </PageShell>
   );
 }

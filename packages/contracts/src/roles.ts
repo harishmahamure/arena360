@@ -11,6 +11,18 @@ export enum UserStatus {
 }
 
 export enum Permission {
+  AccessRead = 'access:read',
+  AccessManage = 'access:manage',
+  TeamRead = 'team:read',
+  TeamWrite = 'team:write',
+  KitchenRead = 'kitchen:read',
+  KitchenWrite = 'kitchen:write',
+  KitchenManage = 'kitchen:manage',
+  FinanceRead = 'finance:read',
+  ActivityRead = 'activity:read',
+  EventsAdmin = 'events:admin',
+  EventsStaff = 'events:staff',
+
   DevicesRead = 'devices:read',
   DevicesWrite = 'devices:write',
   PlansRead = 'plans:read',

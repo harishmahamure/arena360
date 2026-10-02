@@ -70,9 +70,36 @@ pub async fn run(
     // pending deliveries than the bounded queue can hold, so the queue must be
     // drained while the replay is being populated.
     let write_slow_consumer = slow_consumer.clone();
+    let session_pool = pool.clone();
+    let session_claims = claims.clone();
     let mut write_handle = tokio::spawn(async move {
+        let seconds_left = session_claims
+            .exp
+            .unwrap_or(0)
+            .saturating_sub(chrono::Utc::now().timestamp())
+            .max(0) as u64;
+        let expiry = tokio::time::sleep(std::time::Duration::from_secs(seconds_left));
+        tokio::pin!(expiry);
+        let mut recheck = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
             tokio::select! {
+                biased;
+                _ = &mut expiry => {
+                    let _ = ws_sink.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                        code: 4001, reason: "Session expired".into(),
+                    }))).await;
+                    break;
+                }
+                _ = recheck.tick(), if session_claims.is_admin_or_staff() => {
+                    let result = crate::middleware::auth::panel_session_active(&session_pool, &session_claims).await;
+                    if !matches!(result, Ok(true)) {
+                        let code = if result.is_err() { 1013 } else { 4001 };
+                        let _ = ws_sink.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                            code, reason: "Session verification required".into(),
+                        }))).await;
+                        break;
+                    }
+                }
                 Some(frame) = outgoing_rx.recv() => {
                     if ws_sink.send(Message::Binary(frame.encode_binary().into())).await.is_err() { break; }
                 }
@@ -97,6 +124,9 @@ pub async fn run(
     // Replay unacked durable messages
     if let Ok(pending) = DeliveryService::replay_pending(&pool, user_id).await {
         for row in pending {
+            if !acl::event_matches_claims(&claims, &row) {
+                continue;
+            }
             let event = ServerFrame::Event {
                 msg_id: row.id,
                 channel: row.channel,

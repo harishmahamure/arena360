@@ -598,7 +598,7 @@ impl AuthService {
     }
 
     async fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
-        let memberships: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
+        let mut memberships: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
             r#"SELECT "organizationId", permissions
                FROM organization_memberships
                WHERE "userId" = $1 AND "isActive" = TRUE
@@ -611,6 +611,10 @@ impl AuthService {
             return Err(AppError::Forbidden(
                 "User has no active organization membership".to_string(),
             ));
+        }
+        if matches!(user.role.as_deref(), Some("admin" | "staff")) {
+            let grants = crate::access::effective(&self.pool, memberships[0].0, user.id).await?;
+            memberships[0].1 = serde_json::json!(grants);
         }
         self.encode_access_token(user, &memberships)
     }
@@ -625,7 +629,7 @@ impl AuthService {
         let exp_duration = parse_duration(&self.settings.jwt_access_expiration);
         let org_ids: Vec<String> = memberships.iter().map(|(id, _)| id.to_string()).collect();
         let permissions: Vec<String> = memberships
-            .iter()
+            .iter().take(1)
             .flat_map(|(_, value)| {
                 value
                     .as_array()

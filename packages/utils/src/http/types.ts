@@ -18,6 +18,7 @@ export interface CreateHttpClientOptions {
   getDeviceToken?: () => string | null | undefined;
   deviceTokenHeader?: string;
   onUnauthorized?: (context: { url?: string; message?: string; authHeader?: string }) => void;
+  onMutationSuccess?: (context: { url: string; method: string }) => void;
   timeout?: number;
   headers?: Record<string, string>;
 }

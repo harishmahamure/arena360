@@ -1,4 +1,6 @@
-'use client';
+import { WizardProgress } from './WizardProgress';
+
+('use client');
 
 import {
   Alert,
@@ -11,9 +13,6 @@ import {
   Pagination,
   Paper,
   Stack,
-  Step,
-  StepLabel,
-  Stepper,
   Tab,
   Tabs,
   TextField,
@@ -131,6 +130,7 @@ export function WizardPage({
   activeStep,
   children,
   onBack,
+  onStepChange,
   onNext,
   nextLabel = 'Continue',
   nextDisabled,
@@ -142,6 +142,7 @@ export function WizardPage({
   activeStep: number;
   children: ReactNode;
   onBack?: () => void;
+  onStepChange?: (step: number) => void;
   onNext: () => void;
   nextLabel?: string;
   nextDisabled?: boolean;
@@ -153,13 +154,17 @@ export function WizardPage({
       <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
         {busy ? <LinearProgress /> : null}
         <Box sx={{ p: { xs: 2, md: 3 } }}>
-          <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
-            {steps.map((step) => (
-              <Step key={step}>
-                <StepLabel>{step}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
+          <WizardProgress
+            titles={steps}
+            activeStep={activeStep}
+            disabled={busy}
+            onBackTo={(index) => {
+              if (index < activeStep) {
+                if (onStepChange) onStepChange(index);
+                else onBack?.();
+              }
+            }}
+          />
           {error ? (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}

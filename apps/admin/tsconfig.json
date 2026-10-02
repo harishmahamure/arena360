@@ -1,0 +1,20 @@
+{
+  "extends": "@gaming-cafe/tsconfig/react.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@gaming-cafe/ui": ["../../packages/ui/src/index.ts"],
+      "@gaming-cafe/theme": ["../../packages/theme/src/index.ts"],
+      "@gaming-cafe/providers": ["../../packages/providers/src/index.ts"],
+      "@gaming-cafe/utils": ["../../packages/utils/src/index.ts"],
+      "@gaming-cafe/proto": ["../../packages/proto/src/index.ts"],
+      "@gaming-cafe/api-types": ["../../packages/api-types/src/index.ts"],
+      "@gaming-cafe/contracts": ["../../packages/contracts/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

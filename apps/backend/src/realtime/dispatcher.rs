@@ -107,6 +107,7 @@ impl Dispatcher {
         );
 
         let conns = self.registry.subscribers(&row.channel).await;
+        let mut recipients = Vec::new();
         let mut durable_recipients = Vec::new();
         for conn_lock in conns {
             let conn = conn_lock.read().await;
@@ -116,38 +117,31 @@ impl Dispatcher {
             if row.durable {
                 durable_recipients.push(conn.user_id);
             }
-            if matches!(
-                conn.outgoing_tx.try_send(event_frame.clone()),
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
-            ) {
-                conn.slow_consumer.notify_one();
-                self.metrics.slow_consumer_dropped();
-            }
+            recipients.push((conn.outgoing_tx.clone(), conn.slow_consumer.clone()));
         }
+        // Persist delivery before exposing a message to clients, otherwise a fast
+        // ACK can arrive before its delivery row exists and be silently lost.
         if row.durable {
             if let Err(error) =
                 DeliveryService::insert_deliveries(&self.pool, row.id, &durable_recipients).await
             {
                 tracing::warn!(%error, outbox_id = row.id, "failed to batch durable deliveries");
+                return;
+            }
+        }
+        for (sender, slow_consumer) in recipients {
+            if matches!(
+                sender.try_send(event_frame.clone()),
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+            ) {
+                slow_consumer.notify_one();
+                self.metrics.slow_consumer_dropped();
             }
         }
     }
 
     fn passes_audience_filter(&self, conn: &Connection, row: &super::outbox::OutboxRow) -> bool {
-        if let Some(ref role) = row.audience_role {
-            let has_role = conn.roles.iter().any(|r| r == role);
-            if !has_role {
-                return false;
-            }
-        }
-
-        if let Some(target_user) = row.audience_user_id {
-            if conn.user_id != target_user {
-                return false;
-            }
-        }
-
-        true
+        super::acl::event_matches_claims(&conn.claims, row)
     }
 }
 

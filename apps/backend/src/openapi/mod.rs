@@ -96,6 +96,7 @@ impl Modify for SecurityAddon {
         handlers::health::health_check_legacy,
         handlers::auth::login_admin,
         handlers::auth::login_panel,
+        handlers::auth::current_panel_user,
         handlers::auth::verify_panel_mfa,
         handlers::auth::login_staff,
         handlers::auth::login_player,

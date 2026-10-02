@@ -111,7 +111,7 @@ export function DataGrid<T extends object>({
   const paperSx = {
     borderRadius: 1,
     border: `1px solid ${theme.palette.divider}`,
-    boxShadow: theme.shadows[2],
+    boxShadow: 'none',
     overflow: maxHeight ? 'auto' : 'hidden',
     transition: 'all 0.3s ease-in-out',
     maxHeight: maxHeight,
@@ -250,6 +250,7 @@ export function DataGrid<T extends object>({
                           <Tooltip key={action.label} title={action.label} arrow>
                             <span>
                               <IconButton
+                                aria-label={action.label}
                                 color={action.color || 'default'}
                                 size="small"
                                 onClick={(e) => {

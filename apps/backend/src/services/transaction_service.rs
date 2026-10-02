@@ -303,6 +303,7 @@ impl TransactionService {
             .await?;
         }
 
+        crate::services::kitchen_service::enqueue(&mut db_tx, transaction.id, actor_id).await?;
         db_tx.commit().await?;
 
         let _ = self

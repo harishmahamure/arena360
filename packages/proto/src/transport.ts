@@ -50,11 +50,20 @@ function domainForPath(path: string): keyof typeof DOMAIN_SERVICES {
   if (['plans', 'player-plans', 'balances'].includes(segment)) return 'plans';
   if (['sessions', 'kiosk', 'kiosk-orders', 'realtime'].includes(segment)) return 'sessions';
   if (['transactions', 'products'].includes(segment)) return 'transactions';
-  if (['shifts', 'cash-registers', 'cash-deposits', 'expenses', 'vendors'].includes(segment))
+  if (
+    [
+      'shifts',
+      'cash-registers',
+      'cash-deposits',
+      'expenses',
+      'expense-categories',
+      'vendors',
+    ].includes(segment)
+  )
     return 'shifts';
   if (segment === 'inventory') return 'inventory';
   if (['notifications', 'activity-log'].includes(segment)) return 'notifications';
-  if (segment === 'config') return 'config';
+  if (segment === 'config' || segment === 'organizations') return 'config';
   if (segment === 'stats') return 'stats';
   return 'uploads';
 }

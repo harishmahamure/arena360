@@ -1,0 +1,6 @@
+# App-local overrides (root .gitignore covers most patterns)
+dist/
+.turbo/
+*.tsbuildinfo
+.env.local
+.env.prod

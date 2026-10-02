@@ -384,7 +384,11 @@ impl KioskOrderService {
             amount: None,
             payment_method: convert.payment_method.clone(),
             payment_status: convert.payment_status.clone(),
-            notes: convert.notes.clone(),
+            notes: match (&order.player_note, &convert.notes) {
+                (Some(player), Some(counter)) => Some(format!("Customer: {player}\nCounter: {counter}")),
+                (Some(player), None) => Some(format!("Customer: {player}")),
+                (None, notes) => notes.clone(),
+            },
             online_payment_ref_last4: convert.online_payment_ref_last4.clone(),
             transaction_date: None,
             cash_amount: convert.cash_amount,

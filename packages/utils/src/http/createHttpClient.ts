@@ -50,6 +50,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
     getDeviceToken,
     deviceTokenHeader = DEFAULT_DEVICE_TOKEN_HEADER,
     onUnauthorized,
+    onMutationSuccess,
     timeout = DEFAULT_TIMEOUT,
     headers: defaultHeaders = {},
   } = options;
@@ -64,6 +65,40 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
     return headers;
   }
 
+  async function invokeChecked(url: string, input: Parameters<typeof transport.invoke>[0]) {
+    try {
+      const response = await transport.invoke(input);
+      if (response.statusCode >= 400) {
+        const body = parseBody(response.bodyJson);
+        const message =
+          body && typeof body === 'object' && 'message' in body
+            ? String(body.message)
+            : `Request failed with status ${response.statusCode}`;
+        if (response.statusCode === 401)
+          onUnauthorized?.({ url, message, authHeader: input.headers?.authorization });
+        const envelope = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+        throw ApiError.fromErrorEnvelope({
+          message,
+          statusCode: response.statusCode,
+          error: typeof envelope.error === 'string' ? envelope.error : '',
+          timestamp: typeof envelope.timestamp === 'string' ? envelope.timestamp : undefined,
+          details: envelope.details,
+        });
+      }
+      return response;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+      const statusCode =
+        code === 16 ? 401 : code === 7 ? 403 : code === 4 ? 504 : code === 8 ? 429 : 503;
+      const message =
+        error instanceof Error ? error.message : 'Connection unavailable. Please try again.';
+      if (statusCode === 401)
+        onUnauthorized?.({ url, message, authHeader: input.headers?.authorization });
+      throw new ApiError({ message, statusCode, cause: error });
+    }
+  }
+
   async function request<T>(
     method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     url: string,
@@ -73,46 +108,17 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
     const { path, query } = splitUrl(url, config.params);
     const headers = requestHeaders(config.headers);
 
-    try {
-      const response = await transport.invoke({
-        method,
-        path,
-        query,
-        body: encodeJson(data),
-        headers,
-        timeoutMs: config.timeout ?? timeout,
-      });
-      const body = parseBody(response.bodyJson);
-      if (response.statusCode >= 400) {
-        if (response.statusCode === 401) {
-          onUnauthorized?.({
-            url,
-            message:
-              body && typeof body === 'object' && 'message' in body
-                ? String(body.message)
-                : undefined,
-            authHeader: headers.authorization,
-          });
-        }
-        if (body && typeof body === 'object' && 'message' in body && 'statusCode' in body) {
-          throw ApiError.fromErrorEnvelope(
-            body as { statusCode: number; message: string; error: string; timestamp?: string },
-          );
-        }
-        throw new ApiError({
-          message: `Request failed with status ${response.statusCode}`,
-          statusCode: response.statusCode,
-        });
-      }
-      return unwrapEnvelope<T>(body);
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError({
-        message: error instanceof Error ? error.message : 'RPC request failed',
-        statusCode: 503,
-        cause: error,
-      });
-    }
+    const response = await invokeChecked(url, {
+      method,
+      path,
+      query,
+      body: encodeJson(data),
+      headers,
+      timeoutMs: config.timeout ?? timeout,
+    });
+    const result = unwrapEnvelope<T>(parseBody(response.bodyJson));
+    if (method !== 'GET') onMutationSuccess?.({ url, method });
+    return result;
   }
 
   return {
@@ -139,7 +145,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
       const encoded = new Response(formData);
       const contentType = encoded.headers.get('content-type') ?? 'multipart/form-data';
       const { path, query } = splitUrl(url);
-      const response = await transport.invoke({
+      const response = await invokeChecked(url, {
         method: 'POST',
         path,
         query,
@@ -148,29 +154,19 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
         timeoutMs: timeout,
       });
       const body = parseBody(response.bodyJson);
-      if (response.statusCode >= 400) {
-        throw new ApiError({
-          message:
-            body && typeof body === 'object' && 'message' in body
-              ? String(body.message)
-              : `Upload failed with status ${response.statusCode}`,
-          statusCode: response.statusCode,
-        });
-      }
-      return unwrapEnvelope<T>(body);
+      const result = unwrapEnvelope<T>(body);
+      onMutationSuccess?.({ url, method: 'POST' });
+      return result;
     },
     download: async (url, filename, config) => {
       const { path, query } = splitUrl(url, config?.params);
-      const response = await transport.invoke({
+      const response = await invokeChecked(url, {
         method: 'GET',
         path,
         query,
         headers: requestHeaders(config?.headers),
         timeoutMs: config?.timeout ?? timeout,
       });
-      if (response.statusCode >= 400) {
-        throw new ApiError({ message: 'Download failed', statusCode: response.statusCode });
-      }
       const objectUrl = window.URL.createObjectURL(
         new Blob([response.bodyJson], {
           type: response.headers['content-type'] ?? 'application/octet-stream',

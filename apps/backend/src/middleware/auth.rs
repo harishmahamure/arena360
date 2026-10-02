@@ -51,13 +51,54 @@ pub async fn auth_middleware(
         .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
 
     let claims = decode_token(&state, token)?;
+    if !panel_session_active(&state.db, &claims).await? {
+        return Err(AppError::Unauthorized(
+            "Account or organization access changed; sign in again".to_string(),
+        ));
+    }
+    if claims.is_admin_or_staff() {
+        crate::access::routes::authorize(&claims, req.method().as_str(), &path)?;
+    }
     req.extensions_mut().insert(claims);
 
     Ok(next.run(req).await)
 }
 
+/// Panel access is checked against current account and membership state, not only JWT age.
+pub async fn panel_session_active(
+    pool: &sqlx::PgPool,
+    claims: &JwtUserClaims,
+) -> Result<bool, sqlx::Error> {
+    if !claims.is_admin_or_staff() {
+        return Ok(true);
+    }
+    let Some(user_id) = claims.user_id_uuid() else {
+        return Ok(false);
+    };
+    let Ok(organization_id) = Uuid::parse_str(&claims.tenantId) else {
+        return Ok(false);
+    };
+    let active = sqlx::query_scalar::<_, bool>(
+        r#"SELECT EXISTS (
+            SELECT 1 FROM users u
+            JOIN organization_memberships m ON m."userId" = u.id
+            WHERE u.id = $1 AND u."isActive" = TRUE AND u."deletedAt" IS NULL
+              AND u.role = ANY($2) AND m."organizationId" = $3 AND m."isActive" = TRUE
+        )"#,
+    )
+    .bind(user_id)
+    .bind(&claims.roles)
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+    if !active { return Ok(false); }
+    let current = crate::access::effective(pool, organization_id, user_id).await?;
+    let mut issued = claims.permissions.clone(); issued.sort(); issued.dedup();
+    Ok(current == issued)
+}
+
 pub fn require_admin(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if claims.is_admin() {
+    if crate::access::managed(claims) || claims.is_admin() {
         Ok(())
     } else {
         Err(AppError::Forbidden("Admin access required".to_string()))
@@ -75,7 +116,7 @@ pub fn require_admin_or_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
 }
 
 pub fn require_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if claims.is_staff() {
+    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write") || !crate::access::managed(claims) && claims.is_staff() {
         Ok(())
     } else {
         Err(AppError::Forbidden("Shifts are staff-only".to_string()))
@@ -83,7 +124,7 @@ pub fn require_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
 }
 
 pub fn require_staff_for_counter(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if claims.is_staff() {
+    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write") || !crate::access::managed(claims) && claims.is_staff() {
         Ok(())
     } else {
         Err(AppError::Forbidden(
@@ -121,6 +162,7 @@ fn extract_bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
 fn decode_token(state: &AppState, token: &str) -> Result<JwtUserClaims, AppError> {
     let mut validation = Validation::default();
     validation.validate_exp = true;
+    validation.leeway = 0;
     validation.set_audience(&["gamezone"]);
     validation.set_issuer(&["gamezone"]);
 

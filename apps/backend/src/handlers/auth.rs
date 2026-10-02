@@ -222,3 +222,24 @@ pub async fn register(
     let result = state.users.register(dto, &claims).await?;
     created(result)
 }
+
+/// Return only the authenticated panel user's public profile. The auth middleware
+/// checks current account status, role, membership, and token expiry first.
+#[utoipa::path(
+    get, path = "/auth/me",
+    responses(
+        (status = 200, description = "Current panel account", body = crate::openapi::responses::PanelUserEnvelope),
+        (status = 401, description = "Session expired or account access revoked", body = ErrorEnvelope),
+        (status = 403, description = "Panel role required", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])), tag = "auth"
+)]
+pub async fn current_panel_user(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<crate::dto::AuthUserDto> {
+    let id = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid session".into()))?;
+    ok(state.users.get_by_id(id).await?.to_auth_user())
+}

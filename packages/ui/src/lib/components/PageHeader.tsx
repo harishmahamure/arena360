@@ -57,7 +57,7 @@ export function PageHeader({
           })}
         </Breadcrumbs>
       )}
-      <Typography variant="h4" fontWeight={600} gutterBottom={!!description}>
+      <Typography component="h1" variant="h4" fontWeight={700} gutterBottom={!!description}>
         {title}
       </Typography>
       {description && (

@@ -8,7 +8,7 @@ import {
   Select,
   type SelectProps,
 } from '@mui/material';
-import { forwardRef } from 'react';
+import { forwardRef, useId } from 'react';
 
 export interface FormSelectOption {
   value: string | number;
@@ -62,7 +62,10 @@ const FormSelect = forwardRef<HTMLDivElement, FormSelectProps>(
     },
     ref,
   ) => {
-    const labelId = label ? `${props.id || 'select'}-label` : undefined;
+    const generatedId = useId();
+    const selectId = props.id ?? generatedId;
+    const labelId = label ? `${selectId}-label` : undefined;
+    const helperId = helperText ? `${selectId}-help` : undefined;
 
     return (
       <FormControl
@@ -73,7 +76,13 @@ const FormSelect = forwardRef<HTMLDivElement, FormSelectProps>(
         required={required}
       >
         {label && <InputLabel id={labelId}>{label}</InputLabel>}
-        <Select label={label} labelId={labelId} {...props}>
+        <Select
+          id={selectId}
+          label={label}
+          labelId={labelId}
+          aria-describedby={helperId}
+          {...props}
+        >
           {options.map((option) => (
             <MenuItem key={option.value} value={option.value} disabled={option.disabled}>
               {option.label}
@@ -81,7 +90,7 @@ const FormSelect = forwardRef<HTMLDivElement, FormSelectProps>(
           ))}
           {props.children}
         </Select>
-        {helperText && <FormHelperText>{helperText}</FormHelperText>}
+        {helperText && <FormHelperText id={helperId}>{helperText}</FormHelperText>}
       </FormControl>
     );
   },

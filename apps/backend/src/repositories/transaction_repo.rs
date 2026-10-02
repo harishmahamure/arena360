@@ -258,15 +258,25 @@ impl TransactionRepository {
             "#,
             Self::RETURNING
         );
+        let mut db_tx = self.pool.begin().await?;
+        let previous_status: String = sqlx::query_scalar(
+            r#"SELECT "paymentStatus"::text FROM transactions WHERE id=$1 AND "deletedAt" IS NULL FOR UPDATE"#,
+        ).bind(id).fetch_optional(&mut *db_tx).await?
+            .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;
         let transaction = sqlx::query_as::<_, Transaction>(&query)
             .bind(id)
             .bind(&dto.payment_status)
             .bind(&dto.notes)
             .bind(actor_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *db_tx)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))?;
 
+        if !matches!(previous_status.as_str(), "completed" | "credit")
+            && matches!(transaction.payment_status.as_str(), "completed" | "credit") {
+            crate::services::kitchen_service::enqueue(&mut db_tx, transaction.id, actor_id).await?;
+        }
+        db_tx.commit().await?;
         Ok(transaction)
     }
 

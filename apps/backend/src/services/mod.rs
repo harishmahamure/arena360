@@ -64,3 +64,5 @@ pub use transaction_service::TransactionService;
 pub use unit_service::UnitService;
 pub use user_service::UserService;
 pub use vendor_service::VendorService;
+
+pub mod kitchen_service;
