@@ -713,7 +713,7 @@ impl InventoryService {
         &self,
         filters: WasteSummaryFilterDto,
     ) -> Result<Vec<WasteSummaryRow>, AppError> {
-        self.repo
+        crate::analytics::ClickHouse::from_env()
             .waste_summary(filters.location_id, filters.from, filters.to)
             .await
     }
@@ -722,7 +722,7 @@ impl InventoryService {
         &self,
         filters: ReceiptSummaryFilterDto,
     ) -> Result<Vec<ReceiptSummaryRow>, AppError> {
-        self.repo
+        crate::analytics::ClickHouse::from_env()
             .receipt_summary(filters.location_id, filters.from, filters.to)
             .await
     }

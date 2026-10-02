@@ -55,9 +55,10 @@ pub async fn list_credit_accounts(
     tag = "credit"
 )]
 pub async fn credit_summary(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<CreditPortfolioSummary> {
+    super::kitchen::require_venue(&claims)?;
     let summary = state.credit.portfolio_summary().await?;
     ok(summary)
 }

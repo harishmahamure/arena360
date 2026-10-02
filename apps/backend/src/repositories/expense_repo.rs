@@ -3,9 +3,7 @@ use uuid::Uuid;
 
 use crate::dto::PaginationResult;
 use crate::error::AppError;
-use crate::models::{
-    CreateExpenseDto, Expense, ExpenseFilterDto, ExpenseSummaryDto, UpdateExpenseDto,
-};
+use crate::models::{CreateExpenseDto, Expense, ExpenseFilterDto, UpdateExpenseDto};
 
 pub struct ExpenseRepository {
     pool: PgPool,
@@ -434,34 +432,5 @@ impl ExpenseRepository {
         .execute(&self.pool)
         .await?;
         Ok(())
-    }
-
-    pub async fn get_summary_by_category(&self) -> Result<Vec<ExpenseSummaryDto>, AppError> {
-        let summaries = sqlx::query_as::<_, ExpenseSummaryDto>(
-            r#"
-            SELECT
-                ec.name as category_name,
-                ec."budgetAmount"::float8 as budget_amount,
-                ec."budgetPeriod" as budget_period,
-                COALESCE(SUM(e.amount)::float8, 0) as total_spent,
-                CASE
-                    WHEN ec."budgetAmount" IS NOT NULL
-                    THEN (ec."budgetAmount" - COALESCE(SUM(e.amount), 0))::float8
-                    ELSE NULL
-                END as remaining_budget,
-                COUNT(e.id) as expense_count
-            FROM expense_categories ec
-            LEFT JOIN expenses e ON e."categoryId" = ec.id
-                AND e."deletedAt" IS NULL
-                AND e."approvalStatus" = 'approved'
-            WHERE ec."isActive" = true
-            GROUP BY ec.id, ec.name, ec."budgetAmount", ec."budgetPeriod"
-            ORDER BY total_spent DESC
-            "#,
-        )
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(summaries)
     }
 }

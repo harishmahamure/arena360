@@ -624,36 +624,7 @@ impl ProcurementService {
     }
 
     pub async fn overview(&self) -> Result<InventoryOverviewDto, AppError> {
-        let (pieces,value):(i64,f64)=sqlx::query_as(r#"SELECT COALESCE(SUM(ls."quantityPieces"),0)::bigint,COALESCE(SUM(ls."quantityPieces"*COALESCE(p."purchasePricePerBox"/NULLIF(p."unitsPerPurchaseUnit",0),p."purchasePrice",0)),0)::float8 FROM location_stock ls JOIN products p ON p.id=ls."productId""#).fetch_one(&self.pool).await?;
-        let low:i64=sqlx::query_scalar(r#"SELECT COUNT(*) FROM inventory_reorder_rules r LEFT JOIN location_stock ls ON ls."locationId"=r."locationId" AND ls."productId"=r."productId" WHERE r."isActive"=true AND COALESCE(ls."quantityPieces",0)>0 AND COALESCE(ls."quantityPieces",0)<=r."minimumPieces""#).fetch_one(&self.pool).await?;
-        let out:i64=sqlx::query_scalar(r#"SELECT COUNT(*) FROM inventory_reorder_rules r LEFT JOIN location_stock ls ON ls."locationId"=r."locationId" AND ls."productId"=r."productId" WHERE r."isActive"=true AND COALESCE(ls."quantityPieces",0)=0"#).fetch_one(&self.pool).await?;
-        let po:i64=sqlx::query_scalar("SELECT COUNT(*) FROM purchase_orders WHERE status IN ('submitted','approved','ordered','partially_received')").fetch_one(&self.pool).await?;
-        let transfers: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM stock_transfer_requests WHERE status IN ('pending','approved')",
-        )
-        .fetch_one(&self.pool)
-        .await?;
-        let waste: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM stock_waste_events WHERE status='pending'")
-                .fetch_one(&self.pool)
-                .await?;
-        let recent = self
-            .list_movements(StockMovementFilterDto {
-                limit: Some(8),
-                ..Default::default()
-            })
-            .await?
-            .data;
-        Ok(InventoryOverviewDto {
-            total_pieces: pieces,
-            estimated_stock_value: value,
-            low_stock_products: low,
-            out_of_stock_products: out,
-            open_purchase_orders: po,
-            pending_transfers: transfers,
-            pending_waste_events: waste,
-            recent_movements: recent,
-        })
+        crate::analytics::ClickHouse::from_env().overview().await
     }
 
     fn validate_lines(lines: &[PurchaseOrderLineInput]) -> Result<(), AppError> {

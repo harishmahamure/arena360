@@ -57,12 +57,11 @@ pub async fn report(
         .find(|s| s.key == "pricing.currency")
         .and_then(|s| s.value.as_str())
         .unwrap_or("INR");
-    // A single statement gives a consistent snapshot; monetary sums stay NUMERIC in
-    // PostgreSQL and are serialized as decimal strings (including in CSV exports).
-    let mut result: Value = sqlx::query_scalar(include_str!("finance_report.sql"))
-        .bind(start.and_hms_opt(0, 0, 0).unwrap().and_utc())
-        .bind(until.and_hms_opt(0, 0, 0).unwrap().and_utc())
-        .fetch_one(&state.db)
+    let mut result = crate::analytics::ClickHouse::from_env()
+        .finance_report(
+            start.and_hms_opt(0, 0, 0).unwrap().and_utc(),
+            until.and_hms_opt(0, 0, 0).unwrap().and_utc(),
+        )
         .await?;
     result["currency"] = currency.into();
     result["startDate"] = query.start_date.into();

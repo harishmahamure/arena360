@@ -505,10 +505,11 @@ pub async fn reject_waste_event(
     tag = "inventory"
 )]
 pub async fn waste_summary(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<WasteSummaryFilterDto>,
 ) -> ApiResult<Vec<WasteSummaryRow>> {
+    super::kitchen::require_venue(&claims)?;
     ok(state.inventory.waste_summary(filters).await?)
 }
 
@@ -526,9 +527,10 @@ pub async fn waste_summary(
     tag = "inventory"
 )]
 pub async fn receipt_summary(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<ReceiptSummaryFilterDto>,
 ) -> ApiResult<Vec<ReceiptSummaryRow>> {
+    super::kitchen::require_venue(&claims)?;
     ok(state.inventory.receipt_summary(filters).await?)
 }

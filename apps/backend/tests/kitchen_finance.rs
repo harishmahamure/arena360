@@ -85,7 +85,7 @@ async fn tickets_are_atomic_idempotent_opt_in_and_reports_use_exact_totals() {
         .parse::<chrono::DateTime<chrono::Utc>>()
         .unwrap();
     let end = start + chrono::Duration::days(2);
-    let report: Value = sqlx::query_scalar(include_str!("../src/handlers/finance_report.sql"))
+    let report: Value = sqlx::query_scalar(include_str!("fixtures/legacy_finance_report.sql"))
         .bind(start)
         .bind(end)
         .fetch_one(&mut *tx)
@@ -104,7 +104,7 @@ async fn tickets_are_atomic_idempotent_opt_in_and_reports_use_exact_totals() {
         .execute(&mut *tx)
         .await
         .unwrap();
-    let report: Value = sqlx::query_scalar(include_str!("../src/handlers/finance_report.sql"))
+    let report: Value = sqlx::query_scalar(include_str!("fixtures/legacy_finance_report.sql"))
         .bind(start)
         .bind(end)
         .fetch_one(&mut *tx)

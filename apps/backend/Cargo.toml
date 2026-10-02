@@ -30,7 +30,7 @@ async-trait = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["arbitrary_precision"] }
 
 # Auth
 jsonwebtoken = "9"
@@ -52,6 +52,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 thiserror = "2"
 
 # Streaming
+async-nats = "0.49"
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 

@@ -24,6 +24,7 @@ import {
   WorkHistory,
 } from '@mui/icons-material';
 import type { AdminNavItem } from '../utils/filterNavItems';
+import { analyticsDashboards } from './analyticsDashboards';
 
 /**
  * Canonical panel module registry. Navigation, permission filtering, route titles,
@@ -43,6 +44,18 @@ export const moduleRegistry: AdminNavItem[] = [
     icon: <Dashboard />,
     section: 'Workspace',
     requiredPermission: Permission.StatsRead,
+  },
+  {
+    title: 'Business dashboard',
+    path: '/analytics',
+    icon: <Assessment />,
+    section: 'Workspace',
+    requiredPermission: Permission.FinanceRead,
+    searchKeywords: ['reports', 'retention', 'forecast', 'capacity', 'pricing', 'membership'],
+    children: analyticsDashboards.map((dashboard) => ({
+      title: dashboard.title,
+      path: `/analytics/${dashboard.id}`,
+    })),
   },
   {
     title: 'Sessions',

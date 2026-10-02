@@ -146,22 +146,22 @@ pub fn stock_level(location_id: &uuid::Uuid, product_id: &uuid::Uuid) -> String 
 }
 
 pub fn stats_dashboard(filter_hash: &str) -> String {
-    format!("stats:v5:dashboard:{filter_hash}")
+    format!("stats:ch:v1:dashboard:{filter_hash}")
 }
 
 pub fn stats_staff(filter_hash: &str) -> String {
-    format!("stats:v5:staff:{filter_hash}")
+    format!("stats:ch:v1:staff:{filter_hash}")
 }
 
 pub fn stats_revenue(filter_hash: &str) -> String {
-    format!("stats:v5:revenue:{filter_hash}")
+    format!("stats:ch:v1:revenue:{filter_hash}")
 }
 
 pub fn stats_usage(filter_hash: &str) -> String {
-    format!("stats:v5:usage:{filter_hash}")
+    format!("stats:ch:v1:usage:{filter_hash}")
 }
 
-pub const STATS_PREFIX: &str = "stats:v5:";
+pub const STATS_PREFIX: &str = "stats:ch:v1:";
 
 pub const NOTIFICATIONS_PREFIX: &str = "notifications:";
 

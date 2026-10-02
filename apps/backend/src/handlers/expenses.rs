@@ -190,9 +190,10 @@ pub async fn reject_expense(
     tag = "expenses"
 )]
 pub async fn expense_summary(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Vec<ExpenseSummaryDto>> {
+    super::kitchen::require_venue(&claims)?;
     let summary = state.expenses.get_summary().await?;
     ok(summary)
 }

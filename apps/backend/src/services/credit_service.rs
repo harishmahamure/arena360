@@ -100,7 +100,9 @@ impl CreditService {
     }
 
     pub async fn portfolio_summary(&self) -> Result<CreditPortfolioSummary, AppError> {
-        self.repo.get_portfolio_summary().await
+        crate::analytics::ClickHouse::from_env()
+            .get_portfolio_summary()
+            .await
     }
 
     pub async fn get_player_credit(&self, player_id: Uuid) -> Result<PlayerCreditDetail, AppError> {

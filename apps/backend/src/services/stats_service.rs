@@ -1,6 +1,6 @@
+use crate::analytics::{query_as, ClickHouse};
 use chrono::{DateTime, Duration, Timelike, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -284,7 +284,7 @@ pub struct FinanceVarianceStatsDto {
 }
 
 pub struct StatsService {
-    pool: PgPool,
+    pool: ClickHouse,
     cache: Arc<dyn CacheService>,
 }
 
@@ -311,16 +311,17 @@ struct StatsStaffKey {
 
 #[derive(Serialize)]
 struct StatsPeriodPairKey {
+    compare: bool,
     start: String,
     end: String,
     prev_start: String,
     prev_end: String,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct RevenueStatsRow {
-    plan: f64,
-    merchandise: f64,
+    _plan: f64,
+    _merchandise: f64,
     cash_revenue: f64,
     online_revenue: f64,
     credit_revenue: f64,
@@ -340,7 +341,7 @@ struct RevenueStatsRow {
     product_credit_count: i64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct TopPlanRow {
     plan_id: uuid::Uuid,
     plan_name: String,
@@ -348,7 +349,7 @@ struct TopPlanRow {
     purchase_count: i64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct TopPlayerRow {
     player_id: uuid::Uuid,
     player_name: String,
@@ -356,7 +357,7 @@ struct TopPlayerRow {
     total_sessions: i64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct DeviceUtilizationRow {
     device_id: uuid::Uuid,
     device_name: String,
@@ -364,14 +365,14 @@ struct DeviceUtilizationRow {
     total_hours: f64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct SettlementRevenueTotalsRow {
-    settlement_total: f64,
+    _settlement_total: f64,
     settlement_cash: f64,
     settlement_online: f64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct SettlementRevenueByTypeRow {
     plan_cash: f64,
     plan_online: f64,
@@ -379,7 +380,7 @@ struct SettlementRevenueByTypeRow {
     product_online: f64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct SettlementTrendRow {
     date: chrono::NaiveDate,
     cash_revenue: f64,
@@ -387,7 +388,7 @@ struct SettlementTrendRow {
     total_revenue: f64,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Deserialize)]
 struct RevenueTrendRow {
     date: chrono::NaiveDate,
     cash_revenue: f64,
@@ -397,7 +398,24 @@ struct RevenueTrendRow {
 }
 
 impl StatsService {
-    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
+    pub async fn get_business_report(
+        &self,
+        window: crate::analytics::business::Window,
+    ) -> Result<crate::analytics::business::BusinessReport, AppError> {
+        let key = format!(
+            "stats:ch:business:v1:{}:{}",
+            window.start_date, window.end_date
+        );
+        get_or_set(
+            &*self.cache,
+            &key,
+            std::time::Duration::from_secs(30),
+            || async { self.pool.business_report(window).await },
+        )
+        .await
+    }
+
+    pub fn new(pool: ClickHouse, cache: Arc<dyn CacheService>) -> Self {
         Self { pool, cache }
     }
 
@@ -576,6 +594,7 @@ impl StatsService {
         compare: bool,
     ) -> Result<PeriodPair<RevenueByPaymentMethodDto>, AppError> {
         let cache_key = keys::stats_revenue(&keys::filter_hash(&StatsPeriodPairKey {
+            compare,
             start: format_date_key(start),
             end: format_date_key(end),
             prev_start: format_date_key(prev_start),
@@ -604,6 +623,7 @@ impl StatsService {
         compare: bool,
     ) -> Result<PeriodPair<UsageStatsDto>, AppError> {
         let cache_key = keys::stats_usage(&keys::filter_hash(&StatsPeriodPairKey {
+            compare,
             start: format_date_key(start),
             end: format_date_key(end),
             prev_start: format_date_key(prev_start),
@@ -628,108 +648,96 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<RevenueByPaymentMethodDto, AppError> {
-        let row: RevenueStatsRow = sqlx::query_as(
+        let row: RevenueStatsRow = query_as(
             r#"
             SELECT
-                COALESCE(SUM(CASE WHEN "transactionType"::text = 'plan_purchase' THEN amount::float8 ELSE 0 END), 0) AS plan,
-                COALESCE(SUM(CASE WHEN "transactionType"::text = 'product_purchase' THEN amount::float8 ELSE 0 END), 0) AS merchandise,
+                COALESCE(SUM(CASE WHEN "transactionType"::String = 'plan_purchase' THEN amount::Float64 ELSE 0 END), 0) AS plan,
+                COALESCE(SUM(CASE WHEN "transactionType"::String = 'product_purchase' THEN amount::Float64 ELSE 0 END), 0) AS merchandise,
                 COALESCE(SUM(
                     CASE
-                        WHEN "paymentMethod"::text = 'cash' THEN amount::float8
-                        WHEN "paymentMethod"::text = 'split_payment' THEN COALESCE("cashAmount", 0)::float8
+                        WHEN "paymentMethod"::String = 'cash' THEN amount::Float64
+                        WHEN "paymentMethod"::String = 'split_payment' THEN COALESCE("cashAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS cash_revenue,
                 COALESCE(SUM(
                     CASE
-                        WHEN "paymentMethod"::text = 'online' THEN amount::float8
-                        WHEN "paymentMethod"::text = 'split_payment' THEN COALESCE("onlineAmount", 0)::float8
+                        WHEN "paymentMethod"::String = 'online' THEN amount::Float64
+                        WHEN "paymentMethod"::String = 'split_payment' THEN COALESCE("onlineAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS online_revenue,
                 COALESCE(SUM(
-                    CASE WHEN "paymentMethod"::text = 'credit' THEN amount::float8 ELSE 0 END
+                    CASE WHEN "paymentMethod"::String = 'credit' THEN amount::Float64 ELSE 0 END
                 ), 0) AS credit_revenue,
-                COUNT(*) FILTER (WHERE "transactionType"::text = 'plan_purchase') AS plan_transaction_count,
-                COUNT(*) FILTER (WHERE "transactionType"::text = 'product_purchase') AS product_transaction_count,
+                countIf("transactionType"::String = 'plan_purchase') AS plan_transaction_count,
+                countIf("transactionType"::String = 'product_purchase') AS product_transaction_count,
                 COALESCE(SUM(
                     CASE
-                        WHEN "transactionType"::text = 'plan_purchase' AND "paymentMethod"::text = 'cash' THEN amount::float8
-                        WHEN "transactionType"::text = 'plan_purchase' AND "paymentMethod"::text = 'split_payment' THEN COALESCE("cashAmount", 0)::float8
+                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'cash' THEN amount::Float64
+                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("cashAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS plan_cash_revenue,
                 COALESCE(SUM(
                     CASE
-                        WHEN "transactionType"::text = 'plan_purchase' AND "paymentMethod"::text = 'online' THEN amount::float8
-                        WHEN "transactionType"::text = 'plan_purchase' AND "paymentMethod"::text = 'split_payment' THEN COALESCE("onlineAmount", 0)::float8
+                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'online' THEN amount::Float64
+                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("onlineAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS plan_online_revenue,
                 COALESCE(SUM(
                     CASE
-                        WHEN "transactionType"::text = 'plan_purchase' AND "paymentMethod"::text = 'credit' THEN amount::float8
+                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'credit' THEN amount::Float64
                         ELSE 0
                     END
                 ), 0) AS plan_credit_revenue,
                 COALESCE(SUM(
                     CASE
-                        WHEN "transactionType"::text = 'product_purchase' AND "paymentMethod"::text = 'cash' THEN amount::float8
-                        WHEN "transactionType"::text = 'product_purchase' AND "paymentMethod"::text = 'split_payment' THEN COALESCE("cashAmount", 0)::float8
+                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'cash' THEN amount::Float64
+                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("cashAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS product_cash_revenue,
                 COALESCE(SUM(
                     CASE
-                        WHEN "transactionType"::text = 'product_purchase' AND "paymentMethod"::text = 'online' THEN amount::float8
-                        WHEN "transactionType"::text = 'product_purchase' AND "paymentMethod"::text = 'split_payment' THEN COALESCE("onlineAmount", 0)::float8
+                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'online' THEN amount::Float64
+                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("onlineAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS product_online_revenue,
                 COALESCE(SUM(
                     CASE
-                        WHEN "transactionType"::text = 'product_purchase' AND "paymentMethod"::text = 'credit' THEN amount::float8
+                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'credit' THEN amount::Float64
                         ELSE 0
                     END
                 ), 0) AS product_credit_revenue,
-                COUNT(*) FILTER (
-                    WHERE "transactionType"::text = 'plan_purchase'
+                countIf("transactionType"::String = 'plan_purchase'
                       AND (
-                        "paymentMethod"::text = 'cash'
-                        OR ("paymentMethod"::text = 'split_payment' AND COALESCE("cashAmount", 0) > 0)
-                      )
-                ) AS plan_cash_count,
-                COUNT(*) FILTER (
-                    WHERE "transactionType"::text = 'plan_purchase'
+                        "paymentMethod"::String = 'cash'
+                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("cashAmount", 0) > 0)
+                      )) AS plan_cash_count,
+                countIf("transactionType"::String = 'plan_purchase'
                       AND (
-                        "paymentMethod"::text = 'online'
-                        OR ("paymentMethod"::text = 'split_payment' AND COALESCE("onlineAmount", 0) > 0)
-                      )
-                ) AS plan_online_count,
-                COUNT(*) FILTER (
-                    WHERE "transactionType"::text = 'plan_purchase' AND "paymentMethod"::text = 'credit'
-                ) AS plan_credit_count,
-                COUNT(*) FILTER (
-                    WHERE "transactionType"::text = 'product_purchase'
+                        "paymentMethod"::String = 'online'
+                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("onlineAmount", 0) > 0)
+                      )) AS plan_online_count,
+                countIf("transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'credit') AS plan_credit_count,
+                countIf("transactionType"::String = 'product_purchase'
                       AND (
-                        "paymentMethod"::text = 'cash'
-                        OR ("paymentMethod"::text = 'split_payment' AND COALESCE("cashAmount", 0) > 0)
-                      )
-                ) AS product_cash_count,
-                COUNT(*) FILTER (
-                    WHERE "transactionType"::text = 'product_purchase'
+                        "paymentMethod"::String = 'cash'
+                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("cashAmount", 0) > 0)
+                      )) AS product_cash_count,
+                countIf("transactionType"::String = 'product_purchase'
                       AND (
-                        "paymentMethod"::text = 'online'
-                        OR ("paymentMethod"::text = 'split_payment' AND COALESCE("onlineAmount", 0) > 0)
-                      )
-                ) AS product_online_count,
-                COUNT(*) FILTER (
-                    WHERE "transactionType"::text = 'product_purchase' AND "paymentMethod"::text = 'credit'
-                ) AS product_credit_count
+                        "paymentMethod"::String = 'online'
+                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("onlineAmount", 0) > 0)
+                      )) AS product_online_count,
+                countIf("transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'credit') AS product_credit_count
             FROM transactions
             WHERE "createdAt" BETWEEN $1 AND $2
               AND "deletedAt" IS NULL
-              AND "paymentStatus"::text IN ('completed', 'credit')
+              AND "paymentStatus"::String IN ('completed', 'credit')
             "#,
         )
         .bind(start)
@@ -783,24 +791,24 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<SettlementRevenueTotalsRow, AppError> {
-        sqlx::query_as(
+        query_as(
             r#"
             SELECT
-                COALESCE(SUM(cs.amount), 0)::float8 AS settlement_total,
+                COALESCE(SUM(cs.amount), 0)::Float64 AS settlement_total,
                 COALESCE(SUM(
                     CASE
                         WHEN cs."paymentMethod" = 'cash' THEN cs.amount
                         WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."cashAmount", 0)
                         ELSE 0
                     END
-                ), 0)::float8 AS settlement_cash,
+                ), 0)::Float64 AS settlement_cash,
                 COALESCE(SUM(
                     CASE
                         WHEN cs."paymentMethod" = 'online' THEN cs.amount
                         WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."onlineAmount", 0)
                         ELSE 0
                     END
-                ), 0)::float8 AS settlement_online
+                ), 0)::Float64 AS settlement_online
             FROM credit_settlements cs
             WHERE cs."settledAt" BETWEEN $1 AND $2
               AND cs."deletedAt" IS NULL
@@ -810,7 +818,6 @@ impl StatsService {
         .bind(end)
         .fetch_one(&self.pool)
         .await
-        .map_err(AppError::from)
     }
 
     async fn settlement_revenue_by_type(
@@ -818,53 +825,53 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<SettlementRevenueByTypeRow, AppError> {
-        sqlx::query_as(
+        query_as(
             r#"
             SELECT
                 COALESCE(SUM(
-                    CASE WHEN t."transactionType"::text = 'plan_purchase' THEN
+                    CASE WHEN t."transactionType"::String = 'plan_purchase' THEN
                         CASE
-                            WHEN cs."paymentMethod" = 'cash' THEN csi."amountApplied"
+                            WHEN cs."paymentMethod" = 'cash' THEN csi."amountApplied"::Float64
                             WHEN cs."paymentMethod" = 'online' THEN 0
                             WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied" * (COALESCE(cs."cashAmount", 0) / cs.amount)
+                                csi."amountApplied"::Float64 * (COALESCE(cs."cashAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
                             ELSE 0
                         END
                     ELSE 0 END
-                ), 0)::float8 AS plan_cash,
+                ), 0)::Float64 AS plan_cash,
                 COALESCE(SUM(
-                    CASE WHEN t."transactionType"::text = 'plan_purchase' THEN
+                    CASE WHEN t."transactionType"::String = 'plan_purchase' THEN
                         CASE
-                            WHEN cs."paymentMethod" = 'online' THEN csi."amountApplied"
+                            WHEN cs."paymentMethod" = 'online' THEN csi."amountApplied"::Float64
                             WHEN cs."paymentMethod" = 'cash' THEN 0
                             WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied" * (COALESCE(cs."onlineAmount", 0) / cs.amount)
+                                csi."amountApplied"::Float64 * (COALESCE(cs."onlineAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
                             ELSE 0
                         END
                     ELSE 0 END
-                ), 0)::float8 AS plan_online,
+                ), 0)::Float64 AS plan_online,
                 COALESCE(SUM(
-                    CASE WHEN t."transactionType"::text = 'product_purchase' THEN
+                    CASE WHEN t."transactionType"::String = 'product_purchase' THEN
                         CASE
-                            WHEN cs."paymentMethod" = 'cash' THEN csi."amountApplied"
+                            WHEN cs."paymentMethod" = 'cash' THEN csi."amountApplied"::Float64
                             WHEN cs."paymentMethod" = 'online' THEN 0
                             WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied" * (COALESCE(cs."cashAmount", 0) / cs.amount)
+                                csi."amountApplied"::Float64 * (COALESCE(cs."cashAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
                             ELSE 0
                         END
                     ELSE 0 END
-                ), 0)::float8 AS product_cash,
+                ), 0)::Float64 AS product_cash,
                 COALESCE(SUM(
-                    CASE WHEN t."transactionType"::text = 'product_purchase' THEN
+                    CASE WHEN t."transactionType"::String = 'product_purchase' THEN
                         CASE
-                            WHEN cs."paymentMethod" = 'online' THEN csi."amountApplied"
+                            WHEN cs."paymentMethod" = 'online' THEN csi."amountApplied"::Float64
                             WHEN cs."paymentMethod" = 'cash' THEN 0
                             WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied" * (COALESCE(cs."onlineAmount", 0) / cs.amount)
+                                csi."amountApplied"::Float64 * (COALESCE(cs."onlineAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
                             ELSE 0
                         END
                     ELSE 0 END
-                ), 0)::float8 AS product_online
+                ), 0)::Float64 AS product_online
             FROM credit_settlements cs
             INNER JOIN credit_settlement_items csi ON csi."settlementId" = cs.id
             INNER JOIN transactions t ON t.id = csi."transactionId"
@@ -876,7 +883,6 @@ impl StatsService {
         .bind(end)
         .fetch_one(&self.pool)
         .await
-        .map_err(AppError::from)
     }
 
     async fn transaction_stats(
@@ -884,14 +890,14 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<TransactionStatsDto, AppError> {
-        let row: (i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
+        let row: (i64, i64, i64, i64, Option<f64>) = query_as(
             r#"
             SELECT
                 COUNT(*),
-                COUNT(*) FILTER (WHERE "paymentStatus"::text IN ('completed', 'credit')),
-                COUNT(*) FILTER (WHERE "paymentStatus" = 'pending'),
-                COUNT(*) FILTER (WHERE "paymentStatus" = 'failed'),
-                AVG(amount::float8)
+                countIf("paymentStatus"::String IN ('completed', 'credit')),
+                countIf("paymentStatus" = 'pending'),
+                countIf("paymentStatus" = 'failed'),
+                avgOrNull(amount::Float64)
             FROM transactions
             WHERE "createdAt" BETWEEN $1 AND $2 AND "deletedAt" IS NULL
             "#,
@@ -915,14 +921,14 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<UsageStatsDto, AppError> {
-        let row: (i64, i64, i64, Option<i64>, Option<f64>) = sqlx::query_as(
+        let row: (i64, i64, i64, Option<i64>, Option<f64>) = query_as(
             r#"
             SELECT
                 COUNT(*),
-                COUNT(*) FILTER (WHERE "endTime" IS NULL),
-                COUNT(*) FILTER (WHERE "endTime" IS NOT NULL),
+                countIf("endTime" IS NULL),
+                countIf("endTime" IS NOT NULL),
                 COALESCE(SUM("durationMinutes"), 0),
-                AVG("durationMinutes"::float8)
+                avgOrNull("durationMinutes"::Float64)
             FROM usage_sessions
             WHERE "startTime" BETWEEN $1 AND $2 AND "deletedAt" IS NULL
             "#,
@@ -948,14 +954,14 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<UserStatsDto, AppError> {
-        let row: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        let row: (i64, i64, i64, i64, i64) = query_as(
             r#"
             SELECT
                 COUNT(*),
-                COUNT(*) FILTER (WHERE "isActive" = true),
-                COUNT(*) FILTER (WHERE role = 'player'),
-                COUNT(*) FILTER (WHERE role = 'player' AND "isActive" = true),
-                COUNT(*) FILTER (WHERE "createdAt" BETWEEN $1 AND $2)
+                countIf("isActive" = true),
+                countIf(role = 'player'),
+                countIf(role = 'player' AND "isActive" = true),
+                countIf("createdAt" BETWEEN $1 AND $2)
             FROM users
             WHERE "deletedAt" IS NULL
             "#,
@@ -975,18 +981,16 @@ impl StatsService {
     }
 
     async fn plan_stats(&self) -> Result<PlanStatsDto, AppError> {
-        let active: (i64,) = sqlx::query_as(
+        let active: (i64,) = query_as(
             r#"SELECT COUNT(*) FROM player_plan_balances WHERE status = 'active' AND "deletedAt" IS NULL"#,
         )
         .fetch_one(&self.pool)
-        .await
-        .unwrap_or((0,));
-        let expired: (i64,) = sqlx::query_as(
+        .await?;
+        let expired: (i64,) = query_as(
             r#"SELECT COUNT(*) FROM player_plan_balances WHERE status = 'expired' AND "deletedAt" IS NULL"#,
         )
         .fetch_one(&self.pool)
-        .await
-        .unwrap_or((0,));
+        .await?;
 
         Ok(PlanStatsDto {
             total_active_plans: active.0,
@@ -1000,22 +1004,22 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<DeviceStatsDto, AppError> {
-        let row: (i64, i64) = sqlx::query_as(
+        let row: (i64, i64) = query_as(
             r#"
-            SELECT COUNT(*), COUNT(*) FILTER (WHERE status IN ('operational', 'available', 'in_use'))
+            SELECT COUNT(*), countIf(status IN ('operational', 'available', 'in_use'))
             FROM devices WHERE "deletedAt" IS NULL
             "#,
         )
         .fetch_one(&self.pool)
         .await?;
 
-        let utilization_rows: Vec<DeviceUtilizationRow> = sqlx::query_as(
+        let utilization_rows: Vec<DeviceUtilizationRow> = query_as(
             r#"
             SELECT
                 d.id AS device_id,
                 d.name AS device_name,
                 COUNT(s.id) AS total_sessions,
-                COALESCE(SUM(s."durationMinutes"), 0)::float8 / 60.0 AS total_hours
+                COALESCE(SUM(s."durationMinutes"), 0)::Float64 / 60.0 AS total_hours
             FROM devices d
             INNER JOIN usage_sessions s ON s."deviceId" = d.id
             WHERE d."deletedAt" IS NULL
@@ -1060,20 +1064,20 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<TopPerformersDto, AppError> {
-        let top_plans: Vec<TopPlanRow> = sqlx::query_as(
+        let top_plans: Vec<TopPlanRow> = query_as(
             r#"
             SELECT
                 p.id AS plan_id,
                 p.name AS plan_name,
-                COALESCE(SUM(t.amount::float8), 0) AS revenue,
+                COALESCE(SUM(t.amount::Float64), 0) AS revenue,
                 COUNT(*) AS purchase_count
             FROM transactions t
             INNER JOIN plans p ON p.id = t."planId"
             WHERE t."createdAt" BETWEEN $1 AND $2
               AND t."deletedAt" IS NULL
               AND p."deletedAt" IS NULL
-              AND t."paymentStatus"::text IN ('completed', 'credit')
-              AND t."transactionType"::text = 'plan_purchase'
+              AND t."paymentStatus"::String IN ('completed', 'credit')
+              AND t."transactionType"::String = 'plan_purchase'
             GROUP BY p.id, p.name
             ORDER BY revenue DESC, purchase_count DESC
             LIMIT 5
@@ -1084,7 +1088,7 @@ impl StatsService {
         .fetch_all(&self.pool)
         .await?;
 
-        let top_players: Vec<TopPlayerRow> = sqlx::query_as(
+        let top_players: Vec<TopPlayerRow> = query_as(
             r#"
             SELECT
                 u.id AS player_id,
@@ -1092,7 +1096,7 @@ impl StatsService {
                     NULLIF(TRIM(CONCAT(COALESCE(u."firstName", ''), ' ', COALESCE(u."lastName", ''))), ''),
                     u.username
                 ) AS player_name,
-                COALESCE(SUM(t.amount::float8), 0) AS total_spent,
+                COALESCE(SUM(t.amount::Float64), 0) AS total_spent,
                 COALESCE(session_counts.total_sessions, 0) AS total_sessions
             FROM transactions t
             INNER JOIN users u ON u.id = t."playerId"
@@ -1111,7 +1115,7 @@ impl StatsService {
               AND t."deletedAt" IS NULL
               AND u."deletedAt" IS NULL
               AND u.role = 'player'
-              AND t."paymentStatus"::text IN ('completed', 'credit')
+              AND t."paymentStatus"::String IN ('completed', 'credit')
             GROUP BY u.id, u.username, u."firstName", u."lastName", session_counts.total_sessions
             ORDER BY total_spent DESC, total_sessions DESC
             LIMIT 5
@@ -1153,31 +1157,31 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<RevenueTrendDto>, AppError> {
-        let rows: Vec<RevenueTrendRow> = sqlx::query_as(
+        let rows: Vec<RevenueTrendRow> = query_as(
             r#"
             SELECT
-                DATE(t."createdAt" AT TIME ZONE 'Asia/Kolkata') AS date,
+                toDate(t."createdAt", 'Asia/Kolkata') AS date,
                 COALESCE(SUM(
                     CASE
-                        WHEN t."paymentMethod"::text = 'cash' THEN t.amount::float8
-                        WHEN t."paymentMethod"::text = 'split_payment' THEN COALESCE(t."cashAmount", 0)::float8
+                        WHEN t."paymentMethod"::String = 'cash' THEN t.amount::Float64
+                        WHEN t."paymentMethod"::String = 'split_payment' THEN COALESCE(t."cashAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS cash_revenue,
                 COALESCE(SUM(
                     CASE
-                        WHEN t."paymentMethod"::text = 'online' THEN t.amount::float8
-                        WHEN t."paymentMethod"::text = 'split_payment' THEN COALESCE(t."onlineAmount", 0)::float8
+                        WHEN t."paymentMethod"::String = 'online' THEN t.amount::Float64
+                        WHEN t."paymentMethod"::String = 'split_payment' THEN COALESCE(t."onlineAmount", 0)::Float64
                         ELSE 0
                     END
                 ), 0) AS online_revenue,
-                COALESCE(SUM(t.amount::float8), 0) AS total_revenue,
+                COALESCE(SUM(t.amount::Float64), 0) AS total_revenue,
                 COUNT(*) AS transaction_count
             FROM transactions t
             WHERE t."createdAt" BETWEEN $1 AND $2
               AND t."deletedAt" IS NULL
-              AND t."paymentStatus"::text IN ('completed', 'credit')
-            GROUP BY DATE(t."createdAt" AT TIME ZONE 'Asia/Kolkata')
+              AND t."paymentStatus"::String IN ('completed', 'credit')
+            GROUP BY toDate(t."createdAt", 'Asia/Kolkata')
             ORDER BY date ASC
             "#,
         )
@@ -1230,29 +1234,29 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<SettlementTrendRow>, AppError> {
-        sqlx::query_as(
+        query_as(
             r#"
             SELECT
-                DATE(cs."settledAt" AT TIME ZONE 'Asia/Kolkata') AS date,
+                toDate(cs."settledAt", 'Asia/Kolkata') AS date,
                 COALESCE(SUM(
                     CASE
                         WHEN cs."paymentMethod" = 'cash' THEN cs.amount
                         WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."cashAmount", 0)
                         ELSE 0
                     END
-                ), 0)::float8 AS cash_revenue,
+                ), 0)::Float64 AS cash_revenue,
                 COALESCE(SUM(
                     CASE
                         WHEN cs."paymentMethod" = 'online' THEN cs.amount
                         WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."onlineAmount", 0)
                         ELSE 0
                     END
-                ), 0)::float8 AS online_revenue,
-                COALESCE(SUM(cs.amount), 0)::float8 AS total_revenue
+                ), 0)::Float64 AS online_revenue,
+                COALESCE(SUM(cs.amount), 0)::Float64 AS total_revenue
             FROM credit_settlements cs
             WHERE cs."settledAt" BETWEEN $1 AND $2
               AND cs."deletedAt" IS NULL
-            GROUP BY DATE(cs."settledAt" AT TIME ZONE 'Asia/Kolkata')
+            GROUP BY toDate(cs."settledAt", 'Asia/Kolkata')
             ORDER BY date ASC
             "#,
         )
@@ -1260,7 +1264,6 @@ impl StatsService {
         .bind(end)
         .fetch_all(&self.pool)
         .await
-        .map_err(AppError::from)
     }
 
     async fn staff_player_stats(
@@ -1268,11 +1271,11 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<StaffPlayerStatsDto, AppError> {
-        let row: (i64, i64) = sqlx::query_as(
+        let row: (i64, i64) = query_as(
             r#"
             SELECT
-                COUNT(*) FILTER (WHERE role = 'player' AND "isActive" = true),
-                COUNT(*) FILTER (WHERE role = 'player' AND "createdAt" BETWEEN $1 AND $2)
+                countIf(role = 'player' AND "isActive" = true),
+                countIf(role = 'player' AND "createdAt" BETWEEN $1 AND $2)
             FROM users
             WHERE "deletedAt" IS NULL
             "#,
@@ -1289,12 +1292,12 @@ impl StatsService {
     }
 
     async fn staff_device_stats(&self) -> Result<StaffDeviceStatsDto, AppError> {
-        let row: (i64, i64, i64) = sqlx::query_as(
+        let row: (i64, i64, i64) = query_as(
             r#"
             SELECT
                 COUNT(*),
-                COUNT(*) FILTER (WHERE status IN ('available', 'operational')),
-                COUNT(*) FILTER (WHERE status = 'in_use')
+                countIf(status IN ('available', 'operational')),
+                countIf(status = 'in_use')
             FROM devices
             WHERE "deletedAt" IS NULL
             "#,
@@ -1350,15 +1353,15 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<FinanceReconciliationMetricsDto, AppError> {
-        let row: (i64, i64, i64, i64, f64) = sqlx::query_as(
+        let row: (i64, i64, i64, i64, f64) = query_as(
             r#"
             SELECT
-                COUNT(*) FILTER (WHERE status = 'open'),
-                COUNT(*) FILTER (WHERE status = 'closed'),
-                COUNT(*) FILTER (WHERE status = 'reconciled'),
-                COUNT(*) FILTER (WHERE status = 'closed'),
+                countIf(status = 'open'),
+                countIf(status = 'closed'),
+                countIf(status = 'reconciled'),
+                countIf(status = 'closed'),
                 COALESCE((
-                    SELECT SUM(d.amount)::float8
+                    SELECT SUM(d.amount)::Float64
                     FROM cash_deposits d
                     WHERE d.status = 'approved'
                       AND d."createdAt" BETWEEN $1 AND $2
@@ -1419,21 +1422,17 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<FinanceDepositMetricsDto, AppError> {
-        let row: (i64, f64, i64, f64, i64, f64, f64, f64) = sqlx::query_as(
+        let row: (i64, f64, i64, f64, i64, f64, f64, f64) = query_as(
             r#"
             SELECT
-                COUNT(*) FILTER (WHERE status = 'pending'),
-                COALESCE(SUM(amount::float8) FILTER (WHERE status = 'pending'), 0),
-                COUNT(*) FILTER (WHERE status = 'approved'),
-                COALESCE(SUM(amount::float8) FILTER (WHERE status = 'approved'), 0),
-                COUNT(*) FILTER (WHERE status = 'rejected'),
-                COALESCE(SUM(amount::float8) FILTER (WHERE status = 'rejected'), 0),
-                COALESCE(SUM(amount::float8) FILTER (
-                    WHERE status = 'approved' AND "depositType" = 'bank'
-                ), 0),
-                COALESCE(SUM(amount::float8) FILTER (
-                    WHERE status = 'approved' AND "depositType" = 'home'
-                ), 0)
+                countIf(status = 'pending'),
+                COALESCE(sumIf(amount::Float64, status = 'pending'), 0),
+                countIf(status = 'approved'),
+                COALESCE(sumIf(amount::Float64, status = 'approved'), 0),
+                countIf(status = 'rejected'),
+                COALESCE(sumIf(amount::Float64, status = 'rejected'), 0),
+                COALESCE(sumIf(amount::Float64, status = 'approved' AND "depositType" = 'bank'), 0),
+                COALESCE(sumIf(amount::Float64, status = 'approved' AND "depositType" = 'home'), 0)
             FROM cash_deposits
             WHERE "createdAt" BETWEEN $1 AND $2
             "#,
@@ -1497,14 +1496,14 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<FinanceVarianceMetricsDto, AppError> {
-        let row: (f64, f64, i64, i64, i64, i64) = sqlx::query_as(
+        let row: (f64, f64, i64, i64, i64, i64) = query_as(
             r#"
             SELECT
-                COALESCE(SUM(variance::float8), 0),
-                COALESCE(AVG(variance::float8), 0),
-                COUNT(*) FILTER (WHERE variance::float8 > 0),
-                COUNT(*) FILTER (WHERE variance::float8 < 0),
-                COUNT(*) FILTER (WHERE variance::float8 = 0),
+                COALESCE(SUM(variance::Float64), 0),
+                COALESCE(avgOrNull(variance::Float64), 0),
+                countIf(variance::Float64 > 0),
+                countIf(variance::Float64 < 0),
+                countIf(variance::Float64 = 0),
                 COUNT(*)
             FROM cash_registers
             WHERE variance IS NOT NULL
@@ -1532,15 +1531,15 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<FinanceVarianceRegisterRow>, AppError> {
-        Ok(sqlx::query_as::<_, FinanceVarianceRegisterRow>(
+        Ok(query_as::<FinanceVarianceRegisterRow>(
             r#"
             SELECT
                 id,
                 "shiftId" as shift_id,
                 status,
-                variance::float8 as variance,
-                "closingBalance"::float8 as closing_balance,
-                "expectedClosing"::float8 as expected_closing,
+                variance::Float64 as variance,
+                "closingBalance"::Float64 as closing_balance,
+                "expectedClosing"::Float64 as expected_closing,
                 "updatedAt" as updated_at
             FROM cash_registers
             WHERE variance IS NOT NULL

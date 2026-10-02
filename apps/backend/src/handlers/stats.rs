@@ -52,10 +52,11 @@ fn compare_enabled(compare: Option<bool>) -> bool {
     tag = "stats"
 )]
 pub async fn dashboard_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<crate::services::stats_service::DashboardStatsDto> {
+    super::kitchen::require_venue(&claims)?;
     let stats = state
         .stats
         .get_dashboard_stats(
@@ -82,10 +83,11 @@ pub async fn dashboard_stats(
     tag = "stats"
 )]
 pub async fn staff_dashboard_stats(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StaffStatsQuery>,
 ) -> crate::dto::ApiResult<crate::services::stats_service::StaffDashboardStatsDto> {
+    super::kitchen::require_venue(&claims)?;
     let stats = state
         .stats
         .get_staff_dashboard_stats(query.start_date, query.end_date, query.shift_start)
@@ -108,10 +110,11 @@ pub async fn staff_dashboard_stats(
     tag = "stats"
 )]
 pub async fn revenue_by_payment_method(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<PeriodPair<RevenueByPaymentMethodDto>> {
+    super::kitchen::require_venue(&claims)?;
     let compare = compare_enabled(query.compare);
     let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
     let diff = (end - start).num_days().max(1);
@@ -140,10 +143,11 @@ pub async fn revenue_by_payment_method(
     tag = "stats"
 )]
 pub async fn usage_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<PeriodPair<UsageStatsDto>> {
+    super::kitchen::require_venue(&claims)?;
     let compare = compare_enabled(query.compare);
     let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
     let diff = (end - start).num_days().max(1);
@@ -172,10 +176,11 @@ pub async fn usage_stats(
     tag = "stats"
 )]
 pub async fn finance_reconciliation_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<FinanceReconciliationStatsDto> {
+    super::kitchen::require_venue(&claims)?;
     ok(state
         .stats
         .get_finance_reconciliation_stats(
@@ -201,10 +206,11 @@ pub async fn finance_reconciliation_stats(
     tag = "stats"
 )]
 pub async fn finance_deposit_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<FinanceDepositStatsDto> {
+    super::kitchen::require_venue(&claims)?;
     ok(state
         .stats
         .get_finance_deposit_stats(
@@ -230,10 +236,11 @@ pub async fn finance_deposit_stats(
     tag = "stats"
 )]
 pub async fn finance_variance_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
 ) -> crate::dto::ApiResult<FinanceVarianceStatsDto> {
+    super::kitchen::require_venue(&claims)?;
     ok(state
         .stats
         .get_finance_variance_stats(
@@ -242,4 +249,30 @@ pub async fn finance_variance_stats(
             compare_enabled(query.compare),
         )
         .await?)
+}
+
+#[derive(serde::Deserialize, Default, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BusinessQuery {
+    /// Inclusive IST calendar date, YYYY-MM-DD. Defaults to the last 30 days.
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+}
+
+#[utoipa::path(get, path = "/stats/business", params(BusinessQuery),
+    responses((status = 200, description = "Business analytics from ClickHouse", body = crate::openapi::responses::BusinessAnalyticsEnvelope),
+    (status = 400, body = ErrorEnvelope), (status = 403, body = ErrorEnvelope), (status = 503, body = ErrorEnvelope)),
+    security(("bearer_auth" = [])), tag = "stats")]
+pub async fn business_stats(
+    AdminUser(claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<BusinessQuery>,
+) -> crate::dto::ApiResult<crate::analytics::business::BusinessReport> {
+    super::kitchen::require_venue(&claims)?;
+    let window = crate::analytics::business::Window::new(
+        query.start_date.as_deref(),
+        query.end_date.as_deref(),
+        chrono::Utc::now(),
+    )?;
+    ok(state.stats.get_business_report(window).await?)
 }

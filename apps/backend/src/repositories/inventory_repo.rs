@@ -9,7 +9,7 @@ use crate::models::{
     LocationStockFilterDto, LocationStockRow, StockAdjustment, StockAdjustmentFilterDto,
     StockAdjustmentLine, StockReceipt, StockReceiptFilterDto, StockReceiptLine,
     StockTransferFilterDto, StockTransferLine, StockTransferRequest, StockWasteEvent,
-    StockWasteFilterDto, StockWasteLine, UpdateInventoryLocationDto, WasteSummaryRow,
+    StockWasteFilterDto, StockWasteLine, UpdateInventoryLocationDto,
 };
 
 pub struct InventoryRepository {
@@ -567,58 +567,6 @@ impl InventoryRepository {
 
         let total: (i64,) = count_builder.build_query_as().fetch_one(&self.pool).await?;
         Ok(PaginationResult::new(rows, total.0, page, limit))
-    }
-
-    pub async fn receipt_summary(
-        &self,
-        location_id: Option<Uuid>,
-        from: Option<chrono::DateTime<chrono::Utc>>,
-        to: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<Vec<crate::models::ReceiptSummaryRow>, AppError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"
-            SELECT rl."productId" as product_id,
-                   p.name as product_name,
-                   sr."vendorId" as vendor_id,
-                   v.name as vendor_name,
-                   SUM(rl."boxQuantity")::bigint as total_boxes,
-                   SUM(rl."piecesAdded")::bigint as total_pieces,
-                   SUM(
-                     rl."boxQuantity"::float8 *
-                     COALESCE(p."purchasePricePerBox", p."purchasePrice", 0)::float8
-                   )::float8 as estimated_cost
-            FROM stock_receipt_lines rl
-            INNER JOIN stock_receipts sr ON sr.id = rl."receiptId"
-            INNER JOIN products p ON p.id = rl."productId"
-            LEFT JOIN vendors v ON v.id = sr."vendorId"
-            WHERE 1=1
-            "#,
-        );
-
-        if let Some(location_id) = location_id {
-            builder.push(" AND sr.\"locationId\" = ");
-            builder.push_bind(location_id);
-        }
-        if let Some(from) = from {
-            builder.push(" AND sr.\"createdAt\" >= ");
-            builder.push_bind(from);
-        }
-        if let Some(to) = to {
-            builder.push(" AND sr.\"createdAt\" <= ");
-            builder.push_bind(to);
-        }
-
-        builder.push(
-            r#"
-            GROUP BY rl."productId", p.name, sr."vendorId", v.name
-            ORDER BY p.name ASC, v.name ASC NULLS LAST
-            "#,
-        );
-
-        Ok(builder
-            .build_query_as::<crate::models::ReceiptSummaryRow>()
-            .fetch_all(&self.pool)
-            .await?)
     }
 
     pub async fn receipt_lines(&self, receipt_id: Uuid) -> Result<Vec<StockReceiptLine>, AppError> {
@@ -1232,57 +1180,6 @@ impl InventoryRepository {
         .await?;
 
         row.ok_or_else(|| AppError::NotFound(format!("Waste event {id} not found or not pending")))
-    }
-
-    pub async fn waste_summary(
-        &self,
-        location_id: Option<Uuid>,
-        from: Option<chrono::DateTime<chrono::Utc>>,
-        to: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<Vec<WasteSummaryRow>, AppError> {
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            r#"
-            SELECT wl."reasonCode"::text as reason_code,
-                   wl."productId" as product_id,
-                   p.name as product_name,
-                   we."locationId" as location_id,
-                   il.name as location_name,
-                   SUM(wl."quantityPieces")::bigint as total_pieces,
-                   SUM(
-                     wl."quantityPieces"::float8 *
-                     COALESCE(p."purchasePricePerBox", p."purchasePrice", 0)::float8 /
-                     GREATEST(p."unitsPerPurchaseUnit", 1)
-                   )::float8 as estimated_cost
-            FROM stock_waste_lines wl
-            INNER JOIN stock_waste_events we ON we.id = wl."wasteEventId"
-            INNER JOIN products p ON p.id = wl."productId"
-            INNER JOIN inventory_locations il ON il.id = we."locationId"
-            WHERE we.status = 'approved'
-            "#,
-        );
-
-        if let Some(location_id) = location_id {
-            builder.push(" AND we.\"locationId\" = ");
-            builder.push_bind(location_id);
-        }
-        if let Some(from) = from {
-            builder.push(" AND we.\"approvedAt\" >= ");
-            builder.push_bind(from);
-        }
-        if let Some(to) = to {
-            builder.push(" AND we.\"approvedAt\" <= ");
-            builder.push_bind(to);
-        }
-
-        builder.push(
-            r#" GROUP BY wl."reasonCode", wl."productId", p.name, we."locationId", il.name
-                ORDER BY total_pieces DESC"#,
-        );
-
-        Ok(builder
-            .build_query_as::<WasteSummaryRow>()
-            .fetch_all(&self.pool)
-            .await?)
     }
 
     pub async fn deduct_sale_stock_in_tx(

@@ -31,9 +31,10 @@ fn actor_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
 
 #[utoipa::path(get, operation_id = "inventory_overview", path = "/inventory/overview", responses((status = 200, body = InventoryOverviewEnvelope), (status = 401, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
 pub async fn overview(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<InventoryOverviewDto> {
+    super::kitchen::require_venue(&claims)?;
     ok(state.procurement.overview().await?)
 }
 

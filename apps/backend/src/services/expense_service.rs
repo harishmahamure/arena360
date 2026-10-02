@@ -339,6 +339,8 @@ impl ExpenseService {
     }
 
     pub async fn get_summary(&self) -> Result<Vec<ExpenseSummaryDto>, AppError> {
-        self.repo.get_summary_by_category().await
+        crate::analytics::ClickHouse::from_env()
+            .get_summary_by_category()
+            .await
     }
 }

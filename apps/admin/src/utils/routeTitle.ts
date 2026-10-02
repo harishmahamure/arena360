@@ -1,7 +1,10 @@
+import { analyticsDashboards } from '../constants/analyticsDashboards';
 import { moduleRegistry } from '../constants/navItems';
 
 const EXACT_TITLES: Record<string, string> = {
   '/': 'Overview',
+  '/analytics': 'Business dashboard',
+  ...Object.fromEntries(analyticsDashboards.map((d) => [`/analytics/${d.id}`, d.title])),
   '/profile': 'My profile',
   '/sessions': 'Sessions',
   '/sessions/new': 'Start session',

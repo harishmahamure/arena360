@@ -20,7 +20,7 @@ async fn setup() -> Option<Arc<gaming_cafe_api::app::AppState>> {
 }
 
 #[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
+#[ignore = "requires DATABASE_URL, REDIS_URL, and backfilled CLICKHOUSE_URL"]
 async fn dashboard_stats_populates_and_reuses_cache() {
     let Some(state) = setup().await else {
         return;
@@ -61,7 +61,7 @@ async fn dashboard_stats_populates_and_reuses_cache() {
 }
 
 #[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
+#[ignore = "requires DATABASE_URL, REDIS_URL, and backfilled CLICKHOUSE_URL"]
 async fn invalidate_stats_clears_dashboard_cache() {
     let Some(state) = setup().await else {
         return;

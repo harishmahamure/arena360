@@ -48,6 +48,10 @@ macro_rules! success_envelope {
 }
 
 success_envelope!(PanelUserEnvelope, crate::dto::AuthUserDto);
+success_envelope!(
+    BusinessAnalyticsEnvelope,
+    crate::analytics::business::BusinessReport
+);
 
 macro_rules! pagination_envelope {
     ($env:ident, $page:ident, $item:ty) => {

@@ -28,6 +28,11 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
+import {
+  DeviceReportChart,
+  PaymentReportChart,
+  RevenueReportChart,
+} from '../../containers/stats/DashboardReportCharts';
 import { StatCard } from '../../containers/stats/StatCard';
 import { StatsDateRangeToolbar } from '../../containers/stats/StatsDateRangeToolbar';
 import { TopPerformersList } from '../../containers/stats/TopPerformersList';
@@ -36,7 +41,6 @@ import { Permission, usePermissions } from '../../hooks/usePermissions';
 import { useStatsDateRange } from '../../hooks/useStatsDateRange';
 import { getInventoryOverview, getPurchaseOrders } from '../../services/inventory';
 import { calculatePeriodChange, normalizeRevenue } from '../../services/stats/statsHelpers';
-import type { RevenueTrendDto } from '../../services/stats/types';
 
 const money = (amount: number) =>
   new Intl.NumberFormat('en-IN', {
@@ -44,78 +48,6 @@ const money = (amount: number) =>
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(amount);
-
-function RevenueChart({ rows }: { rows: RevenueTrendDto[] }) {
-  const max = Math.max(...rows.map((row) => row.totalRevenue), 1);
-  if (!rows.length)
-    return (
-      <Box sx={{ minHeight: 245, display: 'grid', placeItems: 'center' }}>
-        <Typography color="text.secondary">
-          Revenue will appear here as sales are completed.
-        </Typography>
-      </Box>
-    );
-  // Plot each observed period without inventing intermediate revenue values.
-  const points = rows.map((row, i) => ({
-    x: rows.length === 1 ? 345 : 55 + (i / (rows.length - 1)) * 585,
-    y: 200 - (row.totalRevenue / max) * 165,
-  }));
-  const path = points.map((point, i) => `${i === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
-  return (
-    <Box sx={{ mt: 2, width: '100%', overflow: 'hidden' }}>
-      <svg
-        viewBox="0 0 680 240"
-        role="img"
-        aria-label={`Revenue across ${rows.length} periods. Total ${money(rows.reduce((sum, row) => sum + row.totalRevenue, 0))}.`}
-        style={{ width: '100%', display: 'block' }}
-      >
-        {[0, 1, 2, 3].map((i) => (
-          <g key={i}>
-            <line
-              x1="55"
-              y1={35 + i * 55}
-              x2="645"
-              y2={35 + i * 55}
-              stroke="#e9eeec"
-              strokeDasharray="4 4"
-            />
-            <text x="44" y={39 + i * 55} textAnchor="end" fontSize="10" fill="#809189">
-              {new Intl.NumberFormat('en', {
-                notation: 'compact',
-                maximumFractionDigits: 1,
-              }).format(max * (1 - i / 3))}
-            </text>
-          </g>
-        ))}
-        {points.length > 1 && (
-          <path d={`${path} L ${points.at(-1)?.x} 200 L ${points[0]?.x} 200 Z`} fill="#176b5110" />
-        )}
-        <path d={path} fill="none" stroke="#268268" strokeWidth="2.5" strokeLinejoin="round" />
-        {rows.map((row, i) => (
-          <g key={row.date}>
-            <circle
-              cx={points[i]?.x}
-              cy={points[i]?.y}
-              r="4"
-              fill="#fff"
-              stroke="#268268"
-              strokeWidth="2"
-            >
-              <title>
-                {row.date}: {money(row.totalRevenue)} · {row.transactionCount} transactions
-              </title>
-            </circle>
-            {(i === 0 || i === rows.length - 1 || i === Math.floor(rows.length / 2)) && (
-              <text x={points[i]?.x} y="226" textAnchor="middle" fontSize="10" fill="#809189">
-                {new Date(row.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-              </text>
-            )}
-          </g>
-        ))}
-      </svg>
-    </Box>
-  );
-}
 
 export default function AdminDashboardView() {
   const { can } = usePermissions();
@@ -163,9 +95,33 @@ export default function AdminDashboardView() {
       </Stack>
     </Stack>
   );
+  const toolbar = (
+    <Box
+      sx={{
+        bgcolor: 'background.paper',
+        p: 2,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 2,
+        mb: 3,
+      }}
+    >
+      <StatsDateRangeToolbar
+        startDate={range.startDate}
+        endDate={range.endDate}
+        compare={range.compare}
+        onRangeChange={range.setRange}
+        onCompareChange={range.setCompare}
+        onPreset={range.applyPreset}
+        onApply={range.apply}
+        isDirty={range.isDirty}
+      />
+    </Box>
+  );
   if (isLoading)
     return (
       <PageShell header={header}>
+        {toolbar}
         <Grid container spacing={2}>
           {[1, 2, 3, 4].map((n) => (
             <Grid key={n} size={{ xs: 12, sm: 6, lg: 3 }}>
@@ -181,6 +137,7 @@ export default function AdminDashboardView() {
   if (error || !data)
     return (
       <PageShell header={header}>
+        {toolbar}
         <ErrorPanel
           message="We couldn’t load your overview. Check your connection and try again."
           onRetry={() => void refetch()}
@@ -227,27 +184,8 @@ export default function AdminDashboardView() {
   ];
   return (
     <PageShell header={header}>
-      <Box
-        sx={{
-          bgcolor: 'background.paper',
-          p: 2,
-          border: 1,
-          borderColor: 'divider',
-          borderRadius: 2,
-          mb: 3,
-        }}
-      >
-        <StatsDateRangeToolbar
-          startDate={range.startDate}
-          endDate={range.endDate}
-          compare={range.compare}
-          onRangeChange={range.setRange}
-          onCompareChange={range.setCompare}
-          onPreset={range.applyPreset}
-          onApply={range.apply}
-          isDirty={range.isDirty}
-        />
-      </Box>
+      {toolbar}
+      {isFetching && <LinearProgress aria-label="Updating report" sx={{ mb: 2 }} />}
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
         <Typography variant="overline" color="text.secondary">
           PERFORMANCE SNAPSHOT
@@ -310,7 +248,7 @@ export default function AdminDashboardView() {
               <Box>
                 <Typography variant="h6">Revenue performance</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Completed sales across the selected period · INR
+                  Revenue and collections across the selected period · INR
                 </Typography>
               </Box>
               <Chip label={data.period.label} variant="outlined" />
@@ -318,7 +256,7 @@ export default function AdminDashboardView() {
             <Typography sx={{ mt: 2, fontSize: 30, letterSpacing: '-.04em', fontWeight: 650 }}>
               {money(revenue.total)}
             </Typography>
-            <RevenueChart rows={data.revenueTrend ?? []} />
+            <RevenueReportChart rows={data.revenueTrend ?? []} />
             <Divider sx={{ my: 2 }} />
             <Stack direction="row" spacing={4} useFlexGap flexWrap="wrap">
               <Box>
@@ -425,36 +363,7 @@ export default function AdminDashboardView() {
                 Devices
               </Button>
             </Stack>
-            {data.devices.deviceUtilization.length ? (
-              data.devices.deviceUtilization.slice(0, 6).map((device) => (
-                <Box key={device.deviceId} sx={{ mb: 2, '&:last-child': { mb: 0 } }}>
-                  <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
-                    <Typography fontSize={12} fontWeight={550}>
-                      {device.deviceName}
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ ml: 1 }}
-                      >
-                        {device.totalSessions} sessions
-                      </Typography>
-                    </Typography>
-                    <Typography fontSize={12} fontWeight={600}>
-                      {device.utilizationPercentage.toFixed(0)}%
-                    </Typography>
-                  </Stack>
-                  <LinearProgress
-                    variant="determinate"
-                    value={Math.min(100, Math.max(0, device.utilizationPercentage))}
-                  />
-                </Box>
-              ))
-            ) : (
-              <Typography color="text.secondary" sx={{ py: 4 }}>
-                No device activity in this period.
-              </Typography>
-            )}
+            <DeviceReportChart devices={data.devices.deviceUtilization} />
           </Card>
         </Grid>
         <Grid size={{ xs: 12, lg: 4 }}>
@@ -462,6 +371,7 @@ export default function AdminDashboardView() {
             <Typography variant="h6" sx={{ mb: 3 }}>
               Payment breakdown
             </Typography>
+            <PaymentReportChart revenue={revenue} />
             {[
               { label: 'Cash', amount: revenue.cashRevenue, color: '#237a5c' },
               { label: 'Online', amount: revenue.onlineRevenue, color: '#598ab1' },

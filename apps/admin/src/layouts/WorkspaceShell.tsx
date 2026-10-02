@@ -36,6 +36,7 @@ import { isFormRoute, useAutoFocusFirstField } from '../hooks/useAutoFocusFirstF
 import { useRealtimeStatus } from '../lib/realtime/RealtimeProvider';
 import { useBranding } from '../services/config/branding';
 import AppearanceDialog from '../theme/AppearanceDialog';
+import { analyticsNavigationPath } from '../utils/analyticsNavigation';
 
 /** Counter screens that take the whole display; they render their own slim header. */
 const FOCUS_ROUTES = new Set(['/product-transactions/new', '/plan-transactions/new']);
@@ -72,6 +73,7 @@ export function WorkspaceShell({
   const brand = useBranding();
   const location = useLocation();
   const navigate = useNavigate();
+  const destinationPath = (path: string) => analyticsNavigationPath(path, location);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -166,9 +168,11 @@ export function WorkspaceShell({
                     <Box className={`nav-item-row ${active ? 'is-active' : ''}`}>
                       <ListItemButton
                         component={Link}
-                        to={item.path}
+                        to={destinationPath(item.path)}
                         selected={active}
-                        aria-current={active ? 'page' : undefined}
+                        aria-current={
+                          active && location.pathname === item.path ? 'page' : undefined
+                        }
                       >
                         <ListItemIcon>{item.icon}</ListItemIcon>
                         <ListItemText primary={item.title} />
@@ -196,8 +200,13 @@ export function WorkspaceShell({
                           <ListItemButton
                             key={child.path}
                             component={Link}
-                            to={child.path}
-                            selected={`${location.pathname}${location.search}` === child.path}
+                            to={destinationPath(child.path)}
+                            selected={
+                              child.path.includes('?')
+                                ? `${location.pathname}${location.search}` === child.path
+                                : location.pathname === child.path
+                            }
+                            aria-current={location.pathname === child.path ? 'page' : undefined}
                           >
                             <ListItemText primary={child.title} />
                           </ListItemButton>
@@ -389,7 +398,8 @@ export function WorkspaceShell({
             }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && destinations[0]) {
-                navigate(destinations[0].path);
+                event.preventDefault();
+                navigate(destinationPath(destinations[0].path));
                 setSearchOpen(false);
                 setSearch('');
               }
@@ -400,7 +410,7 @@ export function WorkspaceShell({
               <ListItemButton
                 key={item.path}
                 onClick={() => {
-                  navigate(item.path);
+                  navigate(destinationPath(item.path));
                   setSearchOpen(false);
                   setSearch('');
                 }}

@@ -14,6 +14,7 @@ import { Route, Routes, useNavigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import RequirePermission from './components/RequirePermission';
 import SessionVerifier from './components/SessionVerifier';
+import { analyticsDashboards } from './constants/analyticsDashboards';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import {
@@ -43,6 +44,8 @@ const CreditSettlementDetailPage = lazy(
   () => import('./pages/dashboard/credit/CreditSettlementDetailPage'),
 );
 const CreditSettlementsPage = lazy(() => import('./pages/dashboard/credit/CreditSettlementsPage'));
+const AnalyticsPage = lazy(() => import('./pages/dashboard/analytics/AnalyticsPage'));
+const AnalyticsIndexPage = lazy(() => import('./pages/dashboard/analytics/AnalyticsIndexPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
 const DeviceDetailPage = lazy(() => import('./pages/dashboard/devices/DeviceDetailPage'));
 const DeviceNewPage = lazy(() => import('./pages/dashboard/devices/DeviceNewPage'));
@@ -228,6 +231,18 @@ function App() {
                     </Route>
                     <Route element={<DashboardLayout />}>
                       <Route path="/" element={<DashboardPage />} />
+                      <Route element={<RequirePermission permission={Permission.FinanceRead} />}>
+                        <Route path="/analytics">
+                          <Route index element={<AnalyticsIndexPage />} />
+                          {analyticsDashboards.map((dashboard) => (
+                            <Route
+                              key={dashboard.id}
+                              path={dashboard.id}
+                              element={<AnalyticsPage dashboard={dashboard.id} />}
+                            />
+                          ))}
+                        </Route>
+                      </Route>
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route element={<RequirePermission permission={Permission.PlayersRead} />}>
                         <Route path="/players" element={<PlayersPage />} />

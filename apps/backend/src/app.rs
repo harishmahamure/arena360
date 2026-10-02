@@ -224,7 +224,7 @@ pub async fn build_state() -> Arc<AppState> {
             cache.clone(),
         ),
         procurement: ProcurementService::new(pool.clone()),
-        stats: StatsService::new(pool.clone(), cache.clone()),
+        stats: StatsService::new(crate::analytics::ClickHouse::from_env(), cache.clone()),
         kiosk_orders: KioskOrderService::new(
             pool.clone(),
             notifications.clone(),
@@ -283,6 +283,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/auth/register", post(handlers::auth::register))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))
+        .route("/stats/business", get(handlers::stats::business_stats))
         .route(
             "/stats/staff-dashboard",
             get(handlers::stats::staff_dashboard_stats),

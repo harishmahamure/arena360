@@ -104,6 +104,7 @@ impl Modify for SecurityAddon {
         handlers::auth::register_player,
         handlers::auth::register,
         handlers::stats::dashboard_stats,
+        handlers::stats::business_stats,
         handlers::stats::staff_dashboard_stats,
         handlers::stats::revenue_by_payment_method,
         handlers::stats::usage_stats,

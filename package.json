@@ -41,7 +41,11 @@
     "backend:clippy": "cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml -- -D warnings",
     "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml",
     "kiosk:dev": "pnpm --filter @gaming-cafe/kiosk tauri:dev",
-    "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build"
+    "kiosk:build": "pnpm --filter @gaming-cafe/kiosk tauri:build",
+    "analytics:dev": "cargo run --manifest-path apps/backend/Cargo.toml --bin analytics_worker",
+    "analytics:backfill": "cargo run --manifest-path apps/backend/Cargo.toml --bin analytics_worker -- --backfill",
+    "demo:seed": "node apps/backend/scripts/seed-demo.mjs",
+    "demo:test": "node --test apps/backend/scripts/seed-demo.test.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

@@ -22,6 +22,7 @@ layer; the backend continues with a no-op cache if Redis is unavailable.
 - [Product planning and milestones](docs/planning/README.md)
 - [Local development](docs/DEVELOPMENT.md)
 - [Deployment and operations](docs/DEPLOYMENT.md)
+- [JetStream and ClickHouse reporting](docs/architecture/analytics.md)
 
 The documentation describes implemented behavior only. The generated OpenAPI
 spec and the source code remain authoritative for endpoint-level details.
@@ -55,6 +56,25 @@ pnpm backend:dev
 ```bash
 pnpm admin:dev
 ```
+
+Start the analytics worker in another terminal for reports and dashboards:
+
+```bash
+pnpm analytics:backfill # first start; keeps consuming after the initial snapshot
+# Subsequent starts: pnpm analytics:dev
+```
+
+Reporting reads ClickHouse only. PostgreSQL remains the transaction ledger.
+See the [analytics setup and recovery guide](docs/architecture/analytics.md).
+
+Populate the current backend environment database with 60 days of synthetic sales and activity:
+
+```bash
+pnpm demo:seed
+```
+
+The demo uses the same outbox → JetStream → ClickHouse pipeline. Repeated runs
+leave the existing dataset unchanged.
 
 The API listens on `http://localhost:3000`. In non-production environments,
 Swagger UI is available at `http://localhost:3000/api/docs`.

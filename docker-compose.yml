@@ -46,6 +46,61 @@ services:
       timeout: 3s
       retries: 5
 
+  nats:
+    image: nats:2.12-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "127.0.0.1:4222:4222"
+      - "127.0.0.1:8222:8222"
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    ports:
+      - "127.0.0.1:8123:8123"
+    environment:
+      CLICKHOUSE_DB: arena360
+      CLICKHOUSE_USER: arena360
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-arena360}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhousedata:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  analytics-worker:
+    profiles: ["analytics"]
+    build: ./apps/backend
+    command: ["analytics_worker"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://arena360:arena360@postgres:5432/arena360
+      ANALYTICS_DATABASE_URL: postgres://arena360:arena360@postgres:5432/arena360
+      NATS_URL: nats://nats:4222
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: arena360
+      CLICKHOUSE_USER: arena360
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-arena360}
+      RUST_LOG: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
 volumes:
   pgdata:
   redisdata:
+  natsdata:
+  clickhousedata:
