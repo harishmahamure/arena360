@@ -7,6 +7,7 @@ export interface LineItemPayload {
   productId: string;
   quantity: number;
   unitPrice: number;
+  optionIds?: string[];
 }
 
 export interface CreateProductTransactionPayload {

@@ -118,6 +118,11 @@ success_envelope!(
     crate::models::TransactionWithLineItems
 );
 success_envelope!(ProductEnvelope, Product);
+success_envelope!(ProductRecipeEnvelope, crate::models::ProductRecipe);
+success_envelope!(
+    ProductCurrentPriceListEnvelope,
+    Vec<crate::models::ProductCurrentPrice>
+);
 success_envelope!(GameEnvelope, crate::models::Game);
 pagination_envelope!(
     GamePaginationEnvelope,

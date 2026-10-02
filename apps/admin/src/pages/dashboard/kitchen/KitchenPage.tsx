@@ -152,6 +152,9 @@ export default function KitchenPage() {
               <Typography fontWeight={600}>
                 {item.quantity} × {item.name}
               </Typography>
+              {item.options?.length ? (
+                <Typography variant="body2">{item.options.join(', ')}</Typography>
+              ) : null}
               <Typography variant="caption" color="text.secondary">
                 {item.station}
               </Typography>

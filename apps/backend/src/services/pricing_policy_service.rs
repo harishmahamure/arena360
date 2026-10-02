@@ -11,9 +11,12 @@ use crate::error::AppError;
 use crate::models::{
     CreatePricingRuleSetDto, CreatePricingRuleVersionDto, PricingAction, PricingPolicy,
     PricingRule, PricingRuleSet, PricingRuleVersion, PricingSimulationDto, PricingSimulationResult,
-    PricingTraceStep, PublishPricingRuleVersionDto,
+    PricingTarget, PricingTraceStep, PublishPricingRuleVersionDto,
 };
 use crate::repositories::PricingPolicyRepository;
+
+/// Values of the `products_category_enum` database type.
+const PRODUCT_CATEGORIES: [&str; 4] = ["beverage", "snack", "meal", "other"];
 
 #[derive(Clone)]
 pub struct PricingPolicyService {
@@ -246,6 +249,33 @@ impl PricingPolicyService {
                     rule.id
                 )));
             }
+            match rule.target {
+                PricingTarget::Products if !rule.device_types.is_empty() => {
+                    return Err(AppError::BadRequest(format!(
+                        "Pricing rule '{}' targets products and cannot filter by device type",
+                        rule.id
+                    )));
+                }
+                PricingTarget::Sessions
+                    if !rule.product_ids.is_empty() || !rule.categories.is_empty() =>
+                {
+                    return Err(AppError::BadRequest(format!(
+                        "Pricing rule '{}' must target products to filter by product or category",
+                        rule.id
+                    )));
+                }
+                _ => {}
+            }
+            if let Some(category) = rule
+                .categories
+                .iter()
+                .find(|item| !PRODUCT_CATEGORIES.contains(&item.as_str()))
+            {
+                return Err(AppError::BadRequest(format!(
+                    "Pricing rule '{}' has unknown product category '{category}'",
+                    rule.id
+                )));
+            }
             if rule.start_time.is_some() != rule.end_time.is_some() {
                 return Err(AppError::BadRequest(format!(
                     "Pricing rule '{}' must provide both startTime and endTime",
@@ -303,6 +333,12 @@ impl PricingPolicyService {
             .unwrap_or(decimal("baseRate", &policy.base_rate)?);
         let mut current = base;
         let mut trace = Vec::new();
+        let product = (input.product_id.is_some() || input.category.is_some()).then(|| {
+            (
+                input.product_id,
+                input.category.as_deref().unwrap_or_default(),
+            )
+        });
         let mut rules: Vec<&PricingRule> = policy
             .rules
             .iter()
@@ -310,6 +346,7 @@ impl PricingPolicyService {
                 Self::matches(
                     rule,
                     input.device_type.as_deref(),
+                    product,
                     input.at,
                     local.time(),
                     local.weekday().number_from_monday() as u8,
@@ -394,7 +431,10 @@ impl PricingPolicyService {
                 id: "legacy-product-night-price".to_string(),
                 name: "Legacy product night price".to_string(),
                 priority: 100,
+                target: PricingTarget::Sessions,
                 device_types: vec![],
+                product_ids: vec![],
+                categories: vec![],
                 weekdays: vec![],
                 start_time: Some(start_time),
                 end_time: Some(end_time),
@@ -412,6 +452,8 @@ impl PricingPolicyService {
                 device_type: None,
                 at,
                 base_rate: None,
+                product_id: None,
+                category: None,
             },
             timezone,
             "LEGACY",
@@ -421,13 +463,105 @@ impl PricingPolicyService {
         })
     }
 
+    /// Product rules from every published rule set that covers the venue:
+    /// organization-wide sets plus sets scoped to `location_id`.
+    pub async fn active_product_rules(
+        &self,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<Vec<PricingRule>, AppError> {
+        let mut rules = Vec::new();
+        for value in self
+            .repo
+            .active_policies(organization_id, location_id)
+            .await?
+        {
+            let policy: PricingPolicy = serde_json::from_value(value).map_err(|error| {
+                AppError::Internal(format!("Published pricing policy is invalid: {error}"))
+            })?;
+            rules.extend(
+                policy
+                    .rules
+                    .into_iter()
+                    .filter(|rule| rule.target == PricingTarget::Products),
+            );
+        }
+        Ok(rules)
+    }
+
+    /// The product's day/night price, adjusted by published product rules.
+    /// Session settings such as base rate and min/max price do not apply to products.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_product_price(
+        day_price: f64,
+        night_price: f64,
+        product_id: Uuid,
+        category: &str,
+        rules: &[PricingRule],
+        at: chrono::DateTime<Utc>,
+        timezone: &str,
+        night_start: &str,
+        night_end: &str,
+    ) -> Result<f64, AppError> {
+        let base = Self::evaluate_legacy_product_price(
+            day_price,
+            night_price,
+            at,
+            timezone,
+            night_start,
+            night_end,
+        )?;
+        if rules.is_empty() {
+            return Ok(base);
+        }
+        let policy = PricingPolicy {
+            base_rate: base.to_string(),
+            rules: rules.to_vec(),
+            rounding_scale: 2,
+            minimum_price: Some("0".to_string()),
+            maximum_price: None,
+        };
+        let result = Self::evaluate(
+            &policy,
+            &PricingSimulationDto {
+                location_id: None,
+                device_type: None,
+                at,
+                base_rate: None,
+                product_id: Some(product_id),
+                category: Some(category.to_string()),
+            },
+            timezone,
+            "PRODUCT",
+        )?;
+        result.final_price.parse::<f64>().map_err(|error| {
+            AppError::Internal(format!("Product price conversion failed: {error}"))
+        })
+    }
+
     fn matches(
         rule: &PricingRule,
         device_type: Option<&str>,
+        product: Option<(Option<Uuid>, &str)>,
         at: chrono::DateTime<Utc>,
         local_time: chrono::NaiveTime,
         weekday: u8,
     ) -> bool {
+        match (rule.target, product) {
+            (PricingTarget::Sessions, Some(_)) | (PricingTarget::Products, None) => return false,
+            (PricingTarget::Products, Some((product_id, category))) => {
+                let scoped = !rule.product_ids.is_empty() || !rule.categories.is_empty();
+                let listed = product_id.is_some_and(|id| rule.product_ids.contains(&id))
+                    || rule
+                        .categories
+                        .iter()
+                        .any(|item| item.eq_ignore_ascii_case(category));
+                if scoped && !listed {
+                    return false;
+                }
+            }
+            (PricingTarget::Sessions, None) => {}
+        }
         if !rule.device_types.is_empty()
             && !device_type.is_some_and(|value| {
                 rule.device_types
@@ -473,7 +607,10 @@ mod tests {
                 id: "night".to_string(),
                 name: "Night multiplier".to_string(),
                 priority: 10,
+                target: PricingTarget::Sessions,
                 device_types: vec!["PS5".to_string()],
+                product_ids: vec![],
+                categories: vec![],
                 weekdays: vec![],
                 start_time: Some(NaiveTime::from_hms_opt(23, 0, 0).unwrap()),
                 end_time: Some(NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
@@ -496,6 +633,8 @@ mod tests {
                 device_type: Some("PS5".to_string()),
                 at,
                 base_rate: None,
+                product_id: None,
+                category: None,
             },
             "Asia/Kolkata",
             "INR",
@@ -515,6 +654,8 @@ mod tests {
                 device_type: Some("PC".to_string()),
                 at,
                 base_rate: None,
+                product_id: None,
+                category: None,
             },
             "Asia/Kolkata",
             "INR",
@@ -537,5 +678,128 @@ mod tests {
         )
         .unwrap();
         assert_eq!(price, 100.0);
+    }
+
+    fn product_rule(id: &str, priority: i32, action: PricingAction) -> PricingRule {
+        PricingRule {
+            id: id.to_string(),
+            name: id.to_string(),
+            priority,
+            target: PricingTarget::Products,
+            device_types: vec![],
+            product_ids: vec![],
+            categories: vec![],
+            weekdays: vec![],
+            start_time: None,
+            end_time: None,
+            starts_at: None,
+            ends_at: None,
+            action,
+        }
+    }
+
+    #[test]
+    fn product_rules_apply_to_all_products_or_only_their_scope() {
+        let at = Utc.with_ymd_and_hms(2026, 9, 24, 6, 30, 0).unwrap(); // noon IST
+        let burger = Uuid::new_v4();
+        let mut meals = product_rule(
+            "meals",
+            10,
+            PricingAction::Multiplier {
+                value: "0.9".to_string(),
+            },
+        );
+        meals.categories = vec!["meal".to_string()];
+        let everything = product_rule(
+            "everything",
+            5,
+            PricingAction::Multiplier {
+                value: "1.05".to_string(),
+            },
+        );
+        let rules = [meals, everything];
+        let price = |id, category| {
+            PricingPolicyService::evaluate_product_price(
+                200.0,
+                250.0,
+                id,
+                category,
+                &rules,
+                at,
+                "Asia/Kolkata",
+                "23:00",
+                "08:00",
+            )
+            .unwrap()
+        };
+        assert_eq!(price(burger, "meal"), 189.0);
+        assert_eq!(price(Uuid::new_v4(), "beverage"), 210.0);
+    }
+
+    #[test]
+    fn session_and_product_rules_do_not_cross_over() {
+        let at = Utc.with_ymd_and_hms(2026, 9, 24, 18, 30, 0).unwrap();
+        let mut policy = policy();
+        policy.rules[0].device_types.clear();
+        let price = PricingPolicyService::evaluate_product_price(
+            80.0,
+            80.0,
+            Uuid::new_v4(),
+            "snack",
+            &policy.rules,
+            at,
+            "Asia/Kolkata",
+            "23:00",
+            "08:00",
+        )
+        .unwrap();
+        assert_eq!(price, 80.0);
+
+        policy.rules = vec![product_rule(
+            "free",
+            1,
+            PricingAction::Fixed {
+                value: "0".to_string(),
+            },
+        )];
+        let session = PricingPolicyService::evaluate(
+            &policy,
+            &PricingSimulationDto {
+                location_id: None,
+                device_type: None,
+                at,
+                base_rate: None,
+                product_id: None,
+                category: None,
+            },
+            "Asia/Kolkata",
+            "INR",
+        )
+        .unwrap();
+        assert_eq!(session.final_price, "100");
+    }
+
+    #[test]
+    fn rejects_mixed_or_unknown_rule_scopes() {
+        let mut rule = product_rule(
+            "drinks",
+            1,
+            PricingAction::Multiplier {
+                value: "1".to_string(),
+            },
+        );
+        rule.categories = vec!["drinks".to_string()];
+        let mut policy = policy();
+        policy.rules = vec![rule.clone()];
+        assert!(PricingPolicyService::validate_policy(&policy).is_err());
+
+        rule.categories = vec!["beverage".to_string()];
+        rule.device_types = vec!["PC".to_string()];
+        policy.rules = vec![rule.clone()];
+        assert!(PricingPolicyService::validate_policy(&policy).is_err());
+
+        rule.device_types.clear();
+        policy.rules = vec![rule];
+        assert!(PricingPolicyService::validate_policy(&policy).is_ok());
     }
 }

@@ -39,7 +39,7 @@ textarea {
   padding: 28px 22px;
   color: #f3f8f5;
   text-decoration: none;
-  font-size: 26px;
+  font-size: 1.625rem;
   font-weight: 750;
   letter-spacing: -1px;
 }
@@ -58,7 +58,7 @@ textarea {
 }
 .workspace-brand small {
   display: block;
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 1.6px;
   color: #8fa99b;
   margin-top: 2px;
@@ -83,19 +83,19 @@ textarea {
   font-weight: 650;
 }
 .workspace-context strong {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .workspace-context small {
   display: block;
   color: #9aada3;
-  font-size: 10px;
+  font-size: 0.625rem;
   margin-top: 3px;
 }
 .workspace-context .MuiChip-root {
   margin-left: auto;
   color: #b9c9bf;
   background: #ffffff0c;
-  font-size: 9px;
+  font-size: 0.5625rem;
   height: 21px;
 }
 .workspace-sidebar .sidebar-search {
@@ -103,7 +103,7 @@ textarea {
   justify-content: flex-start;
   border: 1px solid #ffffff18;
   margin: 0 15px 12px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   min-height: 33px;
   padding: 0 10px;
 }
@@ -123,7 +123,7 @@ kbd {
   margin-bottom: 17px;
 }
 .workspace-nav .nav-group-label {
-  font-size: 9px;
+  font-size: 0.5625rem;
   line-height: 1.5;
   text-transform: uppercase;
   letter-spacing: 1.15px;
@@ -147,7 +147,7 @@ kbd {
   margin: 0;
 }
 .nav-item-row .MuiListItemText-primary {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 500;
 }
 .nav-item-row .MuiListItemIcon-root {
@@ -155,7 +155,7 @@ kbd {
   color: #8fa99a;
 }
 .nav-item-row .MuiSvgIcon-root {
-  font-size: 18px;
+  font-size: 1.125rem;
 }
 .nav-item-row .MuiIconButton-root {
   color: #8ca495;
@@ -186,7 +186,7 @@ kbd {
   padding: 3px 10px;
 }
 .nav-children .MuiListItemText-primary {
-  font-size: 10.5px;
+  font-size: 0.65625rem;
 }
 .nav-children .Mui-selected {
   background: #ffffff07;
@@ -223,7 +223,7 @@ kbd {
   display: flex;
   gap: 14px;
   align-items: center;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--workspace-muted);
 }
 .workspace-breadcrumb strong {
@@ -247,7 +247,7 @@ kbd {
   padding: 18px 32px;
   border-top: 1px solid var(--workspace-border);
   color: var(--workspace-muted);
-  font-size: 10px;
+  font-size: 0.625rem;
   gap: 12px;
 }
 .workspace .mobile-menu {
@@ -310,7 +310,7 @@ kbd {
   margin: 65px auto;
 }
 .auth-story h1 {
-  font-size: clamp(34px, 3.8vw, 62px);
+  font-size: clamp(2.125rem, 3.8vw, 3.875rem);
   line-height: 1.13;
   font-weight: 550;
   letter-spacing: -0.055em;
@@ -322,7 +322,7 @@ kbd {
 .auth-story .auth-description {
   color: #a6b8ad;
   max-width: 320px;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.85;
   margin-bottom: 45px;
 }
@@ -341,12 +341,12 @@ kbd {
 }
 .auth-capability strong {
   display: block;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
 }
 .auth-capability small {
   display: block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #97ad9f;
   margin-top: 7px;
 }
@@ -364,7 +364,7 @@ kbd {
   align-items: center;
   gap: 7px;
   color: #7a8d84;
-  font-size: 9px;
+  font-size: 0.5625rem;
   letter-spacing: 1.3px;
   font-weight: 650;
   margin-bottom: 30px;

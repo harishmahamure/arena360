@@ -99,6 +99,17 @@ export default function AppearanceDialog() {
                 if (/^#[0-9a-f]{6}$/i.test(e.target.value)) update({ accent: e.target.value });
               }}
             />
+            <TextField
+              select
+              label="Text size"
+              value={preferences.textSize}
+              onChange={(e) => update({ textSize: e.target.value as typeof preferences.textSize })}
+            >
+              <MenuItem value="small">Small</MenuItem>
+              <MenuItem value="default">Default</MenuItem>
+              <MenuItem value="large">Large</MenuItem>
+              <MenuItem value="xlarge">Extra large</MenuItem>
+            </TextField>
             <Stack direction="row" spacing={2}>
               <TextField
                 fullWidth

@@ -59,6 +59,15 @@ fn default_rounding_scale() -> u32 {
     2
 }
 
+/// What a rule prices. Rules saved before product pricing existed default to sessions.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PricingTarget {
+    #[default]
+    Sessions,
+    Products,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PricingRule {
@@ -66,7 +75,14 @@ pub struct PricingRule {
     pub name: String,
     pub priority: i32,
     #[serde(default)]
+    pub target: PricingTarget,
+    #[serde(default)]
     pub device_types: Vec<String>,
+    /// Product rules only. Empty `product_ids` and `categories` mean every product.
+    #[serde(default)]
+    pub product_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub categories: Vec<String>,
     #[serde(default)]
     pub weekdays: Vec<u8>,
     pub start_time: Option<NaiveTime>,
@@ -111,6 +127,11 @@ pub struct PricingSimulationDto {
     pub device_type: Option<String>,
     pub at: DateTime<Utc>,
     pub base_rate: Option<String>,
+    /// Setting a product or category simulates a product sale instead of a session.
+    #[serde(default)]
+    pub product_id: Option<Uuid>,
+    #[serde(default)]
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]

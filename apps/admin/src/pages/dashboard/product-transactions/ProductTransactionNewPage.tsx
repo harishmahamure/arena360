@@ -24,7 +24,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
@@ -44,6 +44,7 @@ import {
   validateOnlinePaymentRefLast4,
   validateSplitPaymentAmounts,
 } from '../../../containers/sales';
+import { type PickedOptions, PosOptionPicker } from '../../../containers/sales/PosOptionPicker';
 import {
   type PaymentMethodType,
   PaymentMethodValues,
@@ -52,6 +53,12 @@ import { getPlayerCredit } from '../../../services/credit';
 import { getInventoryLocations, getLocationStock } from '../../../services/inventory';
 import { getKioskOrder } from '../../../services/kiosk-orders';
 import { getProducts, type ProductResponse } from '../../../services/product/list';
+import {
+  getCurrentProductPrices,
+  getProductRecipe,
+  type ProductCurrentPrice,
+  type ProductOptionGroup,
+} from '../../../services/product/recipe';
 import { addTransaction } from '../../../services/transaction/add';
 import { PaymentStatus, TransactionType } from '../../../services/transaction/list';
 import { effectiveProductPrice, isNightPricingWindow } from '../../../utils/pricing';
@@ -65,27 +72,41 @@ interface Product {
   nightPrice: number;
   stockQuantity: number;
   unitsPerPurchaseUnit: number;
+  hasOptions: boolean;
+  madeToOrder: boolean;
 }
 
 interface CartItem extends Product {
+  /** Product plus chosen options, so the same burger with different options gets its own line. */
+  lineKey: string;
+  optionIds: string[];
+  optionNames: string[];
   quantity: number;
   effectivePrice: number;
 }
 
-function mapProductForPos(product: ProductResponse, stockByProduct: Map<string, number>): Product {
+function mapProductForPos(
+  product: ProductResponse,
+  stockByProduct: Map<string, number>,
+  currentPrice: ProductCurrentPrice | undefined,
+): Product {
   const dayPrice = product.dayPrice ?? parseFloat(product.price);
   const nightPrice = product.nightPrice ?? dayPrice;
-  const effective = effectiveProductPrice(dayPrice, nightPrice);
-  const stock = stockByProduct.get(product.id) ?? product.stockQuantity ?? 0;
+  const madeToOrder = currentPrice?.madeToOrderAvailable != null;
+  const stock = madeToOrder
+    ? (currentPrice?.madeToOrderAvailable ?? 0)
+    : (stockByProduct.get(product.id) ?? product.stockQuantity ?? 0);
   return {
     id: product.id,
     name: product.name,
     description: product.description,
-    price: effective,
+    price: currentPrice?.price ?? effectiveProductPrice(dayPrice, nightPrice),
     dayPrice,
     nightPrice,
     stockQuantity: stock,
     unitsPerPurchaseUnit: product.unitsPerPurchaseUnit ?? 1,
+    hasOptions: currentPrice?.hasOptions ?? false,
+    madeToOrder,
   };
 }
 
@@ -157,8 +178,15 @@ function PosProductCard({
             color={product.stockQuantity > 0 ? 'success.main' : 'error.main'}
             display="block"
           >
-            {product.stockQuantity} pcs in store
+            {product.madeToOrder
+              ? `${product.stockQuantity} can be made`
+              : `${product.stockQuantity} pcs in store`}
           </Typography>
+          {product.hasOptions && (
+            <Typography variant="caption" display="block" color="text.secondary">
+              Has options
+            </Typography>
+          )}
           {product.unitsPerPurchaseUnit > 1 && (
             <Typography variant="caption" display="block" color="text.secondary">
               1 box = {product.unitsPerPurchaseUnit} pcs
@@ -215,6 +243,9 @@ export default function CreateProductTransactionPage() {
     setCart(
       prefillOrder.lineItems.map((item) => ({
         id: item.productId,
+        lineKey: item.productId,
+        optionIds: [],
+        optionNames: [],
         name: item.productName,
         description: '',
         price: item.unitPrice,
@@ -222,6 +253,8 @@ export default function CreateProductTransactionPage() {
         nightPrice: item.unitPrice,
         stockQuantity: item.quantity,
         unitsPerPurchaseUnit: 1,
+        hasOptions: false,
+        madeToOrder: false,
         quantity: item.quantity,
         effectivePrice: item.unitPrice,
       })),
@@ -246,7 +279,7 @@ export default function CreateProductTransactionPage() {
   const checkoutErrorClearKey = [
     selectedPlayer?.id,
     cart.length,
-    cart.map((item) => `${item.id}:${item.quantity}`).join(','),
+    cart.map((item) => `${item.lineKey}:${item.quantity}`).join(','),
     paymentMethod,
     cashAmount,
     onlineAmount,
@@ -274,15 +307,23 @@ export default function CreateProductTransactionPage() {
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
     queryKey: ['pos-products', saleLocationId],
-    queryFn: () => getProducts({ limit: 200, sortBy: 'name', sortOrder: 'ASC' }),
+    queryFn: () => getProducts({ forSale: true, limit: 200, sortBy: 'name', sortOrder: 'ASC' }),
     enabled: !!saleLocationId,
   });
 
+  const { data: currentPrices } = useQuery({
+    queryKey: ['pos-current-prices', saleLocationId],
+    queryFn: () => getCurrentProductPrices(saleLocationId),
+    enabled: !!saleLocationId,
+    refetchInterval: 60_000,
+  });
+
   const catalogProducts = useMemo(() => {
+    const priceByProduct = new Map((currentPrices ?? []).map((row) => [row.productId, row]));
     return (productsData?.data ?? [])
       .filter((p) => p.isActive)
-      .map((product) => mapProductForPos(product, stockByProduct));
-  }, [productsData, stockByProduct]);
+      .map((product) => mapProductForPos(product, stockByProduct, priceByProduct.get(product.id)));
+  }, [productsData, stockByProduct, currentPrices]);
 
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
@@ -295,43 +336,82 @@ export default function CreateProductTransactionPage() {
   const cartQtyByProduct = useMemo(() => {
     const map = new Map<string, number>();
     for (const item of cart) {
-      map.set(item.id, item.quantity);
+      map.set(item.id, (map.get(item.id) ?? 0) + item.quantity);
     }
     return map;
   }, [cart]);
 
-  const addToCart = (product: Product) => {
-    const effectivePrice = effectiveProductPrice(product.dayPrice, product.nightPrice);
-    const cartProduct = { ...product, price: effectivePrice, effectivePrice };
-    const existingItem = cart.find((item) => item.id === product.id);
+  const queryClient = useQueryClient();
+  const [optionTarget, setOptionTarget] = useState<{
+    product: Product;
+    groups: ProductOptionGroup[];
+  } | null>(null);
+
+  const addLine = (product: Product, picked: PickedOptions) => {
+    const lineKey = [product.id, ...[...picked.optionIds].sort()].join('|');
+    const existingItem = cart.find((item) => item.lineKey === lineKey);
     if (existingItem) {
-      updateQuantity(product.id, existingItem.quantity + 1);
-    } else {
-      setCart([...cart, { ...cartProduct, quantity: 1 }]);
+      updateQuantity(lineKey, existingItem.quantity + 1);
+      return;
+    }
+    if ((cartQtyByProduct.get(product.id) ?? 0) + 1 > product.stockQuantity) {
+      setError(`Only ${product.stockQuantity} units available in stock`);
+      return;
+    }
+    const effectivePrice = Math.round(Math.max(0, product.price + picked.priceDelta) * 100) / 100;
+    setCart([
+      ...cart,
+      {
+        ...product,
+        lineKey,
+        optionIds: picked.optionIds,
+        optionNames: picked.names,
+        price: effectivePrice,
+        effectivePrice,
+        quantity: 1,
+      },
+    ]);
+  };
+
+  const addToCart = async (product: Product) => {
+    if (!product.hasOptions) {
+      addLine(product, { optionIds: [], names: [], priceDelta: 0 });
+      return;
+    }
+    try {
+      const recipe = await queryClient.fetchQuery({
+        queryKey: ['product-recipe', product.id],
+        queryFn: () => getProductRecipe(product.id),
+        staleTime: 60_000,
+      });
+      setOptionTarget({ product, groups: recipe.optionGroups });
+    } catch {
+      setError(`Could not load options for ${product.name}`);
     }
   };
 
-  const updateQuantity = (productId: string, newQuantity: number) => {
-    const item = cart.find((item) => item.id === productId);
+  const updateQuantity = (lineKey: string, newQuantity: number) => {
+    const item = cart.find((item) => item.lineKey === lineKey);
     if (!item) return;
 
     if (newQuantity <= 0) {
-      removeFromCart(productId);
+      removeFromCart(lineKey);
       return;
     }
 
-    if (newQuantity > item.stockQuantity) {
+    const otherLines = (cartQtyByProduct.get(item.id) ?? 0) - item.quantity;
+    if (otherLines + newQuantity > item.stockQuantity) {
       setError(`Only ${item.stockQuantity} units available in stock`);
       return;
     }
 
     setCart(
-      cart.map((item) => (item.id === productId ? { ...item, quantity: newQuantity } : item)),
+      cart.map((item) => (item.lineKey === lineKey ? { ...item, quantity: newQuantity } : item)),
     );
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(cart.filter((item) => item.id !== productId));
+  const removeFromCart = (lineKey: string) => {
+    setCart(cart.filter((item) => item.lineKey !== lineKey));
   };
 
   const clearCart = () => {
@@ -436,6 +516,7 @@ export default function CreateProductTransactionPage() {
             productId: item.id,
             quantity: item.quantity,
             unitPrice: item.effectivePrice,
+            optionIds: item.optionIds.length ? item.optionIds : undefined,
           })),
         });
 
@@ -561,7 +642,7 @@ export default function CreateProductTransactionPage() {
             <Box sx={{ maxHeight: { md: '40vh', lg: 360 }, overflowY: 'auto' }}>
               {cart.map((item) => (
                 <Box
-                  key={item.id}
+                  key={item.lineKey}
                   sx={{
                     mb: 2,
                     pb: 2,
@@ -581,13 +662,18 @@ export default function CreateProductTransactionPage() {
                       <Typography variant="body2" fontWeight={500}>
                         {item.name}
                       </Typography>
+                      {item.optionNames.length > 0 && (
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {item.optionNames.join(', ')}
+                        </Typography>
+                      )}
                       <Typography variant="caption" color="text.secondary">
                         ₹{item.effectivePrice.toFixed(2)} each
                       </Typography>
                     </Box>
                     <IconButton
                       size="small"
-                      onClick={() => removeFromCart(item.id)}
+                      onClick={() => removeFromCart(item.lineKey)}
                       color="error"
                       disabled={submitting}
                     >
@@ -604,7 +690,7 @@ export default function CreateProductTransactionPage() {
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       <IconButton
                         size="small"
-                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        onClick={() => updateQuantity(item.lineKey, item.quantity - 1)}
                         disabled={submitting}
                       >
                         <RemoveIcon fontSize="small" />
@@ -613,7 +699,7 @@ export default function CreateProductTransactionPage() {
                         value={item.quantity}
                         onChange={(e) => {
                           const val = Number.parseInt(e.target.value, 10) || 0;
-                          updateQuantity(item.id, val);
+                          updateQuantity(item.lineKey, val);
                         }}
                         sx={{ width: 60, mx: 1 }}
                         size="small"
@@ -622,8 +708,10 @@ export default function CreateProductTransactionPage() {
                       />
                       <IconButton
                         size="small"
-                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        disabled={submitting || item.quantity >= item.stockQuantity}
+                        onClick={() => updateQuantity(item.lineKey, item.quantity + 1)}
+                        disabled={
+                          submitting || (cartQtyByProduct.get(item.id) ?? 0) >= item.stockQuantity
+                        }
                       >
                         <AddIcon fontSize="small" />
                       </IconButton>
@@ -706,6 +794,16 @@ export default function CreateProductTransactionPage() {
 
   return (
     <ActiveShiftGuard>
+      <PosOptionPicker
+        productName={optionTarget?.product.name ?? ''}
+        basePrice={optionTarget?.product.price ?? 0}
+        groups={optionTarget?.groups ?? null}
+        onCancel={() => setOptionTarget(null)}
+        onConfirm={(picked) => {
+          if (optionTarget) addLine(optionTarget.product, picked);
+          setOptionTarget(null);
+        }}
+      />
       <CounterSaleLayout
         backTo="/product-transactions"
         backLabel="POS sales"
@@ -750,42 +848,6 @@ export default function CreateProductTransactionPage() {
           </Stack>
         }
         busy={submitting || succeeded}
-        validateSelection={() =>
-          !selectedPlayer || cart.length === 0
-            ? 'Select a player and at least one product.'
-            : undefined
-        }
-        validatePayment={() => {
-          if (creditBlocked) return 'This player cannot make this credit purchase.';
-          if (paymentMethod === PaymentMethodValues.SPLIT_PAYMENT) {
-            const error = validateSplitPaymentAmounts(total, cashAmount, onlineAmount);
-            if (error) return error;
-          }
-          return (
-            validateOnlinePaymentRefLast4(
-              onlinePaymentRefLast4,
-              paymentMethod,
-              paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
-                ? Number(onlineAmount)
-                : paymentMethod === PaymentMethodValues.ONLINE
-                  ? total
-                  : undefined,
-            ) || undefined
-          );
-        }}
-        review={
-          <Stack spacing={2}>
-            <Typography variant="h6">{selectedPlayer?.username}</Typography>
-            {cart.map((item) => (
-              <Typography key={item.id}>
-                {item.name} × {item.quantity}
-              </Typography>
-            ))}
-            <Typography>Payment: {paymentMethod.replaceAll('_', ' ')}</Typography>
-            <Typography variant="h6">Total: ₹{total.toFixed(2)}</Typography>
-            {notes && <Typography>{notes}</Typography>}
-          </Stack>
-        }
       />
     </ActiveShiftGuard>
   );

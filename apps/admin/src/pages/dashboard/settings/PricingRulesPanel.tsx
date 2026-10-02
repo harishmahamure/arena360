@@ -33,6 +33,7 @@ import {
   simulatePricingRuleVersion,
   validatePricingRuleVersion,
 } from '../../../services/pricing-rules';
+import { getProducts } from '../../../services/product/list';
 
 import PricingPolicyEditor from './PricingPolicyEditor';
 import { parsePricingPolicy } from './pricingPolicy';
@@ -89,6 +90,11 @@ export default function PricingRulesPanel({
     queryKey: ['pricing-rule-versions', organizationId, selectedSetId],
     queryFn: () => listPricingRuleVersions(organizationId, selectedSetId),
     enabled: canRead && Boolean(selectedSetId),
+  });
+  const productsQuery = useQuery({
+    queryKey: ['pricing-rule-products'],
+    queryFn: () => getProducts({ forSale: true, limit: 500, sortBy: 'name', sortOrder: 'ASC' }),
+    enabled: canRead && can(Permission.ProductsRead),
   });
 
   useEffect(() => {
@@ -319,6 +325,7 @@ export default function PricingRulesPanel({
                 value={policyText}
                 onChange={setPolicyText}
                 disabled={!canEdit || busy}
+                products={productsQuery.data?.data}
               />
               <Button
                 variant="outlined"

@@ -15,16 +15,22 @@ import {
 } from '@mui/material';
 import { useState } from 'react';
 import type { PricingPolicy } from '../../../services/pricing-rules';
+import { ProductCategory } from '../../../services/product/list';
+
+const CATEGORIES = Object.values(ProductCategory);
 
 export default function PricingPolicyEditor({
   value,
   onChange,
   disabled,
+  products = [],
 }: {
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
+  products?: Array<{ id: string; name: string }>;
 }) {
+  const productName = (id: string) => products.find((p) => p.id === id)?.name ?? id;
   const [advanced, setAdvanced] = useState(false);
   let policy: PricingPolicy | null = null;
   try {
@@ -131,6 +137,7 @@ export default function PricingPolicyEditor({
             </TextField>
           </Box>
           {policy.rules.map((rule, index) => {
+            const forProducts = rule.target === 'products';
             const edit = (patch: Partial<typeof rule>) =>
               update({
                 rules: policy.rules.map((item, i) => (i === index ? { ...item, ...patch } : item)),
@@ -178,6 +185,22 @@ export default function PricingPolicyEditor({
                     onChange={(event) => edit({ name: event.target.value })}
                   />
                   <TextField
+                    select
+                    label="Applies to"
+                    value={forProducts ? 'products' : 'sessions'}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      edit(
+                        event.target.value === 'products'
+                          ? { target: 'products', deviceTypes: [] }
+                          : { target: 'sessions', productIds: [], categories: [] },
+                      )
+                    }
+                  >
+                    <MenuItem value="sessions">Gaming sessions</MenuItem>
+                    <MenuItem value="products">Product sales</MenuItem>
+                  </TextField>
+                  <TextField
                     label="Priority"
                     type="number"
                     value={rule.priority}
@@ -199,7 +222,9 @@ export default function PricingPolicyEditor({
                     }
                   >
                     <MenuItem value="fixed">Fixed price</MenuItem>
-                    <MenuItem value="multiplier">Multiply base rate</MenuItem>
+                    <MenuItem value="multiplier">
+                      {forProducts ? 'Multiply product price' : 'Multiply base rate'}
+                    </MenuItem>
                   </TextField>
                   <TextField
                     label={rule.action.type === 'fixed' ? 'Price' : 'Multiplier'}
@@ -230,18 +255,67 @@ export default function PricingPolicyEditor({
                     }
                     slotProps={{ inputLabel: { shrink: true } }}
                   />
-                  <TextField
-                    label="Device types"
-                    value={rule.deviceTypes.join(', ')}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      edit({
-                        deviceTypes: event.target.value.split(',').map((type) => type.trim()),
-                      })
-                    }
-                    onBlur={() => edit({ deviceTypes: rule.deviceTypes.filter(Boolean) })}
-                    helperText="Comma-separated. Leave empty for all devices."
-                  />
+                  {forProducts ? (
+                    <>
+                      <TextField
+                        select
+                        label="Products"
+                        value={rule.productIds ?? []}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          edit({ productIds: event.target.value as unknown as string[] })
+                        }
+                        slotProps={{
+                          select: {
+                            multiple: true,
+                            renderValue: (ids) => (ids as string[]).map(productName).join(', '),
+                          },
+                        }}
+                        helperText="Leave empty to match every product."
+                      >
+                        {products.map((product) => (
+                          <MenuItem key={product.id} value={product.id}>
+                            {product.name}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <TextField
+                        select
+                        label="Categories"
+                        value={rule.categories ?? []}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          edit({ categories: event.target.value as unknown as string[] })
+                        }
+                        slotProps={{
+                          select: {
+                            multiple: true,
+                            renderValue: (values) => (values as string[]).join(', '),
+                          },
+                        }}
+                        helperText="A product matches if it is listed or in a chosen category."
+                      >
+                        {CATEGORIES.map((category) => (
+                          <MenuItem key={category} value={category}>
+                            {category}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </>
+                  ) : (
+                    <TextField
+                      label="Device types"
+                      value={rule.deviceTypes.join(', ')}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        edit({
+                          deviceTypes: event.target.value.split(',').map((type) => type.trim()),
+                        })
+                      }
+                      onBlur={() => edit({ deviceTypes: rule.deviceTypes.filter(Boolean) })}
+                      helperText="Comma-separated. Leave empty for all devices."
+                    />
+                  )}
                 </Box>
                 <Typography
                   variant="caption"

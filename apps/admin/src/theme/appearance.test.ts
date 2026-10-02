@@ -9,6 +9,8 @@ describe('custom appearance', () => {
       defaultAppearance,
     );
     expect(parseAppearance(null)).toEqual(defaultAppearance);
+    expect(parseAppearance({ textSize: 'toString' }).textSize).toBe('default');
+    expect(parseAppearance({ textSize: 'large' }).textSize).toBe('large');
   });
   it('builds dark and compact surfaces and legible custom accent buttons', () => {
     for (const accent of ['#ffffff', '#000000', '#365edc', '#ffbb00']) {

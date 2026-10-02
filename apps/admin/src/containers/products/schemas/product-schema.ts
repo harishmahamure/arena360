@@ -45,6 +45,7 @@ export const createProductSchema = yup.object({
     .nullable()
     .transform((value) => (Number.isNaN(value) ? undefined : value)),
   isActive: yup.boolean().optional().default(true),
+  isRawMaterial: yup.boolean().optional().default(false),
 });
 
 export type CreateProductFormData = yup.InferType<typeof createProductSchema>;
@@ -62,6 +63,7 @@ export const createProductDefaultValues: CreateProductFormData = {
   sku: '',
   stockQuantity: 0,
   isActive: true,
+  isRawMaterial: false,
 };
 
 export const productSchema = yup.object({

@@ -4,6 +4,10 @@ export interface PricingRule {
   id: string;
   name: string;
   priority: number;
+  /** Defaults to sessions. Product rules use productIds/categories; empty means every product. */
+  target?: 'sessions' | 'products';
+  productIds?: string[];
+  categories?: string[];
   deviceTypes: string[];
   weekdays: number[];
   startTime?: string | null;

@@ -5,17 +5,19 @@ use uuid::Uuid;
 use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{CreateProductDto, Product, ProductFilterDto, UpdateProductDto};
-use crate::repositories::ProductRepository;
+use crate::repositories::{ProductRecipeRepository, ProductRepository};
 use crate::validation::{optional_product_category, require_product_category};
 
 pub struct ProductService {
     repo: ProductRepository,
+    recipes: ProductRecipeRepository,
     cache: Arc<dyn CacheService>,
 }
 
 impl ProductService {
     pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
+            recipes: ProductRecipeRepository::new(pool.clone()),
             repo: ProductRepository::new(pool),
             cache,
         }
@@ -129,6 +131,12 @@ impl ProductService {
                     "Price must be greater than or equal to 0".to_string(),
                 ));
             }
+        }
+        if dto.is_raw_material == Some(true) && !self.recipes.get(id).await?.is_empty() {
+            return Err(AppError::BadRequest(
+                "Remove this product's recipe and options before marking it as a raw material"
+                    .to_string(),
+            ));
         }
         if let Some(day_price) = dto.day_price {
             if day_price < 0.0 {

@@ -15,6 +15,7 @@ interface AddProductRequest {
   sku: string;
   stockQuantity: number;
   isActive: boolean;
+  isRawMaterial?: boolean;
 }
 
 export const addProduct = async (product: AddProductRequest) => {

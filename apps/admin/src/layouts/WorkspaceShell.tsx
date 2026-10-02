@@ -201,14 +201,14 @@ export function WorkspaceShell({
         ))}
       </Box>
       <Box className="sidebar-footer">
-        <Avatar sx={{ width: 32, height: 32, bgcolor: '#31493f', fontSize: 13 }}>
+        <Avatar sx={{ width: 32, height: 32, bgcolor: '#31493f', fontSize: '0.8125rem' }}>
           {(user.name.trim() || user.email || 'A').slice(0, 1).toUpperCase()}
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography noWrap fontWeight={600} fontSize={12}>
+          <Typography noWrap fontWeight={600} fontSize="0.75rem">
             {user.name.trim() || user.email || 'Account'}
           </Typography>
-          <Typography fontSize={11} color="#91a39b">
+          <Typography fontSize="0.6875rem" color="#91a39b">
             {user.role === 'admin' ? 'Administrator' : 'Staff member'}
           </Typography>
         </Box>
@@ -281,7 +281,13 @@ export function WorkspaceShell({
             </Tooltip>
           )}
           <Avatar
-            sx={{ width: 30, height: 30, fontSize: 12, bgcolor: '#e9eee9', color: '#315440' }}
+            sx={{
+              width: 30,
+              height: 30,
+              fontSize: '0.75rem',
+              bgcolor: '#e9eee9',
+              color: '#315440',
+            }}
           >
             {(user.name.trim() || 'A').slice(0, 1)}
           </Avatar>

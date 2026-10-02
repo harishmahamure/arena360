@@ -28,6 +28,7 @@ impl ProductRepository {
                sku,
                "stockQuantity" as stock_quantity,
                "isActive" as is_active,
+               "isRawMaterial" as is_raw_material,
                "createdBy" as created_by,
                "updatedBy" as updated_by,
                "createdAt" as created_at,
@@ -62,6 +63,7 @@ impl ProductRepository {
              \"purchasePricePerBox\"::float8 as purchase_price_per_box, \
              category::text as category, sku, \
              \"stockQuantity\" as stock_quantity, \"isActive\" as is_active, \
+             \"isRawMaterial\" as is_raw_material, \
              \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \"deletedAt\" as deleted_at \
              FROM products WHERE \"deletedAt\" IS NULL",
@@ -121,6 +123,10 @@ impl ProductRepository {
             builder.push(" AND price <= ");
             builder.push_bind(max_price);
         }
+        if let Some(for_sale) = filters.for_sale {
+            builder.push(" AND \"isRawMaterial\" = ");
+            builder.push_bind(!for_sale);
+        }
     }
 
     pub async fn create(
@@ -142,12 +148,12 @@ impl ProductRepository {
                 id, name, description, price, "purchasePrice", "unitId", "purchaseUnitId",
                 "unitsPerPurchaseUnit", "dayPrice", "nightPrice", "purchasePricePerBox",
                 category, sku, "stockQuantity", "isActive", "createdBy", "updatedBy",
-                "createdAt", "updatedAt"
+                "createdAt", "updatedAt", "isRawMaterial"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4, $5, $6,
                 $7, $8, $9, $10, $11::products_category_enum, $12,
-                $13, $14, $15, $15, NOW(), NOW()
+                $13, $14, $15, $15, NOW(), NOW(), $16
             )
             RETURNING id, name, description,
                       price::float8 as price,
@@ -162,6 +168,7 @@ impl ProductRepository {
                       sku,
                       "stockQuantity" as stock_quantity,
                       "isActive" as is_active,
+               "isRawMaterial" as is_raw_material,
                       "createdBy" as created_by,
                       "updatedBy" as updated_by,
                       "createdAt" as created_at,
@@ -184,6 +191,7 @@ impl ProductRepository {
         .bind(stock_quantity)
         .bind(is_active)
         .bind(actor_id)
+        .bind(dto.is_raw_material.unwrap_or(false))
         .fetch_one(&self.pool)
         .await?;
 
@@ -217,6 +225,7 @@ impl ProductRepository {
                 "stockQuantity" = COALESCE($15, "stockQuantity"),
                 "isActive" = COALESCE($16, "isActive"),
                 "updatedBy" = COALESCE($17, "updatedBy"),
+                "isRawMaterial" = COALESCE($18, "isRawMaterial"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
             RETURNING id, name, description,
@@ -232,6 +241,7 @@ impl ProductRepository {
                       sku,
                       "stockQuantity" as stock_quantity,
                       "isActive" as is_active,
+               "isRawMaterial" as is_raw_material,
                       "createdBy" as created_by,
                       "updatedBy" as updated_by,
                       "createdAt" as created_at,
@@ -256,6 +266,7 @@ impl ProductRepository {
         .bind(dto.stock_quantity)
         .bind(dto.is_active)
         .bind(actor_id)
+        .bind(dto.is_raw_material)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -280,6 +291,7 @@ impl ProductRepository {
                       sku,
                       "stockQuantity" as stock_quantity,
                       "isActive" as is_active,
+               "isRawMaterial" as is_raw_material,
                       "createdBy" as created_by,
                       "updatedBy" as updated_by,
                       "createdAt" as created_at,

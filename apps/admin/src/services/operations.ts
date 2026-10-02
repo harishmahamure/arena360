@@ -11,7 +11,13 @@ export interface KitchenTicket {
   createdAt: string;
   updatedAt: string;
   dueAt: string;
-  items: { productId: string; name: string; quantity: number; station: string }[];
+  items: {
+    productId: string;
+    name: string;
+    quantity: number;
+    station: string;
+    options?: string[];
+  }[];
   events: { status: KitchenStatus; actor: string | null; reason: string | null; at: string }[];
 }
 export interface KitchenMenuItem {

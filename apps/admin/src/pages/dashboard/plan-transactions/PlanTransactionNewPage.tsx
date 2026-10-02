@@ -420,36 +420,6 @@ export default function AddNewPlanTransactionPage() {
           </Stack>
         }
         busy={submitting || succeeded}
-        validateSelection={() =>
-          !selectedPlayer || !selectedPlan ? 'Select a player and a plan.' : undefined
-        }
-        validatePayment={() => {
-          if (creditBlocked) return 'This player cannot make this credit purchase.';
-          if (paymentMethod === PaymentMethodValues.SPLIT_PAYMENT) {
-            const error = validateSplitPaymentAmounts(purchaseAmount, cashAmount, onlineAmount);
-            if (error) return error;
-          }
-          return (
-            validateOnlinePaymentRefLast4(
-              onlinePaymentRefLast4,
-              paymentMethod,
-              paymentMethod === PaymentMethodValues.SPLIT_PAYMENT
-                ? Number(onlineAmount)
-                : paymentMethod === PaymentMethodValues.ONLINE
-                  ? purchaseAmount
-                  : undefined,
-            ) || undefined
-          );
-        }}
-        review={
-          <Stack spacing={2}>
-            <Typography variant="h6">{selectedPlayer?.username}</Typography>
-            <Typography>{selectedPlan?.name}</Typography>
-            <Typography>Payment: {paymentMethod.replaceAll('_', ' ')}</Typography>
-            <Typography variant="h6">Total: ₹{purchaseAmount.toFixed(2)}</Typography>
-            {notes && <Typography>{notes}</Typography>}
-          </Stack>
-        }
       />
     </ActiveShiftGuard>
   );

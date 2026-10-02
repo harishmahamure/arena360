@@ -37,6 +37,29 @@ impl PricingPolicyRepository {
         .await?)
     }
 
+    /// Live policies: the published active version of each organization-wide set
+    /// and of each set scoped to `location_id`.
+    pub async fn active_policies(
+        &self,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
+            r#"SELECT v.policy
+               FROM pricing_rule_sets s
+               JOIN pricing_rule_versions v ON v.id = s."activeVersionId"
+               WHERE s."organizationId" = $1
+                 AND v.status = 'published'
+                 AND (s."locationId" IS NULL OR s."locationId" = $2)
+               ORDER BY s.id"#,
+        )
+        .bind(organization_id)
+        .bind(location_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(policy,)| policy).collect())
+    }
+
     pub async fn get_set(
         &self,
         organization_id: Uuid,

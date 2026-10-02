@@ -3,6 +3,7 @@ import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import ProductRecipeEditor from '../../../containers/products/ProductRecipeEditor';
 import {
   type CreateProductFormData,
   createProductSchema,
@@ -85,7 +86,10 @@ export default function EditProductPage() {
               'purchaseUnitId',
             ],
           },
-          { title: 'Stock & availability', fields: ['stockQuantity', 'isActive'] },
+          {
+            title: 'Stock & availability',
+            fields: ['stockQuantity', 'isActive', 'isRawMaterial'],
+          },
         ]}
         fields={productFormFields}
         schema={createProductSchema}
@@ -102,6 +106,7 @@ export default function EditProductPage() {
           description: product?.description,
           stockQuantity: product?.stockQuantity,
           isActive: product?.isActive,
+          isRawMaterial: product?.isRawMaterial ?? false,
         }}
         mode={canWrite ? 'edit' : 'view'}
         onSubmit={handleSubmit}
@@ -116,6 +121,13 @@ export default function EditProductPage() {
         buttonAlign="right"
         spacing={3}
       />
+      {id && (
+        <ProductRecipeEditor
+          productId={id}
+          isRawMaterial={product?.isRawMaterial ?? false}
+          canWrite={canWrite}
+        />
+      )}
     </Paper>
   );
 }

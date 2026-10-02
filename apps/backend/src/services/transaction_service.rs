@@ -1,26 +1,41 @@
 use chrono::Utc;
 use sqlx::PgPool;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::cache::{self, CacheService};
 use crate::error::AppError;
 use crate::models::{
-    CreateLineItemDto, CreateTransactionDto, PurchaseBalanceDto, Transaction, TransactionFilterDto,
-    TransactionResponse, TransactionWithLineItems, UpdateTransactionDto,
+    CreateLineItemDto, CreateTransactionDto, PurchaseBalanceDto, SelectedOption, Transaction,
+    TransactionFilterDto, TransactionResponse, TransactionWithLineItems, UpdateTransactionDto,
 };
 use crate::realtime::{publish_balance_updated_for_player, OutboxService};
 use crate::repositories::{
-    InventoryRepository, TransactionProductRepository, TransactionRepository,
+    InventoryRepository, ProductRecipeRepository, TransactionProductRepository,
+    TransactionRepository,
 };
 use crate::services::{
     BalanceService, ConfigService, CreditService, EventService, NotificationService,
-    PricingPolicyService,
+    PricingPolicyService, ProductRecipeService,
 };
 use crate::validation::{
     optional_payment_status, require_payment_method, require_payment_status,
     require_transaction_type, validate_online_payment_ref_last4,
 };
+
+struct ResolvedLine {
+    product_id: Uuid,
+    quantity: i32,
+    unit_price: f64,
+    options: Vec<SelectedOption>,
+}
+
+struct ResolvedSale {
+    lines: Vec<ResolvedLine>,
+    /// Stock to deduct per product: sold products without a recipe, plus ingredients.
+    stock_deductions: BTreeMap<Uuid, i32>,
+}
 
 pub struct TransactionService {
     repo: TransactionRepository,
@@ -34,6 +49,7 @@ pub struct TransactionService {
     cafe_timezone: String,
     cache: Arc<dyn CacheService>,
     settings: Arc<ConfigService>,
+    pricing: PricingPolicyService,
 }
 
 impl TransactionService {
@@ -51,6 +67,7 @@ impl TransactionService {
         Self {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
             inventory_repo: InventoryRepository::new(pool.clone()),
+            pricing: PricingPolicyService::new(pool.clone()),
             repo: TransactionRepository::new(pool),
             balances,
             credit,
@@ -213,6 +230,13 @@ impl TransactionService {
             ));
         }
 
+        let product_rules = self
+            .pricing
+            .active_product_rules(
+                crate::models::DEFAULT_ORGANIZATION_ID,
+                Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+            )
+            .await?;
         let mut db_tx = self.repo.pool.begin().await?;
         let now = dto.transaction_date.unwrap_or_else(Utc::now);
         let (timezone, night_start, night_end) = self
@@ -227,10 +251,11 @@ impl TransactionService {
                 )
             });
 
-        let resolved_items = Self::resolve_and_validate_stock(
+        let sale = Self::resolve_and_validate_stock(
             &mut db_tx,
             line_items,
             sale_location_id,
+            &product_rules,
             &timezone,
             &night_start,
             &night_end,
@@ -238,9 +263,10 @@ impl TransactionService {
         )
         .await?;
 
-        let server_total: f64 = resolved_items
+        let server_total: f64 = sale
+            .lines
             .iter()
-            .map(|(_, qty, price)| *qty as f64 * price)
+            .map(|line| line.quantity as f64 * line.unit_price)
             .sum();
 
         let is_credit = dto.payment_method == "credit";
@@ -274,29 +300,35 @@ impl TransactionService {
         )
         .await?;
 
-        let items_for_insert: Vec<CreateLineItemDto> = resolved_items
+        let items_for_insert: Vec<CreateLineItemDto> = sale
+            .lines
             .iter()
-            .map(|(product_id, qty, price)| CreateLineItemDto {
-                product_id: *product_id,
-                quantity: *qty,
-                unit_price: Some(*price),
+            .map(|line| CreateLineItemDto {
+                product_id: line.product_id,
+                quantity: line.quantity,
+                unit_price: Some(line.unit_price),
+                option_ids: Vec::new(),
             })
             .collect();
 
-        TransactionProductRepository::insert_many(
+        let line_ids = TransactionProductRepository::insert_many(
             &mut db_tx,
             transaction.id,
             &items_for_insert,
             actor_id,
         )
         .await?;
+        for (line_id, line) in line_ids.into_iter().zip(&sale.lines) {
+            TransactionProductRepository::insert_options(&mut db_tx, line_id, &line.options)
+                .await?;
+        }
 
-        for (product_id, qty, _) in &resolved_items {
+        for (product_id, quantity) in &sale.stock_deductions {
             InventoryRepository::deduct_sale_stock_in_tx(
                 &mut db_tx,
                 sale_location_id,
                 *product_id,
-                *qty,
+                *quantity,
                 transaction.id,
                 actor_id,
             )
@@ -355,16 +387,77 @@ impl TransactionService {
         Ok(transaction)
     }
 
+    /// Prices the point of sale should show now, before options, after published product rules.
+    pub async fn current_product_prices(
+        &self,
+        location_id: Option<Uuid>,
+    ) -> Result<Vec<crate::models::ProductCurrentPrice>, AppError> {
+        let recipes = ProductRecipeRepository::new(self.repo.pool.clone());
+        let capacity = crate::services::product_recipe_service::made_to_order_capacity(
+            recipes.made_to_order_stock(location_id).await?,
+        );
+        let with_options: std::collections::HashSet<Uuid> =
+            recipes.with_option_groups().await?.into_iter().collect();
+        let rules = self
+            .pricing
+            .active_product_rules(
+                crate::models::DEFAULT_ORGANIZATION_ID,
+                Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+            )
+            .await?;
+        let (timezone, night_start, night_end) = self
+            .settings
+            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .await
+            .unwrap_or_else(|_| {
+                (
+                    self.cafe_timezone.clone(),
+                    "23:00".to_string(),
+                    "08:00".to_string(),
+                )
+            });
+        let rows: Vec<(Uuid, f64, f64, String)> = sqlx::query_as(
+            r#"SELECT id, "dayPrice"::float8, "nightPrice"::float8, category::text
+               FROM products
+               WHERE "deletedAt" IS NULL AND "isRawMaterial" = false"#,
+        )
+        .fetch_all(&self.repo.pool)
+        .await?;
+        let now = Utc::now();
+        rows.into_iter()
+            .map(|(product_id, day_price, night_price, category)| {
+                Ok(crate::models::ProductCurrentPrice {
+                    product_id,
+                    price: PricingPolicyService::evaluate_product_price(
+                        day_price,
+                        night_price,
+                        product_id,
+                        &category,
+                        &rules,
+                        now,
+                        &timezone,
+                        &night_start,
+                        &night_end,
+                    )?,
+                    has_options: with_options.contains(&product_id),
+                    made_to_order_available: capacity.get(&product_id).copied(),
+                })
+            })
+            .collect()
+    }
+
     async fn resolve_and_validate_stock(
         db_tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         line_items: &[CreateLineItemDto],
         sale_location_id: Uuid,
+        product_rules: &[crate::models::PricingRule],
         cafe_timezone: &str,
         night_start: &str,
         night_end: &str,
         now: chrono::DateTime<Utc>,
-    ) -> Result<Vec<(Uuid, i32, f64)>, AppError> {
-        let mut resolved = Vec::with_capacity(line_items.len());
+    ) -> Result<ResolvedSale, AppError> {
+        let mut lines = Vec::with_capacity(line_items.len());
+        let mut stock_deductions: BTreeMap<Uuid, i32> = BTreeMap::new();
         for item in line_items {
             if item.quantity <= 0 {
                 return Err(AppError::BadRequest(format!(
@@ -372,45 +465,81 @@ impl TransactionService {
                     item.product_id
                 )));
             }
-            let row: Option<(i32, f64, f64)> = sqlx::query_as(
+            let row: Option<(String, f64, f64, String, bool)> = sqlx::query_as(
                 r#"
-                SELECT COALESCE(ls."quantityPieces", 0),
+                SELECT p.name,
                        p."dayPrice"::float8,
-                       p."nightPrice"::float8
+                       p."nightPrice"::float8,
+                       p.category::text,
+                       p."isRawMaterial"
                 FROM products p
-                LEFT JOIN location_stock ls
-                  ON ls."productId" = p.id AND ls."locationId" = $2
                 WHERE p.id = $1 AND p."deletedAt" IS NULL
-                FOR UPDATE OF p
                 "#,
             )
             .bind(item.product_id)
-            .bind(sale_location_id)
             .fetch_optional(&mut **db_tx)
             .await?;
 
-            let (stock, day_price, night_price) = row.ok_or_else(|| {
-                AppError::NotFound(format!("Product {} not found", item.product_id))
-            })?;
-
-            if stock < item.quantity {
-                return Err(AppError::Conflict(format!(
-                    "Insufficient stock for product {} (available: {}, requested: {})",
-                    item.product_id, stock, item.quantity
+            let (name, day_price, night_price, category, is_raw_material) =
+                row.ok_or_else(|| {
+                    AppError::NotFound(format!("Product {} not found", item.product_id))
+                })?;
+            if is_raw_material {
+                return Err(AppError::BadRequest(format!(
+                    "{name} is a raw material and cannot be sold"
                 )));
             }
 
-            let unit_price = PricingPolicyService::evaluate_legacy_product_price(
+            let recipe = ProductRecipeRepository::load(&mut **db_tx, item.product_id).await?;
+            let selection = ProductRecipeService::select_options(&name, &recipe, &item.option_ids)?;
+            if !recipe.is_made_to_order() {
+                *stock_deductions.entry(item.product_id).or_default() += item.quantity;
+            }
+            for (ingredient_id, per_unit) in &selection.ingredients {
+                let total = per_unit.checked_mul(item.quantity).ok_or_else(|| {
+                    AppError::BadRequest(format!("Quantity for {name} is too large"))
+                })?;
+                *stock_deductions.entry(*ingredient_id).or_default() += total;
+            }
+
+            let base_price = PricingPolicyService::evaluate_product_price(
                 day_price,
                 night_price,
+                item.product_id,
+                &category,
+                product_rules,
                 now,
                 cafe_timezone,
                 night_start,
                 night_end,
             )?;
-            resolved.push((item.product_id, item.quantity, unit_price));
+            let unit_price =
+                ((base_price + selection.price_delta).max(0.0) * 100.0).round() / 100.0;
+            lines.push(ResolvedLine {
+                product_id: item.product_id,
+                quantity: item.quantity,
+                unit_price,
+                options: selection.options,
+            });
         }
-        Ok(resolved)
+
+        let ids: Vec<Uuid> = stock_deductions.keys().copied().collect();
+        let stock = ProductRecipeRepository::lock_stock(db_tx, sale_location_id, &ids).await?;
+        for (id, needed) in &stock_deductions {
+            let (name, available) = stock
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| (id.to_string(), 0));
+            if available < *needed {
+                return Err(AppError::Conflict(format!(
+                    "Insufficient stock for {name} (available: {available}, needed: {needed})"
+                )));
+            }
+        }
+        Ok(ResolvedSale {
+            lines,
+            stock_deductions,
+        })
     }
 
     pub async fn create(

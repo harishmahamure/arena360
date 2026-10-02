@@ -10,7 +10,10 @@ use crate::models::{
     KioskOrderWithItems,
 };
 use crate::realtime::OutboxService;
-use crate::repositories::{InventoryRepository, KioskOrderRepository, SessionRepository};
+use crate::repositories::{
+    InventoryRepository, KioskOrderRepository, ProductRecipeRepository, SessionRepository,
+};
+use crate::services::product_recipe_service::made_to_order_capacity;
 use crate::services::{
     ConfigService, NotificationService, PricingPolicyService, Recipients, RecordNotification,
     TransactionService,
@@ -24,6 +27,7 @@ pub struct KioskOrderService {
     outbox: OutboxService,
     cafe_timezone: String,
     settings: Arc<ConfigService>,
+    pricing: PricingPolicyService,
 }
 
 impl KioskOrderService {
@@ -37,6 +41,7 @@ impl KioskOrderService {
         Self {
             repo: KioskOrderRepository::new(pool.clone()),
             sessions: SessionRepository::new(pool.clone()),
+            pricing: PricingPolicyService::new(pool.clone()),
             inventory_repo: InventoryRepository::new(pool),
             notifications,
             outbox,
@@ -78,19 +83,34 @@ impl KioskOrderService {
              AND ls."locationId" = $1
             WHERE p."deletedAt" IS NULL
               AND p."isActive" = true
+              AND p."isRawMaterial" = false
+              AND NOT EXISTS (
+                SELECT 1 FROM product_option_groups g
+                WHERE g."productId" = p.id AND g.required
+              )
             ORDER BY p.category, p.name
             "#,
         )
         .bind(sale_location_id)
         .fetch_all(self.repo.pool())
         .await?;
+        let product_rules = self.product_rules().await?;
+        let makeable = made_to_order_capacity(
+            ProductRecipeRepository::new(self.repo.pool().clone())
+                .made_to_order_stock(sale_location_id)
+                .await?,
+        );
 
         rows.into_iter()
             .map(
                 |(id, name, description, category, day_price, night_price, stock)| {
-                    let price = PricingPolicyService::evaluate_legacy_product_price(
+                    let stock = makeable.get(&id).copied().unwrap_or(stock);
+                    let price = PricingPolicyService::evaluate_product_price(
                         day_price,
                         night_price,
+                        id,
+                        &category,
+                        &product_rules,
                         now,
                         &timezone,
                         &night_start,
@@ -149,6 +169,7 @@ impl KioskOrderService {
                     "08:00".to_string(),
                 )
             });
+        let product_rules = self.product_rules().await?;
         let mut resolved: Vec<(Uuid, i32, String, f64)> = Vec::new();
 
         for item in &dto.line_items {
@@ -159,12 +180,16 @@ impl KioskOrderService {
                 )));
             }
 
-            let row: Option<(String, f64, f64, bool)> = sqlx::query_as(
+            let row: Option<(String, f64, f64, bool, String)> = sqlx::query_as(
                 r#"
                 SELECT p.name,
                        p."dayPrice"::float8,
                        p."nightPrice"::float8,
-                       p."isActive"
+                       p."isActive" AND NOT p."isRawMaterial" AND NOT EXISTS (
+                         SELECT 1 FROM product_option_groups g
+                         WHERE g."productId" = p.id AND g.required
+                       ),
+                       p.category::text
                 FROM products p
                 WHERE p.id = $1 AND p."deletedAt" IS NULL
                 "#,
@@ -173,7 +198,7 @@ impl KioskOrderService {
             .fetch_optional(self.repo.pool())
             .await?;
 
-            let (name, day_price, night_price, is_active) = row.ok_or_else(|| {
+            let (name, day_price, night_price, is_active, category) = row.ok_or_else(|| {
                 AppError::NotFound(format!("Product {} not found", item.product_id))
             })?;
 
@@ -184,9 +209,12 @@ impl KioskOrderService {
                 )));
             }
 
-            let unit_price = PricingPolicyService::evaluate_legacy_product_price(
+            let unit_price = PricingPolicyService::evaluate_product_price(
                 day_price,
                 night_price,
+                item.product_id,
+                &category,
+                &product_rules,
                 now,
                 &timezone,
                 &night_start,
@@ -206,6 +234,15 @@ impl KioskOrderService {
         self.notify_order_placed(&order).await?;
 
         Ok(order)
+    }
+
+    async fn product_rules(&self) -> Result<Vec<crate::models::PricingRule>, AppError> {
+        self.pricing
+            .active_product_rules(
+                crate::models::DEFAULT_ORGANIZATION_ID,
+                Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+            )
+            .await
     }
 
     async fn notify_order_placed(&self, order: &KioskOrderWithItems) -> Result<(), AppError> {
@@ -401,6 +438,7 @@ impl KioskOrderService {
                         product_id: i.product_id,
                         quantity: i.quantity,
                         unit_price: Some(i.unit_price),
+                        option_ids: Vec::new(),
                     })
                     .collect(),
             ),

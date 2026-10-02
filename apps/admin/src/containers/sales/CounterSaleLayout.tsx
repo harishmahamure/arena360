@@ -3,7 +3,6 @@ import { ArrowBack } from '@mui/icons-material';
 import { Box, Button } from '@mui/material';
 import type { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { GuidedForm, GuidedStep } from '../../components/GuidedForm';
 
 export interface CounterSaleLayoutProps {
   backTo: string;
@@ -14,11 +13,9 @@ export interface CounterSaleLayoutProps {
   alerts?: ReactNode;
   actions: ReactNode;
   busy: boolean;
-  validateSelection: () => string | undefined;
-  validatePayment: () => string | undefined;
-  review: ReactNode;
 }
 
+/** One screen for counter sales: pick on the left, pay on the right. Submit handlers validate. */
 export function CounterSaleLayout({
   backTo,
   backLabel,
@@ -28,9 +25,6 @@ export function CounterSaleLayout({
   alerts,
   actions,
   busy,
-  validateSelection,
-  validatePayment,
-  review,
 }: CounterSaleLayoutProps) {
   return (
     <PageShell
@@ -44,14 +38,26 @@ export function CounterSaleLayout({
       toolbar={toolbar}
     >
       {alerts}
-      <GuidedForm busy={busy} actions={actions} review={review}>
-        <GuidedStep title="Player & items" validate={validateSelection}>
-          {catalog}
-        </GuidedStep>
-        <GuidedStep title="Cart & payment" validate={validatePayment}>
+      <Box
+        component="fieldset"
+        disabled={busy}
+        sx={{
+          m: 0,
+          p: 0,
+          border: 0,
+          minWidth: 0,
+          display: 'grid',
+          gap: 3,
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 7fr) minmax(320px, 5fr)' },
+          alignItems: 'start',
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>{catalog}</Box>
+        <Box sx={{ minWidth: 0, position: { md: 'sticky' }, top: { md: 16 } }}>
           {summary}
-        </GuidedStep>
-      </GuidedForm>
+          <Box sx={{ mt: 2 }}>{actions}</Box>
+        </Box>
+      </Box>
     </PageShell>
   );
 }

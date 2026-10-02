@@ -8,8 +8,14 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::AdminUser;
-use crate::models::{CreateProductDto, Product, ProductFilterDto, UpdateProductDto};
-use crate::openapi::responses::{ErrorEnvelope, ProductEnvelope, ProductPaginationEnvelope};
+use crate::models::{
+    CreateProductDto, CurrentPricesQuery, Product, ProductCurrentPrice, ProductFilterDto,
+    ProductRecipe, UpdateProductDto,
+};
+use crate::openapi::responses::{
+    ErrorEnvelope, ProductCurrentPriceListEnvelope, ProductEnvelope, ProductPaginationEnvelope,
+    ProductRecipeEnvelope,
+};
 
 #[utoipa::path(
     get,
@@ -106,6 +112,73 @@ pub async fn update_product(
         .update(id, dto, claims.user_id_uuid())
         .await?;
     ok(product)
+}
+
+#[utoipa::path(
+    get,
+    path = "/products/current-prices",
+    params(CurrentPricesQuery),
+    responses(
+        (status = 200, description = "Sale price of each product right now, after published product pricing rules and before options", body = ProductCurrentPriceListEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "products"
+)]
+pub async fn current_prices(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<CurrentPricesQuery>,
+) -> ApiResult<Vec<ProductCurrentPrice>> {
+    ok(state
+        .transactions
+        .current_product_prices(query.location_id)
+        .await?)
+}
+
+#[utoipa::path(
+    get,
+    path = "/products/{id}/recipe",
+    params(("id" = Uuid, Path, description = "Product ID")),
+    responses(
+        (status = 200, description = "Recipe ingredients and options", body = ProductRecipeEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "products"
+)]
+pub async fn get_recipe(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<ProductRecipe> {
+    ok(state.product_recipes.get(id).await?)
+}
+
+#[utoipa::path(
+    put,
+    path = "/products/{id}/recipe",
+    params(("id" = Uuid, Path, description = "Product ID")),
+    request_body = ProductRecipe,
+    responses(
+        (status = 200, description = "Recipe replaced", body = ProductRecipeEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "products"
+)]
+pub async fn save_recipe(
+    AdminUser(_claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(recipe): Json<ProductRecipe>,
+) -> ApiResult<ProductRecipe> {
+    ok(state.product_recipes.save(id, recipe).await?)
 }
 
 #[utoipa::path(

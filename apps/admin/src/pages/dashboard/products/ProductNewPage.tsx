@@ -119,6 +119,13 @@ function buildProductFormFields(
       gridCols: 12,
       helperText: 'Inactive products are hidden from POS but kept in catalog',
     },
+    {
+      name: 'isRawMaterial',
+      label: 'Raw material (ingredient only)',
+      type: 'switch',
+      gridCols: 12,
+      helperText: 'Stocked and used in recipes, such as buns or patties, but never sold on its own',
+    },
   ];
 }
 
@@ -172,6 +179,7 @@ export default function AddNewProductPage() {
         sku: data.sku || '',
         stockQuantity: data.stockQuantity || 0,
         isActive: data.isActive ?? true,
+        isRawMaterial: data.isRawMaterial ?? false,
       });
       setTimeout(() => navigate('/products'), 1500);
     });
@@ -206,7 +214,10 @@ export default function AddNewProductPage() {
               'purchaseUnitId',
             ],
           },
-          { title: 'Stock & availability', fields: ['stockQuantity', 'isActive'] },
+          {
+            title: 'Stock & availability',
+            fields: ['stockQuantity', 'isActive', 'isRawMaterial'],
+          },
         ]}
         key={unitsReady ? 'units-ready' : unitsLoading ? 'units-loading' : 'units-empty'}
         fields={productFormFields}

@@ -20,9 +20,9 @@ use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
     GameService, InventoryService, KioskOrderService, NotificationService, PlanService,
-    PlayerPlanService, PricingPolicyService, ProcurementService, ProductService, SessionService,
-    ShiftService, StaffGamingAllowanceService, StatsService, StorageConfig, StorageService,
-    TransactionService, UnitService, UserService, VendorService,
+    PlayerPlanService, PricingPolicyService, ProcurementService, ProductRecipeService,
+    ProductService, SessionService, ShiftService, StaffGamingAllowanceService, StatsService,
+    StorageConfig, StorageService, TransactionService, UnitService, UserService, VendorService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -48,6 +48,7 @@ pub struct AppState {
     pub cash_deposits: CashDepositService,
     pub transactions: TransactionService,
     pub products: ProductService,
+    pub product_recipes: ProductRecipeService,
     pub games: GameService,
     pub storage: StorageService,
     pub expense_categories: ExpenseCategoryService,
@@ -203,6 +204,7 @@ pub async fn build_state() -> Arc<AppState> {
             config_service.clone(),
         ),
         products: ProductService::new(pool.clone(), cache.clone()),
+        product_recipes: ProductRecipeService::new(pool.clone()),
         games: GameService::new(pool.clone(), cache.clone()),
         storage: StorageService::new(StorageConfig::from_env()),
         expense_categories: ExpenseCategoryService::new(pool.clone(), cache.clone()),
@@ -465,10 +467,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::products::list_products).post(handlers::products::create_product),
         )
         .route(
+            "/products/current-prices",
+            get(handlers::products::current_prices),
+        )
+        .route(
             "/products/{id}",
             get(handlers::products::get_product)
                 .patch(handlers::products::update_product)
                 .delete(handlers::products::delete_product),
+        )
+        .route(
+            "/products/{id}/recipe",
+            get(handlers::products::get_recipe).put(handlers::products::save_recipe),
         )
         .route(
             "/games",

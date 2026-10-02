@@ -40,7 +40,10 @@ pub async fn enqueue(
     let id: Option<Uuid> = sqlx::query_scalar(r#"
         INSERT INTO kitchen_tickets (transaction_id, items, customer, notes, due_at)
         SELECT t.id, jsonb_agg(jsonb_build_object('productId',p.id,'name',p.name,
-            'quantity',tp.quantity,'station',m.station) ORDER BY p.name), u.username, t.notes,
+            'quantity',tp.quantity,'station',m.station,
+            'options',(SELECT coalesce(jsonb_agg(o.name ORDER BY o.id),'[]'::jsonb)
+                       FROM transaction_product_options o WHERE o."transactionProductId"=tp.id))
+            ORDER BY p.name), u.username, t.notes,
             now() + make_interval(mins => max(m.prep_minutes))
         FROM transactions t JOIN users u ON u.id=t."playerId"
         JOIN transaction_products tp ON tp."transactionId"=t.id

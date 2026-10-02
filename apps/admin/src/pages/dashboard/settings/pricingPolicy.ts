@@ -34,6 +34,19 @@ export function parsePricingPolicy(text: string): PricingPolicy {
       throw new Error(
         'Each rule needs a name, ID, priority, device types, weekdays, and a valid adjustment.',
       );
+    const target = rule.target ?? 'sessions';
+    const strings = (value: unknown) =>
+      value == null || (Array.isArray(value) && value.every((item) => typeof item === 'string'));
+    if (
+      !['sessions', 'products'].includes(target) ||
+      !strings(rule.productIds) ||
+      !strings(rule.categories)
+    )
+      throw new Error(`Rule '${rule.name}' has an invalid target, products, or categories.`);
+    if (target === 'products' && rule.deviceTypes.length)
+      throw new Error(`Product rule '${rule.name}' cannot have device types.`);
+    if (target === 'sessions' && (rule.productIds?.length || rule.categories?.length))
+      throw new Error(`Session rule '${rule.name}' cannot target products or categories.`);
     if (
       (rule.startTime != null && typeof rule.startTime !== 'string') ||
       (rule.endTime != null && typeof rule.endTime !== 'string')

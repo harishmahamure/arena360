@@ -29,6 +29,8 @@ pub struct TransactionProductResponse {
     pub product_name: String,
     pub product_sku: Option<String>,
     pub product_price: f64,
+    #[serde(default)]
+    pub option_names: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -38,4 +40,7 @@ pub struct CreateLineItemDto {
     pub product_id: Uuid,
     pub quantity: i32,
     pub unit_price: Option<f64>,
+    /// Chosen product options, for example "Extra patty".
+    #[serde(default)]
+    pub option_ids: Vec<Uuid>,
 }

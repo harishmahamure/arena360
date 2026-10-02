@@ -2,7 +2,7 @@ import { GlobalStyles, ThemeProvider, useMediaQuery } from '@mui/material';
 import { alpha, darken, lighten } from '@mui/material/styles';
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { createAdminTheme } from './adminTheme';
-import { type Appearance, defaultAppearance, parseAppearance } from './appearance';
+import { type Appearance, defaultAppearance, parseAppearance, textScale } from './appearance';
 
 const AppearanceContext = createContext({
   preferences: defaultAppearance,
@@ -52,6 +52,7 @@ export function AppearanceProvider({
         <GlobalStyles
           styles={{
             ':root': {
+              fontSize: `${textScale[preferences.textSize] * 100}%`,
               colorScheme: mode,
               '--workspace-bg': theme.palette.background.default,
               '--workspace-paper': theme.palette.background.paper,
