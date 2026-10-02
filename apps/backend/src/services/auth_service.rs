@@ -722,6 +722,7 @@ mod admin_totp_tests {
             created_at: now,
             updated_at: now,
             deleted_at: None,
+            avatar_url: None,
         }
     }
 
@@ -833,6 +834,7 @@ mod access_token_tests {
             created_at: now,
             updated_at: now,
             deleted_at: None,
+            avatar_url: None,
         }
     }
 

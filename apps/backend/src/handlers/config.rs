@@ -15,10 +15,52 @@ use crate::models::{
     UpsertSettingOverrideDto, VenueLocation,
 };
 use crate::openapi::responses::{
-    ConfigurationEnvelope, ConfigurationListEnvelope, ConfigurationSnapshotEnvelope, ErrorEnvelope,
-    ResolvedSettingListEnvelope, SettingCatalogEnvelope, SettingOverrideEnvelope,
-    SettingRevisionListEnvelope, VenueLocationListEnvelope,
+    BrandingEnvelope, ConfigurationEnvelope, ConfigurationListEnvelope,
+    ConfigurationSnapshotEnvelope, ErrorEnvelope, ResolvedSettingListEnvelope,
+    SettingCatalogEnvelope, SettingOverrideEnvelope, SettingRevisionListEnvelope,
+    VenueLocationListEnvelope,
 };
+
+/// Public white-label identity shown on the login screen and panel shell.
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Branding {
+    pub name: String,
+    pub logo_url: String,
+    pub primary_color: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/branding",
+    responses((status = 200, description = "Venue branding", body = BrandingEnvelope)),
+    tag = "config"
+)]
+pub async fn branding(State(state): State<Arc<AppState>>) -> ApiResult<Branding> {
+    let settings = state
+        .config
+        .effective(
+            crate::models::DEFAULT_ORGANIZATION_ID,
+            EffectiveSettingsQuery {
+                location_id: Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                category: None,
+            },
+        )
+        .await?;
+    let text = |key: &str| {
+        settings
+            .iter()
+            .find(|setting| setting.key == key)
+            .and_then(|setting| setting.value.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    ok(Branding {
+        name: text("business.name"),
+        logo_url: text("business.logo_url"),
+        primary_color: text("branding.primary_color"),
+    })
+}
 
 #[utoipa::path(
     get,

@@ -25,7 +25,9 @@ export default function DashboardLayout() {
   const location = useLocation();
   const outletKey = `${location.pathname}${location.search}`;
 
-  const { email, firstName, lastName, username, role } = useSelector((state) => state.auth);
+  const { email, firstName, lastName, username, role, avatarUrl } = useSelector(
+    (state) => state.auth,
+  );
   const { can, isStaff } = usePermissions();
   const [handoverOpen, setHandoverOpen] = useState(false);
 
@@ -163,6 +165,7 @@ export default function DashboardLayout() {
           name: `${firstName} ${lastName}`.trim() || username,
           email,
           role: myAccess?.roles.join(', ') || 'Team member',
+          avatarUrl,
         }}
         onLogout={handleLogout}
         appBarQuickActions={appBarQuickActions}

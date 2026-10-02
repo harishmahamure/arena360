@@ -137,8 +137,34 @@ export function bootstrapAuthFromToken(dispatch: Dispatch<AuthAction>): void {
 }
 
 /** Expiry and inactivity checks also run after sleep and when returning to the tab. */
-export function watchSessionExpiry(onExpire: () => void, idleMs = idleTimeoutMs()): () => void {
+/** Renew this long before expiry so an active operator never hits an expired token mid-task. */
+const RENEW_BEFORE_MS = 2 * 60_000;
+
+export function watchSessionExpiry(
+  onExpire: () => void,
+  idleMs = idleTimeoutMs(),
+  renew?: () => Promise<string>,
+): () => void {
   let timer: ReturnType<typeof setTimeout>;
+  let renewing = false;
+  let stopped = false;
+  let lastRenewAttempt = 0;
+  const tryRenew = () => {
+    if (!renew || renewing || Date.now() - lastRenewAttempt < 15_000) return;
+    renewing = true;
+    lastRenewAttempt = Date.now();
+    renew()
+      .then((token) => {
+        if (!stopped && panelClaims(token)) local.set('accessToken', token);
+      })
+      .catch(() => {
+        /* A failed renewal falls through to normal expiry handling. */
+      })
+      .finally(() => {
+        renewing = false;
+        if (!stopped) check();
+      });
+  };
   let lastActivity = local.get<number>('arena:last-activity') || Date.now();
   let lastSaved = lastActivity;
   const readActivity = () => {
@@ -156,10 +182,9 @@ export function watchSessionExpiry(onExpire: () => void, idleMs = idleTimeoutMs(
       onExpire();
       return;
     }
-    timer = setTimeout(
-      check,
-      Math.min((claims.exp ?? 0) * 1000 - Date.now(), idleRemaining, 15_000),
-    );
+    const expiresIn = (claims.exp ?? 0) * 1000 - Date.now();
+    if (expiresIn <= RENEW_BEFORE_MS) tryRenew();
+    timer = setTimeout(check, Math.max(0, Math.min(expiresIn, idleRemaining, 15_000)));
   };
   const activity = () => {
     if (Date.now() - readActivity() >= idleMs) {
@@ -180,6 +205,7 @@ export function watchSessionExpiry(onExpire: () => void, idleMs = idleTimeoutMs(
   window.addEventListener('focus', check);
   document.addEventListener('visibilitychange', check);
   return () => {
+    stopped = true;
     clearTimeout(timer);
     events.forEach((event) => {
       window.removeEventListener(event, activity);

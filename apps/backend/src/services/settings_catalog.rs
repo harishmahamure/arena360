@@ -111,6 +111,15 @@ pub fn catalog(default_timezone: &str) -> Vec<SettingDefinition> {
             "venue",
         ),
         definition(
+            "branding.primary_color",
+            "business",
+            "Brand accent colour (#RRGGBB) used across the panel and login",
+            SettingValueType::String,
+            json!(""),
+            false,
+            "venue",
+        ),
+        definition(
             "venue.timezone",
             "venue",
             "IANA timezone used for venue rules",
@@ -312,6 +321,24 @@ pub fn validate(
                     "Setting '{key}' must use HH:MM"
                 )));
             }
+            if key == "branding.primary_color"
+                && !text.is_empty()
+                && !(text.len() == 7
+                    && text.starts_with('#')
+                    && text[1..].chars().all(|c| c.is_ascii_hexdigit()))
+            {
+                return Err(AppError::BadRequest(
+                    "branding.primary_color must be a #RRGGBB colour".to_string(),
+                ));
+            }
+            if key == "business.logo_url"
+                && !text.is_empty()
+                && !(text.starts_with("https://") || text.starts_with("http://"))
+            {
+                return Err(AppError::BadRequest(
+                    "business.logo_url must be an http(s) URL".to_string(),
+                ));
+            }
         }
         SettingValueType::Number => {
             let number = value.as_f64().ok_or_else(|| type_error(key, "number"))?;
@@ -415,5 +442,18 @@ mod tests {
         assert!(validate("Asia/Kolkata", "pricing.tax_rate", &json!(101), false).is_err());
         assert!(validate("Asia/Kolkata", "pricing.currency", &json!("INR"), false).is_ok());
         assert!(validate("Asia/Kolkata", "pricing.currency", &json!("XYZ"), false).is_err());
+    }
+
+    #[test]
+    fn validates_branding_values() {
+        let check = |key, value: &str| validate("UTC", key, &json!(value), false).is_ok();
+        assert!(check("branding.primary_color", "#1f7a4d"));
+        assert!(check("branding.primary_color", ""));
+        assert!(!check("branding.primary_color", "green"));
+        assert!(check(
+            "business.logo_url",
+            "https://cdn.example.com/logo.webp"
+        ));
+        assert!(!check("business.logo_url", "javascript:alert(1)"));
     }
 }

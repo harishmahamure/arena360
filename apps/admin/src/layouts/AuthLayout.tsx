@@ -1,26 +1,26 @@
 import {
   ArrowOutward,
-  GridViewRounded,
   LockOutlined,
   SpaceDashboardOutlined,
   TuneRounded,
 } from '@mui/icons-material';
 import { Box, LinearProgress, Typography } from '@mui/material';
-import { Suspense } from 'react';
+import { Suspense, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { BrandMark } from '../components/BrandMark';
+import { useAutoFocusFirstField } from '../hooks/useAutoFocusFirstField';
+import { useBranding } from '../services/config/branding';
 
 export default function AuthLayout() {
   const location = useLocation();
+  const brand = useBranding();
+  const formRef = useRef<HTMLDivElement>(null);
+  useAutoFocusFirstField(formRef, location.pathname, true);
   return (
     <Box className="auth-layout">
       <Box className="auth-story">
         <div className="workspace-brand">
-          <span className="brand-mark">
-            <GridViewRounded />
-          </span>
-          <span>
-            arena<span className="brand-number">360</span>
-          </span>
+          <BrandMark />
         </div>
         <Box className="auth-story-copy">
           <Typography variant="overline" sx={{ color: '#9fb6aa' }}>
@@ -54,11 +54,11 @@ export default function AuthLayout() {
           </Box>
         </Box>
         <Typography variant="caption" sx={{ color: '#90a59a' }}>
-          Arena360 · Built for the way you operate.
+          {brand.name} · Built for the way you operate.
         </Typography>
       </Box>
       <Box className="auth-form-side">
-        <Box className="auth-form-card">
+        <Box className="auth-form-card" ref={formRef}>
           <Box className="auth-security">
             <LockOutlined sx={{ fontSize: 15 }} /> SECURE WORKSPACE ACCESS
           </Box>

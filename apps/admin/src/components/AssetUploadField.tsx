@@ -2,7 +2,7 @@ import { ImageUpload } from '@gaming-cafe/ui';
 import { CloudUpload, Delete } from '@mui/icons-material';
 import { Box, Button, IconButton, Stack, Typography } from '@mui/material';
 import { useRef, useState } from 'react';
-import { uploadAsset } from '../services/upload/presign';
+import { type UploadOptions, uploadAsset } from '../services/upload/presign';
 
 interface AssetUploadFieldProps {
   label: string;
@@ -10,11 +10,13 @@ interface AssetUploadFieldProps {
   onChange: (url: string | null) => void;
   kind?: 'image' | 'video';
   helperText?: string;
+  disabled?: boolean;
+  uploadOptions?: UploadOptions;
 }
 
 /**
- * Uploads an asset to object storage via a presigned PUT (DRAFT-0022) and emits
- * the resulting public URL. Images preview inline; videos show a small player.
+ * Compresses and uploads an asset to object storage via a presigned PUT (DRAFT-0022)
+ * and emits the resulting public URL. Images preview inline; videos show a small player.
  */
 export function AssetUploadField({
   label,
@@ -22,6 +24,8 @@ export function AssetUploadField({
   onChange,
   kind = 'image',
   helperText,
+  disabled = false,
+  uploadOptions,
 }: AssetUploadFieldProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -35,7 +39,7 @@ export function AssetUploadField({
     setUploading(true);
     setError(undefined);
     try {
-      const url = await uploadAsset(file);
+      const url = await uploadAsset(file, uploadOptions);
       onChange(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed');
@@ -54,8 +58,8 @@ export function AssetUploadField({
           value={value}
           onChange={handleFile}
           accept="image/*"
-          disabled={uploading}
-          helperText={uploading ? 'Uploading…' : helperText}
+          disabled={uploading || disabled}
+          helperText={uploading ? 'Optimizing to WebP and uploading…' : helperText}
           error={Boolean(error)}
           errorMessage={error}
           buttonLabel={`Upload ${label}`}
@@ -90,7 +94,7 @@ export function AssetUploadField({
               size="small"
               startIcon={<CloudUpload />}
               onClick={() => videoInputRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading || disabled}
             >
               Change
             </Button>
@@ -104,10 +108,10 @@ export function AssetUploadField({
           variant="outlined"
           startIcon={<CloudUpload />}
           onClick={() => videoInputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || disabled}
           color={error ? 'error' : 'primary'}
         >
-          {uploading ? 'Uploading…' : `Upload ${label}`}
+          {uploading ? 'Optimizing to WebM and uploading…' : `Upload ${label}`}
         </Button>
       )}
       {(helperText || error) && (

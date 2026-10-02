@@ -123,6 +123,18 @@ impl UserService {
         .await
     }
 
+    /// Set or clear the caller's own profile photo (DRAFT-0042).
+    pub async fn set_avatar(&self, id: Uuid, avatar_url: Option<&str>) -> Result<User, AppError> {
+        self.repo.set_avatar(id, avatar_url).await?;
+        let user = self
+            .repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("User with ID {id} not found")))?;
+        self.invalidate_user_caches(&user, None).await?;
+        Ok(user)
+    }
+
     pub async fn update(
         &self,
         id: Uuid,
@@ -419,6 +431,8 @@ struct AuthUserCacheEntry {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     deleted_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    avatar_url: Option<String>,
 }
 
 impl From<&User> for AuthUserCacheEntry {
@@ -443,6 +457,7 @@ impl From<&User> for AuthUserCacheEntry {
             created_at: user.created_at,
             updated_at: user.updated_at,
             deleted_at: user.deleted_at,
+            avatar_url: user.avatar_url.clone(),
         }
     }
 }
@@ -469,6 +484,7 @@ impl From<AuthUserCacheEntry> for User {
             created_at: entry.created_at,
             updated_at: entry.updated_at,
             deleted_at: entry.deleted_at,
+            avatar_url: entry.avatar_url,
         }
     }
 }

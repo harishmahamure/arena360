@@ -89,7 +89,7 @@ export function PosPlayerPicker({
   }, [playerInputValue, searching, inSession]);
 
   return (
-    <Card variant="outlined" sx={{ mb: 3 }}>
+    <Card variant="outlined" sx={{ mb: 2 }}>
       <CardContent>
         <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
           Select player

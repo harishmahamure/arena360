@@ -4,7 +4,6 @@ import {
   Close,
   ExpandLess,
   ExpandMore,
-  GridViewRounded,
   Logout,
   MenuRounded,
   Search,
@@ -14,6 +13,7 @@ import {
   Avatar,
   Box,
   Button,
+  ButtonBase,
   Chip,
   Dialog,
   DialogContent,
@@ -29,16 +29,22 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrandMark } from '../components/BrandMark';
+import { isFormRoute, useAutoFocusFirstField } from '../hooks/useAutoFocusFirstField';
 import { useRealtimeStatus } from '../lib/realtime/RealtimeProvider';
+import { useBranding } from '../services/config/branding';
 import AppearanceDialog from '../theme/AppearanceDialog';
+
+/** Counter screens that take the whole display; they render their own slim header. */
+const FOCUS_ROUTES = new Set(['/product-transactions/new', '/plan-transactions/new']);
 
 export interface WorkspaceShellProps {
   children: ReactNode;
   navItems: NavItem[];
   pageTitle: string;
-  user: { name: string; email: string; role: string };
+  user: { name: string; email: string; role: string; avatarUrl?: string };
   onLogout: () => void;
   shiftBadge?: { active: boolean; label: string; onClick: () => void };
   appBarQuickActions: {
@@ -63,12 +69,16 @@ export function WorkspaceShell({
   notificationSlot,
 }: WorkspaceShellProps) {
   const realtimeStatus = useRealtimeStatus();
+  const brand = useBranding();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const mainRef = useRef<HTMLElement>(null);
+  const focusMode = FOCUS_ROUTES.has(location.pathname);
+  useAutoFocusFirstField(mainRef, location.pathname, isFormRoute(location.pathname));
   const current = useMemo(
     () =>
       navItems
@@ -114,27 +124,21 @@ export function WorkspaceShell({
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Close the drawer when navigating between filters of the same page.
   useEffect(() => {
-    document.title = `${pageTitle} · Arena360`;
+    document.title = `${pageTitle} · ${brand.name}`;
     setMobileOpen(false);
-  }, [location.pathname, location.search, pageTitle]);
+  }, [location.pathname, location.search, pageTitle, brand.name]);
 
   const sidebar = (
     <Box className="workspace-sidebar">
-      <Link className="workspace-brand" to="/" aria-label="Arena360 home">
-        <span className="brand-mark">
-          <GridViewRounded />
-        </span>
-        <span>
-          arena<span className="brand-number">360</span>
-          <small>OPERATIONS WORKSPACE</small>
-        </span>
+      <Link className="workspace-brand" to="/" aria-label={`${brand.name} home`}>
+        <BrandMark subtitle="OPERATIONS WORKSPACE" />
       </Link>
       <Box className="workspace-context">
         <span className="workspace-context-icon" style={{ flexShrink: 0 }}>
-          A
+          {brand.name.slice(0, 1).toUpperCase()}
         </span>
         <div style={{ minWidth: 0 }}>
-          <strong>Arena360</strong>
+          <strong>{brand.name}</strong>
           <small
             title={user.role}
             style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -207,17 +211,37 @@ export function WorkspaceShell({
         ))}
       </Box>
       <Box className="sidebar-footer">
-        <Avatar sx={{ width: 32, height: 32, bgcolor: '#31493f', fontSize: '0.8125rem' }}>
-          {(user.name.trim() || user.email || 'A').slice(0, 1).toUpperCase()}
-        </Avatar>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography noWrap fontWeight={600} fontSize="0.75rem">
-            {user.name.trim() || user.email || 'Account'}
-          </Typography>
-          <Typography fontSize="0.6875rem" color="#91a39b">
-            {user.role}
-          </Typography>
-        </Box>
+        <ButtonBase
+          component={Link}
+          to="/profile"
+          aria-label="Open your profile"
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            gap: 1.25,
+            justifyContent: 'flex-start',
+            textAlign: 'left',
+            borderRadius: 1.5,
+            p: 0.5,
+            '&:hover, &:focus-visible': { bgcolor: 'rgba(255,255,255,0.08)' },
+          }}
+        >
+          <Avatar
+            src={user.avatarUrl || undefined}
+            alt=""
+            sx={{ width: 32, height: 32, bgcolor: '#31493f', fontSize: '0.8125rem' }}
+          >
+            {(user.name.trim() || user.email || 'A').slice(0, 1).toUpperCase()}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography noWrap fontWeight={600} fontSize="0.75rem">
+              {user.name.trim() || user.email || 'Account'}
+            </Typography>
+            <Typography fontSize="0.6875rem" color="#91a39b">
+              {user.role}
+            </Typography>
+          </Box>
+        </ButtonBase>
         <Tooltip title={shiftBadge?.active ? 'End shift and sign out' : 'Sign out'}>
           <IconButton onClick={onLogout} aria-label="Sign out" sx={{ color: '#a9bab3' }}>
             <Logout fontSize="small" />
@@ -228,11 +252,11 @@ export function WorkspaceShell({
   );
 
   return (
-    <Box className="workspace">
+    <Box className={`workspace${focusMode ? ' workspace-focus' : ''}`}>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <Box className="desktop-sidebar">{sidebar}</Box>
+      {!focusMode && <Box className="desktop-sidebar">{sidebar}</Box>}
       <Drawer
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
@@ -241,77 +265,102 @@ export function WorkspaceShell({
         {sidebar}
       </Drawer>
       <Box className="workspace-body">
-        <Box component="header" className="workspace-topbar">
-          <IconButton
-            className="mobile-menu"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open navigation"
-          >
-            <MenuRounded />
-          </IconButton>
-          <Box className="workspace-breadcrumb">
-            <span>{current?.section ?? 'Workspace'}</span>
-            <span>/</span>
-            <strong>{pageTitle}</strong>
-          </Box>
-          <Box sx={{ flex: 1 }} />
-          {shiftBadge && (
-            <Chip
-              label={shiftBadge.label}
-              color={shiftBadge.active ? 'success' : 'warning'}
-              onClick={shiftBadge.onClick}
-            />
-          )}
-          {appBarQuickActions.showPos && (
-            <Button onClick={appBarQuickActions.onPosClick} variant="contained" size="small">
-              New sale
-            </Button>
-          )}
-          {appBarQuickActions.showPlan && (
-            <Button onClick={appBarQuickActions.onPlanClick} variant="outlined" size="small">
-              Sell plan
-            </Button>
-          )}
-          <Tooltip title="Search pages (⌘/Ctrl K)">
-            <IconButton aria-label="Search pages" onClick={() => setSearchOpen(true)}>
-              <Search fontSize="small" />
+        {!focusMode && (
+          <Box component="header" className="workspace-topbar">
+            <IconButton
+              className="mobile-menu"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
+            >
+              <MenuRounded />
             </IconButton>
-          </Tooltip>
-          <AppearanceDialog />
-          {notificationSlot}
-          {settingsPath && (
-            <Tooltip title="Configuration">
-              <IconButton component={Link} to={settingsPath} aria-label="Open configuration">
-                <SettingsOutlined fontSize="small" />
+            <Box className="workspace-breadcrumb">
+              <span>{current?.section ?? 'Workspace'}</span>
+              <span>/</span>
+              <strong>{pageTitle}</strong>
+            </Box>
+            <Box sx={{ flex: 1 }} />
+            <Button
+              className="topbar-search"
+              startIcon={<Search />}
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search or jump to a page"
+            >
+              <span className="topbar-search-label">Search or jump to…</span>
+              <kbd>⌘ K</kbd>
+            </Button>
+            {shiftBadge && (
+              <Chip
+                label={shiftBadge.label}
+                color={shiftBadge.active ? 'success' : 'warning'}
+                onClick={shiftBadge.onClick}
+              />
+            )}
+            {appBarQuickActions.showPos && (
+              <Button onClick={appBarQuickActions.onPosClick} variant="contained">
+                New sale
+              </Button>
+            )}
+            {appBarQuickActions.showPlan && (
+              <Button onClick={appBarQuickActions.onPlanClick} variant="outlined">
+                Sell plan
+              </Button>
+            )}
+            <AppearanceDialog />
+            {notificationSlot}
+            {settingsPath && (
+              <Tooltip title="Configuration">
+                <IconButton component={Link} to={settingsPath} aria-label="Open configuration">
+                  <SettingsOutlined fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="My profile">
+              <IconButton
+                component={Link}
+                to="/profile"
+                aria-label="Open your profile"
+                sx={{ p: 0.5 }}
+              >
+                <Avatar
+                  src={user.avatarUrl || undefined}
+                  alt=""
+                  sx={{
+                    width: 30,
+                    height: 30,
+                    fontSize: '0.75rem',
+                    bgcolor: '#e9eee9',
+                    color: '#315440',
+                  }}
+                >
+                  {(user.name.trim() || 'A').slice(0, 1)}
+                </Avatar>
               </IconButton>
             </Tooltip>
-          )}
-          <Avatar
-            sx={{
-              width: 30,
-              height: 30,
-              fontSize: '0.75rem',
-              bgcolor: '#e9eee9',
-              color: '#315440',
-            }}
-          >
-            {(user.name.trim() || 'A').slice(0, 1)}
-          </Avatar>
-        </Box>
-        <Box component="main" id="main-content" tabIndex={-1} className="workspace-content">
+          </Box>
+        )}
+        <Box
+          component="main"
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          className="workspace-content"
+        >
           {children}
         </Box>
-        <Box component="footer" className="workspace-footer">
-          <span role="status">
-            Arena360 ·{' '}
-            {realtimeStatus === 'connected'
-              ? 'Live updates connected'
-              : realtimeStatus === 'connecting'
-                ? 'Connecting to live updates…'
-                : 'Live updates offline — reconnecting automatically'}
-          </span>
-          <span>{'Team workspace'}</span>
-        </Box>
+        {!focusMode && (
+          <Box component="footer" className="workspace-footer">
+            <span role="status">
+              {brand.name} ·{' '}
+              {realtimeStatus === 'connected'
+                ? 'Live updates connected'
+                : realtimeStatus === 'connecting'
+                  ? 'Connecting to live updates…'
+                  : 'Live updates offline — reconnecting automatically'}
+            </span>
+            <span>{'Team workspace'}</span>
+          </Box>
+        )}
       </Box>
       <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle

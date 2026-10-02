@@ -20,6 +20,7 @@ const PUBLIC_EXACT: &[&str] = &[
     "/auth/login/staff",
     "/auth/login/panel",
     "/auth/login/panel/mfa",
+    "/branding",
     "/health/live",
     "/metrics",
     "/realtime",

@@ -243,3 +243,25 @@ pub async fn current_panel_user(
         .ok_or_else(|| AppError::Unauthorized("Invalid session".into()))?;
     ok(state.users.get_by_id(id).await?.to_auth_user())
 }
+
+/// Re-issue a panel access token for an active session so working staff are not
+/// signed out mid-task. Idle timeout is enforced by the client; revoked access fails in middleware.
+#[utoipa::path(
+    post, path = "/auth/refresh",
+    responses(
+        (status = 200, description = "Renewed panel token", body = AuthResponseEnvelope),
+        (status = 401, description = "Session expired or account access revoked", body = ErrorEnvelope),
+        (status = 403, description = "Panel role required", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])), tag = "auth"
+)]
+pub async fn refresh_panel_session(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<AuthResponseDto> {
+    let id = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid session".into()))?;
+    let user = state.users.get_by_id(id).await?;
+    ok(state.auth.issue_auth_response(&user).await?)
+}

@@ -129,6 +129,8 @@ pub struct AuthUserDto {
     pub lastName: Option<String>,
     pub role: String,
     pub isActive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatarUrl: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,32 +1,38 @@
 import { Nightlight, Store as StoreIcon } from '@mui/icons-material';
-import { Box, Chip, FormHelperText, MenuItem, TextField } from '@mui/material';
+import { Chip, InputAdornment, MenuItem, Stack, TextField, Tooltip } from '@mui/material';
 
 export interface PosStoreToolbarProps {
   saleLocationId: string;
   storeLocations: { id: string; name: string }[];
   nightActive?: boolean;
   onLocationChange: (id: string) => void;
-  helperText?: string;
 }
 
+/** Compact store picker that sits beside the product search; changing store clears the cart. */
 export function PosStoreToolbar({
   saleLocationId,
   storeLocations,
   nightActive = false,
   onLocationChange,
-  helperText = 'Which store location stock is sold from; changing store clears the cart',
 }: PosStoreToolbarProps) {
   return (
-    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      <StoreIcon color="action" sx={{ mt: 1 }} />
-      <Box>
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+      <Tooltip title="Stock is sold from this store. Changing store clears the cart.">
         <TextField
           select
-          label="Store"
-          size="small"
+          aria-label="Store"
           value={saleLocationId}
           onChange={(e) => onLocationChange(e.target.value)}
-          sx={{ minWidth: 220 }}
+          sx={{ minWidth: 180 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <StoreIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
         >
           {storeLocations.map((loc) => (
             <MenuItem key={loc.id} value={loc.id}>
@@ -34,17 +40,12 @@ export function PosStoreToolbar({
             </MenuItem>
           ))}
         </TextField>
-        <FormHelperText sx={{ mx: 0 }}>{helperText}</FormHelperText>
-      </Box>
+      </Tooltip>
       {nightActive && (
-        <Chip
-          icon={<Nightlight />}
-          label="Night price active (11 PM – 8 AM)"
-          color="secondary"
-          size="small"
-          sx={{ mt: 0.5 }}
-        />
+        <Tooltip title="Night price active (11 PM – 8 AM)">
+          <Chip icon={<Nightlight />} label="Night" color="secondary" />
+        </Tooltip>
       )}
-    </Box>
+    </Stack>
   );
 }

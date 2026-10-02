@@ -564,26 +564,32 @@ export default function CreateProductTransactionPage() {
     <>
       <PosPlayerPicker value={selectedPlayer} onChange={setSelectedPlayer} disabled={submitting} />
 
-      <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
-        Products
-      </Typography>
-      <TextField
-        placeholder="Search products..."
-        value={productSearch}
-        onChange={(e) => setProductSearch(e.target.value)}
-        fullWidth
-        size="small"
-        disabled={submitting}
-        sx={{ mb: 2 }}
-        helperText="Filter the product grid by name"
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" color="action" />
-            </InputAdornment>
-          ),
-        }}
-      />
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
+        <TextField
+          placeholder="Search products"
+          aria-label="Search products"
+          value={productSearch}
+          onChange={(e) => setProductSearch(e.target.value)}
+          fullWidth
+          disabled={submitting}
+          slotProps={{
+            htmlInput: { 'data-autofocus': true },
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <PosStoreToolbar
+          saleLocationId={saleLocationId}
+          storeLocations={storeLocations}
+          nightActive={nightActive}
+          onLocationChange={handleLocationChange}
+        />
+      </Stack>
 
       {productsLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -805,16 +811,8 @@ export default function CreateProductTransactionPage() {
         }}
       />
       <CounterSaleLayout
-        backTo="/product-transactions"
-        backLabel="POS sales"
-        toolbar={
-          <PosStoreToolbar
-            saleLocationId={saleLocationId}
-            storeLocations={storeLocations}
-            nightActive={nightActive}
-            onLocationChange={handleLocationChange}
-          />
-        }
+        title="New sale"
+        exitTo="/product-transactions"
         alerts={alerts}
         catalog={catalog}
         summary={summary}

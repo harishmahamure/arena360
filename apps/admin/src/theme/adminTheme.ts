@@ -14,6 +14,8 @@ export function createAdminTheme(
     accent = dark ? lighten(accent, 0.12) : darken(accent, 0.12);
   }
   const radius = preferences.corners === 'square' ? 2 : 10;
+  const touch = '@media (pointer: coarse)';
+  const fieldBorder = dark ? '#6f8396' : '#8a97a2';
   return createTheme({
     palette: {
       mode,
@@ -21,8 +23,8 @@ export function createAdminTheme(
       primary: { main: accent },
       secondary: { main: '#53667d' },
       background: { default: dark ? '#131c24' : '#f6f7f9', paper: dark ? '#1b2632' : '#ffffff' },
-      text: { primary: dark ? '#ecf1f6' : '#172b37', secondary: dark ? '#a8b6c4' : '#667782' },
-      divider: dark ? '#354452' : '#e5e9ed',
+      text: { primary: dark ? '#f2f6fa' : '#0f1f29', secondary: dark ? '#b8c5d1' : '#4a5a65' },
+      divider: dark ? '#3e4f5f' : '#d9e0e5',
       success: { main: '#197454' },
       warning: { main: '#a56912' },
       error: { main: '#bd3f3f' },
@@ -54,8 +56,15 @@ export function createAdminTheme(
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: { borderRadius: radius, minHeight: 38, paddingInline: 16 },
-          outlined: { borderColor: dark ? '#526475' : '#d5dfe0' },
+          root: {
+            borderRadius: radius,
+            minHeight: 40,
+            paddingInline: 16,
+            [touch]: { minHeight: 48, paddingInline: 20 },
+          },
+          sizeSmall: { minHeight: 32, [touch]: { minHeight: 40 } },
+          sizeLarge: { minHeight: 48, fontSize: '1rem', [touch]: { minHeight: 56 } },
+          outlined: { borderColor: fieldBorder },
         },
       },
       MuiCard: {
@@ -82,10 +91,26 @@ export function createAdminTheme(
       MuiOutlinedInput: {
         styleOverrides: {
           root: { backgroundColor: dark ? '#1b2632' : '#fff', borderRadius: radius },
-          notchedOutline: { borderColor: dark ? '#526475' : '#d6dee3' },
+          input: { [touch]: { paddingBlock: 12 } },
+          notchedOutline: { borderColor: fieldBorder },
         },
       },
-      MuiInputLabel: { styleOverrides: { root: { fontSize: '.85rem' } } },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: {
+            fontSize: '.875rem',
+            [touch]: {
+              '&.MuiInputLabel-sizeSmall:not(.MuiInputLabel-shrink)': {
+                transform: 'translate(14px, 12px) scale(1)',
+              },
+            },
+          },
+        },
+      },
+      MuiFormHelperText: { styleOverrides: { root: { fontSize: '.75rem' } } },
+      MuiMenuItem: { styleOverrides: { root: { minHeight: 40, [touch]: { minHeight: 48 } } } },
+      MuiListItemButton: { styleOverrides: { root: { [touch]: { minHeight: 48 } } } },
+      MuiToggleButton: { styleOverrides: { root: { [touch]: { minHeight: 48 } } } },
       MuiTableCell: {
         styleOverrides: {
           head: {
@@ -94,9 +119,9 @@ export function createAdminTheme(
             letterSpacing: '.035em',
             fontWeight: 650,
           },
-          body: { fontSize: '.82rem' },
+          body: { fontSize: '.875rem' },
           root: {
-            borderColor: dark ? '#354452' : '#edf0f2',
+            borderColor: dark ? '#3e4f5f' : '#e3e8ec',
             padding: preferences.density === 'compact' ? '8px 12px' : '16px',
           },
         },
@@ -104,7 +129,8 @@ export function createAdminTheme(
       MuiChip: {
         defaultProps: { size: 'small' },
         styleOverrides: {
-          root: { borderRadius: 6, fontWeight: 600, fontSize: '.7rem' },
+          root: { borderRadius: 6, fontWeight: 600, fontSize: '.75rem' },
+          clickable: { [touch]: { height: 36, paddingInline: 4 } },
           colorSuccess: { color: '#176b51', background: '#e7f4ed' },
           colorWarning: { color: '#895810', background: '#fff3d9' },
           colorError: { color: '#a83434', background: '#fcecec' },
@@ -125,7 +151,12 @@ export function createAdminTheme(
         },
       },
       MuiTooltip: { defaultProps: { arrow: true } },
-      MuiIconButton: { styleOverrides: { root: { borderRadius: radius } } },
+      MuiIconButton: {
+        styleOverrides: {
+          root: { borderRadius: radius, [touch]: { minWidth: 44, minHeight: 44 } },
+        },
+      },
+      MuiSwitch: { styleOverrides: { root: { [touch]: { transform: 'scale(1.15)' } } } },
       MuiLinearProgress: {
         styleOverrides: {
           root: { height: 6, borderRadius: 4, background: alpha(preferences.accent, 0.15) },

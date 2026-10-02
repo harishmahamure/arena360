@@ -9,7 +9,8 @@ import './globals.css';
 
 configureDefaultHttpClient({
   onMutationSuccess: ({ url }) => {
-    if (url.startsWith('/auth/login')) return;
+    if (url.startsWith('/auth/login') || url === '/auth/refresh' || url === '/uploads/presign')
+      return;
     window.dispatchEvent(new Event('arena:data-change'));
     try {
       localStorage.setItem('arena:data-revision', String(Date.now()));

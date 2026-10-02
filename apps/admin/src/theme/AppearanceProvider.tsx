@@ -1,6 +1,7 @@
 import { GlobalStyles, ThemeProvider, useMediaQuery } from '@mui/material';
 import { alpha, darken, lighten } from '@mui/material/styles';
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { useBranding } from '../services/config/branding';
 import { createAdminTheme } from './adminTheme';
 import { type Appearance, defaultAppearance, parseAppearance, textScale } from './appearance';
 
@@ -34,8 +35,16 @@ export function AppearanceProvider({
     window.addEventListener('storage', sync);
     return () => window.removeEventListener('storage', sync);
   }, [key]);
+  const brand = useBranding();
   const mode = preferences.mode === 'system' ? (systemDark ? 'dark' : 'light') : preferences.mode;
-  const theme = useMemo(() => createAdminTheme(preferences, mode), [preferences, mode]);
+  const accent =
+    preferences.accent === defaultAppearance.accent && brand.primaryColor
+      ? brand.primaryColor
+      : preferences.accent;
+  const theme = useMemo(
+    () => createAdminTheme({ ...preferences, accent }, mode),
+    [preferences, accent, mode],
+  );
   const update = (value: Partial<Appearance>) =>
     setPreferences((current) => {
       const next = parseAppearance({ ...current, ...value });
@@ -60,10 +69,13 @@ export function AppearanceProvider({
               '--workspace-text': theme.palette.text.primary,
               '--workspace-muted': theme.palette.text.secondary,
               '--workspace-accent': theme.palette.primary.main,
-              '--workspace-accent-soft': alpha(preferences.accent, 0.14),
-              '--workspace-sidebar': darken(preferences.accent, 0.78),
-              '--workspace-highlight': lighten(preferences.accent, 0.75),
+              '--workspace-accent-soft': alpha(accent, 0.14),
+              '--workspace-sidebar': darken(accent, 0.78),
+              '--workspace-highlight': lighten(accent, 0.75),
               '--workspace-table': mode === 'dark' ? '#202c38' : '#f8fafb',
+            },
+            '@media (pointer: coarse)': {
+              ':root': { fontSize: `${textScale[preferences.textSize] * 112.5}%` },
             },
           }}
         />

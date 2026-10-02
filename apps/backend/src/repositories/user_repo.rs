@@ -37,7 +37,7 @@ impl UserRepository {
                COALESCE("totpEnabled", false) as totp_enabled,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
-               "deletedAt" as deleted_at
+               "deletedAt" as deleted_at, "avatarUrl" as avatar_url
         FROM users
     "#;
 
@@ -236,7 +236,7 @@ impl UserRepository {
                    COALESCE("totpEnabled", false) as totp_enabled,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
-                   "deletedAt" as deleted_at
+                   "deletedAt" as deleted_at, "avatarUrl" as avatar_url
             FROM users
             WHERE username = $1 AND "deletedAt" IS NULL
             "#,
@@ -309,7 +309,7 @@ impl UserRepository {
                    COALESCE("totpEnabled", false) as totp_enabled,
                    "createdBy" as created_by, "updatedBy" as updated_by,
                    "createdAt" as created_at, "updatedAt" as updated_at,
-                   "deletedAt" as deleted_at
+                   "deletedAt" as deleted_at, "avatarUrl" as avatar_url
             FROM users
             WHERE id = $1 AND "deletedAt" IS NULL
             "#,
@@ -319,6 +319,25 @@ impl UserRepository {
         .await?;
 
         Ok(user)
+    }
+
+    pub async fn set_avatar(
+        &self,
+        user_id: Uuid,
+        avatar_url: Option<&str>,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET "avatarUrl" = $1, "updatedAt" = NOW()
+            WHERE id = $2 AND "deletedAt" IS NULL
+            "#,
+        )
+        .bind(avatar_url)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn set_totp_secret(&self, user_id: Uuid, secret: &str) -> Result<(), AppError> {

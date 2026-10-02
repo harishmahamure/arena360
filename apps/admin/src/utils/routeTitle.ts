@@ -2,6 +2,7 @@ import { moduleRegistry } from '../constants/navItems';
 
 const EXACT_TITLES: Record<string, string> = {
   '/': 'Overview',
+  '/profile': 'My profile',
   '/sessions': 'Sessions',
   '/sessions/new': 'Start session',
   '/players': 'Players',

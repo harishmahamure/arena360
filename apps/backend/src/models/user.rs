@@ -32,6 +32,8 @@ pub struct User {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
+    #[sqlx(default)]
+    pub avatar_url: Option<String>,
 }
 
 impl User {
@@ -45,6 +47,7 @@ impl User {
             lastName: self.last_name.clone(),
             role: self.role.clone().unwrap_or_else(|| "player".to_string()),
             isActive: self.is_active,
+            avatarUrl: self.avatar_url.clone(),
         }
     }
 }

@@ -221,6 +221,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
               lastName: response.newUser.lastName ?? '',
               role: response.newUser.role,
               isActive: response.newUser.isActive,
+              avatarUrl: response.newUser.avatarUrl ?? '',
             },
           });
 

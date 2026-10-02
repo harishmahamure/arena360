@@ -28,6 +28,7 @@ export default function SessionVerifier() {
       lastName: data.lastName ?? '',
       role: data.role,
       isActive: data.isActive,
+      avatarUrl: data.avatarUrl ?? '',
     };
     if (Object.entries(profile).some(([key, value]) => auth[key as keyof typeof auth] !== value))
       dispatch({ type: 'SetAuthDetail', payload: profile });

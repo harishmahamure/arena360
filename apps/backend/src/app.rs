@@ -253,6 +253,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/login/admin", post(handlers::auth::login_admin))
         .route("/auth/login/staff", post(handlers::auth::login_staff))
         .route("/auth/me", get(handlers::auth::current_panel_user))
+        .route("/auth/refresh", post(handlers::auth::refresh_panel_session))
         .route("/access", get(handlers::access::snapshot))
         .route("/access/self", get(handlers::access::self_access))
         .route("/access/roles", post(handlers::access::create_role))
@@ -304,6 +305,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::stats::finance_variance_stats),
         )
         .route("/users", get(handlers::users::list_users))
+        .route("/users/me/avatar", put(handlers::users::update_own_avatar))
         .route(
             "/users/{id}",
             get(handlers::users::get_user).put(handlers::users::update_user),
@@ -752,6 +754,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/realtime/rooms/{id}/members/{user_id}",
             delete(handlers::realtime_rooms::remove_member),
         )
+        .route("/branding", get(handlers::config::branding))
         .route("/config", get(handlers::config::list_config))
         .route(
             "/config/{key}",

@@ -122,6 +122,19 @@ describe('panel session lifecycle', () => {
     stop();
     expect(vi.getTimerCount()).toBe(0);
   });
+  it('renews an active session before the token expires', async () => {
+    vi.useFakeTimers();
+    local.set('accessToken', jwt({ userId: 'u', roles: ['admin'], exp: Date.now() / 1000 + 60 }));
+    const renewed = jwt({ userId: 'u', roles: ['admin'], exp: Date.now() / 1000 + 900 });
+    const renew = vi.fn().mockResolvedValue(renewed);
+    const expire = vi.fn();
+    const stop = watchSessionExpiry(expire, 30 * 60_000, renew);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(renew).toHaveBeenCalledOnce();
+    expect(local.get('accessToken')).toBe(renewed);
+    expect(expire).not.toHaveBeenCalled();
+    stop();
+  });
   it('clears persisted identity and acknowledgement on logout', () => {
     local.set('state', 'private-profile');
     local.set('accessToken', 'token');

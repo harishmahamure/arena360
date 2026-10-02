@@ -38,6 +38,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { AssetUploadField } from '../../../components/AssetUploadField';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { decodeJwtPayload } from '../../../lib/authSession';
 import {
@@ -589,7 +590,32 @@ export default function SettingsPage() {
                               {definition.key}
                             </Typography>
                           </Box>
-                          {definition.valueType === 'boolean' ? (
+                          {definition.key === 'business.logo_url' ? (
+                            <AssetUploadField
+                              label="Logo"
+                              value={raw || null}
+                              disabled={!editable}
+                              onChange={(url) => edit(definition, url ?? '')}
+                              uploadOptions={{ purpose: 'branding', maxDimension: 512 }}
+                              helperText={
+                                errors[definition.key] ||
+                                'PNG, JPG or SVG. Converted to WebP automatically.'
+                              }
+                            />
+                          ) : definition.key === 'branding.primary_color' ? (
+                            <TextField
+                              fullWidth
+                              type="color"
+                              label={settingLabel(definition.key)}
+                              value={raw || '#2f6b4f'}
+                              disabled={!editable}
+                              error={!!errors[definition.key]}
+                              helperText={
+                                errors[definition.key] || raw || 'Using the default palette'
+                              }
+                              onChange={(event) => edit(definition, event.target.value)}
+                            />
+                          ) : definition.valueType === 'boolean' ? (
                             <Box
                               sx={{
                                 display: 'flex',

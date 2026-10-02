@@ -11,6 +11,7 @@ export interface VerifyOtpResponseUser {
   lastName: string;
   role: string;
   isActive: boolean;
+  avatarUrl?: string | null;
 }
 
 export type PanelLoginResponse =

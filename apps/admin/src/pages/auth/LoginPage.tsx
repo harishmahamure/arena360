@@ -56,6 +56,7 @@ export default function LoginPage() {
         lastName: user.lastName ?? '',
         role: user.role,
         isActive: user.isActive,
+        avatarUrl: user.avatarUrl ?? '',
       },
     });
 

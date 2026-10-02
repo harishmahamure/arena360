@@ -225,3 +225,49 @@ pub async fn disable_totp(
     state.users.disable_totp(id).await?;
     ok(serde_json::json!({ "disabled": true }))
 }
+
+#[allow(non_snake_case)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct UpdateAvatarDto {
+    /// Public URL returned by `/uploads/presign` with `purpose: "avatar"`, or null to remove.
+    pub avatarUrl: Option<String>,
+}
+
+/// Set or remove the signed-in panel user's own profile photo (DRAFT-0042).
+#[utoipa::path(
+    put,
+    path = "/users/me/avatar",
+    request_body = UpdateAvatarDto,
+    responses(
+        (status = 200, description = "Updated profile", body = crate::openapi::responses::PanelUserEnvelope),
+        (status = 400, description = "URL is not an uploaded profile photo", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "users"
+)]
+pub async fn update_own_avatar(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+    Json(dto): Json<UpdateAvatarDto>,
+) -> ApiResult<crate::dto::AuthUserDto> {
+    let id = claims
+        .user_id_uuid()
+        .ok_or_else(|| crate::error::AppError::Unauthorized("Invalid session".into()))?;
+    let url = dto
+        .avatarUrl
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty());
+    if let Some(url) = url {
+        if !state
+            .storage
+            .owns_public_url(url, &format!("avatars/{}", claims.userId))
+        {
+            return Err(crate::error::AppError::BadRequest(
+                "avatarUrl must be a profile photo uploaded for this account".into(),
+            ));
+        }
+    }
+    ok(state.users.set_avatar(id, url).await?.to_auth_user())
+}

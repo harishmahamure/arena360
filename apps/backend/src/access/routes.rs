@@ -19,7 +19,8 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
                 "access:manage"
             }
         }
-        "auth" if path == "/auth/me" => return Some(String::new()),
+        "auth" if path == "/auth/me" || path == "/auth/refresh" => return Some(String::new()),
+        "branding" => return Some(String::new()),
         "auth" if path == "/auth/register" => "players:write",
         "notifications" => "notifications:read",
         "realtime" if path == "/realtime" => return Some(String::new()),
@@ -51,6 +52,7 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
         "users" if p.get(1).is_some_and(|id| *id == user) && (p.contains(&"totp")) => {
             return Some(String::new())
         }
+        "users" if path == "/users/me/avatar" => return Some(String::new()),
         "users" if p.contains(&"totp") => "access:manage",
         "users" if last == "credit-limit" => "credit-limit:write",
         "users" if last == "staff-gaming-allowance" => {
@@ -130,11 +132,8 @@ pub fn authorize(claims: &JwtUserClaims, method: &str, path: &str) -> Result<(),
             "Operational ledger access is limited to its owning venue".into(),
         ));
     }
-    if path == "/uploads/presign"
-        && ["products:write", "expenses:write", "procurement:write"]
-            .iter()
-            .any(|p| has(claims, p))
-    {
+    // Each upload purpose enforces its own permission in the presign handler.
+    if path == "/uploads/presign" {
         return Ok(());
     }
     let needed = permission(method, path, &claims.userId).ok_or_else(|| {

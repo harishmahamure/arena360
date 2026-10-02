@@ -4,7 +4,7 @@ import { CssBaseline } from '@mui/material';
 import { ToastContainer } from 'react-toastify';
 import { AppearanceProvider } from './theme/AppearanceProvider';
 import 'react-toastify/dist/ReactToastify.css';
-import { isApiError, local, toastUtils } from '@gaming-cafe/utils';
+import { http, isApiError, local, toastUtils } from '@gaming-cafe/utils';
 import { LinearProgress } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -19,6 +19,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import {
   bootstrapAuthFromToken,
   clearAdminSession,
+  panelClaims,
   registerAdminAuthSession,
   watchSessionExpiry,
 } from './lib/authSession';
@@ -31,6 +32,7 @@ import { rootInitialState, rootReducer } from './store/rootReducer';
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const ShiftSetupPage = lazy(() => import('./pages/auth/ShiftSetupPage'));
 const ActivityLogPage = lazy(() => import('./pages/dashboard/ActivityLogPage'));
+const ProfilePage = lazy(() => import('./pages/dashboard/profile/ProfilePage'));
 const CashDepositsPage = lazy(() => import('./pages/dashboard/cash-deposits/CashDepositsPage'));
 const CashRegisterDetailPage = lazy(
   () => import('./pages/dashboard/cash-registers/CashRegisterDetailPage'),
@@ -167,15 +169,22 @@ function App() {
       },
     });
     let stopExpiry = () => {};
+    let sessionUserId: string | undefined;
     const sync = () => {
       stopExpiry();
-      reset();
+      const userId = panelClaims()?.userId;
+      if (userId !== sessionUserId || !userId) reset();
+      sessionUserId = userId;
       bootstrapAuthFromToken(dispatch);
-      stopExpiry = watchSessionExpiry(() => {
-        clearAdminSession();
-        toastUtils.warning('Session expired — please sign in again');
-        navigation.current('/login', { replace: true });
-      });
+      stopExpiry = watchSessionExpiry(
+        () => {
+          clearAdminSession();
+          toastUtils.warning('Session expired — please sign in again');
+          navigation.current('/login', { replace: true });
+        },
+        undefined,
+        async () => (await http.post<{ accessToken: string }>('/auth/refresh')).accessToken,
+      );
     };
     const refresh = () => {
       void queryClient.invalidateQueries();
@@ -203,12 +212,12 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <AppearanceProvider accountId={state.auth.id}>
-        <CssBaseline />
-        <ToastContainer {...TOAST_CONTAINER_PROPS} theme="colored" />
-        <LocalizationProvider dateAdapter={AdapterDateFns}>
-          <StoreContext value={{ dispatch, state }}>
-            <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <AppearanceProvider accountId={state.auth.id}>
+          <CssBaseline />
+          <ToastContainer {...TOAST_CONTAINER_PROPS} theme="colored" />
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
+            <StoreContext value={{ dispatch, state }}>
               <RealtimeProvider>
                 <SessionVerifier />
                 <Suspense fallback={<LinearProgress aria-label="Loading page" />}>
@@ -219,6 +228,7 @@ function App() {
                     </Route>
                     <Route element={<DashboardLayout />}>
                       <Route path="/" element={<DashboardPage />} />
+                      <Route path="/profile" element={<ProfilePage />} />
                       <Route element={<RequirePermission permission={Permission.PlayersRead} />}>
                         <Route path="/players" element={<PlayersPage />} />
                         <Route path="/players/:id" element={<PlayerDetailPage />} />
@@ -407,10 +417,10 @@ function App() {
                   </Routes>
                 </Suspense>
               </RealtimeProvider>
-            </QueryClientProvider>
-          </StoreContext>
-        </LocalizationProvider>
-      </AppearanceProvider>
+            </StoreContext>
+          </LocalizationProvider>
+        </AppearanceProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

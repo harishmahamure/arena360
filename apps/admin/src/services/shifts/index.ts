@@ -104,6 +104,7 @@ export interface ShiftHandoverResponse {
     email?: string | null;
     role: string;
     isActive: boolean;
+    avatarUrl?: string | null;
   };
   newShiftId: string;
 }

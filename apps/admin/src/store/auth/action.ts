@@ -6,6 +6,7 @@ export interface AuthState {
   lastName: string;
   role: string;
   isActive: boolean;
+  avatarUrl?: string;
 }
 
 export type AuthAction =

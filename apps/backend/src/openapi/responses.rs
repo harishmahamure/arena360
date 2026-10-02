@@ -145,6 +145,7 @@ success_envelope!(
     Vec<crate::models::ResolvedSetting>
 );
 success_envelope!(SettingOverrideEnvelope, crate::models::SettingOverride);
+success_envelope!(BrandingEnvelope, crate::handlers::config::Branding);
 success_envelope!(
     SettingRevisionListEnvelope,
     Vec<crate::models::SettingRevision>

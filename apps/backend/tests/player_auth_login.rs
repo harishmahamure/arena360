@@ -183,6 +183,7 @@ async fn login_player_happy_and_error_paths() {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
                 deleted_at: None,
+                avatar_url: None,
             },
             device_id,
         )

@@ -385,8 +385,8 @@ export default function AddNewPlanTransactionPage() {
   return (
     <ActiveShiftGuard>
       <CounterSaleLayout
-        backTo="/plan-transactions"
-        backLabel="Plan sales"
+        title="Sell plan"
+        exitTo="/plan-transactions"
         alerts={alerts}
         catalog={catalog}
         summary={summary}
