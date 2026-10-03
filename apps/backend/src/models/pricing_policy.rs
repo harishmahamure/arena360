@@ -7,6 +7,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, FromRow, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PricingRuleSet {
+    #[serde(default)]
+    pub location_ids: Vec<Uuid>,
     pub id: Uuid,
     pub organization_id: Uuid,
     pub location_id: Option<Uuid>,
@@ -103,6 +105,8 @@ pub enum PricingAction {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePricingRuleSetDto {
+    #[serde(default)]
+    pub location_ids: Vec<Uuid>,
     pub location_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,

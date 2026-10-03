@@ -12,6 +12,7 @@ import {
   createProductSchema,
   productCategoryOptions,
 } from '../../../../src/containers/products/schemas/product-schema';
+import CatalogLocationFields from '../../../components/CatalogLocationFields';
 import {
   ProductStockQuantityField,
   ProductUnitConversionField,
@@ -213,6 +214,7 @@ export function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
 
 export default function AddNewProductPage() {
   const navigate = useNavigate();
+  const [locationIds, setLocationIds] = useState<string[]>();
   const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
     throttleMs: 1000,
     lockOnSuccess: true,
@@ -243,6 +245,7 @@ export default function AddNewProductPage() {
     const { name, price, category } = data;
     void run(async () => {
       await addProduct({
+        locationIds,
         name,
         description: data.description || '',
         price,
@@ -276,6 +279,7 @@ export default function AddNewProductPage() {
           and purchase unit dropdowns stay empty.
         </Alert>
       ) : null}
+      <CatalogLocationFields value={locationIds} onChange={setLocationIds} />
       <FormBuilder<CreateProductFormData>
         wizard
         wizardSteps={[

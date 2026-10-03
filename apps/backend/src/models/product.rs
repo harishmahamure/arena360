@@ -75,6 +75,10 @@ pub struct UpdateProductDto {
 #[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductFilterDto {
+    #[serde(skip_deserializing)]
+    pub allowed_location_ids: Option<Vec<Uuid>>,
+    #[serde(skip_deserializing)]
+    pub organization_id: Option<Uuid>,
     pub name: Option<String>,
     pub category: Option<String>,
     pub disabled: Option<i32>,

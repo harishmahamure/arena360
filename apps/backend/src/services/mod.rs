@@ -68,3 +68,5 @@ pub use user_service::UserService;
 pub use vendor_service::VendorService;
 
 pub mod kitchen_service;
+
+pub mod catalog_scope;

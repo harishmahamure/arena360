@@ -23,6 +23,9 @@ ALTER TABLE transactions_versions ADD COLUMN IF NOT EXISTS `shiftId` Nullable(UU
 
 ALTER TABLE transactions_versions ADD COLUMN IF NOT EXISTS `createdBy` Nullable(UUID);
 
+ALTER TABLE transactions_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE transactions_versions ADD COLUMN IF NOT EXISTS `venueLocationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW transactions AS SELECT * EXCEPT (_version, _deleted) FROM transactions_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS credit_settlements_versions (
@@ -40,6 +43,9 @@ CREATE TABLE IF NOT EXISTS credit_settlements_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE credit_settlements_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE credit_settlements_versions ADD COLUMN IF NOT EXISTS `shiftId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW credit_settlements AS SELECT * EXCEPT (_version, _deleted) FROM credit_settlements_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS credit_settlement_items_versions (
@@ -53,6 +59,8 @@ CREATE TABLE IF NOT EXISTS credit_settlement_items_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE credit_settlement_items_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW credit_settlement_items AS SELECT * EXCEPT (_version, _deleted) FROM credit_settlement_items_versions FINAL WHERE _deleted = 0;
 
@@ -78,6 +86,9 @@ ALTER TABLE usage_sessions_versions ADD COLUMN IF NOT EXISTS `shiftId` Nullable(
 ALTER TABLE usage_sessions_versions ADD COLUMN IF NOT EXISTS `createdBy` Nullable(UUID);
 
 ALTER TABLE usage_sessions_versions ADD COLUMN IF NOT EXISTS `sourcePlanIdAtStart` Nullable(UUID);
+
+ALTER TABLE usage_sessions_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE usage_sessions_versions ADD COLUMN IF NOT EXISTS `venueLocationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW usage_sessions AS SELECT * EXCEPT (_version, _deleted) FROM usage_sessions_versions FINAL WHERE _deleted = 0;
 
@@ -120,6 +131,8 @@ ALTER TABLE plans_versions ADD COLUMN IF NOT EXISTS `planType` Nullable(String);
 
 ALTER TABLE plans_versions ADD COLUMN IF NOT EXISTS `validityDays` Nullable(Int64);
 
+ALTER TABLE plans_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW plans AS SELECT * EXCEPT (_version, _deleted) FROM plans_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS player_plan_balances_versions (
@@ -145,6 +158,8 @@ ALTER TABLE player_plan_balances_versions ADD COLUMN IF NOT EXISTS `expiryDate` 
 
 ALTER TABLE player_plan_balances_versions ADD COLUMN IF NOT EXISTS `sourcePlanId` Nullable(UUID);
 
+ALTER TABLE player_plan_balances_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW player_plan_balances AS SELECT * EXCEPT (_version, _deleted) FROM player_plan_balances_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS devices_versions (
@@ -164,6 +179,9 @@ ALTER TABLE devices_versions ADD COLUMN IF NOT EXISTS `location` Nullable(String
 
 ALTER TABLE devices_versions ADD COLUMN IF NOT EXISTS `deviceType` Nullable(String);
 
+ALTER TABLE devices_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE devices_versions ADD COLUMN IF NOT EXISTS `locationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW devices AS SELECT * EXCEPT (_version, _deleted) FROM devices_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS cash_registers_versions (
@@ -180,6 +198,8 @@ CREATE TABLE IF NOT EXISTS cash_registers_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE cash_registers_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW cash_registers AS SELECT * EXCEPT (_version, _deleted) FROM cash_registers_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS cash_deposits_versions (
@@ -193,6 +213,9 @@ CREATE TABLE IF NOT EXISTS cash_deposits_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE cash_deposits_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE cash_deposits_versions ADD COLUMN IF NOT EXISTS `shiftId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW cash_deposits AS SELECT * EXCEPT (_version, _deleted) FROM cash_deposits_versions FINAL WHERE _deleted = 0;
 
@@ -209,6 +232,9 @@ CREATE TABLE IF NOT EXISTS expenses_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE expenses_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE expenses_versions ADD COLUMN IF NOT EXISTS `shiftId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW expenses AS SELECT * EXCEPT (_version, _deleted) FROM expenses_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS expense_categories_versions (
@@ -223,6 +249,8 @@ CREATE TABLE IF NOT EXISTS expense_categories_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE expense_categories_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW expense_categories AS SELECT * EXCEPT (_version, _deleted) FROM expense_categories_versions FINAL WHERE _deleted = 0;
 
@@ -239,6 +267,8 @@ CREATE TABLE IF NOT EXISTS products_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE products_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW products AS SELECT * EXCEPT (_version, _deleted) FROM products_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS vendors_versions (
@@ -250,6 +280,8 @@ CREATE TABLE IF NOT EXISTS vendors_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE vendors_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW vendors AS SELECT * EXCEPT (_version, _deleted) FROM vendors_versions FINAL WHERE _deleted = 0;
 
@@ -263,6 +295,9 @@ CREATE TABLE IF NOT EXISTS inventory_locations_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE inventory_locations_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE inventory_locations_versions ADD COLUMN IF NOT EXISTS `venueLocationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW inventory_locations AS SELECT * EXCEPT (_version, _deleted) FROM inventory_locations_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS stock_receipts_versions (
@@ -275,6 +310,8 @@ CREATE TABLE IF NOT EXISTS stock_receipts_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE stock_receipts_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW stock_receipts AS SELECT * EXCEPT (_version, _deleted) FROM stock_receipts_versions FINAL WHERE _deleted = 0;
 
@@ -291,6 +328,8 @@ CREATE TABLE IF NOT EXISTS stock_receipt_lines_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE stock_receipt_lines_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW stock_receipt_lines AS SELECT * EXCEPT (_version, _deleted) FROM stock_receipt_lines_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS stock_waste_events_versions (
@@ -304,6 +343,8 @@ CREATE TABLE IF NOT EXISTS stock_waste_events_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE stock_waste_events_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW stock_waste_events AS SELECT * EXCEPT (_version, _deleted) FROM stock_waste_events_versions FINAL WHERE _deleted = 0;
 
@@ -320,6 +361,8 @@ CREATE TABLE IF NOT EXISTS stock_waste_lines_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE stock_waste_lines_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW stock_waste_lines AS SELECT * EXCEPT (_version, _deleted) FROM stock_waste_lines_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS location_stock_versions (
@@ -333,6 +376,8 @@ CREATE TABLE IF NOT EXISTS location_stock_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE location_stock_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW location_stock AS SELECT * EXCEPT (_version, _deleted) FROM location_stock_versions FINAL WHERE _deleted = 0;
 
@@ -349,6 +394,8 @@ CREATE TABLE IF NOT EXISTS inventory_reorder_rules_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE inventory_reorder_rules_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW inventory_reorder_rules AS SELECT * EXCEPT (_version, _deleted) FROM inventory_reorder_rules_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS purchase_orders_versions (
@@ -361,6 +408,9 @@ CREATE TABLE IF NOT EXISTS purchase_orders_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE purchase_orders_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE purchase_orders_versions ADD COLUMN IF NOT EXISTS `destinationLocationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW purchase_orders AS SELECT * EXCEPT (_version, _deleted) FROM purchase_orders_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS stock_transfer_requests_versions (
@@ -372,6 +422,10 @@ CREATE TABLE IF NOT EXISTS stock_transfer_requests_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE stock_transfer_requests_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE stock_transfer_requests_versions ADD COLUMN IF NOT EXISTS `fromLocationId` Nullable(UUID);
+ALTER TABLE stock_transfer_requests_versions ADD COLUMN IF NOT EXISTS `toLocationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW stock_transfer_requests AS SELECT * EXCEPT (_version, _deleted) FROM stock_transfer_requests_versions FINAL WHERE _deleted = 0;
 
@@ -391,6 +445,8 @@ CREATE TABLE IF NOT EXISTS stock_movements_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE stock_movements_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW stock_movements AS SELECT * EXCEPT (_version, _deleted) FROM stock_movements_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS transaction_products_versions (
@@ -404,6 +460,8 @@ CREATE TABLE IF NOT EXISTS transaction_products_versions (
   _version UInt64,
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+
+ALTER TABLE transaction_products_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
 
 CREATE OR REPLACE VIEW transaction_products AS SELECT * EXCEPT (_version, _deleted) FROM transaction_products_versions FINAL WHERE _deleted = 0;
 
@@ -419,6 +477,9 @@ CREATE TABLE IF NOT EXISTS shifts_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE shifts_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+ALTER TABLE shifts_versions ADD COLUMN IF NOT EXISTS `venueLocationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW shifts AS SELECT * EXCEPT (_version, _deleted) FROM shifts_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS games_versions (
@@ -432,6 +493,11 @@ CREATE TABLE IF NOT EXISTS games_versions (
   _deleted UInt8
 ) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
 
+ALTER TABLE games_versions ADD COLUMN IF NOT EXISTS `organizationId` Nullable(UUID);
+
 CREATE OR REPLACE VIEW games AS SELECT * EXCEPT (_version, _deleted) FROM games_versions FINAL WHERE _deleted = 0;
 
 CREATE TABLE IF NOT EXISTS analytics_ready (id UInt8, completed_at DateTime64(6, 'UTC')) ENGINE = ReplacingMergeTree(completed_at) ORDER BY id;
+
+CREATE TABLE IF NOT EXISTS organization_memberships_versions (`id` UUID, `organizationId` UUID, `userId` UUID, `isActive` Bool, _version UInt64, _deleted UInt8) ENGINE = ReplacingMergeTree(_version) ORDER BY id;
+CREATE OR REPLACE VIEW organization_memberships AS SELECT * EXCEPT (_version,_deleted) FROM organization_memberships_versions FINAL WHERE _deleted=0;

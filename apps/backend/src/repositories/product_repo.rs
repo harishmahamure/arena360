@@ -7,11 +7,20 @@ use crate::models::{CreateProductDto, Product, ProductFilterDto, UpdateProductDt
 
 pub struct ProductRepository {
     pool: PgPool,
+    location_ids: Vec<Uuid>,
 }
 
 impl ProductRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            location_ids: vec![],
+        }
+    }
+
+    pub fn with_locations(mut self, ids: Vec<Uuid>) -> Self {
+        self.location_ids = ids;
+        self
     }
 
     const SELECT: &'static str = r#"
@@ -103,6 +112,19 @@ impl ProductRepository {
     }
 
     fn apply_filters(builder: &mut QueryBuilder<Postgres>, filters: &ProductFilterDto) {
+        builder.push(" AND \"organizationId\" = ");
+        builder.push_bind(
+            filters
+                .organization_id
+                .unwrap_or(crate::models::DEFAULT_ORGANIZATION_ID),
+        );
+
+        if let Some(ids) = &filters.allowed_location_ids {
+            builder.push(" AND (cardinality(\"locationIds\")=0 OR \"locationIds\" && ");
+            builder.push_bind(ids.clone());
+            builder.push(")");
+        }
+
         if let Some(name) = &filters.name {
             builder.push(" AND name ILIKE ");
             builder.push_bind(format!("%{name}%"));
@@ -148,12 +170,12 @@ impl ProductRepository {
                 id, name, description, price, "purchasePrice", "unitId", "purchaseUnitId",
                 "unitsPerPurchaseUnit", "dayPrice", "nightPrice", "purchasePricePerBox",
                 category, sku, "stockQuantity", "isActive", "createdBy", "updatedBy",
-                "createdAt", "updatedAt", "isRawMaterial"
+                "createdAt", "updatedAt", "isRawMaterial", "locationIds"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4, $5, $6,
                 $7, $8, $9, $10, $11::products_category_enum, $12,
-                $13, $14, $15, $15, NOW(), NOW(), $16
+                $13, $14, $15, $15, NOW(), NOW(), $16, $17
             )
             RETURNING id, name, description,
                       price::float8 as price,
@@ -192,6 +214,7 @@ impl ProductRepository {
         .bind(is_active)
         .bind(actor_id)
         .bind(dto.is_raw_material.unwrap_or(false))
+        .bind(&self.location_ids)
         .fetch_one(&self.pool)
         .await?;
 

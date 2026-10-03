@@ -77,6 +77,12 @@ impl UnitRepository {
              FROM units WHERE \"deletedAt\" IS NULL",
         );
 
+        builder.push(" AND \"organizationId\" = ");
+        builder.push_bind(
+            filters
+                .organization_id
+                .unwrap_or(crate::models::DEFAULT_ORGANIZATION_ID),
+        );
         if let Some(name) = &filters.name {
             builder.push(" AND name ILIKE ");
             builder.push_bind(format!("%{name}%"));
@@ -107,6 +113,12 @@ impl UnitRepository {
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM units WHERE \"deletedAt\" IS NULL");
+        count_builder.push(" AND \"organizationId\" = ");
+        count_builder.push_bind(
+            filters
+                .organization_id
+                .unwrap_or(crate::models::DEFAULT_ORGANIZATION_ID),
+        );
         if let Some(name) = &filters.name {
             count_builder.push(" AND name ILIKE ");
             count_builder.push_bind(format!("%{name}%"));

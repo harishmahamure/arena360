@@ -229,22 +229,34 @@ impl TransactionService {
                 "saleLocationId must reference a store location".to_string(),
             ));
         }
-        if location.venue_location_id != dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID) {
-            return Err(AppError::BadRequest("Store location must belong to the selected venue".into()));
+        if location.venue_location_id
+            != dto
+                .venue_location_id
+                .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)
+        {
+            return Err(AppError::BadRequest(
+                "Store location must belong to the selected venue".into(),
+            ));
         }
 
         let product_rules = self
             .pricing
             .active_product_rules(
                 crate::models::DEFAULT_ORGANIZATION_ID,
-                Some(dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)),
+                Some(
+                    dto.venue_location_id
+                        .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                ),
             )
             .await?;
         let mut db_tx = self.repo.pool.begin().await?;
         let now = dto.transaction_date.unwrap_or_else(Utc::now);
         let (timezone, night_start, night_end) = self
             .settings
-            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, dto.venue_location_id)
+            .venue_pricing_context(
+                crate::models::DEFAULT_ORGANIZATION_ID,
+                dto.venue_location_id,
+            )
             .await
             .unwrap_or_else(|_| {
                 (
@@ -421,10 +433,13 @@ impl TransactionService {
                 )
             });
         let rows: Vec<(Uuid, f64, f64, String)> = sqlx::query_as(
-            r#"SELECT id, "dayPrice"::float8, "nightPrice"::float8, category::text
-               FROM products
-               WHERE "deletedAt" IS NULL AND "isRawMaterial" = false"#,
+            r#"SELECT p.id, coalesce(lp.price,p."dayPrice")::float8, coalesce(lp.price,p."nightPrice")::float8, p.category::text
+               FROM products p JOIN venue_locations l ON l.id=$1 AND l."organizationId"=p."organizationId"
+               LEFT JOIN product_location_prices lp ON lp."productId"=p.id AND lp."locationId"=l.id
+               WHERE p."deletedAt" IS NULL AND p."isRawMaterial" = false
+                 AND (cardinality(p."locationIds")=0 OR l.id=ANY(p."locationIds"))"#,
         )
+        .bind(venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID))
         .fetch_all(&self.repo.pool)
         .await?;
         let now = Utc::now();
@@ -472,15 +487,18 @@ impl TransactionService {
             let row: Option<(String, f64, f64, String, bool)> = sqlx::query_as(
                 r#"
                 SELECT p.name,
-                       p."dayPrice"::float8,
-                       p."nightPrice"::float8,
+                       coalesce(lp.price,p."dayPrice")::float8,
+                       coalesce(lp.price,p."nightPrice")::float8,
                        p.category::text,
                        p."isRawMaterial"
-                FROM products p
-                WHERE p.id = $1 AND p."deletedAt" IS NULL
+                FROM products p JOIN inventory_locations il ON il.id=$2 AND il."organizationId"=p."organizationId"
+                LEFT JOIN product_location_prices lp ON lp."productId"=p.id AND lp."locationId"=il."venueLocationId"
+                WHERE p.id = $1 AND p."deletedAt" IS NULL AND p."isActive"
+                  AND (cardinality(p."locationIds")=0 OR il."venueLocationId"=ANY(p."locationIds"))
                 "#,
             )
             .bind(item.product_id)
+            .bind(sale_location_id)
             .fetch_optional(&mut **db_tx)
             .await?;
 
@@ -572,16 +590,42 @@ impl TransactionService {
                 .find_by_id(plan_id)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Plan with ID {plan_id} not found")))?;
-            let policy = self.pricing.active_plan_policy_for(crate::models::DEFAULT_ORGANIZATION_ID, Some(dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID))).await?;
+            if !plan.is_active {
+                return Err(AppError::BadRequest(
+                    "This plan is not available for purchase".into(),
+                ));
+            }
+            let policy = self
+                .pricing
+                .active_plan_policy_for(
+                    crate::models::DEFAULT_ORGANIZATION_ID,
+                    Some(
+                        dto.venue_location_id
+                            .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                    ),
+                )
+                .await?;
             let (timezone, _, _) = self
                 .settings
                 .venue_pricing_context(
                     crate::models::DEFAULT_ORGANIZATION_ID,
-                    Some(dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)),
+                    Some(
+                        dto.venue_location_id
+                            .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                    ),
                 )
                 .await?;
+            let base_price = super::catalog_scope::available(
+                &self.repo.pool,
+                "plans",
+                plan.id,
+                dto.venue_location_id
+                    .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+            )
+            .await?
+            .unwrap_or(plan.price);
             let price = PricingPolicyService::evaluate_plan_price(
-                plan.price,
+                base_price,
                 plan.device_type.as_deref(),
                 &policy,
                 Utc::now(),

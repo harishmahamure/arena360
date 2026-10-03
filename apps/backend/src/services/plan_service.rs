@@ -23,6 +23,7 @@ const VALID_DAYS: &[&str] = &[
 ];
 
 pub struct PlanService {
+    pool: PgPool,
     repo: PlanRepository,
     pricing: crate::services::PricingPolicyService,
     cache: Arc<dyn CacheService>,
@@ -32,11 +33,17 @@ pub struct PlanService {
 impl PlanService {
     pub fn new(pool: PgPool, cache: Arc<dyn CacheService>, settings: Arc<ConfigService>) -> Self {
         Self {
+            pool: pool.clone(),
             repo: PlanRepository::new(pool.clone()),
             pricing: crate::services::PricingPolicyService::new(pool),
             cache,
             settings,
         }
+    }
+
+    pub fn with_locations(mut self, ids: Vec<Uuid>) -> Self {
+        self.repo = self.repo.with_locations(ids);
+        self
     }
 
     async fn invalidate_plans(&self, id: Option<Uuid>) -> Result<(), AppError> {
@@ -57,7 +64,10 @@ impl PlanService {
             self.repo.list(&filters).await
         })
         .await?;
-        self.price_plans(&mut result.data, filters.location_id).await?;
+        if filters.location_id.is_some() {
+            self.price_plans(&mut result.data, filters.location_id)
+                .await?;
+        }
         Ok(result)
     }
 
@@ -65,7 +75,11 @@ impl PlanService {
         self.get_by_id_for(id, None).await
     }
 
-    pub async fn get_by_id_for(&self, id: Uuid, location_id: Option<Uuid>) -> Result<Plan, AppError> {
+    pub async fn get_by_id_for(
+        &self,
+        id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<Plan, AppError> {
         let cache_key = keys::plan(&id);
         let mut plan = get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
             self.repo
@@ -74,7 +88,10 @@ impl PlanService {
                 .ok_or_else(|| AppError::NotFound(format!("Plan with ID {id} not found")))
         })
         .await?;
-        self.price_plans(std::slice::from_mut(&mut plan), location_id).await?;
+        if location_id.is_some() {
+            self.price_plans(std::slice::from_mut(&mut plan), location_id)
+                .await?;
+        }
         Ok(plan)
     }
 
@@ -90,24 +107,35 @@ impl PlanService {
             || async { self.repo.find_active().await },
         )
         .await?;
-        self.price_plans(&mut plans, location_id).await?;
+        let location = location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+        let visible:Vec<Uuid>=sqlx::query_scalar(r#"SELECT p.id FROM plans p JOIN venue_locations l ON l.id=$1 AND l."organizationId"=p."organizationId"
+            WHERE cardinality(p."locationIds")=0 OR l.id=ANY(p."locationIds")"#).bind(location).fetch_all(&self.pool).await?;
+        plans.retain(|plan| visible.contains(&plan.id));
+        self.price_plans(&mut plans, Some(location)).await?;
         Ok(plans)
     }
 
-    async fn price_plans(&self, plans: &mut [Plan], location_id: Option<Uuid>) -> Result<(), AppError> {
+    async fn price_plans(
+        &self,
+        plans: &mut [Plan],
+        location_id: Option<Uuid>,
+    ) -> Result<(), AppError> {
         let location_id = location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
-        let policy = self.pricing.active_plan_policy_for(crate::models::DEFAULT_ORGANIZATION_ID, Some(location_id)).await?;
+        let policy = self
+            .pricing
+            .active_plan_policy_for(crate::models::DEFAULT_ORGANIZATION_ID, Some(location_id))
+            .await?;
         let (timezone, _, _) = self
             .settings
-            .venue_pricing_context(
-                crate::models::DEFAULT_ORGANIZATION_ID,
-                Some(location_id),
-            )
+            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, Some(location_id))
             .await?;
         let now = chrono::Utc::now();
         for plan in plans {
+            let price = super::catalog_scope::available(&self.pool, "plans", plan.id, location_id)
+                .await?
+                .unwrap_or(plan.price);
             plan.current_price = Some(crate::services::PricingPolicyService::evaluate_plan_price(
-                plan.price,
+                price,
                 plan.device_type.as_deref(),
                 &policy,
                 now,

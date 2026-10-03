@@ -398,13 +398,21 @@ struct RevenueTrendRow {
 }
 
 impl StatsService {
+    pub fn scoped(&self, scope: crate::analytics::scope::ReportScope) -> Self {
+        Self {
+            pool: self.pool.clone().scoped(scope),
+            cache: self.cache.clone(),
+        }
+    }
     pub async fn get_business_report(
         &self,
         window: crate::analytics::business::Window,
     ) -> Result<crate::analytics::business::BusinessReport, AppError> {
         let key = format!(
-            "stats:ch:business:v1:{}:{}",
-            window.start_date, window.end_date
+            "stats:ch:business:v2:{}:{}:{}",
+            self.pool.scope_key(),
+            window.start_date,
+            window.end_date
         );
         get_or_set(
             &*self.cache,
@@ -436,6 +444,7 @@ impl StatsService {
             compare,
         }));
 
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             self.compute_dashboard_stats(period_start, period_end, compare)
                 .await
@@ -513,6 +522,7 @@ impl StatsService {
             shift_start: shift_start.clone(),
         }));
 
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             self.compute_staff_dashboard_stats(period_start, period_end, shift_start, now)
                 .await
@@ -601,6 +611,7 @@ impl StatsService {
             prev_end: format_date_key(prev_end),
         }));
 
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             Ok(PeriodPair {
                 current: self.revenue_stats(start, end).await?,
@@ -630,6 +641,7 @@ impl StatsService {
             prev_end: format_date_key(prev_end),
         }));
 
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             Ok(PeriodPair {
                 current: self.usage_stats(start, end).await?,
@@ -1328,6 +1340,7 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-recon");
 
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             let current = self
                 .finance_reconciliation_metrics(period_start, period_end)
@@ -1400,6 +1413,7 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-deposits");
 
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             let current = self
                 .finance_deposit_metrics(period_start, period_end)
@@ -1470,6 +1484,7 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-variance");
 
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             let current = self
                 .finance_variance_metrics(period_start, period_end)

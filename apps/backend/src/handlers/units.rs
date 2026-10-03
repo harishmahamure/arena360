@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::AdminUser;
+use crate::middleware::{AdminUser, AuthUser};
 use crate::models::{CreateUnitDto, Unit, UnitFilterDto, UpdateUnitDto};
 use crate::openapi::responses::{ErrorEnvelope, UnitEnvelope, UnitPaginationEnvelope};
 
@@ -25,9 +25,14 @@ use crate::openapi::responses::{ErrorEnvelope, UnitEnvelope, UnitPaginationEnvel
     tag = "units"
 )]
 pub async fn list_units(
+    AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<UnitFilterDto>,
+    Query(mut filters): Query<UnitFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<Unit>> {
+    filters.organization_id = Some(
+        Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| crate::error::AppError::Forbidden("Select an organization".into()))?,
+    );
     let result = state.units.list(filters).await?;
     ok(result)
 }

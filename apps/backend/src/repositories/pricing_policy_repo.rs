@@ -22,13 +22,13 @@ impl PricingPolicyRepository {
     ) -> Result<Vec<PricingRuleSet>, AppError> {
         Ok(sqlx::query_as::<_, PricingRuleSet>(
             r#"SELECT id, "organizationId" AS organization_id,
-                      "locationId" AS location_id, name, description,
+                      "locationId" AS location_id, "locationIds" AS location_ids, name, description,
                       "activeVersionId" AS active_version_id,
                       "createdBy" AS created_by, "createdAt" AS created_at,
                       "updatedAt" AS updated_at
                FROM pricing_rule_sets
                WHERE "organizationId" = $1
-                 AND ($2::uuid IS NULL OR "locationId" = $2)
+                 AND ($2::uuid IS NULL OR cardinality("locationIds")=0 OR $2=ANY("locationIds"))
                ORDER BY name, id"#,
         )
         .bind(organization_id)
@@ -50,7 +50,7 @@ impl PricingPolicyRepository {
                JOIN pricing_rule_versions v ON v.id = s."activeVersionId"
                WHERE s."organizationId" = $1
                  AND v.status = 'published'
-                 AND (s."locationId" IS NULL OR s."locationId" = $2)
+                 AND (cardinality(s."locationIds")=0 OR $2=ANY(s."locationIds"))
                ORDER BY s.id"#,
         )
         .bind(organization_id)
@@ -67,7 +67,7 @@ impl PricingPolicyRepository {
     ) -> Result<PricingRuleSet, AppError> {
         sqlx::query_as::<_, PricingRuleSet>(
             r#"SELECT id, "organizationId" AS organization_id,
-                      "locationId" AS location_id, name, description,
+                      "locationId" AS location_id, "locationIds" AS location_ids, name, description,
                       "activeVersionId" AS active_version_id,
                       "createdBy" AS created_by, "createdAt" AS created_at,
                       "updatedAt" AS updated_at
@@ -85,6 +85,7 @@ impl PricingPolicyRepository {
         &self,
         organization_id: Uuid,
         location_id: Option<Uuid>,
+        location_ids: &[Uuid],
         name: &str,
         description: Option<&str>,
         policy: &serde_json::Value,
@@ -93,10 +94,10 @@ impl PricingPolicyRepository {
         let mut tx = self.pool.begin().await?;
         let set = sqlx::query_as::<_, PricingRuleSet>(
             r#"INSERT INTO pricing_rule_sets
-                 ("organizationId", "locationId", name, description, "createdBy")
-               VALUES ($1, $2, $3, $4, $5)
+                 ("organizationId", "locationId", name, description, "createdBy", "locationIds")
+               VALUES ($1, $2, $3, $4, $5, $6)
                RETURNING id, "organizationId" AS organization_id,
-                         "locationId" AS location_id, name, description,
+                         "locationId" AS location_id, "locationIds" AS location_ids, name, description,
                          "activeVersionId" AS active_version_id,
                          "createdBy" AS created_by, "createdAt" AS created_at,
                          "updatedAt" AS updated_at"#,
@@ -106,6 +107,7 @@ impl PricingPolicyRepository {
         .bind(name)
         .bind(description)
         .bind(actor_id)
+        .bind(location_ids)
         .fetch_one(&mut *tx)
         .await?;
         let version = sqlx::query_as::<_, PricingRuleVersion>(

@@ -1,0 +1,2 @@
+-- Upgrade only the unmodified generated starter role.
+UPDATE access_roles SET permissions='["locations:read", "devices:read", "devices:write", "settings:read", "settings:write", "rules:read", "rules:edit", "rules:publish", "stats:read", "finance:read", "products:read", "products:write", "plans:read", "plans:write", "units:read"]'::jsonb, revision=revision+1 WHERE name='Location administrator' AND NOT is_template AND permissions @> '["locations:read","devices:read","devices:write","settings:read","rules:read"]'::jsonb AND jsonb_array_length(permissions)=5;

@@ -20,6 +20,9 @@ import {
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import CatalogLocationFields, {
+  useCatalogLocations,
+} from '../../../components/CatalogLocationFields';
 import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
@@ -71,11 +74,14 @@ export default function PricingRulesPanel({
   const { can } = usePermissions();
   const canRead = can(Permission.RulesRead);
   const canEdit = can(Permission.RulesEdit) && !readOnly;
-  const canPublish = can(Permission.RulesPublish);
+  const scopeContext = useCatalogLocations();
   const queryClient = useQueryClient();
   const [selectedSetId, setSelectedSetId] = useState('');
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [name, setName] = useState('Venue pricing');
+  const [newLocationIds, setNewLocationIds] = useState<string[] | undefined>(
+    locationId ? [locationId] : [],
+  );
   const [simulationTarget, setSimulationTarget] = useState<'sessions' | 'deduction'>('sessions');
   const [deviceType, setDeviceType] = useState('PC');
   const [effectiveAt, setEffectiveAt] = useState('');
@@ -88,6 +94,12 @@ export default function PricingRulesPanel({
     queryFn: () => listPricingRuleSets(organizationId, locationId),
     enabled: canRead,
   });
+  const selectedSet = setsQuery.data?.find((item) => item.id === selectedSetId);
+  const canManageSet =
+    scopeContext.organizationAdmin ||
+    (!!selectedSet?.locationIds?.length &&
+      selectedSet.locationIds.every((id) => scopeContext.locations.some((l) => l.id === id)));
+  const canPublish = can(Permission.RulesPublish) && canManageSet && !readOnly;
   const versionsQuery = useQuery({
     queryKey: ['pricing-rule-versions', organizationId, selectedSetId],
     queryFn: () => listPricingRuleVersions(organizationId, selectedSetId),
@@ -223,6 +235,11 @@ export default function PricingRulesPanel({
                 !selectedVersionId ? 'Create or select a policy draft to continue.' : undefined
               }
             >
+              <CatalogLocationFields
+                value={newLocationIds}
+                onChange={setNewLocationIds}
+                disabled={!canEdit || busy}
+              />
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl size="small" fullWidth>
                   <InputLabel id="pricing-policy-label" shrink>
@@ -267,7 +284,7 @@ export default function PricingRulesPanel({
                   onClick={() =>
                     run(async () => {
                       const created = await createPricingRuleSet(organizationId, {
-                        locationId,
+                        locationIds: newLocationIds,
                         name,
                         policy: parsePolicy(),
                       });
@@ -331,7 +348,7 @@ export default function PricingRulesPanel({
               />
               <Button
                 variant="outlined"
-                disabled={busy || !canEdit || !selectedSetId}
+                disabled={busy || !canEdit || !canManageSet || !selectedSetId}
                 onClick={() =>
                   run(async () => {
                     const version = await createPricingRuleVersion(

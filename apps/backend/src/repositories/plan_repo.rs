@@ -8,6 +8,7 @@ use crate::models::{CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto};
 
 pub struct PlanRepository {
     pool: PgPool,
+    location_ids: Vec<Uuid>,
 }
 
 pub struct PlanCreateValues<'a> {
@@ -22,7 +23,15 @@ pub struct PlanCreateValues<'a> {
 
 impl PlanRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            location_ids: vec![],
+        }
+    }
+
+    pub fn with_locations(mut self, ids: Vec<Uuid>) -> Self {
+        self.location_ids = ids;
+        self
     }
 
     const SELECT: &'static str = r#"
@@ -116,6 +125,19 @@ impl PlanRepository {
     }
 
     fn apply_filters<'a>(builder: &mut QueryBuilder<'a, Postgres>, filters: &'a PlanFilterDto) {
+        builder.push(" AND \"organizationId\" = ");
+        builder.push_bind(
+            filters
+                .organization_id
+                .unwrap_or(crate::models::DEFAULT_ORGANIZATION_ID),
+        );
+
+        if let Some(ids) = &filters.allowed_location_ids {
+            builder.push(" AND (cardinality(\"locationIds\")=0 OR \"locationIds\" && ");
+            builder.push_bind(ids.clone());
+            builder.push(")");
+        }
+
         if let Some(search) = &filters.search {
             builder.push(" AND (name ILIKE ");
             builder.push_bind(format!("%{search}%"));
@@ -163,13 +185,13 @@ impl PlanRepository {
                 "isActive", "deviceType", "deviceSubType",
                 "allowedDays", "allowedMonths",
                 "dynamicDeductionEnabled", "deductionProfile",
-                "createdBy", "updatedBy", "createdAt", "updatedAt"
+                "createdBy", "updatedBy", "createdAt", "updatedAt", "locationIds"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3, $4::plans_plantype_enum, $5, $6, $7, $8,
                 COALESCE($9, true), $10::plans_devicetype_enum, $11::plans_devicesubtype_enum,
                 $12, $13, $14, $15,
-                $16, $16, NOW(), NOW()
+                $16, $16, NOW(), NOW(), $17
             )
             RETURNING id, name, description,
                       price::float8 as price, "planType"::text as plan_type,
@@ -201,6 +223,7 @@ impl PlanRepository {
         .bind(values.dynamic_deduction_enabled)
         .bind(&values.deduction_profile)
         .bind(actor_id)
+        .bind(&self.location_ids)
         .fetch_one(&self.pool)
         .await?;
 

@@ -20,10 +20,13 @@ use crate::openapi::responses::{DeviceEnvelope, DevicePaginationEnvelope, ErrorE
 use crate::validation::is_playstation_device_type;
 
 fn organization_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
-    Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))
+    Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| AppError::Forbidden("Select an organization".into()))
 }
 fn actor_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
-    claims.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))
+    claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))
 }
 
 #[utoipa::path(
@@ -41,9 +44,21 @@ fn actor_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
 pub async fn list_devices(
     AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<DeviceFilterDto>,
+    Query(mut filters): Query<DeviceFilterDto>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<crate::dto::PaginationResult<Device>> {
-    let result = state.devices.list(filters, organization_id(&claims)?, actor_id(&claims)?, claims.is_admin()).await?;
+    filters.location_id = filters
+        .location_id
+        .or(crate::access::scope::requested_location(&headers)?);
+    let result = state
+        .devices
+        .list(
+            filters,
+            organization_id(&claims)?,
+            actor_id(&claims)?,
+            claims.is_admin(),
+        )
+        .await?;
     ok(result)
 }
 
@@ -68,8 +83,18 @@ pub async fn get_device(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Device> {
     let device = state.devices.get_by_id(id).await?;
-    if device.organization_id != organization_id(&claims)? { return Err(AppError::NotFound("Device not found".into())); }
-    state.config.ensure_location_permission(device.organization_id, device.location_id, actor_id(&claims)?, "devices:read").await?;
+    if device.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    state
+        .config
+        .ensure_location_permission(
+            device.organization_id,
+            device.location_id,
+            actor_id(&claims)?,
+            "devices:read",
+        )
+        .await?;
     ok(device)
 }
 
@@ -92,8 +117,20 @@ pub async fn create_device(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateDeviceDto>,
 ) -> ApiResult<Device> {
-    state.config.ensure_location_permission(organization_id(&claims)?, dto.location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID), actor_id(&claims)?, "devices:write").await?;
-    let device = state.devices.create(dto, claims.user_id_uuid(), organization_id(&claims)?).await?;
+    state
+        .config
+        .ensure_location_permission(
+            organization_id(&claims)?,
+            dto.location_id
+                .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
+    let device = state
+        .devices
+        .create(dto, claims.user_id_uuid(), organization_id(&claims)?)
+        .await?;
     created(device)
 }
 
@@ -117,7 +154,16 @@ pub async fn provision_device(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<ProvisionDeviceDto>,
 ) -> ApiResult<DeviceRegisterResponseDto> {
-    state.config.ensure_location_permission(organization_id(&claims)?, dto.locationId.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID), actor_id(&claims)?, "devices:write").await?;
+    state
+        .config
+        .ensure_location_permission(
+            organization_id(&claims)?,
+            dto.locationId
+                .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
     if let Some(ref device_type) = dto.deviceType {
         if normalize_device_type(device_type)
             .is_some_and(|normalized| is_playstation_device_type(&normalized))
@@ -126,7 +172,10 @@ pub async fn provision_device(
         }
     }
 
-    let device = state.devices.provision(dto, claims.user_id_uuid(), organization_id(&claims)?).await?;
+    let device = state
+        .devices
+        .provision(dto, claims.user_id_uuid(), organization_id(&claims)?)
+        .await?;
     let token = state.auth.generate_device_token(device.id)?;
     ok(DeviceRegisterResponseDto {
         accessToken: token,
@@ -159,10 +208,28 @@ pub async fn update_device(
     Json(dto): Json<UpdateDeviceDto>,
 ) -> ApiResult<Device> {
     let existing = state.devices.get_by_id(id).await?;
-    if existing.organization_id != organization_id(&claims)? { return Err(AppError::NotFound("Device not found".into())); }
-    state.config.ensure_location_permission(existing.organization_id, existing.location_id, actor_id(&claims)?, "devices:write").await?;
+    if existing.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    state
+        .config
+        .ensure_location_permission(
+            existing.organization_id,
+            existing.location_id,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
     if let Some(location_id) = dto.location_id {
-        state.config.ensure_location_permission(existing.organization_id, location_id, actor_id(&claims)?, "devices:write").await?;
+        state
+            .config
+            .ensure_location_permission(
+                existing.organization_id,
+                location_id,
+                actor_id(&claims)?,
+                "devices:write",
+            )
+            .await?;
         if location_id != existing.location_id {
             let in_use: bool = sqlx::query_scalar(r#"SELECT EXISTS(
                 SELECT 1 FROM usage_sessions WHERE "deviceId"=$1 AND "endTime" IS NULL AND "deletedAt" IS NULL
@@ -170,7 +237,9 @@ pub async fn update_device(
                 SELECT 1 FROM kiosk_orders WHERE "deviceId"=$1 AND status IN ('pending','preparing')
             )"#).bind(id).fetch_one(&state.db).await?;
             if in_use {
-                return Err(AppError::Conflict("Finish active sessions and kiosk orders before moving this device".into()));
+                return Err(AppError::Conflict(
+                    "Finish active sessions and kiosk orders before moving this device".into(),
+                ));
             }
         }
     }
@@ -203,8 +272,18 @@ pub async fn update_device_status(
     Json(dto): Json<UpdateDeviceStatusDto>,
 ) -> ApiResult<Device> {
     let existing = state.devices.get_by_id(id).await?;
-    if existing.organization_id != organization_id(&claims)? { return Err(AppError::NotFound("Device not found".into())); }
-    state.config.ensure_location_permission(existing.organization_id, existing.location_id, actor_id(&claims)?, "devices:write").await?;
+    if existing.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    state
+        .config
+        .ensure_location_permission(
+            existing.organization_id,
+            existing.location_id,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
     let device = state.devices.update_status(id, dto).await?;
     ok(device)
 }
@@ -231,8 +310,18 @@ pub async fn delete_device(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, crate::error::AppError> {
     let existing = state.devices.get_by_id(id).await?;
-    if existing.organization_id != organization_id(&claims)? { return Err(AppError::NotFound("Device not found".into())); }
-    state.config.ensure_location_permission(existing.organization_id, existing.location_id, actor_id(&claims)?, "devices:write").await?;
+    if existing.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    state
+        .config
+        .ensure_location_permission(
+            existing.organization_id,
+            existing.location_id,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
     state.devices.delete(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

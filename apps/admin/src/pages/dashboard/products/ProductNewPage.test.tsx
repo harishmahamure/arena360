@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { addProduct } from '../../../services/product/add';
 import AddNewProductPage from './ProductNewPage';
 
+vi.mock('../../../components/CatalogLocationFields', () => ({ default: () => null }));
 vi.mock('../../../services/product/add', () => ({ addProduct: vi.fn().mockResolvedValue({}) }));
 vi.mock('../../../hooks/useProductUnits', () => {
   const units = [

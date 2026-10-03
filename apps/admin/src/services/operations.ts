@@ -55,6 +55,7 @@ export interface ReportGroup {
   count: number;
 }
 export interface FinanceReport {
+  locationLabel?: string;
   generatedAt: string;
   startDate: string;
   endDate: string;
@@ -85,6 +86,7 @@ export const csvCell = (value: string | number) => {
 export function financeReportCsv(report: FinanceReport) {
   const rows: (string | number)[][] = [
     ['Finance report', report.startDate, report.endDate, report.timezone, report.currency],
+    ['Locations', report.locationLabel ?? 'All accessible locations'],
     ['Generated at', report.generatedAt],
     [
       'Basis',

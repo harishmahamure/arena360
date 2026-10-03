@@ -3,6 +3,7 @@ import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import CatalogLocationPanel from '../../../components/CatalogLocationPanel';
 import ProductRecipeEditor from '../../../containers/products/ProductRecipeEditor';
 import {
   type CreateProductFormData,
@@ -18,6 +19,7 @@ export default function EditProductPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { can } = usePermissions();
+  const [canEditFields, setCanEditFields] = useState(false);
   const canWrite = can(Permission.ProductsWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
@@ -71,6 +73,14 @@ export default function EditProductPage() {
         </Typography>
       </Box>
 
+      {id && (
+        <CatalogLocationPanel
+          kind="products"
+          id={id}
+          canWrite={canWrite}
+          onCanEditChange={setCanEditFields}
+        />
+      )}
       <FormBuilder<CreateProductFormData>
         wizard
         wizardSteps={[
@@ -106,7 +116,7 @@ export default function EditProductPage() {
           isActive: product?.isActive,
           isRawMaterial: product?.isRawMaterial ?? false,
         }}
-        mode={canWrite ? 'edit' : 'view'}
+        mode={canEditFields ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={() => navigate('/products')}
         loading={isSubmitting}
@@ -123,7 +133,7 @@ export default function EditProductPage() {
         <ProductRecipeEditor
           productId={id}
           isRawMaterial={product?.isRawMaterial ?? false}
-          canWrite={canWrite}
+          canWrite={canEditFields}
         />
       )}
     </Paper>

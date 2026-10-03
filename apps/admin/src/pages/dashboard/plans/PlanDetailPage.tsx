@@ -5,6 +5,7 @@ import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import CatalogLocationPanel from '../../../components/CatalogLocationPanel';
 import { PlanDeductionSummary } from '../../../containers/plans/PlanDeductionSummary';
 import {
   type CreatePlanFormData,
@@ -20,6 +21,7 @@ export default function EditPlanPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { can } = usePermissions();
+  const [canEditFields, setCanEditFields] = useState(false);
   const canWrite = can(Permission.PlansWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
@@ -115,6 +117,14 @@ export default function EditPlanPage() {
         </Typography>
       </Box>
 
+      {id && (
+        <CatalogLocationPanel
+          kind="plans"
+          id={id}
+          canWrite={canWrite}
+          onCanEditChange={setCanEditFields}
+        />
+      )}
       <FormBuilder<CreatePlanFormData>
         wizard
         sections={planFormSections}
@@ -140,7 +150,7 @@ export default function EditPlanPage() {
           lowWindowEnd: plan?.deductionProfile?.lowWindowEnd,
           lowRatio: plan?.deductionProfile?.lowRatio ?? 0.8,
         }}
-        mode={canWrite ? 'edit' : 'view'}
+        mode={canEditFields ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={isSubmitting}

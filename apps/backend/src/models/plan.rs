@@ -80,6 +80,10 @@ pub struct UpdatePlanDto {
 #[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanFilterDto {
+    #[serde(skip_deserializing)]
+    pub allowed_location_ids: Option<Vec<Uuid>>,
+    #[serde(skip_deserializing)]
+    pub organization_id: Option<Uuid>,
     pub location_id: Option<Uuid>,
     pub search: Option<String>,
     pub plan_type: Option<String>,

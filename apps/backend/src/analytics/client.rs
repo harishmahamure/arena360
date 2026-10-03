@@ -10,6 +10,7 @@ pub struct ClickHouse {
     database: String,
     user: String,
     password: String,
+    pub scope: Option<super::scope::ReportScope>,
 }
 
 pub fn unavailable(error: impl std::fmt::Display) -> AppError {
@@ -41,7 +42,23 @@ impl ClickHouse {
             database,
             user,
             password,
+            scope: None,
         }
+    }
+
+    pub fn with_database(mut self, database: String) -> Self {
+        self.database = database;
+        self
+    }
+    pub fn scoped(mut self, scope: super::scope::ReportScope) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+    pub fn scope_key(&self) -> String {
+        self.scope
+            .as_ref()
+            .map(|s| s.key())
+            .unwrap_or_else(|| "legacy".into())
     }
 
     pub async fn execute(
@@ -156,7 +173,11 @@ impl<T: DeserializeOwned> Query<T> {
     }
     pub async fn fetch_all(self, client: &ClickHouse) -> Result<Vec<T>, AppError> {
         client.ensure_ready().await?;
-        let mut sql = self.sql;
+        let mut sql = client
+            .scope
+            .as_ref()
+            .map(|scope| scope.sql(&self.sql))
+            .unwrap_or(self.sql);
         let mut params = vec![];
         for (index, (kind, value)) in self.params.into_iter().enumerate().rev() {
             let key = format!("p{}", index + 1);

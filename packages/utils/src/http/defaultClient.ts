@@ -15,13 +15,16 @@ type UnauthorizedContext =
     : never;
 
 let customOnUnauthorized: CreateHttpClientOptions['onUnauthorized'] | undefined;
+let getRequestHeaders: CreateHttpClientOptions['getRequestHeaders'];
 let onMutationSuccess: CreateHttpClientOptions['onMutationSuccess'];
 
 /** Replace the default 401 handler (e.g. admin selective session expiry). */
 export function configureDefaultHttpClient(options: {
+  getRequestHeaders?: CreateHttpClientOptions['getRequestHeaders'];
   onUnauthorized?: CreateHttpClientOptions['onUnauthorized'];
   onMutationSuccess?: CreateHttpClientOptions['onMutationSuccess'];
 }): void {
+  getRequestHeaders = options.getRequestHeaders;
   customOnUnauthorized = options.onUnauthorized;
   onMutationSuccess = options.onMutationSuccess;
 }
@@ -68,6 +71,7 @@ function defaultGetAuthToken(): string | null {
 export const http = createHttpClient({
   baseUrl: defaultBaseUrl(),
   getAuthToken: defaultGetAuthToken,
+  getRequestHeaders: () => getRequestHeaders?.() ?? {},
   onUnauthorized: dispatchUnauthorized,
   onMutationSuccess: (context) => onMutationSuccess?.(context),
 });

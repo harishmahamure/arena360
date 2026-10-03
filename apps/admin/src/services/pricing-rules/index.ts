@@ -26,6 +26,7 @@ export interface PricingPolicy {
 }
 
 export interface PricingRuleSet {
+  locationIds: string[];
   id: string;
   organizationId: string;
   locationId?: string | null;
@@ -68,7 +69,13 @@ export const listPricingRuleSets = (organizationId: string, locationId?: string)
 
 export const createPricingRuleSet = (
   organizationId: string,
-  input: { locationId?: string; name: string; description?: string; policy: PricingPolicy },
+  input: {
+    locationIds?: string[];
+    locationId?: string;
+    name: string;
+    description?: string;
+    policy: PricingPolicy;
+  },
 ) =>
   http.post<{ ruleSet: PricingRuleSet; version: PricingRuleVersion }>(
     `/organizations/${organizationId}/pricing-rule-sets`,

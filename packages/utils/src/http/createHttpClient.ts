@@ -47,6 +47,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
   const {
     baseUrl,
     getAuthToken,
+    getRequestHeaders,
     getDeviceToken,
     deviceTokenHeader = DEFAULT_DEVICE_TOKEN_HEADER,
     onUnauthorized,
@@ -57,7 +58,7 @@ export function createHttpClient(options: CreateHttpClientOptions): HttpClient {
   const transport = createArena360GrpcWebTransport(baseUrl);
 
   function requestHeaders(overrides: Record<string, string> = {}): Record<string, string> {
-    const headers = { ...defaultHeaders, ...overrides };
+    const headers = { ...defaultHeaders, ...getRequestHeaders?.(), ...overrides };
     const authToken = getAuthToken?.();
     if (authToken) headers.authorization = normalizeToken(authToken);
     const deviceToken = getDeviceToken?.();

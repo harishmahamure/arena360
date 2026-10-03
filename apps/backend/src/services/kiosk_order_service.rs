@@ -46,13 +46,19 @@ impl KioskOrderService {
         }
     }
 
-    async fn venue_and_store(&self, device_id: Uuid) -> Result<(crate::models::Device, Uuid), AppError> {
+    async fn venue_and_store(
+        &self,
+        device_id: Uuid,
+    ) -> Result<(crate::models::Device, Uuid), AppError> {
         let device = crate::repositories::DeviceRepository::new(self.repo.pool().clone())
-            .find_by_id(device_id).await?
+            .find_by_id(device_id)
+            .await?
             .ok_or_else(|| AppError::NotFound("Device not found".into()))?;
         let store: Option<Uuid> = sqlx::query_scalar(r#"SELECT id FROM inventory_locations WHERE "venueLocationId"=$1 AND kind='store' AND "isActive" AND "deletedAt" IS NULL ORDER BY name,id LIMIT 1"#)
             .bind(device.location_id).fetch_optional(self.repo.pool()).await?;
-        let store = store.ok_or_else(|| AppError::BadRequest("No active store is configured for this venue".into()))?;
+        let store = store.ok_or_else(|| {
+            AppError::BadRequest("No active store is configured for this venue".into())
+        })?;
         Ok((device, store))
     }
 
@@ -77,14 +83,17 @@ impl KioskOrderService {
                    p.name,
                    p.description,
                    p.category::text,
-                   p."dayPrice"::float8,
-                   p."nightPrice"::float8,
+                   coalesce(lp.price,p."dayPrice")::float8,
+                   coalesce(lp.price,p."nightPrice")::float8,
                    COALESCE(ls."quantityPieces", p."stockQuantity", 0) as stock
             FROM products p
+            JOIN venue_locations v ON v.id=$2 AND v."organizationId"=p."organizationId"
+            LEFT JOIN product_location_prices lp ON lp."productId"=p.id AND lp."locationId"=v.id
             LEFT JOIN location_stock ls
               ON ls."productId" = p.id
              AND ls."locationId" = $1
             WHERE p."deletedAt" IS NULL
+              AND (cardinality(p."locationIds")=0 OR v.id=ANY(p."locationIds"))
               AND p."isActive" = true
               AND p."isRawMaterial" = false
               AND NOT EXISTS (
@@ -95,9 +104,12 @@ impl KioskOrderService {
             "#,
         )
         .bind(sale_location_id)
+        .bind(device.location_id)
         .fetch_all(self.repo.pool())
         .await?;
-        let product_rules = self.product_rules(device.organization_id, device.location_id).await?;
+        let product_rules = self
+            .product_rules(device.organization_id, device.location_id)
+            .await?;
         let makeable = made_to_order_capacity(
             ProductRecipeRepository::new(self.repo.pool().clone())
                 .made_to_order_stock(Some(sale_location_id))
@@ -169,7 +181,9 @@ impl KioskOrderService {
                     "08:00".to_string(),
                 )
             });
-        let product_rules = self.product_rules(device.organization_id, device.location_id).await?;
+        let product_rules = self
+            .product_rules(device.organization_id, device.location_id)
+            .await?;
         let mut resolved: Vec<(Uuid, i32, String, f64)> = Vec::new();
 
         for item in &dto.line_items {
@@ -183,18 +197,20 @@ impl KioskOrderService {
             let row: Option<(String, f64, f64, bool, String)> = sqlx::query_as(
                 r#"
                 SELECT p.name,
-                       p."dayPrice"::float8,
-                       p."nightPrice"::float8,
+                       coalesce(lp.price,p."dayPrice")::float8,
+                       coalesce(lp.price,p."nightPrice")::float8,
                        p."isActive" AND NOT p."isRawMaterial" AND NOT EXISTS (
                          SELECT 1 FROM product_option_groups g
                          WHERE g."productId" = p.id AND g.required
                        ),
                        p.category::text
-                FROM products p
-                WHERE p.id = $1 AND p."deletedAt" IS NULL
+                FROM products p JOIN venue_locations v ON v.id=$2 AND v."organizationId"=p."organizationId"
+                LEFT JOIN product_location_prices lp ON lp."productId"=p.id AND lp."locationId"=v.id
+                WHERE p.id = $1 AND p."deletedAt" IS NULL AND (cardinality(p."locationIds")=0 OR v.id=ANY(p."locationIds"))
                 "#,
             )
             .bind(item.product_id)
+            .bind(device.location_id)
             .fetch_optional(self.repo.pool())
             .await?;
 
@@ -236,12 +252,13 @@ impl KioskOrderService {
         Ok(order)
     }
 
-    async fn product_rules(&self, organization_id: Uuid, location_id: Uuid) -> Result<Vec<crate::models::PricingRule>, AppError> {
+    async fn product_rules(
+        &self,
+        organization_id: Uuid,
+        location_id: Uuid,
+    ) -> Result<Vec<crate::models::PricingRule>, AppError> {
         self.pricing
-            .active_product_rules(
-                organization_id,
-                Some(location_id),
-            )
+            .active_product_rules(organization_id, Some(location_id))
             .await
     }
 

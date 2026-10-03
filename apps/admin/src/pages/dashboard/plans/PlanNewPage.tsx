@@ -11,6 +11,7 @@ import {
   deviceSubTypeOptions,
   deviceTypeOptions,
 } from '../../../../src/containers/plans/schemas/plan.schema';
+import CatalogLocationFields from '../../../components/CatalogLocationFields';
 import { TimeOfDayField } from '../../../components/forms/TimeOfDayField';
 import { DeductionPreview } from '../../../containers/plans/DeductionPreview';
 import { addPlan, type CreatePlanPayload } from '../../../services/plans/add';
@@ -207,6 +208,7 @@ export const planFormFields: FieldConfig<CreatePlanFormData>[] = planFormSection
 
 export default function AddNewPlanPage() {
   const navigate = useNavigate();
+  const [locationIds, setLocationIds] = useState<string[]>();
   const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
     throttleMs: 1000,
     lockOnSuccess: true,
@@ -225,6 +227,7 @@ export default function AddNewPlanPage() {
 
     void run(async () => {
       const payload: CreatePlanPayload = {
+        locationIds,
         name,
         description: data.description || '',
         price,
@@ -260,6 +263,7 @@ export default function AddNewPlanPage() {
       backLabel="Back to plans"
       breadcrumbs={[{ label: 'Plans', to: '/plans' }, { label: 'New plan' }]}
     >
+      <CatalogLocationFields value={locationIds} onChange={setLocationIds} />
       <FormBuilder<CreatePlanFormData>
         wizard
         sections={planFormSections}

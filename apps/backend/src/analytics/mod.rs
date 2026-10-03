@@ -4,3 +4,5 @@ mod client;
 pub mod reports;
 pub mod worker;
 pub use client::{query_as, ClickHouse};
+
+pub mod scope;

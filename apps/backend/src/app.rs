@@ -333,6 +333,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/devices/provision",
             post(handlers::devices::provision_device),
         )
+        .route(
+            "/products/{id}/location-scope",
+            get(handlers::catalog_scope::get_product).put(handlers::catalog_scope::save_product),
+        )
+        .route(
+            "/plans/{id}/location-scope",
+            get(handlers::catalog_scope::get_plan).put(handlers::catalog_scope::save_plan),
+        )
         .route("/plans/active", get(handlers::plans::get_active_plans))
         .route(
             "/plans",

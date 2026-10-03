@@ -49,9 +49,14 @@ impl PricingPolicyService {
     pub async fn create(
         &self,
         organization_id: Uuid,
-        dto: CreatePricingRuleSetDto,
+        mut dto: CreatePricingRuleSetDto,
         actor_id: Uuid,
     ) -> Result<(PricingRuleSet, PricingRuleVersion), AppError> {
+        if let Some(id) = dto.location_id {
+            if !dto.location_ids.contains(&id) {
+                dto.location_ids.push(id);
+            }
+        }
         if dto.name.trim().len() < 3 {
             return Err(AppError::BadRequest(
                 "Pricing rule set name must contain at least 3 characters".to_string(),
@@ -63,7 +68,8 @@ impl PricingPolicyService {
         self.repo
             .create_set(
                 organization_id,
-                dto.location_id,
+                dto.location_ids.first().copied().or(dto.location_id),
+                &dto.location_ids,
                 dto.name.trim(),
                 dto.description.as_deref(),
                 &policy,
@@ -124,10 +130,7 @@ impl PricingPolicyService {
     ) -> Result<PricingSimulationResult, AppError> {
         let rule_set = self.repo.get_set(organization_id, set_id).await?;
         if let Some(requested) = input.location_id {
-            if rule_set
-                .location_id
-                .is_some_and(|scoped| scoped != requested)
-            {
+            if !rule_set.location_ids.is_empty() && !rule_set.location_ids.contains(&requested) {
                 return Err(AppError::BadRequest(
                     "Pricing rule set is not available for the requested location".to_string(),
                 ));
@@ -540,7 +543,8 @@ impl PricingPolicyService {
         self.active_plan_policy_for(
             crate::models::DEFAULT_ORGANIZATION_ID,
             Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
-        ).await
+        )
+        .await
     }
 
     pub async fn active_plan_policy_for(

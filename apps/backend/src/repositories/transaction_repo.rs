@@ -209,12 +209,12 @@ impl TransactionRepository {
                 id, "playerId", "transactionType", "planId", "shiftId", amount,
                 "paidAmount", "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
                 notes, "onlinePaymentRefLast4", "transactionDate", "createdBy", "updatedBy",
-                "createdAt", "updatedAt"
+                "createdAt", "updatedAt", "venueLocationId"
             )
             VALUES (
                 gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
                 0, $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
-                $10, $11, $12, $13, $13, NOW(), NOW()
+                $10, $11, $12, $13, $13, NOW(), NOW(), $14
             )
             {}
             "#,
@@ -234,6 +234,7 @@ impl TransactionRepository {
             .bind(&dto.online_payment_ref_last4)
             .bind(transaction_date)
             .bind(actor_id)
+            .bind(dto.venue_location_id)
             .fetch_one(&self.pool)
             .await?;
 
@@ -295,12 +296,12 @@ impl TransactionRepository {
                 id, "playerId", "transactionType", "planId", "shiftId", amount,
                 "paidAmount", "cashAmount", "onlineAmount", "paymentMethod", "paymentStatus",
                 notes, "onlinePaymentRefLast4", "transactionDate", "createdBy", "updatedBy",
-                "createdAt", "updatedAt"
+                "createdAt", "updatedAt", "venueLocationId"
             )
             VALUES (
                 gen_random_uuid(), $1, $2::transactions_transactiontype_enum, $3, $4, $5,
                 0, $6, $7, $8::transactions_paymentmethod_enum, $9::transactions_paymentstatus_enum,
-                $10, $11, $12, $13, $13, NOW(), NOW()
+                $10, $11, $12, $13, $13, NOW(), NOW(), $14
             )
             {}
             "#,
@@ -320,6 +321,7 @@ impl TransactionRepository {
             .bind(&dto.online_payment_ref_last4)
             .bind(transaction_date)
             .bind(actor_id)
+            .bind(dto.venue_location_id)
             .fetch_one(&mut **tx)
             .await?;
 

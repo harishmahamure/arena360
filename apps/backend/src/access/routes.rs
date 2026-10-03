@@ -101,7 +101,11 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
         }
         "organizations" => {
             if p.contains(&"locations") {
-                if read { "locations:read" } else { "locations:manage" }
+                if read {
+                    "locations:read"
+                } else {
+                    "locations:manage"
+                }
             } else if p.contains(&"pricing-rule-sets") {
                 if read {
                     "rules:read"
@@ -127,7 +131,7 @@ pub fn authorize(claims: &JwtUserClaims, method: &str, path: &str) -> Result<(),
     if claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string()
         && !matches!(
             path.trim_matches('/').split('/').next(),
-            Some("access" | "auth" | "organizations" | "realtime")
+            Some("access" | "auth" | "organizations" | "realtime" | "stats")
         )
     {
         return Err(AppError::Forbidden(

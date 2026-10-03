@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../../../services/config';
 import SettingsPage from './SettingsPage';
 
+vi.mock('../../../services/access', () => ({
+  getMyAccess: vi.fn().mockResolvedValue({ roles: [], permissions: [], organizationAdmin: true }),
+}));
 vi.mock('../../../hooks/usePermissions', () => ({
   Permission: { ConfigWrite: 'config:write' },
   usePermissions: () => ({ can: () => true }),

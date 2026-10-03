@@ -14,6 +14,7 @@ export interface ErrorEnvelope {
 
 export interface CreateHttpClientOptions {
   baseUrl: string;
+  getRequestHeaders?: () => Record<string, string>;
   getAuthToken?: () => string | null | undefined;
   getDeviceToken?: () => string | null | undefined;
   deviceTokenHeader?: string;

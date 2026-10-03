@@ -10,9 +10,9 @@ use crate::error::AppError;
 use crate::middleware::{AdminUser, AuthUser};
 use crate::models::{
     ConfigFilterDto, Configuration, ConfigurationSnapshot, ConfigurationSnapshotQuery,
-    DeleteSettingOverrideQuery, EffectiveSettingsQuery, ResolvedSetting, SettingDefinition,
-    SettingHistoryQuery, SettingOverride, SettingRevision, UpsertConfigDto,
-    UpsertSettingOverrideDto, VenueLocation, SaveVenueLocationDto,
+    DeleteSettingOverrideQuery, EffectiveSettingsQuery, ResolvedSetting, SaveVenueLocationDto,
+    SettingDefinition, SettingHistoryQuery, SettingOverride, SettingRevision, UpsertConfigDto,
+    UpsertSettingOverrideDto, VenueLocation,
 };
 use crate::openapi::responses::{
     BrandingEnvelope, ConfigurationEnvelope, ConfigurationListEnvelope,
@@ -165,7 +165,10 @@ pub async fn venue_locations(
 ) -> ApiResult<Vec<VenueLocation>> {
     let actor_id = actor_id(&claims)?;
     if query.include_inactive {
-        state.config.ensure_access(org_id, actor_id, "locations:manage").await?;
+        state
+            .config
+            .ensure_access(org_id, actor_id, "locations:manage")
+            .await?;
         return ok(state.config.list_managed_locations(org_id).await?);
     }
     state
@@ -177,18 +180,38 @@ pub async fn venue_locations(
 
 #[derive(Debug, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
-pub struct VenueLocationsQuery { pub include_inactive: bool }
+pub struct VenueLocationsQuery {
+    pub include_inactive: bool,
+}
 
 fn validate_venue(dto: &SaveVenueLocationDto) -> Result<(), AppError> {
     let slug = dto.slug.trim();
-    if slug.is_empty() || slug.len() > 80 || !slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-        || dto.name.trim().is_empty() || dto.name.trim().len() > 160
-        || dto.timezone.trim().is_empty() || dto.timezone.len() > 80
-        || dto.currency.len() != 3 || !dto.currency.chars().all(|c| c.is_ascii_uppercase()) {
+    if slug.is_empty()
+        || slug.len() > 80
+        || !slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        || dto.name.trim().is_empty()
+        || dto.name.trim().len() > 160
+        || dto.timezone.trim().is_empty()
+        || dto.timezone.len() > 80
+        || dto.currency.len() != 3
+        || !dto.currency.chars().all(|c| c.is_ascii_uppercase())
+    {
         return Err(AppError::BadRequest("Use a lowercase location slug, a name, an IANA timezone, and a three-letter currency code".into()));
     }
-    crate::services::settings_catalog::validate("Asia/Kolkata", "venue.timezone", &serde_json::json!(dto.timezone), true)?;
-    crate::services::settings_catalog::validate("Asia/Kolkata", "pricing.currency", &serde_json::json!(dto.currency), true)?;
+    crate::services::settings_catalog::validate(
+        "Asia/Kolkata",
+        "venue.timezone",
+        &serde_json::json!(dto.timezone),
+        true,
+    )?;
+    crate::services::settings_catalog::validate(
+        "Asia/Kolkata",
+        "pricing.currency",
+        &serde_json::json!(dto.currency),
+        true,
+    )?;
     Ok(())
 }
 
@@ -208,17 +231,33 @@ pub async fn create_venue_location(
     Path(org_id): Path<Uuid>,
     Json(dto): Json<SaveVenueLocationDto>,
 ) -> ApiResult<VenueLocation> {
-    state.config.ensure_access(org_id, actor_id(&claims)?, "locations:manage").await?;
+    state
+        .config
+        .ensure_access(org_id, actor_id(&claims)?, "locations:manage")
+        .await?;
     validate_venue(&dto)?;
-    let query = format!(r#"INSERT INTO venue_locations ("organizationId", slug, name, timezone, currency, "isActive")
-        VALUES ($1,$2,$3,$4,$5,COALESCE($6,TRUE)) RETURNING {VENUE_COLUMNS}"#);
+    let query = format!(
+        r#"INSERT INTO venue_locations ("organizationId", slug, name, timezone, currency, "isActive")
+        VALUES ($1,$2,$3,$4,$5,COALESCE($6,TRUE)) RETURNING {VENUE_COLUMNS}"#
+    );
     let location = sqlx::query_as::<_, VenueLocation>(&query)
-        .bind(org_id).bind(dto.slug.trim()).bind(dto.name.trim())
-        .bind(dto.timezone.trim()).bind(&dto.currency).bind(dto.is_active)
-        .fetch_one(&state.db).await.map_err(|error| {
-            if error.as_database_error().is_some_and(|db| db.is_unique_violation()) {
+        .bind(org_id)
+        .bind(dto.slug.trim())
+        .bind(dto.name.trim())
+        .bind(dto.timezone.trim())
+        .bind(&dto.currency)
+        .bind(dto.is_active)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|error| {
+            if error
+                .as_database_error()
+                .is_some_and(|db| db.is_unique_violation())
+            {
                 AppError::Conflict("A location with this slug already exists".into())
-            } else { AppError::Database(error) }
+            } else {
+                AppError::Database(error)
+            }
         })?;
     ok(location)
 }
@@ -237,36 +276,64 @@ pub async fn update_venue_location(
     Path((org_id, location_id)): Path<(Uuid, Uuid)>,
     Json(dto): Json<SaveVenueLocationDto>,
 ) -> ApiResult<VenueLocation> {
-    state.config.ensure_access(org_id, actor_id(&claims)?, "locations:manage").await?;
+    state
+        .config
+        .ensure_access(org_id, actor_id(&claims)?, "locations:manage")
+        .await?;
     validate_venue(&dto)?;
     if dto.is_active == Some(false) {
         let devices: i64 = sqlx::query_scalar(r#"SELECT count(*) FROM devices WHERE "organizationId"=$1 AND "locationId"=$2 AND "deletedAt" IS NULL"#)
             .bind(org_id).bind(location_id).fetch_one(&state.db).await?;
         if devices > 0 {
-            return Err(AppError::Conflict("Move or retire devices before deactivating this location".into()));
+            return Err(AppError::Conflict(
+                "Move or retire devices before deactivating this location".into(),
+            ));
         }
         let stores: i64 = sqlx::query_scalar(r#"SELECT count(*) FROM inventory_locations WHERE "venueLocationId"=$1 AND "isActive" AND "deletedAt" IS NULL"#)
             .bind(location_id).fetch_one(&state.db).await?;
         if stores > 0 {
-            return Err(AppError::Conflict("Move or deactivate inventory locations before deactivating this venue".into()));
+            return Err(AppError::Conflict(
+                "Move or deactivate inventory locations before deactivating this venue".into(),
+            ));
         }
-        let shifts: i64 = sqlx::query_scalar(r#"SELECT count(*) FROM shifts WHERE "venueLocationId"=$1 AND status='active'"#)
-            .bind(location_id).fetch_one(&state.db).await?;
+        let shifts: i64 = sqlx::query_scalar(
+            r#"SELECT count(*) FROM shifts WHERE "venueLocationId"=$1 AND status='active'"#,
+        )
+        .bind(location_id)
+        .fetch_one(&state.db)
+        .await?;
         if shifts > 0 {
-            return Err(AppError::Conflict("Close active shifts before deactivating this venue".into()));
+            return Err(AppError::Conflict(
+                "Close active shifts before deactivating this venue".into(),
+            ));
         }
     }
-    let query = format!(r#"UPDATE venue_locations SET slug=$3, name=$4, timezone=$5, currency=$6,
+    let query = format!(
+        r#"UPDATE venue_locations SET slug=$3, name=$4, timezone=$5, currency=$6,
         "isActive"=COALESCE($7,"isActive"), "updatedAt"=NOW()
-        WHERE "organizationId"=$1 AND id=$2 RETURNING {VENUE_COLUMNS}"#);
+        WHERE "organizationId"=$1 AND id=$2 RETURNING {VENUE_COLUMNS}"#
+    );
     let location = sqlx::query_as::<_, VenueLocation>(&query)
-        .bind(org_id).bind(location_id).bind(dto.slug.trim()).bind(dto.name.trim())
-        .bind(dto.timezone.trim()).bind(&dto.currency).bind(dto.is_active)
-        .fetch_optional(&state.db).await.map_err(|error| {
-            if error.as_database_error().is_some_and(|db| db.is_unique_violation()) {
+        .bind(org_id)
+        .bind(location_id)
+        .bind(dto.slug.trim())
+        .bind(dto.name.trim())
+        .bind(dto.timezone.trim())
+        .bind(&dto.currency)
+        .bind(dto.is_active)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|error| {
+            if error
+                .as_database_error()
+                .is_some_and(|db| db.is_unique_violation())
+            {
                 AppError::Conflict("A location with this slug already exists".into())
-            } else { AppError::Database(error) }
-        })?.ok_or_else(|| AppError::NotFound("Location not found".into()))?;
+            } else {
+                AppError::Database(error)
+            }
+        })?
+        .ok_or_else(|| AppError::NotFound("Location not found".into()))?;
     ok(location)
 }
 
@@ -355,6 +422,9 @@ pub async fn upsert_setting_override(
             .ensure_location_permission(org_id, location_id, actor_id, "settings:write")
             .await?;
     }
+    if dto.location_id.is_none() {
+        crate::access::scope::require_organization_admin(&state.db, org_id, actor_id).await?;
+    }
     ok(state
         .config
         .upsert_override(org_id, &key, dto, actor_id, request_id(&headers))
@@ -389,6 +459,9 @@ pub async fn delete_setting_override(
             .config
             .ensure_location_permission(org_id, location_id, actor_id, "settings:write")
             .await?;
+    }
+    if query.location_id.is_none() {
+        crate::access::scope::require_organization_admin(&state.db, org_id, actor_id).await?;
     }
     let deleted = state
         .config
@@ -430,7 +503,21 @@ pub async fn setting_history(
             .ensure_location_permission(org_id, location_id, actor_id, "settings:read")
             .await?;
     }
-    ok(state.config.history(org_id, query).await?)
+    let scope = crate::access::scope::LocationScope::resolve(
+        &state.db,
+        &claims,
+        "settings:read",
+        query.location_id,
+    )
+    .await?;
+    let mut history = state.config.history(org_id, query).await?;
+    if !scope.organization_admin {
+        history.retain(|item| {
+            item.location_id
+                .is_none_or(|id| scope.locations.contains(&id))
+        });
+    }
+    ok(history)
 }
 
 #[utoipa::path(

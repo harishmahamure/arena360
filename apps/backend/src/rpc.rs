@@ -88,7 +88,12 @@ impl RpcGateway {
             .ok_or_else(|| Status::internal("failed to construct request"))?;
         headers.insert(axum::http::header::CONTENT_TYPE, content_type);
 
-        for name in ["authorization", "x-player-token", "x-request-id"] {
+        for name in [
+            "authorization",
+            "x-player-token",
+            "x-request-id",
+            "x-location-id",
+        ] {
             if let Some(value) = metadata.get(name).and_then(|v| v.to_str().ok()) {
                 if let Ok(value) = HeaderValue::from_str(value) {
                     headers.insert(HeaderName::from_static(name), value);
@@ -99,7 +104,12 @@ impl RpcGateway {
             let lower = name.to_ascii_lowercase();
             if !matches!(
                 lower.as_str(),
-                "authorization" | "x-player-token" | "x-request-id" | "content-type" | "accept"
+                "authorization"
+                    | "x-player-token"
+                    | "x-request-id"
+                    | "x-location-id"
+                    | "content-type"
+                    | "accept"
             ) {
                 continue;
             }

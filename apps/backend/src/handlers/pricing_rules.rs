@@ -43,11 +43,31 @@ async fn require_rule_set(
 ) -> Result<Uuid, AppError> {
     let actor_id = require(state, claims, organization_id, permission).await?;
     let rule_set = state.pricing_rules.get_set(organization_id, set_id).await?;
-    if let Some(location_id) = rule_set.location_id {
-        state
-            .config
-            .ensure_location_permission(organization_id, location_id, actor_id, permission)
+    if permission == "rules:read" {
+        if !rule_set.location_ids.is_empty() {
+            let scope =
+                crate::access::scope::LocationScope::resolve(&state.db, claims, permission, None)
+                    .await?;
+            if !rule_set
+                .location_ids
+                .iter()
+                .any(|id| scope.locations.contains(id))
+            {
+                return Err(AppError::Forbidden(
+                    "This pricing policy is not available at your locations".into(),
+                ));
+            }
+        }
+    } else if rule_set.location_ids.is_empty() {
+        crate::access::scope::require_organization_admin(&state.db, organization_id, actor_id)
             .await?;
+    } else {
+        for location in &rule_set.location_ids {
+            state
+                .config
+                .ensure_location_permission(organization_id, *location, actor_id, permission)
+                .await?;
+        }
     }
     Ok(actor_id)
 }
@@ -83,14 +103,21 @@ pub async fn list_rule_sets(
             .collect();
         let mut allowed_locations = HashSet::new();
         for location_id in assigned_locations {
-            if state.config.ensure_location_permission(org_id, location_id, actor_id, "rules:read").await.is_ok() {
+            if state
+                .config
+                .ensure_location_permission(org_id, location_id, actor_id, "rules:read")
+                .await
+                .is_ok()
+            {
                 allowed_locations.insert(location_id);
             }
         }
         rule_sets.retain(|rule_set| {
-            rule_set
-                .location_id
-                .is_none_or(|location_id| allowed_locations.contains(&location_id))
+            rule_set.location_ids.is_empty()
+                || rule_set
+                    .location_ids
+                    .iter()
+                    .any(|id| allowed_locations.contains(id))
         });
     }
     ok(rule_sets)
@@ -107,13 +134,23 @@ pub async fn create_rule_set(
     AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Path(org_id): Path<Uuid>,
-    Json(dto): Json<CreatePricingRuleSetDto>,
+    Json(mut dto): Json<CreatePricingRuleSetDto>,
 ) -> ApiResult<PricingRuleSetDraft> {
     let actor_id = require(&state, &claims, org_id, "rules:edit").await?;
-    if let Some(location_id) = dto.location_id {
+    if let Some(id) = dto.location_id {
+        if !dto.location_ids.contains(&id) {
+            dto.location_ids.push(id);
+        }
+    }
+    dto.location_ids.sort();
+    dto.location_ids.dedup();
+    if dto.location_ids.is_empty() {
+        crate::access::scope::require_organization_admin(&state.db, org_id, actor_id).await?;
+    }
+    for id in &dto.location_ids {
         state
             .config
-            .ensure_location_permission(org_id, location_id, actor_id, "rules:edit")
+            .ensure_location_permission(org_id, *id, actor_id, "rules:edit")
             .await?;
     }
     let (rule_set, version) = state.pricing_rules.create(org_id, dto, actor_id).await?;

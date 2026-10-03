@@ -15,7 +15,9 @@
     "paidAmount": "Decimal(19,4)",
     "transactionDate": "DateTime64(6,'UTC')",
     "shiftId": "Nullable(UUID)",
-    "createdBy": "Nullable(UUID)"
+    "createdBy": "Nullable(UUID)",
+    "organizationId": "Nullable(UUID)",
+    "venueLocationId": "Nullable(UUID)"
   },
   "credit_settlements": {
     "id": "UUID",
@@ -27,7 +29,9 @@
     "paymentMethod": "String",
     "cashAmount": "Nullable(Decimal(19,4))",
     "onlineAmount": "Nullable(Decimal(19,4))",
-    "settledAt": "DateTime64(6,'UTC')"
+    "settledAt": "DateTime64(6,'UTC')",
+    "organizationId": "Nullable(UUID)",
+    "shiftId": "Nullable(UUID)"
   },
   "credit_settlement_items": {
     "id": "UUID",
@@ -36,7 +40,8 @@
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
     "settlementId": "UUID",
     "transactionId": "UUID",
-    "amountApplied": "Decimal(19,4)"
+    "amountApplied": "Decimal(19,4)",
+    "organizationId": "Nullable(UUID)"
   },
   "usage_sessions": {
     "id": "UUID",
@@ -50,7 +55,9 @@
     "durationMinutes": "Nullable(Int64)",
     "shiftId": "Nullable(UUID)",
     "createdBy": "Nullable(UUID)",
-    "sourcePlanIdAtStart": "Nullable(UUID)"
+    "sourcePlanIdAtStart": "Nullable(UUID)",
+    "organizationId": "Nullable(UUID)",
+    "venueLocationId": "Nullable(UUID)"
   },
   "users": {
     "id": "UUID",
@@ -73,7 +80,8 @@
     "price": "Nullable(Decimal(18,2))",
     "timeCredits": "Nullable(Int64)",
     "planType": "Nullable(String)",
-    "validityDays": "Nullable(Int64)"
+    "validityDays": "Nullable(Int64)",
+    "organizationId": "Nullable(UUID)"
   },
   "player_plan_balances": {
     "id": "UUID",
@@ -85,7 +93,8 @@
     "kind": "Nullable(String)",
     "remainingMinutes": "Nullable(Int64)",
     "expiryDate": "Nullable(DateTime64(6,'UTC'))",
-    "sourcePlanId": "Nullable(UUID)"
+    "sourcePlanId": "Nullable(UUID)",
+    "organizationId": "Nullable(UUID)"
   },
   "devices": {
     "id": "UUID",
@@ -95,7 +104,9 @@
     "name": "String",
     "status": "String",
     "location": "Nullable(String)",
-    "deviceType": "Nullable(String)"
+    "deviceType": "Nullable(String)",
+    "organizationId": "Nullable(UUID)",
+    "locationId": "Nullable(UUID)"
   },
   "cash_registers": {
     "id": "UUID",
@@ -106,7 +117,8 @@
     "status": "String",
     "variance": "Nullable(Decimal(19,4))",
     "closingBalance": "Nullable(Decimal(19,4))",
-    "expectedClosing": "Nullable(Decimal(19,4))"
+    "expectedClosing": "Nullable(Decimal(19,4))",
+    "organizationId": "Nullable(UUID)"
   },
   "cash_deposits": {
     "id": "UUID",
@@ -115,7 +127,9 @@
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
     "status": "String",
     "amount": "Decimal(19,4)",
-    "depositType": "Nullable(String)"
+    "depositType": "Nullable(String)",
+    "organizationId": "Nullable(UUID)",
+    "shiftId": "Nullable(UUID)"
   },
   "expenses": {
     "id": "UUID",
@@ -125,7 +139,9 @@
     "categoryId": "UUID",
     "amount": "Decimal(19,4)",
     "approvalStatus": "String",
-    "expenseDate": "DateTime64(6,'UTC')"
+    "expenseDate": "DateTime64(6,'UTC')",
+    "organizationId": "Nullable(UUID)",
+    "shiftId": "Nullable(UUID)"
   },
   "expense_categories": {
     "id": "UUID",
@@ -135,7 +151,8 @@
     "name": "String",
     "isActive": "Bool",
     "budgetAmount": "Nullable(Decimal(19,4))",
-    "budgetPeriod": "Nullable(String)"
+    "budgetPeriod": "Nullable(String)",
+    "organizationId": "Nullable(UUID)"
   },
   "products": {
     "id": "UUID",
@@ -145,21 +162,25 @@
     "name": "String",
     "purchasePricePerBox": "Nullable(Decimal(19,4))",
     "purchasePrice": "Nullable(Decimal(19,4))",
-    "unitsPerPurchaseUnit": "Nullable(Int64)"
+    "unitsPerPurchaseUnit": "Nullable(Int64)",
+    "organizationId": "Nullable(UUID)"
   },
   "vendors": {
     "id": "UUID",
     "createdAt": "Nullable(DateTime64(6,'UTC'))",
     "updatedAt": "Nullable(DateTime64(6,'UTC'))",
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
-    "name": "String"
+    "name": "String",
+    "organizationId": "Nullable(UUID)"
   },
   "inventory_locations": {
     "id": "UUID",
     "createdAt": "Nullable(DateTime64(6,'UTC'))",
     "updatedAt": "Nullable(DateTime64(6,'UTC'))",
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
-    "name": "String"
+    "name": "String",
+    "organizationId": "Nullable(UUID)",
+    "venueLocationId": "Nullable(UUID)"
   },
   "stock_receipts": {
     "id": "UUID",
@@ -167,7 +188,8 @@
     "updatedAt": "Nullable(DateTime64(6,'UTC'))",
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
     "vendorId": "Nullable(UUID)",
-    "locationId": "UUID"
+    "locationId": "UUID",
+    "organizationId": "Nullable(UUID)"
   },
   "stock_receipt_lines": {
     "id": "UUID",
@@ -177,7 +199,8 @@
     "receiptId": "UUID",
     "productId": "UUID",
     "boxQuantity": "Int64",
-    "piecesAdded": "Int64"
+    "piecesAdded": "Int64",
+    "organizationId": "Nullable(UUID)"
   },
   "stock_waste_events": {
     "id": "UUID",
@@ -186,7 +209,8 @@
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
     "locationId": "UUID",
     "status": "String",
-    "approvedAt": "Nullable(DateTime64(6,'UTC'))"
+    "approvedAt": "Nullable(DateTime64(6,'UTC'))",
+    "organizationId": "Nullable(UUID)"
   },
   "stock_waste_lines": {
     "id": "UUID",
@@ -196,7 +220,8 @@
     "wasteEventId": "UUID",
     "productId": "UUID",
     "reasonCode": "String",
-    "quantityPieces": "Int64"
+    "quantityPieces": "Int64",
+    "organizationId": "Nullable(UUID)"
   },
   "location_stock": {
     "id": "UUID",
@@ -205,7 +230,8 @@
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
     "locationId": "UUID",
     "productId": "UUID",
-    "quantityPieces": "Int64"
+    "quantityPieces": "Int64",
+    "organizationId": "Nullable(UUID)"
   },
   "inventory_reorder_rules": {
     "id": "UUID",
@@ -215,21 +241,27 @@
     "locationId": "UUID",
     "productId": "UUID",
     "isActive": "Bool",
-    "minimumPieces": "Int64"
+    "minimumPieces": "Int64",
+    "organizationId": "Nullable(UUID)"
   },
   "purchase_orders": {
     "id": "UUID",
     "createdAt": "Nullable(DateTime64(6,'UTC'))",
     "updatedAt": "Nullable(DateTime64(6,'UTC'))",
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
-    "status": "String"
+    "status": "String",
+    "organizationId": "Nullable(UUID)",
+    "destinationLocationId": "Nullable(UUID)"
   },
   "stock_transfer_requests": {
     "id": "UUID",
     "createdAt": "Nullable(DateTime64(6,'UTC'))",
     "updatedAt": "Nullable(DateTime64(6,'UTC'))",
     "deletedAt": "Nullable(DateTime64(6,'UTC'))",
-    "status": "String"
+    "status": "String",
+    "organizationId": "Nullable(UUID)",
+    "fromLocationId": "Nullable(UUID)",
+    "toLocationId": "Nullable(UUID)"
   },
   "stock_movements": {
     "id": "UUID",
@@ -242,7 +274,8 @@
     "movementType": "String",
     "referenceId": "Nullable(UUID)",
     "referenceType": "Nullable(String)",
-    "createdBy": "Nullable(UUID)"
+    "createdBy": "Nullable(UUID)",
+    "organizationId": "Nullable(UUID)"
   },
   "transaction_products": {
     "id": "UUID",
@@ -251,7 +284,8 @@
     "quantity": "Int64",
     "unitPrice": "Decimal(18,2)",
     "createdAt": "Nullable(DateTime64(6,'UTC'))",
-    "updatedAt": "Nullable(DateTime64(6,'UTC'))"
+    "updatedAt": "Nullable(DateTime64(6,'UTC'))",
+    "organizationId": "Nullable(UUID)"
   },
   "shifts": {
     "id": "UUID",
@@ -260,7 +294,9 @@
     "clockOut": "Nullable(DateTime64(6,'UTC'))",
     "status": "String",
     "createdAt": "Nullable(DateTime64(6,'UTC'))",
-    "updatedAt": "Nullable(DateTime64(6,'UTC'))"
+    "updatedAt": "Nullable(DateTime64(6,'UTC'))",
+    "organizationId": "Nullable(UUID)",
+    "venueLocationId": "Nullable(UUID)"
   },
   "games": {
     "id": "UUID",
@@ -268,6 +304,13 @@
     "isActive": "Bool",
     "createdAt": "Nullable(DateTime64(6,'UTC'))",
     "updatedAt": "Nullable(DateTime64(6,'UTC'))",
-    "deletedAt": "Nullable(DateTime64(6,'UTC'))"
+    "deletedAt": "Nullable(DateTime64(6,'UTC'))",
+    "organizationId": "Nullable(UUID)"
+  },
+  "organization_memberships": {
+    "id": "UUID",
+    "organizationId": "UUID",
+    "userId": "UUID",
+    "isActive": "Bool"
   }
 }

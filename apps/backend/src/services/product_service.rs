@@ -25,6 +25,11 @@ impl ProductService {
         }
     }
 
+    pub fn with_locations(mut self, ids: Vec<Uuid>) -> Self {
+        self.repo = self.repo.with_locations(ids);
+        self
+    }
+
     async fn invalidate_products(&self, id: Option<Uuid>) -> Result<(), AppError> {
         let mut cache_keys = Vec::new();
         if let Some(id) = id {

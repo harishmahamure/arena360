@@ -33,3 +33,5 @@ pub mod finance_report;
 pub mod kitchen;
 
 pub mod access;
+
+pub mod catalog_scope;

@@ -2,6 +2,7 @@ import { http } from '@gaming-cafe/utils';
 import type { ProductCategory } from './list';
 
 interface AddProductRequest {
+  locationIds?: string[];
   name: string;
   description: string;
   price: number;

@@ -105,7 +105,7 @@ export default function FinanceReportPage() {
     <PageShell>
       <PageHeader
         title="Financial reports"
-        description="Review venue sales, spending, and credit in one place. Export a dated snapshot for reconciliation."
+        description={`Sales, spending, and credit for ${data?.locationLabel ?? 'the selected locations'}. Use the workspace location selector to change the report scope.`}
       />
       <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 3 }}>
         <Button component={Link} to="/finance/reconciliation">

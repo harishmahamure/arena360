@@ -32,6 +32,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BrandMark } from '../components/BrandMark';
+import LocationSelector from '../components/LocationSelector';
 import { isFormRoute, useAutoFocusFirstField } from '../hooks/useAutoFocusFirstField';
 import { useRealtimeStatus } from '../lib/realtime/RealtimeProvider';
 import { useBranding } from '../services/config/branding';
@@ -135,6 +136,7 @@ export function WorkspaceShell({
       <Link className="workspace-brand" to="/" aria-label={`${brand.name} home`}>
         <BrandMark subtitle="OPERATIONS WORKSPACE" />
       </Link>
+      <LocationSelector />
       <Box className="workspace-context">
         <span className="workspace-context-icon" style={{ flexShrink: 0 }}>
           {brand.name.slice(0, 1).toUpperCase()}

@@ -61,7 +61,7 @@ export interface RoleDraft {
 }
 export const getAccess = () => http.get<AccessSnapshot>('/access');
 export const getMyAccess = () =>
-  http.get<{ roles: string[]; permissions: string[] }>('/access/self');
+  http.get<{ roles: string[]; permissions: string[]; organizationAdmin: boolean }>('/access/self');
 export const saveRole = ({ id, ...draft }: RoleDraft) =>
   id
     ? http.put<{ id: string }>(`/access/roles/${id}`, draft)

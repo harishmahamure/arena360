@@ -39,8 +39,10 @@ import { alpha } from '@mui/material/styles';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { AssetUploadField } from '../../../components/AssetUploadField';
+import { useCatalogLocations } from '../../../components/CatalogLocationFields';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { decodeJwtPayload } from '../../../lib/authSession';
+import { selectedLocationId } from '../../../lib/locationSelection';
 import {
   deleteSettingOverride,
   getEffectiveSettings,
@@ -91,9 +93,19 @@ type Confirmation =
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
-  const canWrite = can(Permission.SettingsWrite);
+  const {
+    organizationAdmin,
+    locations: accessibleLocations,
+    loading: scopeLoading,
+  } = useCatalogLocations();
   const organizationId = useMemo(currentOrganizationId, []);
-  const [locationId, setLocationId] = useState('');
+  const [locationId, setLocationId] = useState(selectedLocationId);
+  const [additionalLocations, setAdditionalLocations] = useState<string[]>([]);
+  const canWrite = can(Permission.SettingsWrite) && (organizationAdmin || !!locationId);
+  useEffect(() => {
+    if (!scopeLoading && !organizationAdmin && !locationId && accessibleLocations[0])
+      setLocationId(accessibleLocations[0].id);
+  }, [scopeLoading, organizationAdmin, locationId, accessibleLocations]);
   const [tab, setTab] = useState(0);
   const [pricingDirty, setPricingDirty] = useState(false);
   const [category, setCategory] = useState('all');
@@ -231,6 +243,7 @@ export default function SettingsPage() {
     if (confirmation.type === 'discard' || confirmation.type === 'scope') {
       if (confirmation.type === 'scope') {
         setLocationId(confirmation.locationId);
+        setAdditionalLocations([]);
         setPricingDirty(false);
       }
       setDrafts({});
@@ -246,12 +259,34 @@ export default function SettingsPage() {
         for (const key of draftKeys) {
           const definition = catalog.data?.find((item) => item.key === key);
           if (!definition) continue;
-          await putSettingOverride(organizationId, key, {
-            locationId: locationId || undefined,
-            value: parseSettingValue(definition, drafts[key]?.raw ?? ''),
-            expectedRevision: drafts[key]?.expectedRevision ?? 0,
-            reason: reason.trim(),
-          });
+          const targets = locationId ? [...new Set([locationId, ...additionalLocations])] : [''];
+          for (const target of targets) {
+            // Each location has its own revision; fetch it before copying an override.
+            const settings =
+              target === locationId
+                ? effective.data
+                : await getEffectiveSettings(organizationId, target || undefined);
+            const current = settings?.find((item) => item.key === key);
+            const saved = await putSettingOverride(organizationId, key, {
+              locationId: target || undefined,
+              value: parseSettingValue(definition, drafts[key]?.raw ?? ''),
+              expectedRevision:
+                target === locationId
+                  ? (drafts[key]?.expectedRevision ?? 0)
+                  : current?.sourceScope === 'location'
+                    ? current.revision
+                    : 0,
+              reason: reason.trim(),
+            });
+            if (target === locationId)
+              setDrafts((previous) => ({
+                ...previous,
+                [key]: {
+                  ...(previous[key] ?? { raw: '', expectedRevision: 0 }),
+                  expectedRevision: saved.revision,
+                },
+              }));
+          }
           setDrafts((previous) => {
             const next = { ...previous };
             delete next[key];
@@ -349,11 +384,14 @@ export default function SettingsPage() {
                   setConfirmation({ type: 'scope', locationId: event.target.value });
                 else {
                   setLocationId(event.target.value);
+                  setAdditionalLocations([]);
                   setErrors({});
                 }
               }}
             >
-              <MenuItem value="">Organization defaults</MenuItem>
+              <MenuItem value="" disabled={!organizationAdmin}>
+                Organization defaults{!organizationAdmin ? ' (read only)' : ''}
+              </MenuItem>
               {(locations.data ?? []).map((item) => (
                 <MenuItem key={item.id} value={item.id}>
                   {item.name}
@@ -362,6 +400,33 @@ export default function SettingsPage() {
               ))}
             </Select>
           </FormControl>
+          {!!locationId && canWrite && (
+            <FormControl size="small" sx={{ minWidth: 240 }}>
+              <InputLabel id="copy-locations-label">Also apply setting changes to</InputLabel>
+              <Select
+                multiple
+                labelId="copy-locations-label"
+                label="Also apply setting changes to"
+                value={additionalLocations}
+                disabled={saving}
+                onChange={(event) =>
+                  setAdditionalLocations(
+                    typeof event.target.value === 'string'
+                      ? event.target.value.split(',')
+                      : event.target.value,
+                  )
+                }
+              >
+                {(locations.data ?? [])
+                  .filter((item) => item.id !== locationId)
+                  .map((item) => (
+                    <MenuItem key={item.id} value={item.id}>
+                      {item.name}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+          )}
         </Stack>
       </Card>
       {!canWrite && (
@@ -785,7 +850,7 @@ export default function SettingsPage() {
               key={locationId}
               organizationId={organizationId}
               locationId={locationId || undefined}
-              readOnly={!can(Permission.RulesEdit)}
+              readOnly={!can(Permission.RulesEdit) || (!organizationAdmin && !locationId)}
               onDirtyChange={setPricingDirty}
             />
           </Box>
@@ -931,9 +996,16 @@ export default function SettingsPage() {
           ) : (
             <>
               <Alert severity="info" sx={{ mb: 2 }}>
-                These changes apply to {scopeLabel}.{' '}
+                These changes apply to{' '}
+                {[
+                  scopeLabel,
+                  ...(locations.data ?? [])
+                    .filter((item) => additionalLocations.includes(item.id))
+                    .map((item) => item.name),
+                ].join(', ')}
+                .{' '}
                 {locationId
-                  ? 'Other locations keep their current settings.'
+                  ? 'Each selected location receives its own override.'
                   : 'Locations without overrides inherit these values.'}
               </Alert>
               {confirmation?.type === 'save' ? (

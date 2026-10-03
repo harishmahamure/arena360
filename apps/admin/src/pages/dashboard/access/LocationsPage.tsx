@@ -24,7 +24,17 @@ const LOCATION_ADMIN_PERMISSIONS = [
   'devices:read',
   'devices:write',
   'settings:read',
+  'settings:write',
   'rules:read',
+  'rules:edit',
+  'rules:publish',
+  'stats:read',
+  'finance:read',
+  'products:read',
+  'products:write',
+  'plans:read',
+  'plans:write',
+  'units:read',
 ];
 
 export default function LocationsPage() {
@@ -65,7 +75,7 @@ export default function LocationsPage() {
         const role = await saveRole({
           name: LOCATION_ADMIN_ROLE,
           description:
-            'Starter permissions for assigned venue locations. Edit this role in Access management.',
+            'Dashboard, catalog, devices, settings and pricing for assigned venue locations. Edit this role in Access management.',
           permissions: LOCATION_ADMIN_PERMISSIONS,
           isTemplate: false,
         });

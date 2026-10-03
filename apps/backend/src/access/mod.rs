@@ -3,6 +3,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
 pub mod routes;
+pub mod scope;
 pub const MANAGED: &str = "system:managed-access-v1";
 pub fn catalog() -> Value {
     serde_json::from_str(include_str!("catalog.json")).expect("checked-in access catalog")
@@ -77,14 +78,25 @@ pub async fn require_location(
     location: Uuid,
     permission: &str,
 ) -> Result<(), AppError> {
-    let admin: bool = sqlx::query_scalar(r#"SELECT EXISTS(SELECT 1 FROM organization_memberships
-        WHERE "organizationId"=$1 AND "userId"=$2 AND "isActive" AND role='admin')"#)
-        .bind(org).bind(user).fetch_one(pool).await?;
+    let admin: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS(SELECT 1 FROM organization_memberships
+        WHERE "organizationId"=$1 AND "userId"=$2 AND "isActive" AND role='admin')"#,
+    )
+    .bind(org)
+    .bind(user)
+    .fetch_one(pool)
+    .await?;
     if admin {
         require(pool, org, user, permission).await?;
         let active: bool = sqlx::query_scalar(r#"SELECT EXISTS(SELECT 1 FROM venue_locations WHERE id=$1 AND "organizationId"=$2 AND "isActive")"#)
             .bind(location).bind(org).fetch_one(pool).await?;
-        return if active { Ok(()) } else { Err(AppError::Forbidden("Choose an active location in this organization".into())) };
+        return if active {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(
+                "Choose an active location in this organization".into(),
+            ))
+        };
     }
     let allowed: bool = sqlx::query_scalar(r#"SELECT EXISTS(
         SELECT 1 FROM location_role_assignments a
@@ -96,5 +108,11 @@ pub async fn require_location(
         WHERE a.organization_id=$1 AND a.user_id=$2 AND a.location_id=$3
           AND r.permissions ? $4 AND coalesce(mod.enabled,true)
     )"#).bind(org).bind(user).bind(location).bind(permission).fetch_one(pool).await?;
-    if allowed { Ok(()) } else { Err(AppError::Forbidden(format!("Permission required at this location: {permission}"))) }
+    if allowed {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(format!(
+            "Permission required at this location: {permission}"
+        )))
+    }
 }
