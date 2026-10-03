@@ -15,9 +15,11 @@ import {
   deviceTypeOptions,
 } from '../../../containers/devices/schemas/device-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
+import { getVenueLocations } from '../../../services/config';
 import { getDeviceById } from '../../../services/devices/getById';
 import { DeviceStatus } from '../../../services/devices/list';
 import { updateDevice } from '../../../services/devices/update';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 const editDeviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
   {
@@ -66,8 +68,16 @@ const editDeviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
     helperText: 'Optional IP address for network management',
   },
   {
+    name: 'locationId',
+    label: 'Venue location',
+    type: 'select',
+    required: true,
+    gridCols: 6,
+    options: [],
+  },
+  {
     name: 'location',
-    label: 'Location',
+    label: 'Position within venue',
     type: 'text',
     placeholder: 'e.g., Main Gaming Floor - Station A',
     gridCols: 12,
@@ -135,6 +145,11 @@ const getStatusLabel = (status: DeviceStatusValue) => {
 };
 
 export default function EditDevicePage() {
+  const organizationId = currentOrganizationId();
+  const locations = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
   const navigate = useNavigate();
   const { id } = useParams();
   const { can } = usePermissions();
@@ -171,6 +186,7 @@ export default function EditDevicePage() {
         serialNumber: data.serialNumber || undefined,
         localIpAddress: data.localIpAddress || undefined,
         location: data.location || undefined,
+        locationId: data.locationId,
         status: data.status as DeviceStatusValue,
       });
 
@@ -259,10 +275,20 @@ export default function EditDevicePage() {
           { title: 'Station identity', fields: ['name', 'deviceType', 'deviceSubType'] },
           {
             title: 'Location & connection',
-            fields: ['serialNumber', 'localIpAddress', 'location', 'status'],
+            fields: ['serialNumber', 'localIpAddress', 'locationId', 'location', 'status'],
           },
         ]}
-        fields={editDeviceFormFields}
+        fields={editDeviceFormFields.map((field) =>
+          field.name === 'locationId'
+            ? {
+                ...field,
+                options: (locations.data ?? []).map((location) => ({
+                  label: location.name,
+                  value: location.id,
+                })),
+              }
+            : field,
+        )}
         schema={createDeviceSchema}
         defaultValues={{
           name: deviceData?.name || '',
@@ -271,6 +297,7 @@ export default function EditDevicePage() {
           serialNumber: deviceData?.serialNumber || '',
           localIpAddress: deviceData?.localIpAddress || '',
           location: deviceData?.location || '',
+          locationId: deviceData?.locationId || '',
           status: deviceData?.status || DeviceStatus.OPERATIONAL,
         }}
         mode={canWrite ? 'edit' : 'view'}

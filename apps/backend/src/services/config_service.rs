@@ -121,6 +121,10 @@ impl ConfigService {
             .await
     }
 
+    pub async fn list_managed_locations(&self, organization_id: Uuid) -> Result<Vec<VenueLocation>, AppError> {
+        self.settings_repo.list_managed_locations(organization_id).await
+    }
+
     pub async fn ensure_location_access(
         &self,
         organization_id: Uuid,
@@ -130,6 +134,16 @@ impl ConfigService {
         self.settings_repo
             .ensure_location_access(organization_id, location_id, user_id)
             .await
+    }
+
+    pub async fn ensure_location_permission(
+        &self,
+        organization_id: Uuid,
+        location_id: Uuid,
+        user_id: Uuid,
+        permission: &str,
+    ) -> Result<(), AppError> {
+        self.settings_repo.ensure_location_permission(organization_id, location_id, user_id, permission).await
     }
 
     pub async fn effective(

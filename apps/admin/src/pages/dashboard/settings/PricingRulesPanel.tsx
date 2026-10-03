@@ -1,3 +1,4 @@
+import { deviceTypeOptions } from '@gaming-cafe/contracts';
 import { toastUtils } from '@gaming-cafe/utils';
 import {
   Alert,
@@ -75,6 +76,7 @@ export default function PricingRulesPanel({
   const [selectedSetId, setSelectedSetId] = useState('');
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [name, setName] = useState('Venue pricing');
+  const [simulationTarget, setSimulationTarget] = useState<'sessions' | 'deduction'>('sessions');
   const [deviceType, setDeviceType] = useState('PC');
   const [effectiveAt, setEffectiveAt] = useState('');
   const [policyText, setPolicyText] = useState(JSON.stringify(DEFAULT_POLICY, null, 2));
@@ -381,11 +383,30 @@ export default function PricingRulesPanel({
               </Button>
               <TextField
                 size="small"
+                select
                 label="Device type"
                 value={deviceType}
                 onChange={(event) => setDeviceType(event.target.value)}
                 sx={{ minWidth: 150 }}
-              />
+              >
+                {deviceTypeOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Preview"
+                value={simulationTarget}
+                onChange={(event) => {
+                  setSimulationTarget(event.target.value as 'sessions' | 'deduction');
+                  setSimulation(null);
+                }}
+              >
+                <MenuItem value="sessions">Gaming plan price</MenuItem>
+                <MenuItem value="deduction">Credit deduction speed</MenuItem>
+              </TextField>
               <Button
                 variant="outlined"
                 disabled={busy || hasUnsavedEdits || !selectedVersionId}
@@ -395,7 +416,12 @@ export default function PricingRulesPanel({
                       organizationId,
                       selectedSetId,
                       selectedVersionId,
-                      { locationId, deviceType, at: new Date().toISOString() },
+                      {
+                        locationId,
+                        deviceType,
+                        target: simulationTarget,
+                        at: new Date().toISOString(),
+                      },
                     );
                     setSimulation(result);
                     await refresh();
@@ -408,6 +434,8 @@ export default function PricingRulesPanel({
                 <Alert severity="info">
                   <Typography fontWeight={700}>
                     {simulation.baseRate} → {simulation.finalPrice} {simulation.currency}
+                    {simulationTarget === 'deduction' &&
+                      ` · ${(Number(simulation.finalPrice) * 60).toFixed(2)} credits per 60 minutes at normal plan speed`}
                   </Typography>
                   <Typography variant="caption">Timezone: {simulation.timezone}</Typography>
                   {simulation.trace.map((step) => (

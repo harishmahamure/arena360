@@ -8,11 +8,31 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::AdminUser;
+use crate::middleware::{AdminUser, AuthUser};
+use crate::error::AppError;
 use crate::models::{CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto};
 use crate::openapi::responses::{
     ActivePlansEnvelope, ErrorEnvelope, PlanEnvelope, PlanPaginationEnvelope,
 };
+
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanLocationQuery { pub location_id: Option<Uuid> }
+
+async fn pricing_location(state: &AppState, claims: &crate::dto::JwtUserClaims, requested: Option<Uuid>) -> Result<Uuid, AppError> {
+    if claims.is_admin_or_staff() {
+        let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+        let user = claims.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        let location = requested.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+        state.config.ensure_location_permission(org, location, user, "plans:read").await?;
+        Ok(location)
+    } else if let Some(device_id) = claims.deviceId.as_deref() {
+        let device_id = Uuid::parse_str(device_id).map_err(|_| AppError::Unauthorized("Invalid device identity".into()))?;
+        Ok(state.devices.get_by_id(device_id).await?.location_id)
+    } else {
+        Ok(crate::models::DEFAULT_VENUE_LOCATION_ID)
+    }
+}
 
 #[utoipa::path(
     get,
@@ -27,9 +47,11 @@ use crate::openapi::responses::{
     tag = "plans"
 )]
 pub async fn list_plans(
+    AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<PlanFilterDto>,
+    Query(mut filters): Query<PlanFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<Plan>> {
+    filters.location_id = Some(pricing_location(&state, &claims, filters.location_id).await?);
     let result = state.plans.list(filters).await?;
     ok(result)
 }
@@ -45,8 +67,9 @@ pub async fn list_plans(
     security(("bearer_auth" = [])),
     tag = "plans"
 )]
-pub async fn get_active_plans(State(state): State<Arc<AppState>>) -> ApiResult<Vec<Plan>> {
-    let plans = state.plans.get_active().await?;
+pub async fn get_active_plans(AuthUser(claims): AuthUser, State(state): State<Arc<AppState>>, Query(query): Query<PlanLocationQuery>) -> ApiResult<Vec<Plan>> {
+    let location = pricing_location(&state, &claims, query.location_id).await?;
+    let plans = state.plans.get_active_for(Some(location)).await?;
     ok(plans)
 }
 
@@ -65,8 +88,9 @@ pub async fn get_active_plans(State(state): State<Arc<AppState>>) -> ApiResult<V
     security(("bearer_auth" = [])),
     tag = "plans"
 )]
-pub async fn get_plan(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<Plan> {
-    let plan = state.plans.get_by_id(id).await?;
+pub async fn get_plan(AuthUser(claims): AuthUser, State(state): State<Arc<AppState>>, Path(id): Path<Uuid>, Query(query): Query<PlanLocationQuery>) -> ApiResult<Plan> {
+    let location = pricing_location(&state, &claims, query.location_id).await?;
+    let plan = state.plans.get_by_id_for(id, Some(location)).await?;
     ok(plan)
 }
 

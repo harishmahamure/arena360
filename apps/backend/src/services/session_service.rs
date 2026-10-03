@@ -40,6 +40,8 @@ pub struct KioskSessionStart {
 
 pub struct SessionService {
     repo: SessionRepository,
+    pricing: crate::services::PricingPolicyService,
+    settings: crate::services::ConfigService,
     devices: DeviceService,
     balances: Arc<BalanceService>,
     events: EventService,
@@ -53,9 +55,53 @@ fn elapsed_minutes_between(start_time: DateTime<Utc>, end_time: DateTime<Utc>) -
     wall_minutes_between(start_time, end_time).ceil() as i32
 }
 
-fn parse_balance_profile(balance: &PlayerPlanBalance) -> Option<DeductionProfile> {
-    let value = balance.deduction_profile.as_ref()?;
+pub fn session_profile_value<'a>(
+    balance: &'a PlayerPlanBalance,
+    session: &'a UsageSession,
+) -> Option<&'a Value> {
+    session
+        .deduction_profile_snapshot
+        .as_ref()
+        .or(balance.deduction_profile.as_ref())
+}
+
+fn parse_session_profile(
+    balance: &PlayerPlanBalance,
+    session: &UsageSession,
+) -> Option<DeductionProfile> {
+    let value = session_profile_value(balance, session)?;
     serde_json::from_value(value.clone()).ok()
+}
+
+fn capture_deduction_profile(
+    value: Option<&Value>,
+    rules: Vec<crate::models::PricingRule>,
+    device_type: &str,
+) -> Result<Value, AppError> {
+    let mut profile = match value {
+        Some(value) => {
+            serde_json::from_value::<DeductionProfile>(value.clone()).map_err(|error| {
+                AppError::Internal(format!("Invalid plan deduction profile: {error}"))
+            })?
+        }
+        None => DeductionProfile::normal(),
+    };
+    profile.policy_rules = rules
+        .into_iter()
+        .filter(|rule| {
+            rule.target == crate::models::PricingTarget::Deduction
+                && (rule.device_types.is_empty()
+                    || rule
+                        .device_types
+                        .iter()
+                        .any(|t| t.eq_ignore_ascii_case(device_type)))
+        })
+        .map(|mut rule| {
+            rule.device_types.clear();
+            rule
+        })
+        .collect();
+    serde_json::to_value(profile).map_err(|error| AppError::Internal(error.to_string()))
 }
 
 fn weighted_consumption(
@@ -85,7 +131,7 @@ pub fn effective_remaining_for_session(
     session: &UsageSession,
     cafe_tz: &str,
 ) -> i32 {
-    let profile = parse_balance_profile(balance);
+    let profile = parse_session_profile(balance, session);
     let total = weighted_consumption(session.start_time, Utc::now(), profile.as_ref(), cafe_tz);
     let owed = (total.ceil() as i32 - charged_wallet_minutes(session)).max(0);
     (balance.remaining_minutes - owed).max(0)
@@ -128,7 +174,13 @@ impl SessionService {
         cache: Arc<dyn CacheService>,
     ) -> Self {
         Self {
-            repo: SessionRepository::new(pool),
+            repo: SessionRepository::new(pool.clone()),
+            pricing: crate::services::PricingPolicyService::new(pool.clone()),
+            settings: crate::services::ConfigService::new(
+                pool,
+                cache.clone(),
+                cafe_timezone.clone(),
+            ),
             devices,
             balances,
             events,
@@ -184,7 +236,7 @@ impl SessionService {
             display_remaining_for_session(balance, &session, &self.cafe_timezone);
         KioskSessionStart {
             time_credits_consumed: charged_wallet_minutes(&session) as f64,
-            deduction_profile: balance.deduction_profile.clone(),
+            deduction_profile: session_profile_value(balance, &session).cloned(),
             cafe_timezone: self.cafe_timezone.clone(),
             expiry_date: balance.expiry_date,
             session,
@@ -201,7 +253,7 @@ impl SessionService {
         balance: &PlayerPlanBalance,
         end: DateTime<Utc>,
     ) -> Result<(i32, PlayerPlanBalance), AppError> {
-        let profile = parse_balance_profile(balance);
+        let profile = parse_session_profile(balance, session);
         let total = weighted_consumption(
             session.start_time,
             end,
@@ -312,6 +364,29 @@ impl SessionService {
         }
 
         let balance = self.balances.get_raw(dto.balance_id).await?;
+        let rules = self
+            .pricing
+            .active_rules(
+                device.organization_id,
+                Some(device.location_id),
+                crate::models::PricingTarget::Deduction,
+            )
+            .await?;
+        let mut snapshot = capture_deduction_profile(
+            balance.deduction_profile.as_ref(),
+            rules,
+            &device.device_type,
+        )?;
+        if snapshot.get("policyRules").is_some() {
+            let (timezone, _, _) = self
+                .settings
+                .venue_pricing_context(
+                    device.organization_id,
+                    Some(device.location_id),
+                )
+                .await?;
+            snapshot["policyTimezone"] = serde_json::Value::String(timezone);
+        }
         let session = self
             .repo
             .create(
@@ -320,6 +395,7 @@ impl SessionService {
                 actor_id,
                 balance.remaining_minutes,
                 balance.source_plan_id,
+                &snapshot,
             )
             .await?;
         let _ = self.invalidate_session(&session).await;
@@ -347,7 +423,7 @@ impl SessionService {
             "walletMinutesAtStart": balance.remaining_minutes,
             "sourcePlanIdAtStart": balance.source_plan_id.map(|id| id.to_string()),
             "remainingMinutes": remaining as f64,
-            "deductionProfile": balance.deduction_profile,
+            "deductionProfile": session_profile_value(&balance, &session),
             "cafeTimezone": self.cafe_timezone,
         });
         let _ = self
@@ -747,6 +823,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn existing_balances_receive_device_scoped_speed_without_changing_the_plan() {
+        use chrono::TimeZone;
+        let rule: crate::models::PricingRule = serde_json::from_value(serde_json::json!({ "id": "speed", "name": "speed", "target": "deduction", "priority": 100, "deviceTypes": ["PC", "PS5"], "weekdays": [], "action": { "type": "multiplier", "value": "1.25" } })).unwrap();
+        let start = Utc.with_ymd_and_hms(2026, 9, 24, 18, 30, 0).unwrap();
+        for device in ["PC", "PS5", "pc", "OTHER"] {
+            let value = capture_deduction_profile(None, vec![rule.clone()], device).unwrap();
+            let profile: DeductionProfile = serde_json::from_value(value).unwrap();
+            let consumed = weighted_consumption(
+                start,
+                start + chrono::Duration::minutes(60),
+                Some(&profile),
+                "Asia/Kolkata",
+            );
+            assert_eq!(consumed, if device == "OTHER" { 60.0 } else { 75.0 });
+        }
+    }
+
+    #[test]
     fn device_session_ended_events_are_durable() {
         assert!(super::DEVICE_SESSION_ENDED_DURABLE);
     }
@@ -804,6 +898,7 @@ mod tests {
             deleted_at: None,
         };
         let session = UsageSession {
+            deduction_profile_snapshot: None,
             id: Uuid::new_v4(),
             balance_id: balance.id,
             device_id: Uuid::new_v4(),
@@ -860,6 +955,7 @@ mod tests {
             deleted_at: None,
         };
         let session = UsageSession {
+            deduction_profile_snapshot: None,
             id: Uuid::new_v4(),
             balance_id: balance.id,
             device_id: Uuid::new_v4(),

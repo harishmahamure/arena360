@@ -153,6 +153,7 @@ describe('configuration workflow', () => {
     vi.mocked(api.getSettingCatalog).mockRejectedValue(new Error('Unavailable'));
     setup();
     expect(await screen.findByText(/Configuration could not be loaded/)).toBeInTheDocument();
+    expect(screen.getByText(/Settings catalog: Unavailable/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
   });

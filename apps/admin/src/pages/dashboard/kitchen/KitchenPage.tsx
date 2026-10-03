@@ -13,7 +13,6 @@ import {
   DialogTitle,
   Divider,
   FormControlLabel,
-  LinearProgress,
   MenuItem,
   Stack,
   Switch,
@@ -255,7 +254,6 @@ export default function KitchenPage() {
         <Tab value="history" label="Recent history" />
         {isAdmin && <Tab value="menu" label="Menu setup" />}
       </Tabs>
-      {loading && <LinearProgress aria-label="Loading kitchen" />}
       {error && (
         <Alert
           severity="error"

@@ -6,7 +6,20 @@ export const LOW_RATIO_MAX = 0.99;
 
 export const LOW_RATIO_MIN = 0.01;
 
+export interface DeductionPolicyRule {
+  id: string;
+  priority: number;
+  weekdays: number[];
+  startTime?: string | null;
+  endTime?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  action: { type: 'fixed' | 'multiplier'; value: string };
+}
+
 export interface DeductionProfile {
+  policyRules?: DeductionPolicyRule[];
+  policyTimezone?: string | null;
   peakWindowStart: string;
   peakWindowEnd: string;
   peakRatio: number;
@@ -100,12 +113,43 @@ export function localMinuteOfDay(date: Date, timeZone: string): number {
   return hour * 60 + minute;
 }
 
+function timeToSeconds(time: string): number {
+  const [hours = 0, minutes = 0, seconds = 0] = time.split(':').map(Number);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
 export function currentDeductionRatio(
   profile: DeductionProfile,
   timeZone: string,
   now = new Date(),
 ): number {
-  return ratioAtMinute(localMinuteOfDay(now, timeZone), profile);
+  const minute = localMinuteOfDay(now, timeZone);
+  let ratio = ratioAtMinute(minute, profile);
+  if (!profile.policyRules?.length) return ratio;
+  const ruleTimezone = profile.policyTimezone ?? timeZone;
+  const ruleMinute = localMinuteOfDay(now, ruleTimezone);
+  const weekdayName = new Intl.DateTimeFormat('en-GB', {
+    timeZone: ruleTimezone,
+    weekday: 'short',
+  }).format(now);
+  const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(weekdayName) + 1;
+  const rules = (profile.policyRules ?? [])
+    .filter((rule) => {
+      if (rule.weekdays.length && !rule.weekdays.includes(weekday)) return false;
+      if (rule.startsAt && now.getTime() < Date.parse(rule.startsAt)) return false;
+      if (rule.endsAt && now.getTime() >= Date.parse(rule.endsAt)) return false;
+      if (!rule.startTime || !rule.endTime) return true;
+      const start = timeToSeconds(rule.startTime);
+      const end = timeToSeconds(rule.endTime);
+      const second = ruleMinute * 60 + now.getUTCSeconds();
+      return start <= end ? second >= start && second < end : second >= start || second < end;
+    })
+    .sort((a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  for (const rule of rules) {
+    ratio =
+      rule.action.type === 'fixed' ? Number(rule.action.value) : ratio * Number(rule.action.value);
+  }
+  return ratio;
 }
 
 /** Seconds remaining on the HUD when kiosk/console auto-call session end. */
@@ -130,13 +174,29 @@ export function weightedMinutesBetween(
   let cursor = startMs;
   while (cursor < endMs) {
     const ratio = currentDeductionRatio(profile, timeZone, new Date(cursor));
-    const nextMinute = cursor + 60_000;
+    let nextMinute = Math.floor(cursor / 60_000) * 60_000 + 60_000;
+    for (const rule of profile.policyRules ?? []) {
+      const dateAtCursor = new Date(cursor);
+      const localSeconds =
+        localMinuteOfDay(dateAtCursor, profile.policyTimezone ?? timeZone) * 60 +
+        dateAtCursor.getUTCSeconds();
+      for (const time of [rule.startTime, rule.endTime]) {
+        if (!time) continue;
+        const until = (timeToSeconds(time) - localSeconds + 86400) % 86400;
+        const boundary = cursor - dateAtCursor.getUTCMilliseconds() + until * 1000;
+        if (boundary > cursor && boundary < nextMinute) nextMinute = boundary;
+      }
+      for (const date of [rule.startsAt, rule.endsAt]) {
+        const boundary = date ? Date.parse(date) : NaN;
+        if (boundary > cursor && boundary < nextMinute) nextMinute = boundary;
+      }
+    }
     const segmentEnd = Math.min(nextMinute, endMs);
     const secs = (segmentEnd - cursor) / 1000;
     total += (secs / 60) * ratio;
     cursor = segmentEnd;
   }
-  return total;
+  return Math.round(total * 1e9) / 1e9;
 }
 
 /** Project wallet minutes left for an open session (display only). */

@@ -295,6 +295,13 @@ export default function SettingsPage() {
   };
   const isLoading = catalog.isLoading || effective.isLoading || locations.isLoading;
   const hasError = catalog.isError || effective.isError || locations.isError;
+  const loadError = catalog.error
+    ? `Settings catalog: ${catalog.error.message}`
+    : effective.error
+      ? `Effective settings: ${effective.error.message}`
+      : locations.error
+        ? `Locations: ${locations.error.message}`
+        : null;
 
   return (
     <PageShell
@@ -401,7 +408,7 @@ export default function SettingsPage() {
             </Button>
           }
         >
-          Configuration could not be loaded. Check your connection and try again.
+          Configuration could not be loaded. {loadError ?? 'Check your connection and try again.'}
         </Alert>
       ) : isLoading ? (
         <Stack spacing={2} aria-label="Loading configuration">

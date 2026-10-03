@@ -13,7 +13,8 @@ type Step = 'credentials' | 'totp' | 'device';
  * registers this PC. No registration code is involved.
  */
 export function RegistrationPage() {
-  const { adminLogin, provisionDevice, adminAuthenticated, error } = useKiosk();
+  const { adminLogin, provisionDevice, listProvisioningLocations, adminAuthenticated, error } =
+    useKiosk();
 
   const [step, setStep] = useState<Step>('credentials');
   const [username, setUsername] = useState('');
@@ -26,6 +27,9 @@ export function RegistrationPage() {
     deviceSubTypeOptions[0]?.value ?? 'HIGH_END_PCS',
   );
   const [location, setLocation] = useState('');
+  const [locationId, setLocationId] = useState('');
+  const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
+  const [locationError, setLocationError] = useState('');
   const [fingerprint, setFingerprint] = useState<FingerprintPayload | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -34,6 +38,17 @@ export function RegistrationPage() {
       .then(setFingerprint)
       .catch(() => setFingerprint(null));
   }, []);
+
+  useEffect(() => {
+    if (!adminAuthenticated || step !== 'device') return;
+    void listProvisioningLocations()
+      .then((items) => {
+        setVenues(items);
+        setLocationId((current) => current || (items.length === 1 ? (items[0]?.id ?? '') : ''));
+        setLocationError('');
+      })
+      .catch(() => setLocationError('Could not load venue locations. Try signing in again.'));
+  }, [adminAuthenticated, step, listProvisioningLocations]);
 
   async function onCredentials(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +80,10 @@ export function RegistrationPage() {
 
   async function onProvision(e: React.FormEvent) {
     e.preventDefault();
+    if (!locationId) {
+      setLocationError('Select a venue location.');
+      return;
+    }
     setBusy(true);
     try {
       await provisionDevice({
@@ -72,6 +91,7 @@ export function RegistrationPage() {
         deviceType,
         deviceSubType,
         location: location.trim(),
+        locationId,
         serialNumber: fingerprint?.mac,
       });
     } catch {
@@ -176,7 +196,19 @@ export function RegistrationPage() {
           </select>
         </label>
         <label>
-          Location (optional)
+          Venue location
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
+            <option value="">Select a venue</option>
+            {venues.map((venue) => (
+              <option key={venue.id} value={venue.id}>
+                {venue.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {locationError && <p role="alert">{locationError}</p>}
+        <label>
+          Position within venue (optional)
           <input
             value={location}
             onChange={(e) => setLocation(e.target.value)}

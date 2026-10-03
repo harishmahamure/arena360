@@ -181,3 +181,13 @@ pub struct VenueLocation {
     pub currency: String,
     pub is_active: bool,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveVenueLocationDto {
+    pub slug: String,
+    pub name: String,
+    pub timezone: String,
+    pub currency: String,
+    pub is_active: Option<bool>,
+}

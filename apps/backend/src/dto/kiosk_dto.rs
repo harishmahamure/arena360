@@ -26,6 +26,7 @@ pub struct ProvisionDeviceDto {
     pub deviceType: Option<String>,
     pub deviceSubType: Option<String>,
     pub location: Option<String>,
+    pub locationId: Option<uuid::Uuid>,
     /// Identifies the provisioning client (currently `kiosk`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provisionClient: Option<String>,

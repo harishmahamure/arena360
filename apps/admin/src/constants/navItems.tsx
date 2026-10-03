@@ -39,6 +39,13 @@ export const moduleRegistry: AdminNavItem[] = [
     requiredPermission: Permission.AccessRead,
   },
   {
+    title: 'Locations',
+    path: '/locations',
+    icon: <Store />,
+    section: 'Administration',
+    requiredPermission: Permission.LocationsRead,
+  },
+  {
     title: 'Overview',
     path: '/',
     icon: <Dashboard />,

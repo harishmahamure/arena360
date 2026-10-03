@@ -152,6 +152,7 @@ export interface DeviceProvisionInput {
   deviceType: string;
   deviceSubType: string;
   location?: string;
+  locationId?: string;
   serialNumber?: string;
 }
 
@@ -179,6 +180,7 @@ interface KioskContextValue {
   refresh: () => Promise<void>;
   /** First-time provisioning: register this device using the captured admin token. */
   provisionDevice: (input: DeviceProvisionInput) => Promise<void>;
+  listProvisioningLocations: () => Promise<{ id: string; name: string }[]>;
   /** True once an admin has signed in during registration. */
   adminAuthenticated: boolean;
   /** True after registration until SetupPage consumes the handoff (skip re-login). */
@@ -825,6 +827,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           deviceType: input.deviceType,
           deviceSubType: input.deviceSubType,
           location: input.location || undefined,
+          locationId: input.locationId,
           serialNumber: input.serialNumber || fingerprint.mac,
         });
         await persistDeviceToken(result.accessToken);
@@ -849,6 +852,16 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     },
     [adminToken, connectWs],
   );
+
+  const listProvisioningLocations = useCallback(async () => {
+    if (!adminToken) throw new Error('Administrator sign-in is required');
+    const payload = JSON.parse(atob(adminToken.split('.')[1] ?? '')) as { tenantId?: string };
+    if (!payload.tenantId) throw new Error('No organization selected');
+    tokenCache.device = adminToken;
+    return getHttpClient().get<{ id: string; name: string }[]>(
+      `/organizations/${payload.tenantId}/locations`,
+    );
+  }, [adminToken]);
 
   const enterSetup = useCallback(async () => {
     setError(null);
@@ -1124,6 +1137,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       clearError,
       refresh,
       provisionDevice,
+      listProvisioningLocations,
       adminAuthenticated: adminToken !== null,
       setupAuthenticated,
       clearSetupAuthenticated,
@@ -1165,6 +1179,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       clearError,
       refresh,
       provisionDevice,
+      listProvisioningLocations,
       adminToken,
       setupAuthenticated,
       clearSetupAuthenticated,

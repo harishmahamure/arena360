@@ -10,9 +10,7 @@ use crate::models::{
     KioskOrderWithItems,
 };
 use crate::realtime::OutboxService;
-use crate::repositories::{
-    InventoryRepository, KioskOrderRepository, ProductRecipeRepository, SessionRepository,
-};
+use crate::repositories::{KioskOrderRepository, ProductRecipeRepository, SessionRepository};
 use crate::services::product_recipe_service::made_to_order_capacity;
 use crate::services::{
     ConfigService, NotificationService, PricingPolicyService, Recipients, RecordNotification,
@@ -22,7 +20,6 @@ use crate::services::{
 pub struct KioskOrderService {
     repo: KioskOrderRepository,
     sessions: SessionRepository,
-    inventory_repo: InventoryRepository,
     notifications: NotificationService,
     outbox: OutboxService,
     cafe_timezone: String,
@@ -42,7 +39,6 @@ impl KioskOrderService {
             repo: KioskOrderRepository::new(pool.clone()),
             sessions: SessionRepository::new(pool.clone()),
             pricing: PricingPolicyService::new(pool.clone()),
-            inventory_repo: InventoryRepository::new(pool),
             notifications,
             outbox,
             cafe_timezone,
@@ -50,16 +46,23 @@ impl KioskOrderService {
         }
     }
 
-    pub async fn list_menu(&self) -> Result<Vec<KioskMenuProduct>, AppError> {
-        let sale_location_id = self
-            .inventory_repo
-            .get_config_location_id("pos.default_sale_location_id")
-            .await?;
+    async fn venue_and_store(&self, device_id: Uuid) -> Result<(crate::models::Device, Uuid), AppError> {
+        let device = crate::repositories::DeviceRepository::new(self.repo.pool().clone())
+            .find_by_id(device_id).await?
+            .ok_or_else(|| AppError::NotFound("Device not found".into()))?;
+        let store: Option<Uuid> = sqlx::query_scalar(r#"SELECT id FROM inventory_locations WHERE "venueLocationId"=$1 AND kind='store' AND "isActive" AND "deletedAt" IS NULL ORDER BY name,id LIMIT 1"#)
+            .bind(device.location_id).fetch_optional(self.repo.pool()).await?;
+        let store = store.ok_or_else(|| AppError::BadRequest("No active store is configured for this venue".into()))?;
+        Ok((device, store))
+    }
+
+    pub async fn list_menu(&self, device_id: Uuid) -> Result<Vec<KioskMenuProduct>, AppError> {
+        let (device, sale_location_id) = self.venue_and_store(device_id).await?;
 
         let now = Utc::now();
         let (timezone, night_start, night_end) = self
             .settings
-            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .venue_pricing_context(device.organization_id, Some(device.location_id))
             .await
             .unwrap_or_else(|_| {
                 (
@@ -94,10 +97,10 @@ impl KioskOrderService {
         .bind(sale_location_id)
         .fetch_all(self.repo.pool())
         .await?;
-        let product_rules = self.product_rules().await?;
+        let product_rules = self.product_rules(device.organization_id, device.location_id).await?;
         let makeable = made_to_order_capacity(
             ProductRecipeRepository::new(self.repo.pool().clone())
-                .made_to_order_stock(sale_location_id)
+                .made_to_order_stock(Some(sale_location_id))
                 .await?,
         );
 
@@ -152,15 +155,12 @@ impl KioskOrderService {
             return Err(AppError::not_found_code("KIOSK_NO_ACTIVE_SESSION"));
         }
 
-        let sale_location_id = self
-            .inventory_repo
-            .get_config_location_id("pos.default_sale_location_id")
-            .await?;
+        let (device, sale_location_id) = self.venue_and_store(device_id).await?;
 
         let now = Utc::now();
         let (timezone, night_start, night_end) = self
             .settings
-            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .venue_pricing_context(device.organization_id, Some(device.location_id))
             .await
             .unwrap_or_else(|_| {
                 (
@@ -169,7 +169,7 @@ impl KioskOrderService {
                     "08:00".to_string(),
                 )
             });
-        let product_rules = self.product_rules().await?;
+        let product_rules = self.product_rules(device.organization_id, device.location_id).await?;
         let mut resolved: Vec<(Uuid, i32, String, f64)> = Vec::new();
 
         for item in &dto.line_items {
@@ -236,11 +236,11 @@ impl KioskOrderService {
         Ok(order)
     }
 
-    async fn product_rules(&self) -> Result<Vec<crate::models::PricingRule>, AppError> {
+    async fn product_rules(&self, organization_id: Uuid, location_id: Uuid) -> Result<Vec<crate::models::PricingRule>, AppError> {
         self.pricing
             .active_product_rules(
-                crate::models::DEFAULT_ORGANIZATION_ID,
-                Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                organization_id,
+                Some(location_id),
             )
             .await
     }
@@ -445,6 +445,7 @@ impl KioskOrderService {
                     .collect(),
             ),
             sale_location_id: convert.sale_location_id,
+            venue_location_id: None,
             kiosk_order_id: Some(order.id),
         }
     }
@@ -467,6 +468,8 @@ impl KioskOrderService {
         }
 
         let mut dto = Self::build_transaction_dto(&order, &convert);
+        let (device, _) = self.venue_and_store(order.device_id).await?;
+        dto.venue_location_id = Some(device.location_id);
         dto.shift_id = Some(shift_id);
         let tx = transactions
             .create(dto, Some(actor_id), actor_role, cash_registers)

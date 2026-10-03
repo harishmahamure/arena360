@@ -8,6 +8,7 @@ export interface UpdateDeviceRequest {
   deviceType?: string;
   deviceSubType?: string;
   location?: string;
+  locationId?: string;
   status?: DeviceStatusValue;
 }
 

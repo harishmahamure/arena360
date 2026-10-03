@@ -17,7 +17,6 @@ export const createProductSchema = yup.object({
   description: optionalString(),
   price: nonNegativeNumberSchema('Day price'),
   dayPrice: nonNegativeNumberSchema('Day price').optional(),
-  nightPrice: nonNegativeNumberSchema('Night price'),
   purchasePricePerBox: yup
     .number()
     .min(0, 'Purchase price cannot be negative')
@@ -54,7 +53,6 @@ export const createProductDefaultValues: CreateProductFormData = {
   name: '',
   description: '',
   price: 0,
-  nightPrice: 0,
   purchasePricePerBox: undefined,
   unitsPerPurchaseUnit: 1,
   unitId: undefined,

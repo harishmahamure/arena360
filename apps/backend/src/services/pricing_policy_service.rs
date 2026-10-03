@@ -256,7 +256,7 @@ impl PricingPolicyService {
                         rule.id
                     )));
                 }
-                PricingTarget::Sessions
+                PricingTarget::Sessions | PricingTarget::Deduction
                     if !rule.product_ids.is_empty() || !rule.categories.is_empty() =>
                 {
                     return Err(AppError::BadRequest(format!(
@@ -292,6 +292,16 @@ impl PricingPolicyService {
                     rule.id
                 )));
             }
+            if rule.target == PricingTarget::Deduction {
+                let (PricingAction::Fixed { value } | PricingAction::Multiplier { value }) =
+                    &rule.action;
+                let speed = decimal("deduction speed", value)?;
+                if speed <= Decimal::ZERO || speed > Decimal::from(100) {
+                    return Err(AppError::BadRequest(
+                        "Deduction speed must be greater than 0 and at most 100".to_string(),
+                    ));
+                }
+            }
             match &rule.action {
                 PricingAction::Fixed { value }
                     if decimal("fixed value", value)? < Decimal::ZERO =>
@@ -325,12 +335,24 @@ impl PricingPolicyService {
             .parse()
             .map_err(|_| AppError::BadRequest(format!("Invalid IANA timezone '{timezone}'")))?;
         let local = input.at.with_timezone(&tz);
-        let base = input
-            .base_rate
-            .as_deref()
-            .map(|value| decimal("baseRate", value))
-            .transpose()?
-            .unwrap_or(decimal("baseRate", &policy.base_rate)?);
+        let target =
+            input
+                .target
+                .unwrap_or(if input.product_id.is_some() || input.category.is_some() {
+                    PricingTarget::Products
+                } else {
+                    PricingTarget::Sessions
+                });
+        let base = if target == PricingTarget::Deduction {
+            Decimal::ONE
+        } else {
+            input
+                .base_rate
+                .as_deref()
+                .map(|value| decimal("baseRate", value))
+                .transpose()?
+                .unwrap_or(decimal("baseRate", &policy.base_rate)?)
+        };
         let mut current = base;
         let mut trace = Vec::new();
         let product = (input.product_id.is_some() || input.category.is_some()).then(|| {
@@ -343,14 +365,15 @@ impl PricingPolicyService {
             .rules
             .iter()
             .filter(|rule| {
-                Self::matches(
-                    rule,
-                    input.device_type.as_deref(),
-                    product,
-                    input.at,
-                    local.time(),
-                    local.weekday().number_from_monday() as u8,
-                )
+                rule.target == target
+                    && Self::matches(
+                        rule,
+                        input.device_type.as_deref(),
+                        product,
+                        input.at,
+                        local.time(),
+                        local.weekday().number_from_monday() as u8,
+                    )
             })
             .collect();
         rules.sort_by(|left, right| {
@@ -379,13 +402,19 @@ impl PricingPolicyService {
                 after: current.normalize().to_string(),
             });
         }
-        if let Some(minimum) = policy.minimum_price.as_deref() {
-            current = current.max(decimal("minimumPrice", minimum)?);
+        if target != PricingTarget::Deduction {
+            if let Some(minimum) = policy.minimum_price.as_deref() {
+                current = current.max(decimal("minimumPrice", minimum)?);
+            }
+            if let Some(maximum) = policy.maximum_price.as_deref() {
+                current = current.min(decimal("maximumPrice", maximum)?);
+            }
         }
-        if let Some(maximum) = policy.maximum_price.as_deref() {
-            current = current.min(decimal("maximumPrice", maximum)?);
-        }
-        current = current.round_dp(policy.rounding_scale);
+        current = current.round_dp(if target == PricingTarget::Deduction {
+            4
+        } else {
+            policy.rounding_scale
+        });
 
         let hash_input = serde_json::json!({
             "policy": policy,
@@ -400,7 +429,11 @@ impl PricingPolicyService {
         Ok(PricingSimulationResult {
             base_rate: base.normalize().to_string(),
             final_price: current.normalize().to_string(),
-            currency: currency.to_string(),
+            currency: if target == PricingTarget::Deduction {
+                "credits/min".to_string()
+            } else {
+                currency.to_string()
+            },
             timezone: timezone.to_string(),
             trace,
             simulation_hash,
@@ -448,6 +481,7 @@ impl PricingPolicyService {
         let result = Self::evaluate(
             &policy,
             &PricingSimulationDto {
+                target: None,
                 location_id: None,
                 device_type: None,
                 at,
@@ -470,6 +504,16 @@ impl PricingPolicyService {
         organization_id: Uuid,
         location_id: Option<Uuid>,
     ) -> Result<Vec<PricingRule>, AppError> {
+        self.active_rules(organization_id, location_id, PricingTarget::Products)
+            .await
+    }
+
+    pub async fn active_rules(
+        &self,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+        target: PricingTarget,
+    ) -> Result<Vec<PricingRule>, AppError> {
         let mut rules = Vec::new();
         for value in self
             .repo
@@ -479,14 +523,124 @@ impl PricingPolicyService {
             let policy: PricingPolicy = serde_json::from_value(value).map_err(|error| {
                 AppError::Internal(format!("Published pricing policy is invalid: {error}"))
             })?;
+            Self::validate_policy(&policy)?;
             rules.extend(
                 policy
                     .rules
                     .into_iter()
-                    .filter(|rule| rule.target == PricingTarget::Products),
+                    .filter(|rule| rule.target == target),
             );
         }
         Ok(rules)
+    }
+
+    /// Combine published plan rules in the same priority order as the preview.
+    /// Limits from applicable rule sets form a shared price range.
+    pub async fn active_plan_policy(&self) -> Result<PricingPolicy, AppError> {
+        self.active_plan_policy_for(
+            crate::models::DEFAULT_ORGANIZATION_ID,
+            Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+        ).await
+    }
+
+    pub async fn active_plan_policy_for(
+        &self,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<PricingPolicy, AppError> {
+        let mut combined = PricingPolicy {
+            base_rate: "0".into(),
+            rules: vec![],
+            rounding_scale: 2,
+            minimum_price: None,
+            maximum_price: None,
+        };
+        let mut has_plan_policy = false;
+        for value in self
+            .repo
+            .active_policies(organization_id, location_id)
+            .await?
+        {
+            let policy: PricingPolicy = serde_json::from_value(value).map_err(|error| {
+                AppError::Internal(format!("Invalid published policy: {error}"))
+            })?;
+            Self::validate_policy(&policy)?;
+            if !policy.rules.is_empty()
+                && !policy
+                    .rules
+                    .iter()
+                    .any(|rule| rule.target == PricingTarget::Sessions)
+            {
+                continue;
+            }
+            combined.rounding_scale = if has_plan_policy {
+                combined.rounding_scale.min(policy.rounding_scale)
+            } else {
+                policy.rounding_scale
+            };
+            has_plan_policy = true;
+            if let Some(value) = policy.minimum_price {
+                let existing = combined
+                    .minimum_price
+                    .as_deref()
+                    .map(|v| decimal("minimumPrice", v))
+                    .transpose()?
+                    .unwrap_or(Decimal::ZERO);
+                combined.minimum_price =
+                    Some(existing.max(decimal("minimumPrice", &value)?).to_string());
+            }
+            if let Some(value) = policy.maximum_price {
+                let existing = combined
+                    .maximum_price
+                    .as_deref()
+                    .map(|v| decimal("maximumPrice", v))
+                    .transpose()?
+                    .unwrap_or(Decimal::MAX);
+                combined.maximum_price =
+                    Some(existing.min(decimal("maximumPrice", &value)?).to_string());
+            }
+            combined.rules.extend(
+                policy
+                    .rules
+                    .into_iter()
+                    .filter(|r| r.target == PricingTarget::Sessions),
+            );
+        }
+        if combined
+            .minimum_price
+            .as_deref()
+            .zip(combined.maximum_price.as_deref())
+            .is_some_and(|(min, max)| decimal("min", min).unwrap() > decimal("max", max).unwrap())
+        {
+            return Err(AppError::Conflict(
+                "Published plan price limits conflict. Review the pricing policies.".into(),
+            ));
+        }
+        Ok(combined)
+    }
+
+    /// Price rules adjust the selected plan's purchase price, never its minute balance.
+    pub fn evaluate_plan_price(
+        base: f64,
+        device_type: Option<&str>,
+        policy: &PricingPolicy,
+        at: chrono::DateTime<Utc>,
+        timezone: &str,
+    ) -> Result<f64, AppError> {
+        let input = PricingSimulationDto {
+            target: Some(PricingTarget::Sessions),
+            location_id: None,
+            device_type: device_type.map(str::to_string),
+            at,
+            base_rate: Some(base.to_string()),
+            product_id: None,
+            category: None,
+        };
+        let result = Self::evaluate(policy, &input, timezone, "INR")?;
+        result
+            .final_price
+            .parse()
+            .map_err(|error| AppError::Internal(format!("Invalid plan price: {error}")))
     }
 
     /// The product's day/night price, adjusted by published product rules.
@@ -524,6 +678,7 @@ impl PricingPolicyService {
         let result = Self::evaluate(
             &policy,
             &PricingSimulationDto {
+                target: None,
                 location_id: None,
                 device_type: None,
                 at,
@@ -539,7 +694,7 @@ impl PricingPolicyService {
         })
     }
 
-    fn matches(
+    pub(crate) fn matches(
         rule: &PricingRule,
         device_type: Option<&str>,
         product: Option<(Option<Uuid>, &str)>,
@@ -548,7 +703,8 @@ impl PricingPolicyService {
         weekday: u8,
     ) -> bool {
         match (rule.target, product) {
-            (PricingTarget::Sessions, Some(_)) | (PricingTarget::Products, None) => return false,
+            (PricingTarget::Sessions | PricingTarget::Deduction, Some(_))
+            | (PricingTarget::Products, None) => return false,
             (PricingTarget::Products, Some((product_id, category))) => {
                 let scoped = !rule.product_ids.is_empty() || !rule.categories.is_empty();
                 let listed = product_id.is_some_and(|id| rule.product_ids.contains(&id))
@@ -560,7 +716,7 @@ impl PricingPolicyService {
                     return false;
                 }
             }
-            (PricingTarget::Sessions, None) => {}
+            (PricingTarget::Sessions | PricingTarget::Deduction, None) => {}
         }
         if !rule.device_types.is_empty()
             && !device_type.is_some_and(|value| {
@@ -624,11 +780,64 @@ mod tests {
     }
 
     #[test]
+    fn price_and_deduction_choices_are_independent() {
+        let at = Utc.with_ymd_and_hms(2026, 9, 24, 18, 30, 0).unwrap();
+        let mut p = policy();
+        p.rules[0].device_types = vec!["PC".into(), "PS5".into()];
+        let mut deduction = p.rules[0].clone();
+        deduction.id = "speed".into();
+        deduction.target = PricingTarget::Deduction;
+        deduction.action = PricingAction::Multiplier { value: "2".into() };
+        p.rules.push(deduction);
+        assert!(PricingPolicyService::validate_policy(&p).is_ok());
+        for device in ["PC", "PS5"] {
+            assert_eq!(
+                PricingPolicyService::evaluate_plan_price(
+                    200.0,
+                    Some(device),
+                    &p,
+                    at,
+                    "Asia/Kolkata"
+                )
+                .unwrap(),
+                250.0
+            );
+        }
+        assert_eq!(
+            PricingPolicyService::evaluate_plan_price(200.0, Some("OTHER"), &p, at, "Asia/Kolkata")
+                .unwrap(),
+            200.0
+        );
+        p.minimum_price = Some("50".into());
+        let result = PricingPolicyService::evaluate(
+            &p,
+            &PricingSimulationDto {
+                target: Some(PricingTarget::Deduction),
+                location_id: None,
+                device_type: Some("PS5".into()),
+                at,
+                base_rate: None,
+                product_id: None,
+                category: None,
+            },
+            "Asia/Kolkata",
+            "INR",
+        )
+        .unwrap();
+        assert_eq!(result.final_price, "2");
+        assert_eq!(result.currency, "credits/min");
+        assert_eq!(result.trace.len(), 1);
+        p.rules[1].action = PricingAction::Fixed { value: "0".into() };
+        assert!(PricingPolicyService::validate_policy(&p).is_err());
+    }
+
+    #[test]
     fn applies_midnight_spanning_rule_with_decimal_money() {
         let at = Utc.with_ymd_and_hms(2026, 9, 24, 18, 30, 0).unwrap(); // midnight IST
         let result = PricingPolicyService::evaluate(
             &policy(),
             &PricingSimulationDto {
+                target: None,
                 location_id: None,
                 device_type: Some("PS5".to_string()),
                 at,
@@ -650,6 +859,7 @@ mod tests {
         let result = PricingPolicyService::evaluate(
             &policy(),
             &PricingSimulationDto {
+                target: None,
                 location_id: None,
                 device_type: Some("PC".to_string()),
                 at,
@@ -765,6 +975,7 @@ mod tests {
         let session = PricingPolicyService::evaluate(
             &policy,
             &PricingSimulationDto {
+                target: None,
                 location_id: None,
                 device_type: None,
                 at,

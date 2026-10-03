@@ -39,6 +39,7 @@ export const createDeviceSchema = yup.object({
     .required(validationMessages.required('Device Sub Type')),
 
   location: trimmedOptionalString().max(200, 'Location must not exceed 200 characters'),
+  locationId: yup.string().uuid('Select a venue location').required('Select a venue location'),
 
   status: yup
     .string()
@@ -56,6 +57,7 @@ export const createDeviceDefaultValues = {
   deviceType: '',
   deviceSubType: '',
   location: '',
+  locationId: '',
   status: DeviceStatus.OPERATIONAL,
 } as unknown as CreateDeviceFormData;
 

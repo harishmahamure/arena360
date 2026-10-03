@@ -41,5 +41,7 @@ export const getProductRecipe = (productId: string) =>
 export const saveProductRecipe = (productId: string, recipe: ProductRecipe) =>
   http.put<ProductRecipe>(`/products/${productId}/recipe`, recipe);
 
-export const getCurrentProductPrices = (locationId?: string) =>
-  http.get<ProductCurrentPrice[]>('/products/current-prices', { params: { locationId } });
+export const getCurrentProductPrices = (locationId?: string, venueLocationId?: string) =>
+  http.get<ProductCurrentPrice[]>('/products/current-prices', {
+    params: { locationId, venueLocationId },
+  });

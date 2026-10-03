@@ -69,3 +69,32 @@ pub async fn require(
         )))
     }
 }
+
+pub async fn require_location(
+    pool: &PgPool,
+    org: Uuid,
+    user: Uuid,
+    location: Uuid,
+    permission: &str,
+) -> Result<(), AppError> {
+    let admin: bool = sqlx::query_scalar(r#"SELECT EXISTS(SELECT 1 FROM organization_memberships
+        WHERE "organizationId"=$1 AND "userId"=$2 AND "isActive" AND role='admin')"#)
+        .bind(org).bind(user).fetch_one(pool).await?;
+    if admin {
+        require(pool, org, user, permission).await?;
+        let active: bool = sqlx::query_scalar(r#"SELECT EXISTS(SELECT 1 FROM venue_locations WHERE id=$1 AND "organizationId"=$2 AND "isActive")"#)
+            .bind(location).bind(org).fetch_one(pool).await?;
+        return if active { Ok(()) } else { Err(AppError::Forbidden("Choose an active location in this organization".into())) };
+    }
+    let allowed: bool = sqlx::query_scalar(r#"SELECT EXISTS(
+        SELECT 1 FROM location_role_assignments a
+        JOIN organization_memberships m ON m."organizationId"=a.organization_id AND m."userId"=a.user_id AND m."isActive"
+        JOIN venue_locations l ON l.id=a.location_id AND l."organizationId"=a.organization_id AND l."isActive"
+        JOIN location_access_assignments la ON la."organizationId"=a.organization_id AND la."locationId"=a.location_id AND la."membershipId"=m.id
+        JOIN access_roles r ON r.id=a.role_id AND r.organization_id=a.organization_id AND NOT r.is_template
+        LEFT JOIN access_modules mod ON mod.organization_id=a.organization_id AND mod.module=split_part($4,':',1)
+        WHERE a.organization_id=$1 AND a.user_id=$2 AND a.location_id=$3
+          AND r.permissions ? $4 AND coalesce(mod.enabled,true)
+    )"#).bind(org).bind(user).bind(location).bind(permission).fetch_one(pool).await?;
+    if allowed { Ok(()) } else { Err(AppError::Forbidden(format!("Permission required at this location: {permission}"))) }
+}

@@ -12,6 +12,7 @@ import {
   Divider,
   Grid,
   InputAdornment,
+  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -41,11 +42,13 @@ import {
   PaymentMethodValues,
   PaymentStatusValues,
 } from '../../../containers/transactions/schemas/transaction-schema';
+import { getVenueLocations } from '../../../services/config';
 import { getPlayerCredit } from '../../../services/credit';
 import { getPlans, type PlanResponse } from '../../../services/plans/list';
 import { getPlayerById } from '../../../services/players/getById';
 import { addTransaction } from '../../../services/transactions/add';
 import { PaymentStatus, TransactionType } from '../../../services/transactions/list';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 export default function AddNewPlanTransactionPage() {
   const navigate = useNavigate();
@@ -66,6 +69,16 @@ export default function AddNewPlanTransactionPage() {
   const [selectedPlayer, setSelectedPlayer] = useState<PosPlayer | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PlanResponse | null>(null);
   const [planSearch, setPlanSearch] = useState('');
+  const organizationId = currentOrganizationId();
+  const [venueLocationId, setVenueLocationId] = useState('');
+  const venues = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
+  useEffect(() => {
+    if (venues.data?.length === 1)
+      setVenueLocationId((current) => current || venues.data?.[0]?.id || '');
+  }, [venues.data]);
   const [paymentMethod, setPaymentMethod] = useState<string>(PaymentMethodValues.CASH);
   const [cashAmount, setCashAmount] = useState<string>('');
   const [onlineAmount, setOnlineAmount] = useState<string>('');
@@ -97,19 +110,28 @@ export default function AddNewPlanTransactionPage() {
     if (failed) clearError();
   }, [checkoutErrorClearKey, failed, clearError]);
 
-  const { data: plansData, isLoading: plansLoading } = useQuery({
-    queryKey: ['pos-plans', planSearch],
+  const {
+    data: plansData,
+    isLoading: plansLoading,
+    isFetching: refreshingPlans,
+    refetch: refetchPlans,
+  } = useQuery({
+    queryKey: ['pos-plans', planSearch, venueLocationId],
+    enabled: !!venueLocationId,
+    refetchInterval: 60_000,
     queryFn: () =>
       getPlans({
         limit: 100,
         isActive: 1,
         search: planSearch.trim() || undefined,
+        locationId: venueLocationId,
       }),
   });
 
   const plans = useMemo(() => plansData?.data ?? [], [plansData]);
 
-  const purchaseAmount = selectedPlan ? parseFloat(selectedPlan.price) : 0;
+  const currentPlan = plans.find((plan) => plan.id === selectedPlan?.id) ?? selectedPlan;
+  const purchaseAmount = currentPlan ? (currentPlan.currentPrice ?? Number(currentPlan.price)) : 0;
   const isCredit = paymentMethod === PaymentMethodValues.CREDIT;
 
   const { data: creditDetail, isFetching: creditLoading } = useQuery({
@@ -133,6 +155,10 @@ export default function AddNewPlanTransactionPage() {
 
     if (!selectedPlan) {
       setError('Please select a plan');
+      return;
+    }
+    if (!venueLocationId) {
+      setError('Select a venue location');
       return;
     }
 
@@ -170,6 +196,8 @@ export default function AddNewPlanTransactionPage() {
         playerId: selectedPlayer.id,
         transactionType: TransactionType.PLAN_PURCHASE,
         planId: selectedPlan.id,
+        venueLocationId,
+        amount: purchaseAmount,
         paymentMethod: paymentMethod as PaymentMethodType,
         paymentStatus:
           paymentMethod === PaymentMethodValues.CREDIT
@@ -231,9 +259,39 @@ export default function AddNewPlanTransactionPage() {
     <>
       <PosPlayerPicker value={selectedPlayer} onChange={setSelectedPlayer} disabled={submitting} />
 
-      <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
-        Plans
-      </Typography>
+      <TextField
+        select
+        fullWidth
+        required
+        label="Venue location"
+        value={venueLocationId}
+        onChange={(event) => {
+          setVenueLocationId(event.target.value);
+          setSelectedPlan(null);
+        }}
+        disabled={submitting}
+        sx={{ mb: 2 }}
+      >
+        <MenuItem value="">Select venue</MenuItem>
+        {venues.data?.map((venue) => (
+          <MenuItem key={venue.id} value={venue.id}>
+            {venue.name}
+          </MenuItem>
+        ))}
+      </TextField>
+
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Typography variant="subtitle1" fontWeight={600}>
+          Plans
+        </Typography>
+        <Button
+          size="small"
+          disabled={submitting || refreshingPlans}
+          onClick={() => void refetchPlans()}
+        >
+          Refresh prices
+        </Button>
+      </Stack>
       <TextField
         placeholder="Search plans..."
         value={planSearch}
@@ -402,7 +460,13 @@ export default function AddNewPlanTransactionPage() {
               successLabel={posSaleSuccessLabel(paymentMethod)}
               error={failed}
               errorLabel={errorMessage ?? 'Failed to create transaction'}
-              disabled={!selectedPlayer || !selectedPlan || creditBlocked || submitDisabled}
+              disabled={
+                !selectedPlayer ||
+                !selectedPlan ||
+                !venueLocationId ||
+                creditBlocked ||
+                submitDisabled
+              }
               sx={{ minHeight: 44 }}
             >
               Complete sale

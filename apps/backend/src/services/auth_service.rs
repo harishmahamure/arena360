@@ -297,10 +297,11 @@ impl AuthService {
                 &usage_session,
                 &self.settings.cafe_timezone,
             );
-            let deduction_profile = balance
-                .deduction_profile
-                .as_ref()
-                .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok());
+            let deduction_profile =
+                crate::services::session_service::session_profile_value(&balance, &usage_session)
+                    .and_then(|value| {
+                        serde_json::from_value::<DeductionProfile>(value.clone()).ok()
+                    });
             Some(ActiveSessionDto {
                 id: session.session_id.to_string(),
                 startTime: session.start_time,

@@ -528,6 +528,23 @@
     ]
   },
   {
+    "key": "locations",
+    "name": "Venue locations",
+    "required": false,
+    "permissions": [
+      {
+        "key": "locations:read",
+        "label": "View locations",
+        "description": "View assigned venue locations"
+      },
+      {
+        "key": "locations:manage",
+        "label": "Manage locations",
+        "description": "Create and edit venue locations"
+      }
+    ]
+  },
+  {
     "key": "procurement",
     "name": "Procurement",
     "required": false,

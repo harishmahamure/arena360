@@ -5,7 +5,7 @@ export interface PricingRule {
   name: string;
   priority: number;
   /** Defaults to sessions. Product rules use productIds/categories; empty means every product. */
-  target?: 'sessions' | 'products';
+  target?: 'sessions' | 'products' | 'deduction';
   productIds?: string[];
   categories?: string[];
   deviceTypes: string[];
@@ -103,7 +103,13 @@ export const simulatePricingRuleVersion = (
   organizationId: string,
   setId: string,
   versionId: string,
-  input: { locationId?: string; deviceType?: string; at: string; baseRate?: string },
+  input: {
+    locationId?: string;
+    deviceType?: string;
+    at: string;
+    baseRate?: string;
+    target?: 'sessions' | 'deduction';
+  },
 ) =>
   http.post<PricingSimulationResult>(
     `/organizations/${organizationId}/pricing-rule-sets/${setId}/versions/${versionId}/simulate`,

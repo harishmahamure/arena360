@@ -24,6 +24,7 @@ const VALID_DAYS: &[&str] = &[
 
 pub struct PlanService {
     repo: PlanRepository,
+    pricing: crate::services::PricingPolicyService,
     cache: Arc<dyn CacheService>,
     settings: Arc<ConfigService>,
 }
@@ -31,7 +32,8 @@ pub struct PlanService {
 impl PlanService {
     pub fn new(pool: PgPool, cache: Arc<dyn CacheService>, settings: Arc<ConfigService>) -> Self {
         Self {
-            repo: PlanRepository::new(pool),
+            repo: PlanRepository::new(pool.clone()),
+            pricing: crate::services::PricingPolicyService::new(pool),
             cache,
             settings,
         }
@@ -51,31 +53,68 @@ impl PlanService {
         filters: PlanFilterDto,
     ) -> Result<crate::dto::PaginationResult<Plan>, AppError> {
         let cache_key = keys::plans_list(&keys::filter_hash(&filters));
-        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
+        let mut result = get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
             self.repo.list(&filters).await
         })
-        .await
+        .await?;
+        self.price_plans(&mut result.data, filters.location_id).await?;
+        Ok(result)
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Plan, AppError> {
+        self.get_by_id_for(id, None).await
+    }
+
+    pub async fn get_by_id_for(&self, id: Uuid, location_id: Option<Uuid>) -> Result<Plan, AppError> {
         let cache_key = keys::plan(&id);
-        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
+        let mut plan = get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
             self.repo
                 .find_by_id(id)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Plan with ID {id} not found")))
         })
-        .await
+        .await?;
+        self.price_plans(std::slice::from_mut(&mut plan), location_id).await?;
+        Ok(plan)
     }
 
     pub async fn get_active(&self) -> Result<Vec<Plan>, AppError> {
-        get_or_set(
+        self.get_active_for(None).await
+    }
+
+    pub async fn get_active_for(&self, location_id: Option<Uuid>) -> Result<Vec<Plan>, AppError> {
+        let mut plans = get_or_set(
             &*self.cache,
             keys::plans_active(),
             keys::ttl::LOOKUP,
             || async { self.repo.find_active().await },
         )
-        .await
+        .await?;
+        self.price_plans(&mut plans, location_id).await?;
+        Ok(plans)
+    }
+
+    async fn price_plans(&self, plans: &mut [Plan], location_id: Option<Uuid>) -> Result<(), AppError> {
+        let location_id = location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+        let policy = self.pricing.active_plan_policy_for(crate::models::DEFAULT_ORGANIZATION_ID, Some(location_id)).await?;
+        let (timezone, _, _) = self
+            .settings
+            .venue_pricing_context(
+                crate::models::DEFAULT_ORGANIZATION_ID,
+                Some(location_id),
+            )
+            .await?;
+        let now = chrono::Utc::now();
+        for plan in plans {
+            plan.current_price = Some(crate::services::PricingPolicyService::evaluate_plan_price(
+                plan.price,
+                plan.device_type.as_deref(),
+                &policy,
+                now,
+                &timezone,
+            )?);
+        }
+        Ok(())
     }
 
     pub async fn create(

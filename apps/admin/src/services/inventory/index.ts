@@ -11,6 +11,7 @@ export interface ListResponse<T> {
 
 export interface InventoryLocation {
   id: string;
+  venueLocationId?: string;
   name: string;
   kind: 'warehouse' | 'store';
   isActive: boolean;
@@ -160,13 +161,14 @@ export const getInventoryLocations = async (filters: Record<string, unknown> = {
 
 export const createInventoryLocation = async (data: {
   name: string;
+  venueLocationId?: string;
   kind: string;
   isActive?: boolean;
 }) => http.post<InventoryLocation>('/inventory/locations', data);
 
 export const updateInventoryLocation = async (
   id: string,
-  data: Partial<{ name: string; kind: string; isActive: boolean }>,
+  data: Partial<{ name: string; kind: string; isActive: boolean; venueLocationId: string }>,
 ) => http.patch<InventoryLocation>(`/inventory/locations/${id}`, data);
 
 export const getLocationStock = async (filters: Record<string, unknown> = {}) =>

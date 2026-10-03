@@ -229,19 +229,22 @@ impl TransactionService {
                 "saleLocationId must reference a store location".to_string(),
             ));
         }
+        if location.venue_location_id != dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID) {
+            return Err(AppError::BadRequest("Store location must belong to the selected venue".into()));
+        }
 
         let product_rules = self
             .pricing
             .active_product_rules(
                 crate::models::DEFAULT_ORGANIZATION_ID,
-                Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                Some(dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)),
             )
             .await?;
         let mut db_tx = self.repo.pool.begin().await?;
         let now = dto.transaction_date.unwrap_or_else(Utc::now);
         let (timezone, night_start, night_end) = self
             .settings
-            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, dto.venue_location_id)
             .await
             .unwrap_or_else(|_| {
                 (
@@ -391,6 +394,7 @@ impl TransactionService {
     pub async fn current_product_prices(
         &self,
         location_id: Option<Uuid>,
+        venue_location_id: Option<Uuid>,
     ) -> Result<Vec<crate::models::ProductCurrentPrice>, AppError> {
         let recipes = ProductRecipeRepository::new(self.repo.pool.clone());
         let capacity = crate::services::product_recipe_service::made_to_order_capacity(
@@ -402,12 +406,12 @@ impl TransactionService {
             .pricing
             .active_product_rules(
                 crate::models::DEFAULT_ORGANIZATION_ID,
-                Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                Some(venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)),
             )
             .await?;
         let (timezone, night_start, night_end) = self
             .settings
-            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, None)
+            .venue_pricing_context(crate::models::DEFAULT_ORGANIZATION_ID, venue_location_id)
             .await
             .unwrap_or_else(|_| {
                 (
@@ -562,23 +566,51 @@ impl TransactionService {
             ));
         }
 
-        let amount = match dto.amount {
-            Some(amount) => amount,
-            None if dto.transaction_type == "plan_purchase" => {
-                let plan_id = dto.plan_id.ok_or_else(|| {
-                    AppError::BadRequest(
-                        "planId is required for plan_purchase transactions".to_string(),
-                    )
-                })?;
-                self.repo.plan_price(plan_id).await?.ok_or_else(|| {
-                    AppError::NotFound(format!("Plan with ID {plan_id} not found"))
-                })?
-            }
-            None => {
-                return Err(AppError::BadRequest(
-                    "amount is required for this transaction type".to_string(),
+        let amount = if dto.transaction_type == "plan_purchase" {
+            let plan_id = dto.plan_id.expect("planId validated above");
+            let plan = crate::repositories::PlanRepository::new(self.repo.pool.clone())
+                .find_by_id(plan_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Plan with ID {plan_id} not found")))?;
+            let policy = self.pricing.active_plan_policy_for(crate::models::DEFAULT_ORGANIZATION_ID, Some(dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID))).await?;
+            let (timezone, _, _) = self
+                .settings
+                .venue_pricing_context(
+                    crate::models::DEFAULT_ORGANIZATION_ID,
+                    Some(dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)),
+                )
+                .await?;
+            let price = PricingPolicyService::evaluate_plan_price(
+                plan.price,
+                plan.device_type.as_deref(),
+                &policy,
+                Utc::now(),
+                &timezone,
+            )?;
+            if dto
+                .amount
+                .is_some_and(|quoted| (quoted - price).abs() > 0.005)
+            {
+                return Err(AppError::Conflict(
+                    "Plan price changed. Refresh the plan and review the new total before paying."
+                        .to_string(),
                 ));
             }
+            if matches!(
+                dto.payment_method.as_str(),
+                "cash" | "online" | "split_payment"
+            ) && (dto.cash_amount.is_some() || dto.online_amount.is_some())
+            {
+                let tendered = dto.cash_amount.unwrap_or(0.0) + dto.online_amount.unwrap_or(0.0);
+                if (tendered - price).abs() > 0.005 {
+                    return Err(AppError::Conflict("Payment amounts must match the current plan price. Refresh the plan and review the total.".to_string()));
+                }
+            }
+            price
+        } else {
+            dto.amount.ok_or_else(|| {
+                AppError::BadRequest("amount is required for this transaction type".to_string())
+            })?
         };
 
         if amount < 0.0 {

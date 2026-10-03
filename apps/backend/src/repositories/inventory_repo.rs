@@ -26,7 +26,7 @@ impl InventoryRepository {
     }
 
     const LOCATION_SELECT: &'static str = r#"
-        SELECT id, name, kind::text as kind, "isActive" as is_active,
+        SELECT id, "venueLocationId" AS venue_location_id, name, kind::text as kind, "isActive" as is_active,
                "createdBy" as created_by, "updatedBy" as updated_by,
                "createdAt" as created_at, "updatedAt" as updated_at,
                "deletedAt" as deleted_at
@@ -56,7 +56,7 @@ impl InventoryRepository {
         let offset = (page - 1) * limit;
 
         let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT id, name, kind::text as kind, \"isActive\" as is_active, \
+            "SELECT id, \"venueLocationId\" AS venue_location_id, name, kind::text as kind, \"isActive\" as is_active, \
              \"createdBy\" as created_by, \"updatedBy\" as updated_by, \
              \"createdAt\" as created_at, \"updatedAt\" as updated_at, \
              \"deletedAt\" as deleted_at \
@@ -67,6 +67,9 @@ impl InventoryRepository {
             builder.push(" AND kind = ");
             builder.push_bind(kind);
             builder.push("::inventory_location_kind");
+        }
+        if let Some(venue_location_id) = filters.venue_location_id {
+            builder.push(" AND \"venueLocationId\" = ").push_bind(venue_location_id);
         }
         if let Some(is_active) = filters.is_active {
             builder.push(" AND \"isActive\" = ");
@@ -91,6 +94,9 @@ impl InventoryRepository {
             count_builder.push_bind(kind);
             count_builder.push("::inventory_location_kind");
         }
+        if let Some(venue_location_id) = filters.venue_location_id {
+            count_builder.push(" AND \"venueLocationId\" = ").push_bind(venue_location_id);
+        }
         if let Some(is_active) = filters.is_active {
             count_builder.push(" AND \"isActive\" = ");
             count_builder.push_bind(is_active);
@@ -108,9 +114,9 @@ impl InventoryRepository {
         let is_active = dto.is_active.unwrap_or(true);
         Ok(sqlx::query_as::<_, InventoryLocation>(
             r#"
-            INSERT INTO inventory_locations (id, name, kind, "isActive", "createdBy", "updatedBy")
-            VALUES (gen_random_uuid(), $1, $2::inventory_location_kind, $3, $4, $4)
-            RETURNING id, name, kind::text as kind, "isActive" as is_active,
+            INSERT INTO inventory_locations (id, name, kind, "isActive", "createdBy", "updatedBy", "venueLocationId")
+            VALUES (gen_random_uuid(), $1, $2::inventory_location_kind, $3, $4, $4, COALESCE($5,'00000000-0000-4000-8000-000000000002'::uuid))
+            RETURNING id, "venueLocationId" AS venue_location_id, name, kind::text as kind, "isActive" as is_active,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -120,6 +126,7 @@ impl InventoryRepository {
         .bind(&dto.kind)
         .bind(is_active)
         .bind(actor_id)
+        .bind(dto.venue_location_id)
         .fetch_one(&self.pool)
         .await?)
     }
@@ -136,10 +143,11 @@ impl InventoryRepository {
                 name = COALESCE($2, name),
                 kind = COALESCE($3::inventory_location_kind, kind),
                 "isActive" = COALESCE($4, "isActive"),
+                "venueLocationId" = COALESCE($6, "venueLocationId"),
                 "updatedBy" = COALESCE($5, "updatedBy"),
                 "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
-            RETURNING id, name, kind::text as kind, "isActive" as is_active,
+            RETURNING id, "venueLocationId" AS venue_location_id, name, kind::text as kind, "isActive" as is_active,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -150,6 +158,7 @@ impl InventoryRepository {
         .bind(&dto.kind)
         .bind(dto.is_active)
         .bind(actor_id)
+        .bind(dto.venue_location_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -161,7 +170,7 @@ impl InventoryRepository {
             r#"
             UPDATE inventory_locations SET "deletedAt" = NOW(), "updatedAt" = NOW()
             WHERE id = $1 AND "deletedAt" IS NULL
-            RETURNING id, name, kind::text as kind, "isActive" as is_active,
+            RETURNING id, "venueLocationId" AS venue_location_id, name, kind::text as kind, "isActive" as is_active,
                       "createdBy" as created_by, "updatedBy" as updated_by,
                       "createdAt" as created_at, "updatedAt" as updated_at,
                       "deletedAt" as deleted_at
@@ -196,6 +205,9 @@ impl InventoryRepository {
         if let Some(location_id) = filters.location_id {
             builder.push(" AND ls.\"locationId\" = ");
             builder.push_bind(location_id);
+        }
+        if let Some(venue_location_id) = filters.venue_location_id {
+            builder.push(" AND l.\"venueLocationId\" = ").push_bind(venue_location_id);
         }
         if let Some(product_id) = filters.product_id {
             builder.push(" AND ls.\"productId\" = ");
@@ -248,6 +260,9 @@ impl InventoryRepository {
         if let Some(location_id) = filters.location_id {
             count_builder.push(" AND ls.\"locationId\" = ");
             count_builder.push_bind(location_id);
+        }
+        if let Some(venue_location_id) = filters.venue_location_id {
+            count_builder.push(" AND l.\"venueLocationId\" = ").push_bind(venue_location_id);
         }
         if let Some(product_id) = filters.product_id {
             count_builder.push(" AND ls.\"productId\" = ");

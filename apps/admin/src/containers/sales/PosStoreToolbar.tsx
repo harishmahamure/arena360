@@ -20,7 +20,7 @@ export function PosStoreToolbar({
       <Tooltip title="Stock is sold from this store. Changing store clears the cart.">
         <TextField
           select
-          aria-label="Store"
+          label="Store"
           value={saleLocationId}
           onChange={(e) => onLocationChange(e.target.value)}
           sx={{ minWidth: 180 }}

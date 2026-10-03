@@ -1,13 +1,15 @@
 import { CurrencyField, FormButton } from '@gaming-cafe/ui';
 import { local, toastUtils } from '@gaming-cafe/utils';
-import { Alert, Box, CircularProgress, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, MenuItem, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { GuidedForm, GuidedStep } from '../../components/GuidedForm';
 import { usePermissions } from '../../hooks/usePermissions';
+import { getVenueLocations } from '../../services/config';
 import { getShiftStartContext, startShift } from '../../services/shifts';
 import { formatDisplayDateTime } from '../../utils/date';
+import { currentOrganizationId } from '../dashboard/access/LocationsPanel';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
@@ -18,11 +20,18 @@ export default function ShiftSetupPage() {
   const { isStaff } = usePermissions();
   const [openingBalance, setOpeningBalance] = useState<string>('');
   const [notes, setNotes] = useState('');
+  const [selectedVenueId, setSelectedVenueId] = useState('');
+  const venuesQuery = useQuery({
+    queryKey: ['shift-venues', currentOrganizationId()],
+    queryFn: () => getVenueLocations(currentOrganizationId()),
+    enabled: Boolean(local.get('accessToken') && isStaff),
+  });
+  const venueId = selectedVenueId || venuesQuery.data?.[0]?.id;
 
   const contextQuery = useQuery({
-    queryKey: ['shift-start-context'],
-    queryFn: getShiftStartContext,
-    enabled: Boolean(local.get('accessToken') && isStaff),
+    queryKey: ['shift-start-context', venueId],
+    queryFn: () => getShiftStartContext(venueId),
+    enabled: Boolean(local.get('accessToken') && isStaff && venueId),
     retry: false,
   });
   const context = contextQuery.data;
@@ -34,6 +43,7 @@ export default function ShiftSetupPage() {
       startShift({
         openingBalance: resolvedOpening,
         notes: notes.trim() || undefined,
+        venueLocationId: venueId,
       }),
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['activeShift'] });
@@ -49,7 +59,7 @@ export default function ShiftSetupPage() {
   if (!local.get('accessToken')) return <Navigate to="/login" replace />;
   if (!isStaff) return <Navigate to="/" replace />;
 
-  if (contextQuery.isLoading) {
+  if (venuesQuery.isLoading || contextQuery.isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
         <CircularProgress />
@@ -57,17 +67,47 @@ export default function ShiftSetupPage() {
     );
   }
 
-  if (contextQuery.isError || !context) {
+  if (venuesQuery.isError || !venueId) {
     return (
       <Alert severity="error">
-        We couldn’t prepare your shift. Refresh the page or contact an administrator.
+        No available location for this shift. Ask an administrator to assign one.
       </Alert>
+    );
+  }
+
+  const venueSelector = (
+    <TextField
+      select
+      fullWidth
+      label="Shift location"
+      value={venueId}
+      onChange={(event) => setSelectedVenueId(event.target.value)}
+      sx={{ mb: 3 }}
+    >
+      {venuesQuery.data?.map((venue) => (
+        <MenuItem key={venue.id} value={venue.id}>
+          {venue.name}
+        </MenuItem>
+      ))}
+    </TextField>
+  );
+
+  if (contextQuery.isError || !context) {
+    return (
+      <Box>
+        {venueSelector}
+        <Alert severity="error">
+          We couldn’t prepare your shift at this location. Select another location or contact an
+          administrator.
+        </Alert>
+      </Box>
     );
   }
 
   const isResume = context.mode === 'resume';
   return (
     <Box>
+      {venueSelector}
       <Typography variant="h4" fontWeight={700} gutterBottom>
         {isResume ? 'Resume your shift' : 'Set up your shift'}
       </Typography>

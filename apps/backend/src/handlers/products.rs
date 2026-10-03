@@ -7,7 +7,8 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::AdminUser;
+use crate::middleware::{AdminUser, AuthUser};
+use crate::error::AppError;
 use crate::models::{
     CreateProductDto, CurrentPricesQuery, Product, ProductCurrentPrice, ProductFilterDto,
     ProductRecipe, UpdateProductDto,
@@ -127,12 +128,28 @@ pub async fn update_product(
     tag = "products"
 )]
 pub async fn current_prices(
+    AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<CurrentPricesQuery>,
 ) -> ApiResult<Vec<ProductCurrentPrice>> {
+    let venue_location_id = if claims.is_admin_or_staff() {
+        let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+        let user = claims.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        let location = query.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+        state.config.ensure_location_permission(org, location, user, "products:read").await?;
+        location
+    } else if let Some(device_id) = claims.deviceId.as_deref() {
+        state.devices.get_by_id(Uuid::parse_str(device_id).map_err(|_| AppError::Unauthorized("Invalid device identity".into()))?).await?.location_id
+    } else { crate::models::DEFAULT_VENUE_LOCATION_ID };
+    if let Some(store_id) = query.location_id {
+        let store = state.inventory.get_location(store_id).await?;
+        if store.venue_location_id != venue_location_id {
+            return Err(AppError::BadRequest("Store location must belong to the selected venue".into()));
+        }
+    }
     ok(state
         .transactions
-        .current_product_prices(query.location_id)
+        .current_product_prices(query.location_id, Some(venue_location_id))
         .await?)
 }
 

@@ -100,6 +100,7 @@ const PurchaseOrderDetailPage = lazy(
 const PurchaseOrderNewPage = lazy(() => import('./pages/dashboard/inventory/PurchaseOrderNewPage'));
 const PurchaseOrdersPage = lazy(() => import('./pages/dashboard/inventory/PurchaseOrdersPage'));
 const AccessPage = lazy(() => import('./pages/dashboard/access/AccessPage'));
+const LocationsPage = lazy(() => import('./pages/dashboard/access/LocationsPage'));
 const KitchenPage = lazy(() => import('./pages/dashboard/kitchen/KitchenPage'));
 const FinanceReportPage = lazy(() => import('./pages/dashboard/finance/FinanceReportPage'));
 const KioskOrdersPage = lazy(() => import('./pages/dashboard/kiosk-orders/KioskOrdersPage'));
@@ -408,6 +409,9 @@ function App() {
                       </Route>
                       <Route element={<RequirePermission permission={Permission.AccessRead} />}>
                         <Route path="/access" element={<AccessPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.LocationsRead} />}>
+                        <Route path="/locations" element={<LocationsPage />} />
                       </Route>
                       <Route element={<RequirePermission permission={Permission.KitchenRead} />}>
                         <Route path="/kitchen" element={<KitchenPage />} />

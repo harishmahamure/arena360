@@ -85,7 +85,9 @@ pub async fn snapshot(
     let org = org(&c)?;
     let roles:Vec<Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'name',name,'description',description,'permissions',permissions,'isTemplate',is_template,'revision',revision,'memberCount',(SELECT count(*) FROM access_assignments a WHERE a.role_id=r.id)) FROM access_roles r WHERE organization_id=$1 ORDER BY is_template,name").bind(org).fetch_all(&s.db).await?;
     let members:Vec<Value>=sqlx::query_scalar(r#"SELECT jsonb_build_object('id',u.id,'username',u.username,'name',concat_ws(' ',u."firstName",u."lastName"),'active',m."isActive" AND u."isActive",'revision',coalesce(v.revision,0),
- 'roleIds',(SELECT coalesce(jsonb_agg(a.role_id),'[]'::jsonb) FROM access_assignments a WHERE a.organization_id=$1 AND a.user_id=u.id))
+ 'roleIds',(SELECT coalesce(jsonb_agg(a.role_id),'[]'::jsonb) FROM access_assignments a WHERE a.organization_id=$1 AND a.user_id=u.id),
+ 'locationIds',(SELECT coalesce(jsonb_agg(la."locationId"),'[]'::jsonb) FROM location_access_assignments la WHERE la."membershipId"=m.id),
+ 'locationRoles',(SELECT coalesce(jsonb_agg(jsonb_build_object('locationId',lr.location_id,'roleIds',lr.roles)),'[]'::jsonb) FROM (SELECT location_id,jsonb_agg(role_id) roles FROM location_role_assignments WHERE organization_id=$1 AND user_id=u.id GROUP BY location_id) lr))
  FROM organization_memberships m JOIN users u ON u.id=m."userId"
  LEFT JOIN access_member_versions v ON v.organization_id=m."organizationId" AND v.user_id=u.id
  WHERE m."organizationId"=$1 AND u.role IN ('admin','staff') AND u."deletedAt" IS NULL ORDER BY u.username"#).bind(org).fetch_all(&s.db).await?;
@@ -262,8 +264,63 @@ pub async fn delete_role(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MemberDto {
     role_ids: Vec<Uuid>,
+    location_ids: Option<Vec<Uuid>>,
+    location_roles: Option<Vec<LocationRoleDto>>,
     active: bool,
     expected_revision: i32,
+}
+#[derive(Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocationRoleDto {
+    location_id: Uuid,
+    role_ids: Vec<Uuid>,
+}
+async fn assign_location_roles(tx: &mut Transaction<'_, Postgres>, org: Uuid, user: Uuid, locations: &[Uuid], global_roles: &[Uuid], scopes: &[LocationRoleDto]) -> Result<(), AppError> {
+    if scopes.len() != locations.len() {
+        return Err(AppError::BadRequest("Provide roles for every selected location".into()));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for scope in scopes {
+        if !locations.contains(&scope.location_id) || !seen.insert(scope.location_id) {
+            return Err(AppError::BadRequest("Location role assignments must match selected locations".into()));
+        }
+        validate_roles(tx, org, &scope.role_ids).await?;
+        if scope.role_ids.iter().any(|role| !global_roles.contains(role)) {
+            return Err(AppError::BadRequest("Location roles must be included in member roles".into()));
+        }
+    }
+    sqlx::query("DELETE FROM location_role_assignments WHERE organization_id=$1 AND user_id=$2")
+        .bind(org).bind(user).execute(&mut **tx).await?;
+    for scope in scopes {
+        for role in &scope.role_ids {
+            sqlx::query("INSERT INTO location_role_assignments(organization_id,user_id,location_id,role_id) VALUES($1,$2,$3,$4)")
+                .bind(org).bind(user).bind(scope.location_id).bind(role).execute(&mut **tx).await?;
+        }
+    }
+    Ok(())
+}
+async fn validate_locations(tx: &mut Transaction<'_, Postgres>, org: Uuid, ids: &[Uuid]) -> Result<(), AppError> {
+    if ids.is_empty() || ids.len() > 100 {
+        return Err(AppError::BadRequest("Choose between one and 100 locations".into()));
+    }
+    let count: i64 = sqlx::query_scalar(r#"SELECT count(*) FROM venue_locations WHERE "organizationId"=$1 AND "isActive" AND id=ANY($2)"#)
+        .bind(org).bind(ids).fetch_one(&mut **tx).await?;
+    if count != ids.len() as i64 {
+        return Err(AppError::BadRequest("Choose unique active locations in this organization".into()));
+    }
+    Ok(())
+}
+async fn assign_locations(tx: &mut Transaction<'_, Postgres>, org: Uuid, user: Uuid, ids: &[Uuid]) -> Result<(), AppError> {
+    validate_locations(tx, org, ids).await?;
+    let membership: Uuid = sqlx::query_scalar(r#"SELECT id FROM organization_memberships WHERE "organizationId"=$1 AND "userId"=$2"#)
+        .bind(org).bind(user).fetch_one(&mut **tx).await?;
+    sqlx::query(r#"DELETE FROM location_access_assignments WHERE "membershipId"=$1"#)
+        .bind(membership).execute(&mut **tx).await?;
+    for id in ids {
+        sqlx::query(r#"INSERT INTO location_access_assignments("organizationId","membershipId","locationId") VALUES($1,$2,$3)"#)
+            .bind(org).bind(membership).bind(id).execute(&mut **tx).await?;
+    }
+    Ok(())
 }
 async fn validate_roles(
     tx: &mut Transaction<'_, Postgres>,
@@ -291,7 +348,8 @@ pub async fn save_member(
     let mut tx = s.db.begin().await?;
     lock(&mut tx, org).await?;
     validate_roles(&mut tx, org, &dto.role_ids).await?;
-    let before:Option<Value>=sqlx::query_scalar(r#"SELECT jsonb_build_object('active',m."isActive",'roleIds',(SELECT coalesce(jsonb_agg(role_id),'[]'::jsonb) FROM access_assignments WHERE organization_id=$1 AND user_id=$2)) FROM organization_memberships m JOIN users u ON u.id=m."userId" WHERE m."organizationId"=$1 AND m."userId"=$2 AND u.role IN ('admin','staff') AND u."deletedAt" IS NULL"#).bind(org).bind(user).fetch_optional(&mut *tx).await?;
+    if let Some(ref ids) = dto.location_ids { validate_locations(&mut tx, org, ids).await?; }
+    let before:Option<Value>=sqlx::query_scalar(r#"SELECT jsonb_build_object('active',m."isActive",'roleIds',(SELECT coalesce(jsonb_agg(role_id),'[]'::jsonb) FROM access_assignments WHERE organization_id=$1 AND user_id=$2),'locationIds',(SELECT coalesce(jsonb_agg("locationId"),'[]'::jsonb) FROM location_access_assignments WHERE "membershipId"=m.id)) FROM organization_memberships m JOIN users u ON u.id=m."userId" WHERE m."organizationId"=$1 AND m."userId"=$2 AND u.role IN ('admin','staff') AND u."deletedAt" IS NULL"#).bind(org).bind(user).fetch_optional(&mut *tx).await?;
     let before = before
         .ok_or_else(|| AppError::NotFound("Team member not found in this organization".into()))?;
     let revision: Option<i32> = sqlx::query_scalar(
@@ -321,6 +379,20 @@ pub async fn save_member(
         .execute(&mut *tx)
         .await?;
     }
+    if let Some(ref ids) = dto.location_ids { assign_locations(&mut tx, org, user, ids).await?; }
+    if let Some(ref scopes) = dto.location_roles {
+        let ids = dto.location_ids.as_ref().ok_or_else(|| AppError::BadRequest("Locations are required with location roles".into()))?;
+        assign_location_roles(&mut tx, org, user, ids, &dto.role_ids, scopes).await?;
+    } else if let Some(ref ids) = dto.location_ids {
+        let scopes: Vec<LocationRoleDto> = ids.iter().map(|id| LocationRoleDto { location_id: *id, role_ids: dto.role_ids.clone() }).collect();
+        assign_location_roles(&mut tx, org, user, ids, &dto.role_ids, &scopes).await?;
+    } else {
+        // Older clients only send organization roles. Keep their location grants in sync.
+        let ids: Vec<Uuid> = sqlx::query_scalar(r#"SELECT la."locationId" FROM location_access_assignments la JOIN organization_memberships m ON m.id=la."membershipId" WHERE m."organizationId"=$1 AND m."userId"=$2"#)
+            .bind(org).bind(user).fetch_all(&mut *tx).await?;
+        let scopes: Vec<LocationRoleDto> = ids.iter().map(|id| LocationRoleDto { location_id: *id, role_ids: dto.role_ids.clone() }).collect();
+        assign_location_roles(&mut tx, org, user, &ids, &dto.role_ids, &scopes).await?;
+    }
     sqlx::query(r#"UPDATE organization_memberships SET "isActive"=$3 WHERE "organizationId"=$1 AND "userId"=$2"#).bind(org).bind(user).bind(dto.active).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO access_member_versions(organization_id,user_id) VALUES($1,$2) ON CONFLICT(organization_id,user_id) DO UPDATE SET revision=access_member_versions.revision+1").bind(org).bind(user).execute(&mut *tx).await?;
     keep_administrator(&mut tx, org).await?;
@@ -331,7 +403,7 @@ pub async fn save_member(
         "member.updated",
         &user.to_string(),
         before,
-        json!({"active":dto.active,"roleIds":dto.role_ids}),
+        json!({"active":dto.active,"roleIds":dto.role_ids,"locationIds":dto.location_ids,"locationRoles":dto.location_roles}),
     )
     .await?;
     tx.commit().await?;
@@ -403,6 +475,12 @@ pub struct NewMember {
     username: String,
     password: String,
     role_ids: Vec<Uuid>,
+    #[serde(default = "default_member_locations")]
+    location_ids: Vec<Uuid>,
+    location_roles: Option<Vec<LocationRoleDto>>,
+}
+fn default_member_locations() -> Vec<Uuid> {
+    vec![crate::models::DEFAULT_VENUE_LOCATION_ID]
 }
 pub async fn create_member(
     AdminOrStaff(c): AdminOrStaff,
@@ -426,6 +504,7 @@ pub async fn create_member(
     let mut tx = s.db.begin().await?;
     lock(&mut tx, org).await?;
     validate_roles(&mut tx, org, &dto.role_ids).await?;
+    validate_locations(&mut tx, org, &dto.location_ids).await?;
     let duplicate: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE lower(username)=lower($1))")
             .bind(&username)
@@ -468,6 +547,9 @@ pub async fn create_member(
         .execute(&mut *tx)
         .await?;
     }
+    assign_locations(&mut tx, org, id, &dto.location_ids).await?;
+    let scopes = dto.location_roles.unwrap_or_else(|| dto.location_ids.iter().map(|location_id| LocationRoleDto { location_id: *location_id, role_ids: dto.role_ids.clone() }).collect());
+    assign_location_roles(&mut tx, org, id, &dto.location_ids, &dto.role_ids, &scopes).await?;
     audit(
         &mut tx,
         org,
@@ -475,7 +557,7 @@ pub async fn create_member(
         "member.created",
         &id.to_string(),
         Value::Null,
-        json!({"username":username,"roleIds":dto.role_ids}),
+        json!({"username":username,"roleIds":dto.role_ids,"locationIds":dto.location_ids}),
     )
     .await?;
     tx.commit().await?;

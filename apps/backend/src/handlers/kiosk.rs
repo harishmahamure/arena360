@@ -163,7 +163,11 @@ pub async fn end_session(
         let balance_id = session.balance_id;
         let balance = state.balances.get_raw(balance_id).await?;
         let remaining = balance.remaining_minutes;
-        let deduction_profile = balance.deduction_profile.clone();
+        let deduction_profile = session
+            .balance
+            .as_ref()
+            .and_then(|b| b.deduction_profile.as_ref())
+            .and_then(|p| serde_json::to_value(p).ok());
         let time_credits_consumed = session.time_credits_consumed.map(|v| v as f64);
         let expiry_date = balance.expiry_date.to_rfc3339();
         return ok(KioskSessionResponseDto {
@@ -202,7 +206,8 @@ pub async fn end_session(
     let balance_id = ended.balance_id;
     let balance = state.balances.get_raw(balance_id).await?;
     let remaining = balance.remaining_minutes;
-    let deduction_profile = balance.deduction_profile.clone();
+    let deduction_profile =
+        crate::services::session_service::session_profile_value(&balance, &ended).cloned();
     let time_credits_consumed = ended.time_credits_consumed.map(|v| v as f64);
     let expiry_date = balance.expiry_date.to_rfc3339();
 

@@ -3,6 +3,7 @@ import {
   buildDeductionPlayBreakdown,
   capRemainingByExpiry,
   createSessionClockCache,
+  currentDeductionRatio,
   formatDeductionTime,
   formatDeductionTimeRange,
   maxWallMinutes,
@@ -109,5 +110,89 @@ describe('deductionProfile contracts', () => {
     const ticked = tickSessionClockCache(cache!, 1_000, startMs + 1_000);
     expect(ticked.remainingMinutes).toBeLessThan(60);
     expect(ticked.lastTickMs).toBe(startMs + 1_000);
+  });
+});
+
+describe('published credit deduction rules', () => {
+  const rule = {
+    id: 'night',
+    priority: 100,
+    weekdays: [4, 5],
+    startTime: '23:00:00',
+    endTime: '08:00:00',
+    action: { type: 'multiplier' as const, value: '1.25' },
+  };
+  const snapshot = { ...profile, policyRules: [rule] };
+  it('multiplies plan speed across midnight and honors venue weekdays', () => {
+    const start = Date.parse('2026-09-24T18:00:00Z'); // Thursday 23:30 IST
+    expect(
+      weightedMinutesBetween(start, start + 60 * 60_000, snapshot, 'Asia/Kolkata'),
+    ).toBeCloseTo(75, 8);
+    expect(currentDeductionRatio(snapshot, 'Asia/Kolkata', new Date('2026-09-26T18:30:00Z'))).toBe(
+      1,
+    );
+  });
+  it('combines with a plan profile, supports fixed speed, and stops at exact boundaries', () => {
+    const start = Date.parse('2026-09-24T12:30:00Z'); // peak starts 18:00
+    const multiplier = { ...rule, startTime: null, endTime: null };
+    expect(
+      weightedMinutesBetween(
+        start,
+        start + 60 * 60_000,
+        { ...profile, policyRules: [multiplier] },
+        'Asia/Kolkata',
+      ),
+    ).toBeCloseTo(112.5, 8);
+    const fixed = {
+      ...multiplier,
+      action: { type: 'fixed' as const, value: '0.5' },
+      endsAt: new Date(start + 30_000).toISOString(),
+    };
+    expect(
+      weightedMinutesBetween(
+        start,
+        start + 60_000,
+        { ...profile, policyRules: [fixed] },
+        'Asia/Kolkata',
+      ),
+    ).toBeCloseTo(1, 8);
+  });
+  it('uses the saved venue timezone for policies while retaining the plan clock', () => {
+    const at = new Date('2026-09-24T12:30:00Z');
+    const saved = {
+      ...profile,
+      policyTimezone: 'UTC',
+      policyRules: [{ ...rule, startTime: '12:00:00', endTime: '13:00:00' }],
+    };
+    expect(currentDeductionRatio(saved, 'Asia/Kolkata', at)).toBe(1.875);
+  });
+  it('honors second-level rule boundaries and avoids rounding an extra credit', () => {
+    const start = Date.parse('2026-09-24T17:29:30Z');
+    const seconds = { ...profile, policyRules: [{ ...rule, startTime: '22:59:45' }] };
+    expect(weightedMinutesBetween(start, start + 60_000, seconds, 'Asia/Kolkata')).toBeCloseTo(
+      1.46875,
+      8,
+    );
+    const fixed = {
+      ...profile,
+      policyRules: [
+        {
+          ...rule,
+          startTime: null,
+          endTime: null,
+          action: { type: 'fixed' as const, value: '1.2' },
+        },
+      ],
+    };
+    expect(
+      Math.ceil(weightedMinutesBetween(start, start + 60 * 60_000, fixed, 'Asia/Kolkata')),
+    ).toBe(72);
+  });
+  it('splits a minute at the night-window boundary', () => {
+    const start = Date.parse('2026-09-24T17:29:30Z'); // 22:59:30 IST
+    expect(weightedMinutesBetween(start, start + 60_000, snapshot, 'Asia/Kolkata')).toBeCloseTo(
+      1.375,
+      8,
+    ); // half minute at 1.5, half at 1.25
   });
 });

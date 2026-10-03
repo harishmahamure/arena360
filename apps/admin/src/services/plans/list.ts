@@ -9,6 +9,7 @@ export interface PlanResponse {
   name: string;
   description?: string;
   price: string;
+  currentPrice?: number | null;
   planType: PlanTypeValue;
   validityDays: number;
   timeWindowStart?: string;
@@ -34,6 +35,7 @@ interface GetPlansResponse {
 }
 
 export interface GetPlansFilters {
+  locationId?: string;
   search?: string;
   planType?: PlanTypeValue;
   isActive?: 0 | 1;

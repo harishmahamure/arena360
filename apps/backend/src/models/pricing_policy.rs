@@ -66,9 +66,10 @@ pub enum PricingTarget {
     #[default]
     Sessions,
     Products,
+    Deduction,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PricingRule {
     pub id: String,
@@ -92,7 +93,7 @@ pub struct PricingRule {
     pub action: PricingAction,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PricingAction {
     Fixed { value: String },
@@ -123,6 +124,8 @@ pub struct PublishPricingRuleVersionDto {
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PricingSimulationDto {
+    #[serde(default)]
+    pub target: Option<PricingTarget>,
     pub location_id: Option<Uuid>,
     pub device_type: Option<String>,
     pub at: DateTime<Utc>,

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
+use crate::error::AppError;
 use crate::dto::{
     created, ok, ApiResult, ApproveInventoryActionDto, PaginationResult, ReceiptSummaryFilterDto,
     WasteSummaryFilterDto,
@@ -41,10 +42,18 @@ use crate::openapi::responses::{
     tag = "inventory"
 )]
 pub async fn list_locations(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<InventoryLocationFilterDto>,
+    Query(mut filters): Query<InventoryLocationFilterDto>,
 ) -> ApiResult<PaginationResult<InventoryLocation>> {
+    if !claims.is_admin() && filters.venue_location_id.is_none() {
+        filters.venue_location_id = Some(crate::models::DEFAULT_VENUE_LOCATION_ID);
+    }
+    if let Some(location_id) = filters.venue_location_id {
+        let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+        let user = claims.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        state.config.ensure_location_permission(org, location_id, user, "inventory:read").await?;
+    }
     ok(state.inventory.list_locations(filters).await?)
 }
 
@@ -68,6 +77,7 @@ pub async fn create_location(
     Json(dto): Json<CreateInventoryLocationDto>,
 ) -> ApiResult<InventoryLocation> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
+    state.config.ensure_location_permission(Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?, dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID), user_id.ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?, "inventory:manage").await?;
     created(state.inventory.create_location(dto, user_id).await?)
 }
 
@@ -94,6 +104,13 @@ pub async fn update_location(
     Json(dto): Json<UpdateInventoryLocationDto>,
 ) -> ApiResult<InventoryLocation> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
+    let existing = state.inventory.get_location(id).await?;
+    let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+    let user = user_id.ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    state.config.ensure_location_permission(org, existing.venue_location_id, user, "inventory:manage").await?;
+    if let Some(location_id) = dto.venue_location_id {
+        state.config.ensure_location_permission(org, location_id, user, "inventory:manage").await?;
+    }
     ok(state.inventory.update_location(id, dto, user_id).await?)
 }
 
@@ -109,10 +126,24 @@ pub async fn update_location(
     tag = "inventory"
 )]
 pub async fn list_stock(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<LocationStockFilterDto>,
+    Query(mut filters): Query<LocationStockFilterDto>,
 ) -> ApiResult<PaginationResult<LocationStockRow>> {
+    let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+    let user = claims.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    if let Some(id) = filters.location_id {
+        let location = state.inventory.get_location(id).await?;
+        if filters.venue_location_id.is_some_and(|requested| requested != location.venue_location_id) {
+            return Err(AppError::BadRequest("Inventory location is outside the selected venue".into()));
+        }
+        filters.venue_location_id = Some(location.venue_location_id);
+    } else if !claims.is_admin() && filters.venue_location_id.is_none() {
+        filters.venue_location_id = Some(crate::models::DEFAULT_VENUE_LOCATION_ID);
+    }
+    if let Some(location_id) = filters.venue_location_id {
+        state.config.ensure_location_permission(org, location_id, user, "inventory:read").await?;
+    }
     ok(state.inventory.list_stock(filters).await?)
 }
 

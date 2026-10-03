@@ -767,7 +767,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/organizations/{org_id}/locations",
-            get(handlers::config::venue_locations),
+            get(handlers::config::venue_locations).post(handlers::config::create_venue_location),
+        )
+        .route(
+            "/organizations/{org_id}/locations/{location_id}",
+            put(handlers::config::update_venue_location),
         )
         .route(
             "/organizations/{org_id}/settings/effective",

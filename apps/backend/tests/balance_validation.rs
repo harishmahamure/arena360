@@ -59,6 +59,8 @@ fn validate(balance: &PlayerPlanBalance) -> BalanceValidationResult {
 fn sample_device() -> Device {
     Device {
         id: Uuid::new_v4(),
+        organization_id: gaming_cafe_api::models::DEFAULT_ORGANIZATION_ID,
+        location_id: gaming_cafe_api::models::DEFAULT_VENUE_LOCATION_ID,
         name: "PC-01".to_string(),
         serial_number: None,
         local_ip_address: None,

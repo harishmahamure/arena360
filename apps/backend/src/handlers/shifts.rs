@@ -16,6 +16,21 @@ use crate::openapi::responses::{
     ShiftPaginationEnvelope, ShiftStartContextEnvelope, ShiftStartResponseEnvelope,
 };
 
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftVenueQuery { pub location_id: Option<Uuid> }
+
+async fn shift_venue(state: &AppState, shift_id: Uuid) -> Result<Uuid, crate::error::AppError> {
+    Ok(sqlx::query_scalar(r#"SELECT "venueLocationId" FROM shifts WHERE id=$1"#)
+        .bind(shift_id).fetch_one(&state.db).await?)
+}
+
+async fn require_shift_venue(state: &AppState, claims: &crate::dto::JwtUserClaims, venue_id: Uuid, permission: &str) -> Result<(), crate::error::AppError> {
+    let org = Uuid::parse_str(&claims.tenantId).map_err(|_| crate::error::AppError::Forbidden("Select an organization".into()))?;
+    let user = claims.user_id_uuid().ok_or_else(|| crate::error::AppError::Unauthorized("Invalid user identity".into()))?;
+    state.config.ensure_location_permission(org, venue_id, user, permission).await
+}
+
 #[utoipa::path(
     get,
     path = "/shifts/start-context",
@@ -30,12 +45,18 @@ use crate::openapi::responses::{
 pub async fn start_context(
     StaffUser(claims): StaffUser,
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ShiftVenueQuery>,
 ) -> ApiResult<ShiftStartContextDto> {
+    let venue_id = query.location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+    require_shift_venue(&state, &claims, venue_id, "shifts:read").await?;
     let user_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
     if let Some(shift) = state.shifts.get_active(user_id).await? {
+        if shift_venue(&state, shift.id).await? != venue_id {
+            return Err(crate::error::AppError::Conflict("An active shift belongs to another location".into()));
+        }
         if let Ok(register_with_entries) = state.cash_registers.get_by_shift(shift.id).await {
             let register = register_with_entries.register;
             if register.status == "open" {
@@ -48,7 +69,7 @@ pub async fn start_context(
             }
         }
     }
-    let suggested = state.cash_registers.preview_carry_forward_balance().await?;
+    let suggested = state.cash_registers.preview_carry_forward_balance_for(venue_id).await?;
     ok(ShiftStartContextDto {
         mode: "start".to_string(),
         shift: None,
@@ -76,6 +97,7 @@ pub async fn start_shift(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<StartShiftDto>,
 ) -> ApiResult<ShiftStartResponseDto> {
+    require_shift_venue(&state, &claims, dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID), "shifts:write").await?;
     let user_id: Uuid = claims
         .userId
         .parse()
@@ -139,6 +161,9 @@ pub async fn clock_out(
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
+    if let Some(active) = state.shifts.get_active(user_id).await? {
+        require_shift_venue(&state, &claims, shift_venue(&state, active.id).await?, "shifts:write").await?;
+    }
     let shift = state.shifts.clock_out(user_id, dto, user_id).await?;
     ok(shift)
 }
@@ -164,6 +189,9 @@ pub async fn get_active_shift(
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
     let shift = state.shifts.get_active(user_id).await?;
+    if let Some(ref active) = shift {
+        require_shift_venue(&state, &claims, shift_venue(&state, active.id).await?, "shifts:read").await?;
+    }
     ok(shift)
 }
 
@@ -289,6 +317,8 @@ pub async fn handover_shift(
     let active_shift = state.shifts.get_active(staff_a_id).await?.ok_or_else(|| {
         crate::error::AppError::NotFound("No active shift found for current user".to_string())
     })?;
+    let venue_id = shift_venue(&state, active_shift.id).await?;
+    require_shift_venue(&state, &claims, venue_id, "shifts:write").await?;
 
     let validator = state
         .auth
@@ -304,6 +334,8 @@ pub async fn handover_shift(
             "Handover validator must be a different staff member".to_string(),
         ));
     }
+    let org_id = Uuid::parse_str(&claims.tenantId).map_err(|_| crate::error::AppError::Forbidden("Select an organization".into()))?;
+    state.config.ensure_location_permission(org_id, venue_id, validator.id, "shifts:write").await?;
 
     let register_with_entries = state
         .cash_registers
@@ -385,6 +417,8 @@ pub async fn handover_shift(
             validator.id,
         )
         .await?;
+    sqlx::query(r#"UPDATE shifts SET "venueLocationId"=$2 WHERE id=$1"#)
+        .bind(new_shift.id).bind(venue_id).execute(&state.db).await?;
 
     if let Some(ref closed_reg) = closed_register {
         state
@@ -458,6 +492,7 @@ pub async fn close_shift(
     let active_shift = state.shifts.get_active(staff_id).await?.ok_or_else(|| {
         crate::error::AppError::NotFound("No active shift found for current user".to_string())
     })?;
+    require_shift_venue(&state, &claims, shift_venue(&state, active_shift.id).await?, "shifts:write").await?;
 
     let register_with_entries = state
         .cash_registers

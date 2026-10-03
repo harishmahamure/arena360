@@ -26,10 +26,11 @@ import {
   type RecipeIngredient,
   saveProductRecipe,
 } from '../../services/product/recipe';
+import { metricUnitConversion } from './productUnits';
 
 const EMPTY_RECIPE: ProductRecipe = { items: [], optionGroups: [] };
 
-type IngredientChoice = { id: string; label: string };
+type IngredientChoice = { id: string; label: string; unit: string; conversion?: string };
 
 function IngredientRows({
   rows,
@@ -48,43 +49,50 @@ function IngredientRows({
     onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   return (
     <Stack spacing={1}>
-      {rows.map((row, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: rows have no ID and may repeat an ingredient while being edited
-        <Stack key={`${row.ingredientId}-${index}`} direction="row" spacing={1}>
-          <TextField
-            select
-            size="small"
-            label="Ingredient"
-            value={row.ingredientId}
-            disabled={disabled}
-            onChange={(event) => edit(index, { ingredientId: event.target.value })}
-            sx={{ flex: 2 }}
-          >
-            {choices.map((choice) => (
-              <MenuItem key={choice.id} value={choice.id}>
-                {choice.label}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            size="small"
-            type="number"
-            label={allowNegative ? 'Change (− removes)' : 'Quantity'}
-            value={row.quantity}
-            disabled={disabled}
-            onChange={(event) => edit(index, { quantity: Math.trunc(Number(event.target.value)) })}
-            slotProps={{ htmlInput: { step: 1, min: allowNegative ? undefined : 1 } }}
-            sx={{ flex: 1 }}
-          />
-          <IconButton
-            aria-label="Remove ingredient"
-            disabled={disabled}
-            onClick={() => onChange(rows.filter((_, i) => i !== index))}
-          >
-            <DeleteOutline fontSize="small" />
-          </IconButton>
-        </Stack>
-      ))}
+      {rows.map((row, index) => {
+        const choice = choices.find((item) => item.id === row.ingredientId);
+        const unit = choice?.unit ?? 'units';
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: rows have no ID and may repeat an ingredient while being edited
+          <Stack key={`${row.ingredientId}-${index}`} direction="row" spacing={1}>
+            <TextField
+              select
+              size="small"
+              label="Ingredient"
+              value={row.ingredientId}
+              disabled={disabled}
+              onChange={(event) => edit(index, { ingredientId: event.target.value })}
+              sx={{ flex: 2 }}
+            >
+              {choices.map((choice) => (
+                <MenuItem key={choice.id} value={choice.id}>
+                  {choice.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              size="small"
+              type="number"
+              label={allowNegative ? `Change (${unit}; − removes)` : `Quantity (${unit})`}
+              value={row.quantity}
+              disabled={disabled}
+              onChange={(event) =>
+                edit(index, { quantity: Math.trunc(Number(event.target.value)) })
+              }
+              slotProps={{ htmlInput: { step: 1, min: allowNegative ? undefined : 1 } }}
+              helperText={choice?.conversion ?? `Per item sold, in ${unit}`}
+              sx={{ flex: 1 }}
+            />
+            <IconButton
+              aria-label="Remove ingredient"
+              disabled={disabled}
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            >
+              <DeleteOutline fontSize="small" />
+            </IconButton>
+          </Stack>
+        );
+      })}
       <Button
         size="small"
         startIcon={<Add />}
@@ -109,7 +117,7 @@ export default function ProductRecipeEditor({
   canWrite: boolean;
 }) {
   const queryClient = useQueryClient();
-  const { unitSelectOptions } = useProductUnits();
+  const { units } = useProductUnits();
   const [draft, setDraft] = useState<ProductRecipe>(EMPTY_RECIPE);
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
@@ -128,18 +136,25 @@ export default function ProductRecipeEditor({
   }, [recipeQuery.data]);
 
   const choices = useMemo(() => {
-    const unitLabel = new Map(unitSelectOptions.map((unit) => [unit.value, unit.label]));
+    const unitById = new Map(units.map((unit) => [unit.id, unit]));
     return (productsQuery.data?.data ?? [])
       .filter((product) => product.id !== productId)
       .sort((a, b) => Number(b.isRawMaterial ?? false) - Number(a.isRawMaterial ?? false))
       .map((product) => {
-        const unit = product.unitId ? unitLabel.get(product.unitId) : undefined;
+        const unit = product.unitId ? unitById.get(product.unitId) : undefined;
+        const purchase = product.purchaseUnitId ? unitById.get(product.purchaseUnitId) : undefined;
+        const conversion = metricUnitConversion(purchase?.type, unit?.type);
         return {
           id: product.id,
-          label: `${product.name}${unit ? ` (${unit})` : ''}${product.isRawMaterial ? '' : ' · sold item'}`,
+          label: `${product.name}${unit ? ` (${unit.abbreviation})` : ''}${product.isRawMaterial ? '' : ' · sold item'}`,
+          unit: unit?.abbreviation ?? 'units',
+          conversion:
+            conversion !== undefined && conversion > 1
+              ? `1 ${purchase?.abbreviation} = ${conversion.toLocaleString()} ${unit?.abbreviation}`
+              : undefined,
         };
       });
-  }, [productsQuery.data, productId, unitSelectOptions]);
+  }, [productsQuery.data, productId, units]);
 
   const disabled = !canWrite || saving;
   const editGroup = (index: number, patch: Partial<ProductOptionGroup>) =>
@@ -189,7 +204,8 @@ export default function ProductRecipeEditor({
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         With ingredients, each sale deducts them from store stock instead of this product's own
-        stock. Quantities are whole numbers in each ingredient's unit.
+        stock. Enter each portion in the displayed stock unit, such as 20 g of paneer. Purchasing 1
+        kg adds 1,000 g when the stock unit is grams.
       </Typography>
       {recipeQuery.isError && <Alert severity="error">Could not load the recipe.</Alert>}
       {error && (

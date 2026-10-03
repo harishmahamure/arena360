@@ -9,6 +9,7 @@ export interface AddDeviceRequest {
   deviceType: string;
   deviceSubType: string;
   location?: string;
+  locationId?: string;
   status?: DeviceStatusValue;
 }
 

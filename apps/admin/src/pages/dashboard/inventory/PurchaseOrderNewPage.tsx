@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useProductUnits } from '../../../hooks/useProductUnits';
 import {
   createPurchaseOrder,
   getInventoryLocations,
@@ -37,6 +38,9 @@ const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: '
 
 export default function PurchaseOrderNewPage() {
   const navigate = useNavigate();
+  const { units } = useProductUnits();
+  const purchaseUnit = (product?: ProductResponse | null) =>
+    units.find((unit) => unit.id === product?.purchaseUnitId)?.abbreviation ?? 'purchase unit';
   const [searchParams] = useSearchParams();
   const [step, setStep] = useState(0);
   const [vendorId, setVendorId] = useState('');
@@ -222,17 +226,17 @@ export default function PurchaseOrderNewPage() {
                   )}
                 />
                 <TextField
-                  label="Boxes"
+                  label={`Quantity (${purchaseUnit(line.product)})`}
                   type="number"
                   value={line.orderedBoxes}
                   onChange={(event) =>
                     updateLine(line.key, { orderedBoxes: Number(event.target.value) })
                   }
                   slotProps={{ htmlInput: { min: 1 } }}
-                  sx={{ width: 110 }}
+                  sx={{ width: 180 }}
                 />
                 <TextField
-                  label="Cost / box"
+                  label={`Cost / ${purchaseUnit(line.product)}`}
                   type="number"
                   value={line.boxCost}
                   onChange={(event) =>
@@ -278,7 +282,7 @@ export default function PurchaseOrderNewPage() {
           {lines.map((line) => (
             <Stack key={line.key} direction="row" justifyContent="space-between">
               <Typography>
-                {line.product?.name} · {line.orderedBoxes} boxes
+                {line.product?.name} · {line.orderedBoxes} {purchaseUnit(line.product)}
               </Typography>
               <Typography>{currency.format(line.orderedBoxes * line.boxCost)}</Typography>
             </Stack>

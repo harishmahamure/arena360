@@ -24,6 +24,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
@@ -40,14 +41,19 @@ import {
   saveModule,
   saveRole,
 } from '../../../services/access';
+import { getVenueLocations } from '../../../services/config';
+import LocationsPanel, { currentOrganizationId } from './LocationsPanel';
 
 export default function AccessPage() {
   const { can } = usePermissions();
   const manage = can(Permission.AccessManage);
+  const canManageLocations = can(Permission.LocationsManage);
+  const organizationId = currentOrganizationId();
   const client = useQueryClient();
   const query = useQuery({ queryKey: ['accessManagement'], queryFn: getAccess });
   const data = query.data;
-  const [tab, setTab] = useState('roles');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => (searchParams.get('tab') === 'team' ? 'team' : 'roles'));
   const [search, setSearch] = useState('');
   const [role, setRole] = useState<RoleDraft | null>(null);
   const [member, setMember] = useState<AccessMember | null>(null);
@@ -55,7 +61,14 @@ export default function AccessPage() {
     username: string;
     password: string;
     roleIds: string[];
+    locationIds: string[];
+    locationRoles: { locationId: string; roleIds: string[] }[];
   } | null>(null);
+  const locations = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+    enabled: !!member || !!newMember,
+  });
   const [module, setModule] = useState<ModuleState | null>(null);
   const [deleting, setDeleting] = useState<AccessRole | null>(null);
   const [permissionSearch, setPermissionSearch] = useState('');
@@ -112,8 +125,18 @@ export default function AccessPage() {
     const roleIds = selectedIds.includes(id)
       ? selectedIds.filter((v) => v !== id)
       : [...selectedIds, id];
-    if (member) setMember({ ...member, roleIds });
-    if (newMember) setNewMember({ ...newMember, roleIds });
+    if (member)
+      setMember({
+        ...member,
+        roleIds,
+        locationRoles: member.locationIds.map((locationId) => ({ locationId, roleIds })),
+      });
+    if (newMember)
+      setNewMember({
+        ...newMember,
+        roleIds,
+        locationRoles: newMember.locationIds.map((locationId) => ({ locationId, roleIds })),
+      });
   }
   const error = mutation.error && (
     <Alert severity="error" sx={{ my: 2 }}>
@@ -124,7 +147,7 @@ export default function AccessPage() {
     <PageShell>
       <PageHeader
         title="Access management"
-        description="Build roles around responsibilities. Assign people, control modules, and reuse permission templates."
+        description="Manage locations, assign team access, and configure roles and modules."
       />
       <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mb: 2 }}>
         <Chip label={`${data?.roles.filter((r) => !r.isTemplate).length ?? '…'} roles`} />
@@ -137,13 +160,20 @@ export default function AccessPage() {
         >
           Refresh
         </Button>
-        {manage && (
+        {manage && tab !== 'locations' && (
           <Button
             variant="contained"
             startIcon={<Add />}
             onClick={() => {
               reset();
-              if (tab === 'team') setNewMember({ username: '', password: '', roleIds: [] });
+              if (tab === 'team')
+                setNewMember({
+                  username: '',
+                  password: '',
+                  roleIds: [],
+                  locationIds: [],
+                  locationRoles: [],
+                });
               else
                 setRole({
                   name: '',
@@ -177,6 +207,7 @@ export default function AccessPage() {
         <Tab label="Roles" value="roles" />
         <Tab label="Templates" value="templates" />
         <Tab label="Team" value="team" />
+        <Tab label="Locations" value="locations" />
         <Tab label="Modules" value="modules" />
         <Tab label="Audit trail" value="audit" />
       </Tabs>
@@ -195,6 +226,7 @@ export default function AccessPage() {
       />
       {data && (
         <>
+          {tab === 'locations' && <LocationsPanel canWrite={canManageLocations} />}
           {(tab === 'roles' || tab === 'templates') && (
             <>
               <Typography color="text.secondary" sx={{ mb: 2 }}>
@@ -296,14 +328,27 @@ export default function AccessPage() {
                           </Typography>
                           <Typography variant="caption">
                             {effectiveGrants(m.roleIds, data.roles, data.modules).length} effective
-                            permissions
+                            permissions · {m.locationIds?.length ?? 0} locations
                           </Typography>
                         </Box>
                         {manage && (
                           <Button
                             onClick={() => {
                               reset();
-                              setMember({ ...m, roleIds: [...m.roleIds] });
+                              setMember({
+                                ...m,
+                                roleIds: [...m.roleIds],
+                                locationIds: [...(m.locationIds ?? [])],
+                                locationRoles:
+                                  m.locationRoles?.map((scope) => ({
+                                    locationId: scope.locationId,
+                                    roleIds: [...scope.roleIds],
+                                  })) ??
+                                  (m.locationIds ?? []).map((locationId) => ({
+                                    locationId,
+                                    roleIds: [...m.roleIds],
+                                  })),
+                              });
                             }}
                           >
                             Manage access
@@ -650,6 +695,9 @@ export default function AccessPage() {
                   </Typography>
                   <Typography>{roleNames(selectedIds)}</Typography>
                   <Typography>
+                    {(member?.locationIds ?? newMember?.locationIds ?? []).length} locations
+                  </Typography>
+                  <Typography>
                     {grants.length} effective permissions after module restrictions
                   </Typography>
                   {newMember && <Typography>Password: ••••••••••••</Typography>}
@@ -719,7 +767,7 @@ export default function AccessPage() {
               </GuidedStep>
               <GuidedStep
                 title="Assign roles"
-                description="Combine responsibilities by choosing more than one role."
+                description="Choose roles to apply to all selected locations. You can then adjust each location below."
               >
                 <Stack>
                   {data.roles
@@ -744,6 +792,109 @@ export default function AccessPage() {
                       />
                     ))}
                 </Stack>
+              </GuidedStep>
+              <GuidedStep
+                title="Location access"
+                description="Select every venue where this member may use their assigned roles."
+                validate={() =>
+                  (member?.locationIds ?? newMember?.locationIds ?? []).length === 0
+                    ? 'Choose at least one location.'
+                    : undefined
+                }
+              >
+                {locations.error && <Alert severity="error">{locations.error.message}</Alert>}
+                <Stack>
+                  {locations.data?.map((location) => {
+                    const selected = member?.locationIds ?? newMember?.locationIds ?? [];
+                    return (
+                      <FormControlLabel
+                        key={location.id}
+                        label={`${location.name} (${location.slug})`}
+                        control={
+                          <Checkbox
+                            checked={selected.includes(location.id)}
+                            onChange={(_, checked) => {
+                              const locationIds = checked
+                                ? [...selected, location.id]
+                                : selected.filter((id) => id !== location.id);
+                              if (member)
+                                setMember({
+                                  ...member,
+                                  locationIds,
+                                  locationRoles: checked
+                                    ? [
+                                        ...(member.locationRoles ?? []),
+                                        { locationId: location.id, roleIds: [...member.roleIds] },
+                                      ]
+                                    : member.locationRoles?.filter(
+                                        (scope) => scope.locationId !== location.id,
+                                      ),
+                                });
+                              if (newMember)
+                                setNewMember({
+                                  ...newMember,
+                                  locationIds,
+                                  locationRoles: checked
+                                    ? [
+                                        ...newMember.locationRoles,
+                                        {
+                                          locationId: location.id,
+                                          roleIds: [...newMember.roleIds],
+                                        },
+                                      ]
+                                    : newMember.locationRoles.filter(
+                                        (scope) => scope.locationId !== location.id,
+                                      ),
+                                });
+                            }}
+                          />
+                        }
+                      />
+                    );
+                  })}
+                </Stack>
+                {(member?.locationRoles ?? newMember?.locationRoles ?? []).map((scope) => (
+                  <Card key={scope.locationId} variant="outlined" sx={{ mt: 1 }}>
+                    <CardContent>
+                      <Typography fontWeight={700}>
+                        {locations.data?.find((location) => location.id === scope.locationId)
+                          ?.name ?? scope.locationId}
+                      </Typography>
+                      {data.roles
+                        .filter((role) => !role.isTemplate)
+                        .map((role) => (
+                          <FormControlLabel
+                            key={role.id}
+                            label={role.name}
+                            control={
+                              <Checkbox
+                                checked={scope.roleIds.includes(role.id)}
+                                onChange={(_, checked) => {
+                                  const current = member ?? newMember!;
+                                  const locationRoles = (current.locationRoles ?? []).map((item) =>
+                                    item.locationId === scope.locationId
+                                      ? {
+                                          ...item,
+                                          roleIds: checked
+                                            ? [...item.roleIds, role.id]
+                                            : item.roleIds.filter((id) => id !== role.id),
+                                        }
+                                      : item,
+                                  );
+                                  const roleIds = [
+                                    ...new Set(locationRoles.flatMap((item) => item.roleIds)),
+                                  ];
+                                  if (member) setMember({ ...member, roleIds, locationRoles });
+                                  if (newMember)
+                                    setNewMember({ ...newMember, roleIds, locationRoles });
+                                }}
+                              />
+                            }
+                          />
+                        ))}
+                    </CardContent>
+                  </Card>
+                ))}
               </GuidedStep>
             </GuidedForm>
           )}

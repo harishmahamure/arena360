@@ -16,7 +16,7 @@ impl DeviceRepository {
     }
 
     const SELECT: &'static str = r#"
-        SELECT id, name, "serialNumber" as serial_number,
+        SELECT id, "organizationId" AS organization_id, "locationId" AS location_id, name, "serialNumber" as serial_number,
                "localIpAddress" as local_ip_address,
                "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                location, status::text as status, "registeredKiosk" as registered_kiosk,
@@ -28,7 +28,7 @@ impl DeviceRepository {
     "#;
 
     const RETURNING: &'static str = r#"
-        RETURNING id, name, "serialNumber" as serial_number,
+        RETURNING id, "organizationId" AS organization_id, "locationId" AS location_id, name, "serialNumber" as serial_number,
                   "localIpAddress" as local_ip_address,
                   "deviceType"::text as device_type, "deviceSubType"::text as device_sub_type,
                   location, status::text as status, "registeredKiosk" as registered_kiosk,
@@ -50,6 +50,9 @@ impl DeviceRepository {
     pub async fn list(
         &self,
         filters: &DeviceFilterDto,
+        organization_id: Uuid,
+        user_id: Uuid,
+        admin: bool,
     ) -> Result<PaginationResult<Device>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
@@ -57,6 +60,14 @@ impl DeviceRepository {
 
         let mut builder: QueryBuilder<Postgres> =
             QueryBuilder::new(format!("{} WHERE \"deletedAt\" IS NULL", Self::SELECT));
+        builder.push(" AND \"organizationId\" = ").push_bind(organization_id);
+        if !admin {
+            builder.push(" AND \"locationId\" IN (SELECT lr.location_id FROM location_role_assignments lr JOIN access_roles r ON r.id=lr.role_id AND r.organization_id=lr.organization_id WHERE lr.organization_id=")
+                .push_bind(organization_id).push(" AND lr.user_id=").push_bind(user_id).push(" AND r.permissions ? 'devices:read')");
+        }
+        if let Some(location_id) = filters.location_id {
+            builder.push(" AND \"locationId\" = ").push_bind(location_id);
+        }
 
         if let Some(status) = &filters.status {
             builder.push(" AND status::text = ");
@@ -102,6 +113,14 @@ impl DeviceRepository {
 
         let mut count_builder: QueryBuilder<Postgres> =
             QueryBuilder::new("SELECT COUNT(*) FROM devices WHERE \"deletedAt\" IS NULL");
+        count_builder.push(" AND \"organizationId\" = ").push_bind(organization_id);
+        if !admin {
+            count_builder.push(" AND \"locationId\" IN (SELECT lr.location_id FROM location_role_assignments lr JOIN access_roles r ON r.id=lr.role_id AND r.organization_id=lr.organization_id WHERE lr.organization_id=")
+                .push_bind(organization_id).push(" AND lr.user_id=").push_bind(user_id).push(" AND r.permissions ? 'devices:read')");
+        }
+        if let Some(location_id) = filters.location_id {
+            count_builder.push(" AND \"locationId\" = ").push_bind(location_id);
+        }
         if let Some(status) = &filters.status {
             count_builder.push(" AND status::text = ");
             count_builder.push_bind(status);
@@ -132,18 +151,19 @@ impl DeviceRepository {
         &self,
         dto: &CreateDeviceDto,
         actor_id: Option<Uuid>,
+        organization_id: Uuid,
     ) -> Result<Device, AppError> {
         let query = format!(
             r#"
             INSERT INTO devices (
                 id, name, "serialNumber", "localIpAddress", "deviceType", "deviceSubType",
-                location, status, "registrationStatus", "createdBy", "updatedBy", "createdAt", "updatedAt"
+                location, "locationId", "organizationId", status, "registrationStatus", "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
             VALUES (
                 gen_random_uuid(), $1, $2, $3,
                 COALESCE($4::devices_devicetype_enum, 'OTHER'::devices_devicetype_enum),
                 COALESCE($5::devices_devicesubtype_enum, 'OTHER'::devices_devicesubtype_enum),
-                $6,
+                $6, COALESCE($10, '00000000-0000-4000-8000-000000000002'::uuid), $11,
                 COALESCE($7::devices_status_enum, 'available'::devices_status_enum),
                 COALESCE($8::devices_registrationstatus_enum, 'unregistered'::devices_registrationstatus_enum),
                 $9, $9, NOW(), NOW()
@@ -162,6 +182,8 @@ impl DeviceRepository {
             .bind(&dto.status)
             .bind(&dto.registration_status)
             .bind(actor_id)
+            .bind(dto.location_id)
+            .bind(organization_id)
             .fetch_one(&self.pool)
             .await?;
         Ok(device)
@@ -182,6 +204,7 @@ impl DeviceRepository {
                 "deviceType" = COALESCE($5::devices_devicetype_enum, "deviceType"),
                 "deviceSubType" = COALESCE($6::devices_devicesubtype_enum, "deviceSubType"),
                 location = COALESCE($7, location),
+                "locationId" = COALESCE($11, "locationId"),
                 status = COALESCE($8::devices_status_enum, status),
                 "registrationStatus" = COALESCE($9::devices_registrationstatus_enum, "registrationStatus"),
                 "updatedBy" = COALESCE($10, "updatedBy"),
@@ -202,6 +225,7 @@ impl DeviceRepository {
             .bind(&dto.status)
             .bind(&dto.registration_status)
             .bind(actor_id)
+            .bind(dto.location_id)
             .fetch_optional(&self.pool)
             .await?;
 
@@ -302,6 +326,7 @@ impl DeviceRepository {
                 "deviceType" = COALESCE($4::devices_devicetype_enum, "deviceType"),
                 "deviceSubType" = COALESCE($5::devices_devicesubtype_enum, "deviceSubType"),
                 location = $6,
+                "locationId" = COALESCE($9, "locationId"),
                 status = 'available'::devices_status_enum,
                 "registeredKiosk" = $7,
                 "registrationStatus" = 'registered'::devices_registrationstatus_enum,
@@ -322,6 +347,7 @@ impl DeviceRepository {
             .bind(&dto.location)
             .bind(fingerprint_json)
             .bind(actor_id)
+            .bind(dto.locationId)
             .fetch_one(&self.pool)
             .await?;
         Ok(device)
@@ -351,11 +377,12 @@ impl DeviceRepository {
         dto: &ProvisionDeviceDto,
         fingerprint_json: &str,
         actor_id: Option<Uuid>,
+        organization_id: Uuid,
     ) -> Result<Device, AppError> {
         let query = format!(
             r#"
             INSERT INTO devices (
-                id, name, "serialNumber", "deviceType", "deviceSubType", location,
+                id, name, "serialNumber", "deviceType", "deviceSubType", location, "locationId", "organizationId",
                 status, "registeredKiosk", "registrationStatus",
                 "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
@@ -363,7 +390,7 @@ impl DeviceRepository {
                 gen_random_uuid(), $1, $2,
                 COALESCE($3::devices_devicetype_enum, 'OTHER'::devices_devicetype_enum),
                 COALESCE($4::devices_devicesubtype_enum, 'OTHER'::devices_devicesubtype_enum),
-                $5,
+                $5, COALESCE($8, '00000000-0000-4000-8000-000000000002'::uuid), $9,
                 'available'::devices_status_enum,
                 $6,
                 'registered'::devices_registrationstatus_enum,
@@ -381,6 +408,8 @@ impl DeviceRepository {
             .bind(&dto.location)
             .bind(fingerprint_json)
             .bind(actor_id)
+            .bind(dto.locationId)
+            .bind(organization_id)
             .fetch_one(&self.pool)
             .await?;
         Ok(device)

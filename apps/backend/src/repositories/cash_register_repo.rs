@@ -464,6 +464,15 @@ impl CashRegisterRepository {
         Ok(register)
     }
 
+    pub async fn find_last_closed_register_for(&self, venue_id: Uuid) -> Result<Option<CashRegister>, AppError> {
+        let query = format!(r#"{} WHERE id = (
+            SELECT c.id FROM cash_registers c JOIN shifts s ON s.id=c."shiftId"
+            WHERE s."venueLocationId"=$1 AND c.status IN ('closed','reconciled')
+            ORDER BY c."updatedAt" DESC LIMIT 1
+        )"#, Self::SELECT);
+        Ok(sqlx::query_as::<_, CashRegister>(&query).bind(venue_id).fetch_optional(&self.pool).await?)
+    }
+
     pub async fn list_entries(
         &self,
         register_id: Uuid,

@@ -103,6 +103,11 @@ impl ShiftService {
         .await?;
 
         if let Some(shift) = active {
+            let existing_venue: Uuid = sqlx::query_scalar(r#"SELECT "venueLocationId" FROM shifts WHERE id=$1"#)
+                .bind(shift.id).fetch_one(&mut *tx).await?;
+            if existing_venue != dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID) {
+                return Err(AppError::Conflict("Finish the active shift at its current location before starting another".into()));
+            }
             let register = sqlx::query_as::<_, CashRegister>(
                 r#"SELECT id, "shiftId" as shift_id, "openedBy" as opened_by,
                           "closedBy" as closed_by, "openingBalance"::float8 as opening_balance,
@@ -141,8 +146,8 @@ impl ShiftService {
 
         let shift = sqlx::query_as::<_, Shift>(
             r#"INSERT INTO shifts
-                  (id, "userId", "clockIn", notes, status, "createdBy", "updatedBy", "createdAt", "updatedAt")
-               VALUES (gen_random_uuid(), $1, NOW(), $2, 'active', $3, $3, NOW(), NOW())
+                  (id, "userId", "clockIn", notes, status, "createdBy", "updatedBy", "createdAt", "updatedAt", "venueLocationId")
+               VALUES (gen_random_uuid(), $1, NOW(), $2, 'active', $3, $3, NOW(), NOW(), $4)
                RETURNING id, "userId" as user_id, "clockIn" as clock_in,
                          "clockOut" as clock_out, notes, status,
                          "createdBy" as created_by, "updatedBy" as updated_by,
@@ -151,6 +156,7 @@ impl ShiftService {
         .bind(user_id)
         .bind(dto.notes.clone())
         .bind(actor_id)
+        .bind(dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID))
         .fetch_one(&mut *tx)
         .await?;
 

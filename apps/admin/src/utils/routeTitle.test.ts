@@ -6,6 +6,15 @@ import { filterNavItemsByPermission } from './filterNavItems';
 import { getRouteTitle } from './routeTitle';
 
 describe('panel module registry', () => {
+  it('shows location management to users with location access', () => {
+    const visible = filterNavItemsByPermission(
+      moduleRegistry,
+      (permission) => permission === Permission.LocationsRead,
+    );
+    expect(visible.some((item) => item.path === '/locations')).toBe(true);
+    expect(getRouteTitle('/locations')).toBe('Locations');
+  });
+
   it('groups the reporting subpages under the permission-protected business dashboard', () => {
     const allowed = filterNavItemsByPermission(moduleRegistry, (p) => p === Permission.FinanceRead);
     const business = allowed.find((item) => item.path === '/analytics');

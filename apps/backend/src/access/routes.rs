@@ -100,7 +100,9 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
             }
         }
         "organizations" => {
-            if p.contains(&"pricing-rule-sets") {
+            if p.contains(&"locations") {
+                if read { "locations:read" } else { "locations:manage" }
+            } else if p.contains(&"pricing-rule-sets") {
                 if read {
                     "rules:read"
                 } else if matches!(last, "publish" | "rollback") {

@@ -46,7 +46,7 @@ async fn require_rule_set(
     if let Some(location_id) = rule_set.location_id {
         state
             .config
-            .ensure_location_access(organization_id, location_id, actor_id)
+            .ensure_location_permission(organization_id, location_id, actor_id, permission)
             .await?;
     }
     Ok(actor_id)
@@ -69,18 +69,24 @@ pub async fn list_rule_sets(
     if let Some(location_id) = query.location_id {
         state
             .config
-            .ensure_location_access(org_id, location_id, actor_id)
+            .ensure_location_permission(org_id, location_id, actor_id, "rules:read")
             .await?;
     }
     let mut rule_sets = state.pricing_rules.list(org_id, query.location_id).await?;
     if query.location_id.is_none() {
-        let allowed_locations: HashSet<Uuid> = state
+        let assigned_locations: HashSet<Uuid> = state
             .config
             .list_locations(org_id, actor_id)
             .await?
             .into_iter()
             .map(|location| location.id)
             .collect();
+        let mut allowed_locations = HashSet::new();
+        for location_id in assigned_locations {
+            if state.config.ensure_location_permission(org_id, location_id, actor_id, "rules:read").await.is_ok() {
+                allowed_locations.insert(location_id);
+            }
+        }
         rule_sets.retain(|rule_set| {
             rule_set
                 .location_id
@@ -107,7 +113,7 @@ pub async fn create_rule_set(
     if let Some(location_id) = dto.location_id {
         state
             .config
-            .ensure_location_access(org_id, location_id, actor_id)
+            .ensure_location_permission(org_id, location_id, actor_id, "rules:edit")
             .await?;
     }
     let (rule_set, version) = state.pricing_rules.create(org_id, dto, actor_id).await?;
@@ -188,7 +194,7 @@ pub async fn simulate_version(
     if let Some(location_id) = dto.location_id {
         state
             .config
-            .ensure_location_access(org_id, location_id, actor_id)
+            .ensure_location_permission(org_id, location_id, actor_id, "rules:read")
             .await?;
     }
     let timezone = state

@@ -87,8 +87,27 @@ export interface VenueLocation {
 export const getSettingCatalog = (organizationId: string) =>
   http.get<SettingDefinition[]>(`/organizations/${organizationId}/settings/catalog`);
 
-export const getVenueLocations = (organizationId: string) =>
-  http.get<VenueLocation[]>(`/organizations/${organizationId}/locations`);
+export const getVenueLocations = (organizationId: string, includeInactive = false) =>
+  http.get<VenueLocation[]>(`/organizations/${organizationId}/locations`, {
+    params: { includeInactive },
+  });
+
+export interface VenueLocationDraft {
+  slug: string;
+  name: string;
+  timezone: string;
+  currency: string;
+  isActive?: boolean;
+}
+
+export const createVenueLocation = (organizationId: string, draft: VenueLocationDraft) =>
+  http.post<VenueLocation>(`/organizations/${organizationId}/locations`, draft);
+
+export const updateVenueLocation = (
+  organizationId: string,
+  id: string,
+  draft: VenueLocationDraft,
+) => http.put<VenueLocation>(`/organizations/${organizationId}/locations/${id}`, draft);
 
 export const getEffectiveSettings = (organizationId: string, locationId?: string) =>
   http.get<ResolvedSetting[]>(`/organizations/${organizationId}/settings/effective`, {

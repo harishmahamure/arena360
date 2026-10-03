@@ -27,6 +27,8 @@ export interface AccessMember {
   active: boolean;
   revision: number;
   roleIds: string[];
+  locationIds: string[];
+  locationRoles?: { locationId: string; roleIds: string[] }[];
 }
 export interface ModuleState {
   key: string;
@@ -61,17 +63,34 @@ export const getAccess = () => http.get<AccessSnapshot>('/access');
 export const getMyAccess = () =>
   http.get<{ roles: string[]; permissions: string[] }>('/access/self');
 export const saveRole = ({ id, ...draft }: RoleDraft) =>
-  id ? http.put(`/access/roles/${id}`, draft) : http.post('/access/roles', draft);
+  id
+    ? http.put<{ id: string }>(`/access/roles/${id}`, draft)
+    : http.post<{ id: string }>('/access/roles', draft);
 export const deleteRole = (role: AccessRole) =>
   http.post(`/access/roles/${role.id}/delete`, { expectedRevision: role.revision });
 export const saveMember = (member: AccessMember) =>
   http.put(`/access/members/${member.id}`, {
-    roleIds: member.roleIds,
+    roleIds: member.locationRoles
+      ? [...new Set(member.locationRoles.flatMap((scope) => scope.roleIds))]
+      : member.roleIds,
+    locationIds: member.locationIds,
+    locationRoles: member.locationRoles,
     active: member.active,
     expectedRevision: member.revision,
   });
-export const createMember = (draft: { username: string; password: string; roleIds: string[] }) =>
-  http.post('/access/members', draft);
+export const createMember = (draft: {
+  username: string;
+  password: string;
+  roleIds: string[];
+  locationIds: string[];
+  locationRoles?: { locationId: string; roleIds: string[] }[];
+}) =>
+  http.post('/access/members', {
+    ...draft,
+    roleIds: draft.locationRoles
+      ? [...new Set(draft.locationRoles.flatMap((scope) => scope.roleIds))]
+      : draft.roleIds,
+  });
 export const saveModule = (module: ModuleState) =>
   http.put(`/access/modules/${module.key}`, {
     enabled: module.enabled,

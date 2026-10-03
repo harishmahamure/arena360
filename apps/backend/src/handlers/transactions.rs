@@ -83,12 +83,34 @@ pub async fn create_transaction(
         crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
     })?;
 
+    let org = Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| crate::error::AppError::Forbidden("Select an organization".into()))?;
+    let venue_id = dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+    state.config.ensure_location_permission(
+        org,
+        venue_id,
+        user_id,
+        "transactions:write",
+    ).await?;
+    if let Some(order_id) = dto.kiosk_order_id {
+        let order_venue: Option<Uuid> = sqlx::query_scalar(r#"SELECT d."locationId" FROM kiosk_orders o JOIN devices d ON d.id=o."deviceId" WHERE o.id=$1"#)
+            .bind(order_id).fetch_optional(&state.db).await?;
+        if order_venue.is_some_and(|location| location != venue_id) {
+            return Err(crate::error::AppError::BadRequest("Kiosk order belongs to another location".into()));
+        }
+    }
+
     require_staff_for_counter(&claims)?;
 
     // Enforce active shift
     let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
         crate::error::AppError::BadRequest("No active shift found for current user".to_string())
     })?;
+    let shift_venue: Uuid = sqlx::query_scalar(r#"SELECT "venueLocationId" FROM shifts WHERE id=$1"#)
+        .bind(active_shift.id).fetch_one(&state.db).await?;
+    if shift_venue != venue_id {
+        return Err(crate::error::AppError::Forbidden("Start a shift at the selected location before checkout".into()));
+    }
 
     dto.shift_id = Some(active_shift.id);
 

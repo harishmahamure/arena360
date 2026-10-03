@@ -5,12 +5,13 @@ use uuid::Uuid;
 use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{CreateProductDto, Product, ProductFilterDto, UpdateProductDto};
-use crate::repositories::{ProductRecipeRepository, ProductRepository};
+use crate::repositories::{ProductRecipeRepository, ProductRepository, UnitRepository};
 use crate::validation::{optional_product_category, require_product_category};
 
 pub struct ProductService {
     repo: ProductRepository,
     recipes: ProductRecipeRepository,
+    units: UnitRepository,
     cache: Arc<dyn CacheService>,
 }
 
@@ -18,6 +19,7 @@ impl ProductService {
     pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
         Self {
             recipes: ProductRecipeRepository::new(pool.clone()),
+            units: UnitRepository::new(pool.clone()),
             repo: ProductRepository::new(pool),
             cache,
         }
@@ -114,6 +116,12 @@ impl ProductService {
 
         let mut dto = dto;
         dto.category = Some(require_product_category(dto.category)?);
+        if let Some(conversion) = self
+            .metric_conversion(dto.purchase_unit_id, dto.unit_id)
+            .await?
+        {
+            dto.units_per_purchase_unit = Some(conversion);
+        }
         let product = self.repo.create(&dto, actor_id).await?;
         self.invalidate_products(Some(product.id)).await?;
         Ok(product)
@@ -186,14 +194,88 @@ impl ProductService {
 
         let mut dto = dto;
         dto.category = optional_product_category(dto.category)?;
+        let current = self
+            .repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Product with ID {id} not found")))?;
+        if let Some(conversion) = self
+            .metric_conversion(
+                dto.purchase_unit_id.or(current.purchase_unit_id),
+                dto.unit_id.or(current.unit_id),
+            )
+            .await?
+        {
+            dto.units_per_purchase_unit = Some(conversion);
+        }
         let product = self.repo.update(id, &dto, actor_id).await?;
         self.invalidate_products(Some(id)).await?;
         Ok(product)
+    }
+
+    async fn metric_conversion(
+        &self,
+        purchase_unit_id: Option<Uuid>,
+        stock_unit_id: Option<Uuid>,
+    ) -> Result<Option<i32>, AppError> {
+        let (Some(purchase_id), Some(stock_id)) = (purchase_unit_id, stock_unit_id) else {
+            return Ok(None);
+        };
+        let purchase = self
+            .units
+            .find_by_id(purchase_id)
+            .await?
+            .ok_or_else(|| AppError::BadRequest("Purchase unit does not exist".to_string()))?;
+        let stock = self
+            .units
+            .find_by_id(stock_id)
+            .await?
+            .ok_or_else(|| AppError::BadRequest("Stock unit does not exist".to_string()))?;
+        metric_unit_conversion(&purchase.r#type, &stock.r#type)
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<Product, AppError> {
         let product = self.repo.deactivate(id).await?;
         self.invalidate_products(Some(id)).await?;
         Ok(product)
+    }
+}
+
+/// Inventory and recipes count whole stock units. Known metric conversions
+/// must not depend on a manually entered packaging multiplier.
+fn metric_unit_conversion(purchase: &str, stock: &str) -> Result<Option<i32>, AppError> {
+    match (purchase, stock) {
+        ("kilogram", "gram") | ("liter", "milliliter") => Ok(Some(1000)),
+        ("gram", "kilogram") | ("milliliter", "liter") => Err(AppError::BadRequest(
+            "Use grams or milliliters as the stock unit so recipe portions can be tracked accurately".to_string(),
+        )),
+        ("kilogram", "kilogram") | ("gram", "gram") | ("liter", "liter") | ("milliliter", "milliliter") => Ok(Some(1)),
+        _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod unit_conversion_tests {
+    use super::metric_unit_conversion;
+
+    #[test]
+    fn kilogram_purchases_supply_gram_portions() {
+        let conversion = metric_unit_conversion("kilogram", "gram").unwrap().unwrap();
+        let stock = 20 * conversion;
+        assert_eq!(stock, 20_000);
+        assert_eq!(stock / 20, 1000);
+        assert_eq!(stock - 20, 19_980);
+    }
+
+    #[test]
+    fn metric_pairs_are_fixed_and_packaging_remains_configurable() {
+        assert_eq!(
+            metric_unit_conversion("liter", "milliliter").unwrap(),
+            Some(1000)
+        );
+        assert_eq!(metric_unit_conversion("gram", "gram").unwrap(), Some(1));
+        assert_eq!(metric_unit_conversion("box", "piece").unwrap(), None);
+        assert!(metric_unit_conversion("gram", "kilogram").is_err());
+        assert!(metric_unit_conversion("milliliter", "liter").is_err());
     }
 }

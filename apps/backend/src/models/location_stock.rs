@@ -20,6 +20,7 @@ pub struct LocationStockRow {
 #[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct LocationStockFilterDto {
+    pub venue_location_id: Option<Uuid>,
     pub location_id: Option<Uuid>,
     pub product_id: Option<Uuid>,
     pub search: Option<String>,

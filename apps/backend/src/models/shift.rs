@@ -35,6 +35,7 @@ pub struct StartShiftDto {
     pub opening_balance: f64,
     pub opening_denominations: Option<serde_json::Value>,
     pub notes: Option<String>,
+    pub venue_location_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

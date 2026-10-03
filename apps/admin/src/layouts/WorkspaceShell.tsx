@@ -385,6 +385,7 @@ export function WorkspaceShell({
             autoFocus
             fullWidth
             label="Search pages and actions"
+            margin="dense"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             slotProps={{

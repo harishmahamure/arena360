@@ -55,8 +55,11 @@ impl DeviceService {
     pub async fn list(
         &self,
         filters: DeviceFilterDto,
+        organization_id: Uuid,
+        user_id: Uuid,
+        admin: bool,
     ) -> Result<crate::dto::PaginationResult<Device>, AppError> {
-        self.repo.list(&filters).await
+        self.repo.list(&filters, organization_id, user_id, admin).await
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Device, AppError> {
@@ -70,6 +73,7 @@ impl DeviceService {
         &self,
         dto: CreateDeviceDto,
         actor_id: Option<Uuid>,
+        organization_id: Uuid,
     ) -> Result<Device, AppError> {
         let dto = prepare_create_dto(dto)?;
         if self.repo.name_exists(&dto.name, None).await? {
@@ -78,7 +82,7 @@ impl DeviceService {
                 dto.name
             )));
         }
-        let device = self.repo.create(&dto, actor_id).await?;
+        let device = self.repo.create(&dto, actor_id, organization_id).await?;
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
         self.publish_device_ws(&device).await;
@@ -92,6 +96,7 @@ impl DeviceService {
         &self,
         mut dto: ProvisionDeviceDto,
         actor_id: Option<Uuid>,
+        organization_id: Uuid,
     ) -> Result<Device, AppError> {
         if dto.name.trim().is_empty() {
             return Err(AppError::BadRequest("Device name is required".to_string()));
@@ -105,6 +110,9 @@ impl DeviceService {
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         if let Some(existing) = self.find_existing_for_reprovision(&dto.fingerprint).await? {
+            if existing.organization_id != organization_id {
+                return Err(AppError::Conflict("This hardware is registered to another organization".into()));
+            }
             if self.fingerprint_compatible(&existing, &dto.fingerprint)? {
                 return self
                     .reprovision_existing(existing, &dto, &fingerprint_json, actor_id)
@@ -119,7 +127,7 @@ impl DeviceService {
             )));
         }
 
-        match self.repo.provision(&dto, &fingerprint_json, actor_id).await {
+        match self.repo.provision(&dto, &fingerprint_json, actor_id, organization_id).await {
             Ok(device) => {
                 self.events
                     .publish_device_status(&device.id.to_string(), &device.status);
@@ -149,6 +157,9 @@ impl DeviceService {
         fingerprint_json: &str,
         actor_id: Option<Uuid>,
     ) -> Result<Device, AppError> {
+        if dto.locationId.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID) != existing.location_id {
+            return Err(AppError::Conflict("Move the device in admin before provisioning it at another location".into()));
+        }
         if !self.fingerprint_compatible(&existing, &dto.fingerprint)? {
             return Err(AppError::Conflict(format!(
                 "This hardware fingerprint does not match device '{}'. \

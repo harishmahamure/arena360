@@ -1,5 +1,5 @@
 import { FormButton, IntegerField } from '@gaming-cafe/ui';
-import { useAsyncAction } from '@gaming-cafe/utils';
+import { isApiError, useAsyncAction } from '@gaming-cafe/utils';
 import {
   Add as AddIcon,
   ShoppingCart as CartIcon,
@@ -20,12 +20,13 @@ import {
   Grid,
   IconButton,
   InputAdornment,
+  MenuItem,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActiveShiftGuard } from '../../../components/ActiveShiftGuard';
 import CreditEligibilityAlert from '../../../components/CreditEligibilityAlert';
@@ -49,12 +50,14 @@ import {
   type PaymentMethodType,
   PaymentMethodValues,
 } from '../../../containers/transactions/schemas/transaction-schema';
+import { getVenueLocations } from '../../../services/config';
 import { getPlayerCredit } from '../../../services/credit';
-import { getInventoryLocations, getLocationStock } from '../../../services/inventory';
+import { getDeviceById } from '../../../services/devices/getById';
+import { getInventoryLocations } from '../../../services/inventory';
 import { getKioskOrder } from '../../../services/kiosk-orders';
-import { getProducts, type ProductResponse } from '../../../services/product/list';
+import type { ProductResponse } from '../../../services/product/list';
+import { getPosCatalogData } from '../../../services/product/posCatalog';
 import {
-  getCurrentProductPrices,
   getProductRecipe,
   type ProductCurrentPrice,
   type ProductOptionGroup,
@@ -62,6 +65,7 @@ import {
 import { addTransaction } from '../../../services/transaction/add';
 import { PaymentStatus, TransactionType } from '../../../services/transaction/list';
 import { effectiveProductPrice, isNightPricingWindow } from '../../../utils/pricing';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 interface Product {
   id: string;
@@ -95,11 +99,11 @@ function mapProductForPos(
   const madeToOrder = currentPrice?.madeToOrderAvailable != null;
   const stock = madeToOrder
     ? (currentPrice?.madeToOrderAvailable ?? 0)
-    : (stockByProduct.get(product.id) ?? product.stockQuantity ?? 0);
+    : (stockByProduct.get(product.id) ?? 0);
   return {
     id: product.id,
     name: product.name,
-    description: product.description,
+    description: product.description ?? '',
     price: currentPrice?.price ?? effectiveProductPrice(dayPrice, nightPrice),
     dayPrice,
     nightPrice,
@@ -141,7 +145,7 @@ function PosProductCard({
       <CardActionArea
         onClick={() => onAdd(product)}
         sx={{ minHeight: 44, height: '100%', alignItems: 'stretch' }}
-        disabled={outOfStock}
+        disabled={outOfStock || disabled}
       >
         <CardContent sx={{ position: 'relative', p: 2 }}>
           {inCart && (
@@ -222,6 +226,13 @@ export default function CreateProductTransactionPage() {
   const [onlinePaymentRefLast4, setOnlinePaymentRefLast4] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [saleLocationId, setSaleLocationId] = useState<string>('');
+  const organizationId = currentOrganizationId();
+  const [venueLocationId, setVenueLocationId] = useState('');
+  const venues = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
+  const saleLocationRef = useRef('');
   const [kioskOrderId, setKioskOrderId] = useState<string | undefined>(prefillOrderId);
 
   const { data: prefillOrder } = useQuery({
@@ -229,6 +240,16 @@ export default function CreateProductTransactionPage() {
     queryFn: () => getKioskOrder(prefillOrderId as string),
     enabled: !!prefillOrderId,
   });
+  const { data: prefillDevice } = useQuery({
+    queryKey: ['device', prefillOrder?.deviceId],
+    queryFn: () => getDeviceById(prefillOrder!.deviceId),
+    enabled: !!prefillOrder?.deviceId,
+  });
+  useEffect(() => {
+    if (prefillDevice?.locationId) setVenueLocationId(prefillDevice.locationId);
+    else if (venues.data?.length === 1)
+      setVenueLocationId((current) => current || venues.data?.[0]?.id || '');
+  }, [prefillDevice?.locationId, venues.data]);
 
   useEffect(() => {
     if (!prefillOrder) return;
@@ -264,15 +285,19 @@ export default function CreateProductTransactionPage() {
   const nightActive = isNightPricingWindow();
 
   const { data: locationsData } = useQuery({
-    queryKey: ['pos-store-locations'],
-    queryFn: () => getInventoryLocations({ kind: 'store', isActive: true, limit: 20 }),
+    queryKey: ['pos-store-locations', venueLocationId],
+    queryFn: () =>
+      getInventoryLocations({ kind: 'store', isActive: true, limit: 20, venueLocationId }),
+    enabled: !!venueLocationId,
   });
 
   const storeLocations = locationsData?.data ?? [];
 
   useEffect(() => {
     if (!saleLocationId && storeLocations.length > 0) {
-      setSaleLocationId(storeLocations[0]?.id ?? '');
+      const id = storeLocations[0]?.id ?? '';
+      saleLocationRef.current = id;
+      setSaleLocationId(id);
     }
   }, [storeLocations, saleLocationId]);
 
@@ -284,6 +309,7 @@ export default function CreateProductTransactionPage() {
     cashAmount,
     onlineAmount,
     saleLocationId,
+    venueLocationId,
   ].join('|');
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: clear API error when checkout inputs change after failure
@@ -291,39 +317,42 @@ export default function CreateProductTransactionPage() {
     if (failed) clearError();
   }, [checkoutErrorClearKey, failed, clearError]);
 
-  const { data: storeStockData } = useQuery({
-    queryKey: ['pos-store-stock', saleLocationId],
-    queryFn: () => getLocationStock({ locationId: saleLocationId, limit: 500 }),
-    enabled: !!saleLocationId,
-  });
-
-  const stockByProduct = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const row of storeStockData?.data ?? []) {
-      map.set(row.productId, row.quantityPieces);
-    }
-    return map;
-  }, [storeStockData]);
-
-  const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['pos-products', saleLocationId],
-    queryFn: () => getProducts({ forSale: true, limit: 200, sortBy: 'name', sortOrder: 'ASC' }),
-    enabled: !!saleLocationId,
-  });
-
-  const { data: currentPrices } = useQuery({
-    queryKey: ['pos-current-prices', saleLocationId],
-    queryFn: () => getCurrentProductPrices(saleLocationId),
-    enabled: !!saleLocationId,
+  const {
+    data: catalogProducts = [],
+    isFetching: catalogFetching,
+    isSuccess: catalogSuccess,
+    isError: catalogError,
+    refetch: refreshCatalog,
+  } = useQuery({
+    queryKey: ['pos-catalog', saleLocationId, venueLocationId],
+    queryFn: async () => {
+      const { products, stock, currentPrices } = await getPosCatalogData(
+        saleLocationId,
+        venueLocationId,
+      );
+      const stockByProduct = new Map(
+        stock
+          .filter((row) => row.locationId === saleLocationId)
+          .map((row) => [row.productId, row.quantityPieces]),
+      );
+      const priceByProduct = new Map(currentPrices.map((row) => [row.productId, row]));
+      return products
+        .filter((p) => p.isActive)
+        .map((product) =>
+          mapProductForPos(product, stockByProduct, priceByProduct.get(product.id)),
+        );
+    },
+    enabled: !!saleLocationId && !!venueLocationId,
     refetchInterval: 60_000,
+    retry: false,
   });
-
-  const catalogProducts = useMemo(() => {
-    const priceByProduct = new Map((currentPrices ?? []).map((row) => [row.productId, row]));
-    return (productsData?.data ?? [])
-      .filter((p) => p.isActive)
-      .map((product) => mapProductForPos(product, stockByProduct, priceByProduct.get(product.id)));
-  }, [productsData, stockByProduct, currentPrices]);
+  const stockReady = !!saleLocationId && !!venueLocationId && catalogSuccess && !catalogFetching;
+  const selectedStoreName =
+    storeLocations.find((location) => location.id === saleLocationId)?.name ?? 'selected store';
+  const availableByProduct = useMemo(
+    () => new Map(catalogProducts.map((product) => [product.id, product.stockQuantity])),
+    [catalogProducts],
+  );
 
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
@@ -341,6 +370,12 @@ export default function CreateProductTransactionPage() {
     return map;
   }, [cart]);
 
+  const cartStockIssue = stockReady
+    ? cart.find(
+        (item) => (cartQtyByProduct.get(item.id) ?? 0) > (availableByProduct.get(item.id) ?? 0),
+      )
+    : undefined;
+
   const queryClient = useQueryClient();
   const [optionTarget, setOptionTarget] = useState<{
     product: Product;
@@ -348,14 +383,16 @@ export default function CreateProductTransactionPage() {
   } | null>(null);
 
   const addLine = (product: Product, picked: PickedOptions) => {
+    if (!stockReady) return;
+    const available = availableByProduct.get(product.id) ?? 0;
     const lineKey = [product.id, ...[...picked.optionIds].sort()].join('|');
     const existingItem = cart.find((item) => item.lineKey === lineKey);
     if (existingItem) {
       updateQuantity(lineKey, existingItem.quantity + 1);
       return;
     }
-    if ((cartQtyByProduct.get(product.id) ?? 0) + 1 > product.stockQuantity) {
-      setError(`Only ${product.stockQuantity} units available in stock`);
+    if ((cartQtyByProduct.get(product.id) ?? 0) + 1 > available) {
+      setError(`Only ${available} units available at ${selectedStoreName}`);
       return;
     }
     const effectivePrice = Math.round(Math.max(0, product.price + picked.priceDelta) * 100) / 100;
@@ -374,6 +411,8 @@ export default function CreateProductTransactionPage() {
   };
 
   const addToCart = async (product: Product) => {
+    if (!stockReady) return;
+    const requestLocationId = saleLocationId;
     if (!product.hasOptions) {
       addLine(product, { optionIds: [], names: [], priceDelta: 0 });
       return;
@@ -384,8 +423,10 @@ export default function CreateProductTransactionPage() {
         queryFn: () => getProductRecipe(product.id),
         staleTime: 60_000,
       });
+      if (saleLocationRef.current !== requestLocationId) return;
       setOptionTarget({ product, groups: recipe.optionGroups });
     } catch {
+      if (saleLocationRef.current !== requestLocationId) return;
       setError(`Could not load options for ${product.name}`);
     }
   };
@@ -399,9 +440,11 @@ export default function CreateProductTransactionPage() {
       return;
     }
 
+    if (!stockReady) return;
+    const available = availableByProduct.get(item.id) ?? 0;
     const otherLines = (cartQtyByProduct.get(item.id) ?? 0) - item.quantity;
-    if (otherLines + newQuantity > item.stockQuantity) {
-      setError(`Only ${item.stockQuantity} units available in stock`);
+    if (otherLines + newQuantity > available && newQuantity > item.quantity) {
+      setError(`Only ${available} units available at ${selectedStoreName}`);
       return;
     }
 
@@ -482,12 +525,22 @@ export default function CreateProductTransactionPage() {
       setError('Please select a store location');
       return;
     }
+    if (!venueLocationId) {
+      setError('Select a venue location');
+      return;
+    }
+
+    if (!stockReady || cartStockIssue) {
+      setError('Check stock at the selected store and adjust the cart before completing the sale');
+      return;
+    }
 
     void run(async () => {
       try {
         const response = await addTransaction({
           playerId: selectedPlayer.id,
           saleLocationId,
+          venueLocationId,
           transactionType: TransactionType.PRODUCT_PURCHASE,
           amount: total,
           paymentStatus:
@@ -528,6 +581,9 @@ export default function CreateProductTransactionPage() {
           navigate('/product-transactions');
         }, 1500);
       } catch (err: unknown) {
+        if (isApiError(err) && err.statusCode === 409) {
+          void queryClient.invalidateQueries({ queryKey: ['pos-catalog', saleLocationId] });
+        }
         throw err instanceof Error ? err : new Error('Failed to create transaction');
       }
     });
@@ -538,7 +594,10 @@ export default function CreateProductTransactionPage() {
   };
 
   const handleLocationChange = (id: string) => {
+    saleLocationRef.current = id;
     setSaleLocationId(id);
+    setOptionTarget(null);
+    setError(undefined);
     if (!kioskOrderId) {
       setCart([]);
     }
@@ -563,6 +622,29 @@ export default function CreateProductTransactionPage() {
   const catalog = (
     <>
       <PosPlayerPicker value={selectedPlayer} onChange={setSelectedPlayer} disabled={submitting} />
+
+      <TextField
+        select
+        fullWidth
+        required
+        label="Venue location"
+        value={venueLocationId}
+        onChange={(event) => {
+          setVenueLocationId(event.target.value);
+          setSaleLocationId('');
+          saleLocationRef.current = '';
+          setCart([]);
+        }}
+        disabled={submitting || !!prefillOrder}
+        sx={{ mb: 2 }}
+      >
+        <MenuItem value="">Select venue</MenuItem>
+        {venues.data?.map((venue) => (
+          <MenuItem key={venue.id} value={venue.id}>
+            {venue.name}
+          </MenuItem>
+        ))}
+      </TextField>
 
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
         <TextField
@@ -591,13 +673,27 @@ export default function CreateProductTransactionPage() {
         />
       </Stack>
 
-      {productsLoading ? (
+      {saleLocationId && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Stock at {selectedStoreName} only
+        </Typography>
+      )}
+      {!saleLocationId ? (
+        <Alert severity="info">Select an active store to view its stock.</Alert>
+      ) : catalogError ? (
+        <Alert
+          severity="error"
+          action={<Button onClick={() => void refreshCatalog()}>Retry</Button>}
+        >
+          Could not load stock and prices for {selectedStoreName}. Retry before selling.
+        </Alert>
+      ) : !stockReady ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress size={32} />
+          <CircularProgress size={32} aria-label="Loading selected store stock" />
         </Box>
       ) : filteredProducts.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
-          {productSearch ? 'No products match your search' : 'No products available'}
+          {productSearch ? 'No products match your search' : 'No products available at this store'}
         </Typography>
       ) : (
         <Grid container spacing={2}>
@@ -619,6 +715,13 @@ export default function CreateProductTransactionPage() {
 
   const summary = (
     <>
+      {cartStockIssue && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {cartStockIssue.name}: only {availableByProduct.get(cartStockIssue.id) ?? 0} available at{' '}
+          {selectedStoreName}; {cartQtyByProduct.get(cartStockIssue.id)} in cart. Reduce the
+          quantity or choose another store.
+        </Alert>
+      )}
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Box
@@ -676,6 +779,11 @@ export default function CreateProductTransactionPage() {
                       <Typography variant="caption" color="text.secondary">
                         ₹{item.effectivePrice.toFixed(2)} each
                       </Typography>
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        {stockReady
+                          ? `${availableByProduct.get(item.id) ?? 0} available at ${selectedStoreName}`
+                          : 'Checking selected store stock…'}
+                      </Typography>
                     </Box>
                     <IconButton
                       size="small"
@@ -697,7 +805,8 @@ export default function CreateProductTransactionPage() {
                       <IconButton
                         size="small"
                         onClick={() => updateQuantity(item.lineKey, item.quantity - 1)}
-                        disabled={submitting}
+                        aria-label={`Decrease quantity for ${item.name}`}
+                        disabled={submitting || !stockReady}
                       >
                         <RemoveIcon fontSize="small" />
                       </IconButton>
@@ -709,14 +818,26 @@ export default function CreateProductTransactionPage() {
                         }}
                         sx={{ width: 60, mx: 1 }}
                         size="small"
-                        disabled={submitting}
-                        inputProps={{ min: 1, max: item.stockQuantity }}
+                        disabled={submitting || !stockReady}
+                        inputProps={{
+                          min: 1,
+                          max: Math.max(
+                            0,
+                            (availableByProduct.get(item.id) ?? 0) -
+                              ((cartQtyByProduct.get(item.id) ?? 0) - item.quantity),
+                          ),
+                          'aria-label': `Quantity for ${item.name}`,
+                        }}
                       />
                       <IconButton
                         size="small"
                         onClick={() => updateQuantity(item.lineKey, item.quantity + 1)}
+                        aria-label={`Increase quantity for ${item.name}`}
                         disabled={
-                          submitting || (cartQtyByProduct.get(item.id) ?? 0) >= item.stockQuantity
+                          submitting ||
+                          !stockReady ||
+                          (cartQtyByProduct.get(item.id) ?? 0) >=
+                            (availableByProduct.get(item.id) ?? 0)
                         }
                       >
                         <AddIcon fontSize="small" />
@@ -828,7 +949,14 @@ export default function CreateProductTransactionPage() {
               successLabel={posSaleSuccessLabel(paymentMethod)}
               error={failed}
               errorLabel={errorMessage ?? 'Failed to create transaction'}
-              disabled={!selectedPlayer || cart.length === 0 || creditBlocked || submitDisabled}
+              disabled={
+                !selectedPlayer ||
+                cart.length === 0 ||
+                creditBlocked ||
+                submitDisabled ||
+                !stockReady ||
+                !!cartStockIssue
+              }
               sx={{ minHeight: 44 }}
             >
               Complete sale

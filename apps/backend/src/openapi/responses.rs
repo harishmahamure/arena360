@@ -159,6 +159,7 @@ success_envelope!(
     crate::models::ConfigurationSnapshot
 );
 success_envelope!(VenueLocationListEnvelope, Vec<crate::models::VenueLocation>);
+success_envelope!(VenueLocationEnvelope, crate::models::VenueLocation);
 success_envelope!(
     PricingRuleSetListEnvelope,
     Vec<crate::models::PricingRuleSet>

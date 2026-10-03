@@ -90,6 +90,8 @@ export interface FieldConfig<T extends FieldValues = FieldValues> {
   fullWidth?: boolean;
   /** Grid column span (1-12) */
   gridCols?: number;
+  /** Custom render already provides its own visible field label */
+  hideCustomLabel?: boolean;
   /** Options for select, radio, checkbox group */
   options?: FormSelectOption[] | FormRadioOption[];
   /** If true, multiline textarea for text type */
@@ -116,6 +118,7 @@ export interface FieldConfig<T extends FieldValues = FieldValues> {
     field: ControllerRenderProps;
     fieldState: { error?: { message?: string }; isDirty: boolean };
     form: UseFormReturn<T>;
+    disabled: boolean;
   }) => React.ReactNode;
   visible?: (values: T) => boolean;
   validate?: (value: unknown, context: T) => string | undefined;
@@ -344,6 +347,7 @@ function FieldRenderer<T extends FieldValues>({
                     isDirty: fieldState.isDirty,
                   },
                   form,
+                  disabled: isDisabled,
                 })}
               </>
             );
@@ -913,7 +917,7 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
 
           return (
             <Grid item xs={12} sm={gridCols} key={fieldConfig.name} component="div">
-              {fieldConfig.type === 'custom' && (
+              {fieldConfig.type === 'custom' && !fieldConfig.hideCustomLabel && (
                 <Typography variant="body2" color="text.secondary" sx={{ pb: 1, px: 0.2 }}>
                   {fieldConfig.label}
                   {fieldConfig.required && <span style={{ color: 'red' }}>*</span>}

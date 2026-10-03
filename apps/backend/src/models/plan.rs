@@ -14,6 +14,10 @@ pub struct Plan {
     pub name: String,
     pub description: Option<String>,
     pub price: f64,
+    /// Live purchase price; the catalog price remains editable independently.
+    #[serde(default)]
+    #[sqlx(skip)]
+    pub current_price: Option<f64>,
     pub plan_type: String,
     pub validity_days: i32,
     pub time_window_start: Option<NaiveTime>,
@@ -76,6 +80,7 @@ pub struct UpdatePlanDto {
 #[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanFilterDto {
+    pub location_id: Option<Uuid>,
     pub search: Option<String>,
     pub plan_type: Option<String>,
     pub is_active: Option<i64>,

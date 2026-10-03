@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PricingPolicyEditor from './PricingPolicyEditor';
 import { parsePricingPolicy } from './pricingPolicy';
@@ -76,4 +77,40 @@ describe('visual pricing policy editor', () => {
     expect(() => parsePricingPolicy(JSON.stringify({ ...policy, baseRate: '-5' }))).toThrow();
     expect(parsePricingPolicy(JSON.stringify(policy))).toEqual(policy);
   });
+});
+
+function StatefulEditor() {
+  const [value, setValue] = useState(JSON.stringify(policy));
+  return (
+    <>
+      <PricingPolicyEditor value={value} onChange={setValue} disabled={false} />
+      <output data-testid="policy">{value}</output>
+    </>
+  );
+}
+it('selects and removes several device types while preserving the other rule settings', () => {
+  render(<StatefulEditor />);
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Device types' }));
+  fireEvent.click(screen.getByRole('option', { name: 'PS5' }));
+  fireEvent.click(screen.getByRole('option', { name: 'Console' }));
+  let saved = JSON.parse(screen.getByTestId('policy').textContent ?? '{}');
+  expect(saved.rules[0].deviceTypes).toEqual(['PC', 'PS5', 'CONSOLE']);
+  expect(saved.rules[0].action).toEqual(policy.rules[0]?.action);
+  for (const name of ['PC', 'PS5', 'Console'])
+    fireEvent.click(screen.getByRole('option', { name }));
+  saved = JSON.parse(screen.getByTestId('policy').textContent ?? '{}');
+  expect(saved.rules[0].deviceTypes).toEqual([]);
+});
+it('lets the user choose deduction speed separately from plan price', () => {
+  render(<StatefulEditor />);
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Applies to' }));
+  fireEvent.click(screen.getByRole('option', { name: 'Credit deduction speed' }));
+  fireEvent.change(screen.getByLabelText('Deduction multiplier'), { target: { value: '1.25' } });
+  const saved = JSON.parse(screen.getByTestId('policy').textContent ?? '{}');
+  expect(saved.rules[0].target).toBe('deduction');
+  expect(saved.rules[0].deviceTypes).toEqual(['PC']);
+  expect(saved.rules[0].action).toEqual({ type: 'multiplier', value: '1.25' });
+  expect(parsePricingPolicy(JSON.stringify(saved))).toEqual(saved);
+  saved.rules[0].action.value = '0';
+  expect(() => parsePricingPolicy(JSON.stringify(saved))).toThrow(/greater than zero/);
 });

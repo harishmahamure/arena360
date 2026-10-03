@@ -234,8 +234,8 @@ export default function PurchaseOrderDetailPage() {
                   <TableCell>Product</TableCell>
                   <TableCell align="right">Ordered</TableCell>
                   <TableCell align="right">Received</TableCell>
-                  <TableCell align="right">Units / box</TableCell>
-                  <TableCell align="right">Cost / box</TableCell>
+                  <TableCell align="right">Stock units / purchase unit</TableCell>
+                  <TableCell align="right">Cost / purchase unit</TableCell>
                   <TableCell align="right">Line total</TableCell>
                 </TableRow>
               </TableHead>
@@ -342,7 +342,7 @@ export default function PurchaseOrderDetailPage() {
                   return (
                     <TextField
                       key={line.id}
-                      label={`${line.productName} — accepted boxes (max ${outstanding})`}
+                      label={`${line.productName} — accepted purchase units (max ${outstanding})`}
                       type="number"
                       value={accepted[line.id] ?? 0}
                       onChange={(event) =>

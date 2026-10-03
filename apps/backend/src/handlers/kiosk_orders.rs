@@ -26,10 +26,10 @@ use crate::openapi::responses::ErrorEnvelope;
     tag = "kiosk"
 )]
 pub async fn list_products(
-    _player: PlayerUser,
+    player: PlayerUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Vec<KioskMenuProduct>> {
-    let products = state.kiosk_orders.list_menu().await?;
+    let products = state.kiosk_orders.list_menu(player.device_id()?).await?;
     ok(products)
 }
 

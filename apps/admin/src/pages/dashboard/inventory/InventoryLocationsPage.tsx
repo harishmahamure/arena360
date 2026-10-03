@@ -16,15 +16,17 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
+import { getVenueLocations } from '../../../services/config';
 import {
   createInventoryLocation,
   getInventoryLocations,
   type InventoryLocation,
   updateInventoryLocation,
 } from '../../../services/inventory';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 export default function InventoryLocationsPage() {
   const { can } = usePermissions();
@@ -35,19 +37,31 @@ export default function InventoryLocationsPage() {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'warehouse' | 'store'>('store');
   const [isActive, setIsActive] = useState(true);
+  const [venueLocationId, setVenueLocationId] = useState('');
+  const [filterVenueId, setFilterVenueId] = useState('');
   const [search, setSearch] = useState('');
 
+  const organizationId = currentOrganizationId();
+  const venues = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
+  useEffect(() => {
+    if (!filterVenueId && venues.data?.length) setFilterVenueId(venues.data[0]?.id ?? '');
+  }, [filterVenueId, venues.data]);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['inventory-locations'],
-    queryFn: () => getInventoryLocations({ limit: 50 }),
+    queryKey: ['inventory-locations', filterVenueId],
+    queryFn: () => getInventoryLocations({ limit: 50, venueLocationId: filterVenueId }),
+    enabled: !!filterVenueId,
   });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (editing) {
-        return updateInventoryLocation(editing.id, { name, kind, isActive });
+        return updateInventoryLocation(editing.id, { name, kind, isActive, venueLocationId });
       }
-      return createInventoryLocation({ name, kind, isActive });
+      return createInventoryLocation({ name, kind, isActive, venueLocationId });
     },
     onSuccess: () => {
       toastUtils.success(editing ? 'Location updated' : 'Location created');
@@ -62,6 +76,7 @@ export default function InventoryLocationsPage() {
     setName('');
     setKind('store');
     setIsActive(true);
+    setVenueLocationId(filterVenueId);
     setDialogOpen(true);
   };
 
@@ -70,11 +85,18 @@ export default function InventoryLocationsPage() {
     setName(loc.name);
     setKind(loc.kind);
     setIsActive(loc.isActive);
+    setVenueLocationId(loc.venueLocationId ?? filterVenueId);
     setDialogOpen(true);
   };
 
   const columns: Column<InventoryLocation>[] = [
     { id: 'name', label: 'Name', minWidth: 180 },
+    {
+      id: 'venueLocationId',
+      label: 'Venue',
+      minWidth: 140,
+      format: (value) => venues.data?.find((venue) => venue.id === value)?.name ?? '—',
+    },
     {
       id: 'kind',
       label: 'Type',
@@ -107,6 +129,20 @@ export default function InventoryLocationsPage() {
 
   return (
     <>
+      <TextField
+        select
+        size="small"
+        label="Venue"
+        value={filterVenueId}
+        onChange={(event) => setFilterVenueId(event.target.value)}
+        sx={{ mb: 2, mx: { xs: 2, md: 4 }, minWidth: 220 }}
+      >
+        {venues.data?.map((venue) => (
+          <MenuItem key={venue.id} value={venue.id}>
+            {venue.name}
+          </MenuItem>
+        ))}
+      </TextField>
       {error && (
         <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load locations
@@ -145,7 +181,7 @@ export default function InventoryLocationsPage() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!name.trim() || saveMutation.isPending}
+                  disabled={!name.trim() || !venueLocationId || saveMutation.isPending}
                   onClick={() => saveMutation.mutate()}
                 >
                   Save
@@ -155,8 +191,28 @@ export default function InventoryLocationsPage() {
           >
             <GuidedStep
               title="Location details"
-              validate={() => (!name.trim() ? 'Enter a location name.' : undefined)}
+              validate={() =>
+                !name.trim()
+                  ? 'Enter a location name.'
+                  : !venueLocationId
+                    ? 'Select a venue.'
+                    : undefined
+              }
             >
+              <TextField
+                select
+                label="Venue"
+                value={venueLocationId}
+                onChange={(e) => setVenueLocationId(e.target.value)}
+                fullWidth
+                required
+              >
+                {venues.data?.map((venue) => (
+                  <MenuItem key={venue.id} value={venue.id}>
+                    {venue.name}
+                  </MenuItem>
+                ))}
+              </TextField>
               <TextField
                 label="Name"
                 value={name}

@@ -39,7 +39,7 @@ export default function EditProductPage() {
         ...data,
         price: data.price,
         dayPrice: data.price,
-        nightPrice: data.nightPrice ?? data.price,
+        nightPrice: data.price,
       });
       setSuccess('Product updated successfully!');
       navigate('/products');
@@ -79,7 +79,6 @@ export default function EditProductPage() {
             title: 'Pricing & units',
             fields: [
               'price',
-              'nightPrice',
               'purchasePricePerBox',
               'unitsPerPurchaseUnit',
               'unitId',
@@ -97,7 +96,6 @@ export default function EditProductPage() {
           category: product?.category as unknown as ProductCategory,
           name: product?.name,
           price: dayPrice,
-          nightPrice: product?.nightPrice ?? dayPrice,
           purchasePricePerBox: product?.purchasePricePerBox ?? undefined,
           unitsPerPurchaseUnit: product?.unitsPerPurchaseUnit ?? 1,
           unitId: product?.unitId ?? undefined,

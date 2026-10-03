@@ -89,4 +89,5 @@ pub struct ProductCurrentPrice {
 pub struct CurrentPricesQuery {
     /// Sale location used for made-to-order availability.
     pub location_id: Option<Uuid>,
+    pub venue_location_id: Option<Uuid>,
 }

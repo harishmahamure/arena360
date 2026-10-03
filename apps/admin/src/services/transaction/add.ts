@@ -23,6 +23,7 @@ export interface CreateProductTransactionPayload {
   onlinePaymentRefLast4?: string;
   lineItems?: LineItemPayload[];
   saleLocationId?: string;
+  venueLocationId?: string;
   kioskOrderId?: string;
 }
 

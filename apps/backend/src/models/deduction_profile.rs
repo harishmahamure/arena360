@@ -13,10 +13,33 @@ pub struct DeductionProfile {
     pub low_window_start: String,
     pub low_window_end: String,
     pub low_ratio: f64,
+    /// Published rules captured for this session, already filtered to its device.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_rules: Vec<crate::models::PricingRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_timezone: Option<String>,
 }
 
 impl DeductionProfile {
+    pub fn normal() -> Self {
+        Self {
+            peak_window_start: "00:00:00".into(),
+            peak_window_end: "00:00:00".into(),
+            peak_ratio: 1.0,
+            low_window_start: "00:00:00".into(),
+            low_window_end: "00:00:00".into(),
+            low_ratio: 1.0,
+            policy_rules: vec![],
+            policy_timezone: None,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
+        if !self.policy_rules.is_empty() {
+            return Err(
+                "Policy rules are configured in pricing policies, not plan profiles".into(),
+            );
+        }
         for field in [
             &self.peak_window_start,
             &self.peak_window_end,

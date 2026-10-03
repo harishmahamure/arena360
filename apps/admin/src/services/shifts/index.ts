@@ -46,13 +46,14 @@ export interface ShiftStartResponse {
   };
 }
 
-export const getShiftStartContext = async () =>
-  http.get<ShiftStartContext>('/shifts/start-context');
+export const getShiftStartContext = async (locationId?: string) =>
+  http.get<ShiftStartContext>('/shifts/start-context', { params: { locationId } });
 
 export const startShift = async (input: {
   openingBalance: number;
   openingDenominations?: Record<string, number>;
   notes?: string;
+  venueLocationId?: string;
 }) => http.post<ShiftStartResponse>('/shifts/start', input);
 
 export const clockOut = async (notes?: string) => http.patch<Shift>('/shifts/clock-out', { notes });

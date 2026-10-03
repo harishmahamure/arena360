@@ -38,6 +38,7 @@ impl SessionRepository {
                "timeCreditsConsumed" as time_credits_consumed,
                "walletMinutesAtStart" as wallet_minutes_at_start,
                "sourcePlanIdAtStart" as source_plan_id_at_start,
+               "deductionProfileSnapshot" as deduction_profile_snapshot,
                "createdBy" as created_by,
                "updatedBy" as updated_by,
                "createdAt" as created_at,
@@ -57,7 +58,7 @@ impl SessionRepository {
                b."playerId" as bal_player_id, b.kind::text as bal_kind,
                b."remainingMinutes" as bal_remaining_minutes, b.status::text as bal_status,
                b."sourcePlanId" as bal_source_plan_id,
-               b."deductionProfile" as bal_deduction_profile,
+               COALESCE(s."deductionProfileSnapshot", b."deductionProfile") as bal_deduction_profile,
                b."expiryDate" as bal_expiry_date,
                u.username as player_username, u."firstName" as player_first_name,
                u."lastName" as player_last_name,
@@ -88,6 +89,7 @@ impl SessionRepository {
                   "timeCreditsConsumed" as time_credits_consumed,
                   "walletMinutesAtStart" as wallet_minutes_at_start,
                   "sourcePlanIdAtStart" as source_plan_id_at_start,
+                  "deductionProfileSnapshot" as deduction_profile_snapshot,
                   "createdBy" as created_by,
                   "updatedBy" as updated_by,
                   "createdAt" as created_at,
@@ -324,15 +326,16 @@ impl SessionRepository {
         actor_id: Option<Uuid>,
         wallet_minutes_at_start: i32,
         source_plan_id_at_start: Option<Uuid>,
+        deduction_profile: &serde_json::Value,
     ) -> Result<UsageSession, AppError> {
         let query = format!(
             r#"
             INSERT INTO usage_sessions (
                 id, "balanceId", "deviceId", "shiftId", "startTime",
-                "walletMinutesAtStart", "sourcePlanIdAtStart",
+                "walletMinutesAtStart", "sourcePlanIdAtStart", "deductionProfileSnapshot",
                 "createdBy", "updatedBy", "createdAt", "updatedAt"
             )
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $7, NOW(), NOW())
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $8, $7, $7, NOW(), NOW())
             {returning}
             "#,
             returning = Self::SESSION_RETURNING,
@@ -345,6 +348,7 @@ impl SessionRepository {
             .bind(wallet_minutes_at_start)
             .bind(source_plan_id_at_start)
             .bind(actor_id)
+            .bind(deduction_profile)
             .fetch_one(&self.pool)
             .await?;
 

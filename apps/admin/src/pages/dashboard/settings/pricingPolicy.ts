@@ -38,15 +38,22 @@ export function parsePricingPolicy(text: string): PricingPolicy {
     const strings = (value: unknown) =>
       value == null || (Array.isArray(value) && value.every((item) => typeof item === 'string'));
     if (
-      !['sessions', 'products'].includes(target) ||
+      !['sessions', 'products', 'deduction'].includes(target) ||
       !strings(rule.productIds) ||
       !strings(rule.categories)
     )
       throw new Error(`Rule '${rule.name}' has an invalid target, products, or categories.`);
     if (target === 'products' && rule.deviceTypes.length)
       throw new Error(`Product rule '${rule.name}' cannot have device types.`);
-    if (target === 'sessions' && (rule.productIds?.length || rule.categories?.length))
+    if (target !== 'products' && (rule.productIds?.length || rule.categories?.length))
       throw new Error(`Session rule '${rule.name}' cannot target products or categories.`);
+    if (
+      (target === 'deduction' || rule.action.type === 'multiplier') &&
+      Number(rule.action.value) <= 0
+    )
+      throw new Error('Deduction speeds and multipliers must be greater than zero.');
+    if (target === 'deduction' && Number(rule.action.value) > 100)
+      throw new Error('Deduction speed must be at most 100.');
     if (
       (rule.startTime != null && typeof rule.startTime !== 'string') ||
       (rule.endTime != null && typeof rule.endTime !== 'string')

@@ -65,6 +65,8 @@ export enum Permission {
   ConfigWrite = 'config:write',
   SettingsRead = 'settings:read',
   SettingsWrite = 'settings:write',
+  LocationsRead = 'locations:read',
+  LocationsManage = 'locations:manage',
   RulesRead = 'rules:read',
   RulesEdit = 'rules:edit',
   RulesPublish = 'rules:publish',
@@ -119,6 +121,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.ProcurementWrite,
     Permission.ProcurementReceive,
     Permission.SettingsRead,
+    Permission.LocationsRead,
     Permission.RulesRead,
   ],
   player: [

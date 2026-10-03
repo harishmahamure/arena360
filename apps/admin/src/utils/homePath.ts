@@ -16,6 +16,7 @@ export function getDefaultHomePath(can: (permission: Permission) => boolean): st
     [Permission.KitchenRead, '/kitchen'],
     [Permission.FinanceRead, '/finance/reports'],
     [Permission.AccessRead, '/access'],
+    [Permission.LocationsRead, '/locations'],
     [Permission.SessionsRead, '/sessions'],
     [Permission.ProductsRead, '/products'],
     [Permission.PlansRead, '/plans'],

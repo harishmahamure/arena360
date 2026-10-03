@@ -1,8 +1,10 @@
+import { ProductCategory as ProductCategoryValues } from '@gaming-cafe/contracts';
 import type { FormSelectOption } from '@gaming-cafe/ui';
 import { type FieldConfig, FormBuilder, FormPage } from '@gaming-cafe/ui';
 import { useAsyncAction } from '@gaming-cafe/utils';
-import { Alert } from '@mui/material';
-import { useMemo, useState } from 'react';
+import { Alert, TextField } from '@mui/material';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ControllerRenderProps, type UseFormReturn, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import {
   type CreateProductFormData,
@@ -10,12 +12,74 @@ import {
   createProductSchema,
   productCategoryOptions,
 } from '../../../../src/containers/products/schemas/product-schema';
+import {
+  ProductStockQuantityField,
+  ProductUnitConversionField,
+} from '../../../containers/products/ProductUnitFields';
 import { useProductUnits } from '../../../hooks/useProductUnits';
 import { addProduct } from '../../../services/product/add';
 import type { ProductCategory } from '../../../services/product/list';
+import type { UnitResponse } from '../../../services/units/list';
+
+function generateProductSku(name: string, category: string): string {
+  const namePart = name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  if (!namePart) return '';
+  const categoryPart =
+    category === ProductCategoryValues.OTHER
+      ? ''
+      : category.toUpperCase().replace(/[^A-Z0-9]+/g, '-');
+  return [namePart, categoryPart].filter(Boolean).join('-').slice(0, 100).replace(/-+$/g, '');
+}
+
+function AutoSkuField({
+  field,
+  form,
+  disabled,
+}: {
+  field: ControllerRenderProps<CreateProductFormData, 'sku'>;
+  form: UseFormReturn<CreateProductFormData>;
+  disabled: boolean;
+}) {
+  const [name, category] = useWatch({ control: form.control, name: ['name', 'category'] });
+  const manuallyEdited = useRef(false);
+
+  useEffect(() => {
+    if (!name?.trim() && !form.getValues('sku')) manuallyEdited.current = false;
+    if (manuallyEdited.current) return;
+    const generatedSku = generateProductSku(name ?? '', category ?? '');
+    if (form.getValues('sku') !== generatedSku) {
+      form.setValue('sku', generatedSku, { shouldDirty: false, shouldValidate: true });
+    }
+  }, [name, category, form]);
+
+  return (
+    <TextField
+      {...field}
+      inputRef={field.ref}
+      fullWidth
+      disabled={disabled}
+      label="SKU"
+      placeholder="Generated from product name and category"
+      helperText={form.formState.errors.sku?.message || 'Generated as you type. Edit it any time.'}
+      error={!!form.formState.errors.sku}
+      value={field.value ?? ''}
+      InputLabelProps={{ shrink: true }}
+      onChange={(event) => {
+        manuallyEdited.current = true;
+        field.onChange(event.target.value);
+      }}
+    />
+  );
+}
 
 function buildProductFormFields(
   unitSelectOptions: FormSelectOption[],
+  units: UnitResponse[] = [],
 ): FieldConfig<CreateProductFormData>[] {
   return [
     {
@@ -30,10 +94,16 @@ function buildProductFormFields(
     {
       name: 'sku',
       label: 'SKU',
-      type: 'text',
-      placeholder: 'e.g., COCA-500',
+      type: 'custom',
+      hideCustomLabel: true,
       gridCols: 6,
-      helperText: 'Optional stock-keeping unit for inventory tracking',
+      render: ({ field, form, disabled }) => (
+        <AutoSkuField
+          field={field as ControllerRenderProps<CreateProductFormData, 'sku'>}
+          form={form}
+          disabled={disabled}
+        />
+      ),
     },
     {
       name: 'description',
@@ -53,38 +123,36 @@ function buildProductFormFields(
       helperText: 'Day price in ₹; charged during 8 AM – 11 PM venue time',
     },
     {
-      name: 'nightPrice',
-      label: 'Night price (₹)',
-      type: 'currency',
-      required: true,
-      gridCols: 4,
-      min: 0,
-      helperText: 'Used 11 PM – 8 AM venue time',
-    },
-    {
       name: 'purchasePricePerBox',
-      label: 'Purchase price / box (₹)',
+      label: 'Price per purchase unit (₹)',
       type: 'currency',
       gridCols: 4,
       min: 0,
-      helperText: 'Cost per purchase unit (box); used for margin reporting',
+      helperText: 'Cost per kg, box, or other selected purchase unit',
     },
     {
       name: 'unitsPerPurchaseUnit',
-      label: 'Units per box',
-      type: 'number',
-      integer: true,
+      label: 'Stock units per purchase unit',
+      type: 'custom',
+      hideCustomLabel: true,
       gridCols: 4,
-      min: 1,
-      helperText: 'Pieces in one purchase unit (box)',
+      render: ({ field, form, disabled }) => (
+        <ProductUnitConversionField
+          field={field as ControllerRenderProps<CreateProductFormData, 'unitsPerPurchaseUnit'>}
+          form={form}
+          units={units}
+          disabled={disabled}
+        />
+      ),
     },
     {
       name: 'unitId',
-      label: 'Sale unit',
+      label: 'Stock / recipe unit',
       type: 'select',
       gridCols: 4,
       options: unitSelectOptions,
-      helperText: 'Unit sold to players at POS',
+      helperText:
+        'Use grams for ingredients consumed in gram portions; pieces for individual items',
     },
     {
       name: 'purchaseUnitId',
@@ -105,12 +173,18 @@ function buildProductFormFields(
     },
     {
       name: 'stockQuantity',
-      label: 'Initial store stock (pieces)',
-      type: 'number',
-      integer: true,
-      gridCols: 4,
-      min: 0,
-      helperText: 'Optional; synced to default store on create',
+      label: 'Store stock (stock / recipe units)',
+      type: 'custom',
+      hideCustomLabel: true,
+      gridCols: 6,
+      render: ({ field, form, disabled }) => (
+        <ProductStockQuantityField
+          field={field as ControllerRenderProps<CreateProductFormData, 'stockQuantity'>}
+          form={form}
+          units={units}
+          disabled={disabled}
+        />
+      ),
     },
     {
       name: 'isActive',
@@ -130,8 +204,11 @@ function buildProductFormFields(
 }
 
 export function useProductFormFields(): FieldConfig<CreateProductFormData>[] {
-  const { unitSelectOptions } = useProductUnits();
-  return useMemo(() => buildProductFormFields(unitSelectOptions), [unitSelectOptions]);
+  const { unitSelectOptions, units } = useProductUnits();
+  return useMemo(
+    () => buildProductFormFields(unitSelectOptions, units),
+    [unitSelectOptions, units],
+  );
 }
 
 export default function AddNewProductPage() {
@@ -141,11 +218,11 @@ export default function AddNewProductPage() {
     lockOnSuccess: true,
   });
   const [error, setError] = useState<string | undefined>();
-  const { unitSelectOptions, defaultUnitIds, unitsReady, unitsMissing, unitsLoading } =
+  const { unitSelectOptions, units, defaultUnitIds, unitsReady, unitsMissing, unitsLoading } =
     useProductUnits();
   const productFormFields = useMemo(
-    () => buildProductFormFields(unitSelectOptions),
-    [unitSelectOptions],
+    () => buildProductFormFields(unitSelectOptions, units),
+    [unitSelectOptions, units],
   );
 
   const defaultValues = useMemo(
@@ -170,13 +247,13 @@ export default function AddNewProductPage() {
         description: data.description || '',
         price,
         dayPrice: price,
-        nightPrice: data.nightPrice ?? price,
+        nightPrice: price,
         purchasePricePerBox: data.purchasePricePerBox ?? undefined,
         unitsPerPurchaseUnit: data.unitsPerPurchaseUnit ?? 1,
         unitId: data.unitId || undefined,
         purchaseUnitId: data.purchaseUnitId || undefined,
         category: category as ProductCategory,
-        sku: data.sku || '',
+        sku: data.sku ?? '',
         stockQuantity: data.stockQuantity || 0,
         isActive: data.isActive ?? true,
         isRawMaterial: data.isRawMaterial ?? false,
@@ -188,7 +265,7 @@ export default function AddNewProductPage() {
   return (
     <FormPage
       title="Add New Product"
-      description="Configure pricing, box units, and sale units"
+      description="Configure pricing, purchase units, and stock units"
       backTo="/products"
       backLabel="Back to products"
       breadcrumbs={[{ label: 'Products', to: '/products' }, { label: 'New product' }]}
@@ -207,7 +284,6 @@ export default function AddNewProductPage() {
             title: 'Pricing & units',
             fields: [
               'price',
-              'nightPrice',
               'purchasePricePerBox',
               'unitsPerPurchaseUnit',
               'unitId',

@@ -58,6 +58,7 @@ export function useProductUnits() {
   );
 
   return {
+    units: activeUnits,
     unitSelectOptions,
     defaultUnitIds,
     unitsReady: isSuccess && unitSelectOptions.length > 0,

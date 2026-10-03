@@ -11,6 +11,8 @@ export interface DeviceResponse {
   deviceType: string;
   deviceSubType: string;
   location?: string;
+  locationId: string;
+  organizationId: string;
   status: DeviceStatusValue;
   registrationStatus?: string;
   registrationCode?: string | null;
@@ -34,6 +36,7 @@ export interface GetDevicesFilters {
   status?: DeviceStatusValue;
   deviceType?: string;
   location?: string;
+  locationId?: string;
   name?: string;
   page?: number;
   limit?: number;

@@ -79,6 +79,17 @@ impl SettingsRepository {
         }
     }
 
+    pub async fn ensure_location_permission(
+        &self,
+        organization_id: Uuid,
+        location_id: Uuid,
+        user_id: Uuid,
+        permission: &str,
+    ) -> Result<(), AppError> {
+        self.ensure_location_access(organization_id, location_id, user_id).await?;
+        crate::access::require_location(&self.pool, organization_id, user_id, location_id, permission).await
+    }
+
     pub async fn validate_location(
         &self,
         organization_id: Uuid,
@@ -125,6 +136,11 @@ impl SettingsRepository {
         .bind(user_id)
         .fetch_all(&self.pool)
         .await?)
+    }
+
+    pub async fn list_managed_locations(&self, organization_id: Uuid) -> Result<Vec<VenueLocation>, AppError> {
+        Ok(sqlx::query_as::<_, VenueLocation>(r#"SELECT id, "organizationId" AS organization_id, slug, name, timezone, currency, "isActive" AS is_active FROM venue_locations WHERE "organizationId"=$1 ORDER BY name,id"#)
+            .bind(organization_id).fetch_all(&self.pool).await?)
     }
 
     pub async fn list_overrides(

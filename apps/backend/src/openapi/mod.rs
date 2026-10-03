@@ -187,6 +187,8 @@ impl Modify for SecurityAddon {
         handlers::config::upsert_config,
         handlers::config::settings_catalog,
         handlers::config::venue_locations,
+        handlers::config::create_venue_location,
+        handlers::config::update_venue_location,
         handlers::config::effective_settings,
         handlers::config::upsert_setting_override,
         handlers::config::delete_setting_override,

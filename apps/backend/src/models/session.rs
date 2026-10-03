@@ -20,6 +20,8 @@ pub struct UsageSession {
     pub time_credits_consumed: Option<i32>,
     pub wallet_minutes_at_start: Option<i32>,
     pub source_plan_id_at_start: Option<Uuid>,
+    #[serde(default)]
+    pub deduction_profile_snapshot: Option<Value>,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,

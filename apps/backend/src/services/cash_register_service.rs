@@ -278,6 +278,13 @@ impl CashRegisterService {
         }
     }
 
+    pub async fn preview_carry_forward_balance_for(&self, venue_id: Uuid) -> Result<f64, AppError> {
+        match self.repo.find_last_closed_register_for(venue_id).await? {
+            Some(ref register) => self.compute_carry_forward_opening(register).await,
+            None => Ok(0.0),
+        }
+    }
+
     /// Carry forward opening from a specific closed register (e.g. handover predecessor).
     pub async fn apply_carry_forward_from_register(
         &self,
