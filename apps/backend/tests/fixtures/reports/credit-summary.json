@@ -1,0 +1,18 @@
+{
+  "request": "/credit/summary",
+  "data": {
+    "totalCreditLimit": 160000,
+    "totalOutstanding": 12465,
+    "totalAvailable": 147535,
+    "utilizationPercent": 7.7906249999999995,
+    "creditEnabledPlayerCount": 32,
+    "playersWithOutstandingCount": 20,
+    "lastSettlement": {
+      "id": "57132000-171b-4cc7-aeb5-a7b4a4d13d48",
+      "playerId": "8ef3d812-e9ca-4b97-a25f-26249ef55048",
+      "playerUsername": "demo.player.20",
+      "amount": 60,
+      "settledAt": "2026-10-02T10:36:00Z"
+    }
+  }
+}

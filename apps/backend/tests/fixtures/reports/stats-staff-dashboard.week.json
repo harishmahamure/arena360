@@ -1,0 +1,59 @@
+{
+  "request": "/stats/staff-dashboard?startDate=2026-09-26&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-09-25T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-09-25 - 2026-10-02",
+      "previousLabel": ""
+    },
+    "shift": null,
+    "sessions": {
+      "totalSessions": 40,
+      "activeSessions": 0,
+      "completedSessions": 40,
+      "totalHours": 79,
+      "totalMinutes": 4740,
+      "averageSessionDuration": 118.5
+    },
+    "transactions": {
+      "totalTransactions": 83,
+      "completedTransactions": 75,
+      "pendingTransactions": 3,
+      "failedTransactions": 1,
+      "averageTransactionAmount": 196.02409638554215
+    },
+    "revenue": {
+      "plan": 9630,
+      "merchandise": 6835,
+      "total": 16465,
+      "cashRevenue": 5485,
+      "onlineRevenue": 7530,
+      "creditRevenue": 3450,
+      "planTransactionCount": 40,
+      "productTransactionCount": 35,
+      "planCashRevenue": 3090,
+      "planOnlineRevenue": 4380,
+      "planCreditRevenue": 2160,
+      "productCashRevenue": 2395,
+      "productOnlineRevenue": 3150,
+      "productCreditRevenue": 1290,
+      "planCashCount": 19,
+      "planOnlineCount": 19,
+      "planCreditCount": 11,
+      "productCashCount": 19,
+      "productOnlineCount": 18,
+      "productCreditCount": 8
+    },
+    "shiftRevenue": null,
+    "players": {
+      "activePlayers": 32,
+      "newPlayersInPeriod": 0
+    },
+    "devices": {
+      "total": 12,
+      "available": 9,
+      "inUse": 2
+    }
+  }
+}

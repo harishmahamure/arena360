@@ -45,7 +45,9 @@
     "analytics:dev": "cargo run --manifest-path apps/backend/Cargo.toml --bin analytics_worker",
     "analytics:backfill": "cargo run --manifest-path apps/backend/Cargo.toml --bin analytics_worker -- --backfill",
     "demo:seed": "node apps/backend/scripts/seed-demo.mjs",
-    "demo:test": "node --test apps/backend/scripts/seed-demo.test.mjs"
+    "demo:test": "node --test apps/backend/scripts/seed-demo.test.mjs",
+    "report:fixtures": "node apps/backend/scripts/capture-report-fixtures.mjs",
+    "bench:venue-day": "node apps/backend/scripts/bench-venue-day.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

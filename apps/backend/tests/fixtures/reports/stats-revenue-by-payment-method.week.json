@@ -1,0 +1,49 @@
+{
+  "request": "/stats/revenue/by-payment-method?startDate=2026-09-26&endDate=2026-10-02",
+  "data": {
+    "current": {
+      "plan": 9630,
+      "merchandise": 6835,
+      "total": 16465,
+      "cashRevenue": 5485,
+      "onlineRevenue": 7530,
+      "creditRevenue": 3450,
+      "planTransactionCount": 40,
+      "productTransactionCount": 35,
+      "planCashRevenue": 3090,
+      "planOnlineRevenue": 4380,
+      "planCreditRevenue": 2160,
+      "productCashRevenue": 2395,
+      "productOnlineRevenue": 3150,
+      "productCreditRevenue": 1290,
+      "planCashCount": 19,
+      "planOnlineCount": 19,
+      "planCreditCount": 11,
+      "productCashCount": 19,
+      "productOnlineCount": 18,
+      "productCreditCount": 8
+    },
+    "previous": {
+      "plan": 9700,
+      "merchandise": 6555,
+      "total": 16255,
+      "cashRevenue": 5590,
+      "onlineRevenue": 7015,
+      "creditRevenue": 3650,
+      "planTransactionCount": 40,
+      "productTransactionCount": 36,
+      "planCashRevenue": 2500,
+      "planOnlineRevenue": 4720,
+      "planCreditRevenue": 2480,
+      "productCashRevenue": 3090,
+      "productOnlineRevenue": 2295,
+      "productCreditRevenue": 1170,
+      "planCashCount": 15,
+      "planOnlineCount": 20,
+      "planCreditCount": 12,
+      "productCashCount": 22,
+      "productOnlineCount": 17,
+      "productCreditCount": 7
+    }
+  }
+}

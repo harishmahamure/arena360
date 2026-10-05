@@ -1,0 +1,222 @@
+{
+  "request": "/stats/finance/report?startDate=2026-09-03&endDate=2026-10-02",
+  "data": {
+    "approvedExpenses": "6490.0000",
+    "creditCollections": "6985.0000",
+    "currency": "INR",
+    "currentOutstanding": "12465.0000",
+    "daily": [
+      {
+        "date": "2026-09-03",
+        "expenses": "220.0000",
+        "sales": "1740.00"
+      },
+      {
+        "date": "2026-09-04",
+        "expenses": "255.0000",
+        "sales": "1530.00"
+      },
+      {
+        "date": "2026-09-05",
+        "expenses": "290.0000",
+        "sales": "2430.00"
+      },
+      {
+        "date": "2026-09-06",
+        "expenses": "325.0000",
+        "sales": "2310.00"
+      },
+      {
+        "date": "2026-09-07",
+        "expenses": "0",
+        "sales": "1610.00"
+      },
+      {
+        "date": "2026-09-08",
+        "expenses": "150.0000",
+        "sales": "1610.00"
+      },
+      {
+        "date": "2026-09-09",
+        "expenses": "185.0000",
+        "sales": "1560.00"
+      },
+      {
+        "date": "2026-09-10",
+        "expenses": "220.0000",
+        "sales": "1410.00"
+      },
+      {
+        "date": "2026-09-11",
+        "expenses": "255.0000",
+        "sales": "1850.00"
+      },
+      {
+        "date": "2026-09-12",
+        "expenses": "0",
+        "sales": "2410.00"
+      },
+      {
+        "date": "2026-09-13",
+        "expenses": "325.0000",
+        "sales": "2140.00"
+      },
+      {
+        "date": "2026-09-14",
+        "expenses": "360.0000",
+        "sales": "1910.00"
+      },
+      {
+        "date": "2026-09-15",
+        "expenses": "150.0000",
+        "sales": "1490.00"
+      },
+      {
+        "date": "2026-09-16",
+        "expenses": "185.0000",
+        "sales": "1700.00"
+      },
+      {
+        "date": "2026-09-17",
+        "expenses": "220.0000",
+        "sales": "1790.00"
+      },
+      {
+        "date": "2026-09-18",
+        "expenses": "255.0000",
+        "sales": "1770.00"
+      },
+      {
+        "date": "2026-09-19",
+        "expenses": "290.0000",
+        "sales": "2280.00"
+      },
+      {
+        "date": "2026-09-20",
+        "expenses": "325.0000",
+        "sales": "2930.00"
+      },
+      {
+        "date": "2026-09-21",
+        "expenses": "360.0000",
+        "sales": "1190.00"
+      },
+      {
+        "date": "2026-09-22",
+        "expenses": "150.0000",
+        "sales": "1620.00"
+      },
+      {
+        "date": "2026-09-23",
+        "expenses": "185.0000",
+        "sales": "2210.00"
+      },
+      {
+        "date": "2026-09-24",
+        "expenses": "0",
+        "sales": "1870.00"
+      },
+      {
+        "date": "2026-09-25",
+        "expenses": "0",
+        "sales": "1920.00"
+      },
+      {
+        "date": "2026-09-26",
+        "expenses": "290.0000",
+        "sales": "2690.00"
+      },
+      {
+        "date": "2026-09-27",
+        "expenses": "325.0000",
+        "sales": "2890.00"
+      },
+      {
+        "date": "2026-09-28",
+        "expenses": "360.0000",
+        "sales": "1700.00"
+      },
+      {
+        "date": "2026-09-29",
+        "expenses": "150.0000",
+        "sales": "2210.00"
+      },
+      {
+        "date": "2026-09-30",
+        "expenses": "185.0000",
+        "sales": "1890.00"
+      },
+      {
+        "date": "2026-10-01",
+        "expenses": "220.0000",
+        "sales": "1740.00"
+      },
+      {
+        "date": "2026-10-02",
+        "expenses": "255.0000",
+        "sales": "1850.00"
+      }
+    ],
+    "endDate": "2026-10-02",
+    "expensesByCategory": [
+      {
+        "amount": "2005.0000",
+        "count": 8,
+        "label": "DEMO Consumables"
+      },
+      {
+        "amount": "2480.0000",
+        "count": 10,
+        "label": "DEMO Maintenance"
+      },
+      {
+        "amount": "2005.0000",
+        "count": 8,
+        "label": "DEMO Utilities"
+      }
+    ],
+    "locationLabel": "All locations",
+    "pendingExpenseCount": 2,
+    "pendingExpenses": "545.0000",
+    "pendingSales": "2200.00",
+    "refundedSales": "2080.00",
+    "saleCount": 301,
+    "sales": "58250.00",
+    "salesByPayment": [
+      {
+        "amount": "15100.00",
+        "count": 75,
+        "label": "cash"
+      },
+      {
+        "amount": "13970.00",
+        "count": 74,
+        "label": "credit"
+      },
+      {
+        "amount": "14940.00",
+        "count": 77,
+        "label": "online"
+      },
+      {
+        "amount": "14240.00",
+        "count": 75,
+        "label": "split_payment"
+      }
+    ],
+    "salesByType": [
+      {
+        "amount": "33540.00",
+        "count": 158,
+        "label": "plan_purchase"
+      },
+      {
+        "amount": "24710.00",
+        "count": 143,
+        "label": "product_purchase"
+      }
+    ],
+    "startDate": "2026-09-03",
+    "timezone": "UTC"
+  }
+}

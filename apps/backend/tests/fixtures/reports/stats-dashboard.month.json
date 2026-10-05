@@ -1,0 +1,431 @@
+{
+  "request": "/stats/dashboard?startDate=2026-09-03&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-09-02T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-09-02 - 2026-10-02",
+      "previousLabel": "2026-08-04 - 2026-09-03"
+    },
+    "revenue": {
+      "current": {
+        "plan": 37230,
+        "merchandise": 27665,
+        "total": 64895,
+        "cashRevenue": 22220,
+        "onlineRevenue": 28925,
+        "creditRevenue": 13750,
+        "planTransactionCount": 156,
+        "productTransactionCount": 143,
+        "planCashRevenue": 12760,
+        "planOnlineRevenue": 16630,
+        "planCreditRevenue": 7840,
+        "productCashRevenue": 9460,
+        "productOnlineRevenue": 12295,
+        "productCreditRevenue": 5910,
+        "planCashCount": 79,
+        "planOnlineCount": 79,
+        "planCreditCount": 38,
+        "productCashCount": 71,
+        "productOnlineCount": 72,
+        "productCreditCount": 35
+      },
+      "previous": {
+        "plan": 28290,
+        "merchandise": 22350,
+        "total": 50640,
+        "cashRevenue": 17570,
+        "onlineRevenue": 21770,
+        "creditRevenue": 11300,
+        "planTransactionCount": 118,
+        "productTransactionCount": 106,
+        "planCashRevenue": 9690,
+        "planOnlineRevenue": 12540,
+        "planCreditRevenue": 6060,
+        "productCashRevenue": 7880,
+        "productOnlineRevenue": 9230,
+        "productCreditRevenue": 5240,
+        "planCashCount": 59,
+        "planOnlineCount": 59,
+        "planCreditCount": 30,
+        "productCashCount": 53,
+        "productOnlineCount": 52,
+        "productCreditCount": 27
+      }
+    },
+    "transactions": {
+      "current": {
+        "totalTransactions": 330,
+        "completedTransactions": 299,
+        "pendingTransactions": 11,
+        "failedTransactions": 10,
+        "averageTransactionAmount": 194.5151515151515
+      },
+      "previous": {
+        "totalTransactions": 245,
+        "completedTransactions": 224,
+        "pendingTransactions": 8,
+        "failedTransactions": 7,
+        "averageTransactionAmount": 201.1428571428571
+      }
+    },
+    "usage": {
+      "current": {
+        "totalSessions": 156,
+        "activeSessions": 0,
+        "completedSessions": 156,
+        "totalHours": 311,
+        "totalMinutes": 18660,
+        "averageSessionDuration": 119.6153846153846
+      },
+      "previous": {
+        "totalSessions": 118,
+        "activeSessions": 0,
+        "completedSessions": 118,
+        "totalHours": 237,
+        "totalMinutes": 14220,
+        "averageSessionDuration": 120.50847457627118
+      }
+    },
+    "users": {
+      "totalUsers": 34,
+      "activeUsers": 34,
+      "totalPlayers": 32,
+      "activePlayers": 32,
+      "newUsersThisPeriod": 8
+    },
+    "plans": {
+      "totalActivePlans": 2,
+      "totalExpiredPlans": 115,
+      "plansByType": []
+    },
+    "devices": {
+      "totalDevices": 12,
+      "activeDevices": 11,
+      "deviceUtilization": [
+        {
+          "deviceId": "d631f561-1885-493a-a90c-b1b442baf123",
+          "deviceName": "DEMO PC 09",
+          "totalHours": 55,
+          "totalSessions": 27,
+          "utilizationPercentage": 7.639065719113869
+        },
+        {
+          "deviceId": "7457b3f5-a897-475d-ac38-32698f3b2de6",
+          "deviceName": "DEMO PC 05",
+          "totalHours": 55,
+          "totalSessions": 27,
+          "utilizationPercentage": 7.639065719113869
+        },
+        {
+          "deviceId": "90a59ec7-4cb1-4ef0-a47c-9a015334a12b",
+          "deviceName": "DEMO PC 07",
+          "totalHours": 53,
+          "totalSessions": 27,
+          "utilizationPercentage": 7.361281511146091
+        },
+        {
+          "deviceId": "f62d153a-e050-46b4-a69c-8ea60dc2b09a",
+          "deviceName": "DEMO PC 03",
+          "totalHours": 52,
+          "totalSessions": 26,
+          "utilizationPercentage": 7.222389407162202
+        },
+        {
+          "deviceId": "d25acc4e-331e-4b69-afe4-dd6c690dd98b",
+          "deviceName": "DEMO PC 01",
+          "totalHours": 49,
+          "totalSessions": 26,
+          "utilizationPercentage": 6.805713095210537
+        },
+        {
+          "deviceId": "d08eba9d-5126-4497-a9e2-f0bd9b8b8c7f",
+          "deviceName": "DEMO PC 11",
+          "totalHours": 31,
+          "totalSessions": 14,
+          "utilizationPercentage": 4.305655223500544
+        },
+        {
+          "deviceId": "16f6949e-aeef-4cdb-ad5b-57949ac4fd71",
+          "deviceName": "DEMO PC 02",
+          "totalHours": 12,
+          "totalSessions": 7,
+          "utilizationPercentage": 1.6667052478066622
+        },
+        {
+          "deviceId": "0446b218-e647-4a8e-ae47-cfb08e2bb367",
+          "deviceName": "DEMO PC 04",
+          "totalHours": 4,
+          "totalSessions": 2,
+          "utilizationPercentage": 0.5555684159355541
+        }
+      ]
+    },
+    "topPerformers": {
+      "topPlans": [
+        {
+          "planId": "c018d97e-917e-43e7-a96b-b207c501f979",
+          "planName": "DEMO Squad Marathon",
+          "purchaseCount": 51,
+          "revenue": 15300
+        },
+        {
+          "planId": "b7256499-f817-4498-a3c9-16a4f4218ffd",
+          "planName": "DEMO Ranked Duo",
+          "purchaseCount": 53,
+          "revenue": 11660
+        },
+        {
+          "planId": "27293a26-be88-497b-ad52-e7697e1ed632",
+          "planName": "DEMO Quick Play",
+          "purchaseCount": 52,
+          "revenue": 6240
+        }
+      ],
+      "topPlayers": [
+        {
+          "playerId": "db2e4ef9-878a-4d1d-a315-a8ceacff3047",
+          "playerName": "Tara Demo 14",
+          "totalSessions": 5,
+          "totalSpent": 3710
+        },
+        {
+          "playerId": "1d11fae2-d64f-4cb6-af86-4037fe8c2fae",
+          "playerName": "Arjun Demo 23",
+          "totalSessions": 10,
+          "totalSpent": 3240
+        },
+        {
+          "playerId": "df93f17a-c7f1-49a1-a87a-ee6cc2bb667b",
+          "playerName": "Aarav Demo 17",
+          "totalSessions": 11,
+          "totalSpent": 3230
+        },
+        {
+          "playerId": "8ef3d812-e9ca-4b97-a25f-26249ef55048",
+          "playerName": "Isha Demo 20",
+          "totalSessions": 6,
+          "totalSpent": 3160
+        },
+        {
+          "playerId": "bd9ce2dd-55e1-4184-aa63-b85fbe4b8308",
+          "playerName": "Kabir Demo 11",
+          "totalSessions": 12,
+          "totalSpent": 2710
+        }
+      ]
+    },
+    "revenueTrend": [
+      {
+        "date": "2026-09-03",
+        "cashRevenue": 740,
+        "onlineRevenue": 770,
+        "totalRevenue": 1970,
+        "transactionCount": 9
+      },
+      {
+        "date": "2026-09-04",
+        "cashRevenue": 465,
+        "onlineRevenue": 895,
+        "totalRevenue": 1700,
+        "transactionCount": 8
+      },
+      {
+        "date": "2026-09-05",
+        "cashRevenue": 1180,
+        "onlineRevenue": 1055,
+        "totalRevenue": 2625,
+        "transactionCount": 12
+      },
+      {
+        "date": "2026-09-06",
+        "cashRevenue": 785,
+        "onlineRevenue": 1265,
+        "totalRevenue": 2570,
+        "transactionCount": 11
+      },
+      {
+        "date": "2026-09-07",
+        "cashRevenue": 620,
+        "onlineRevenue": 860,
+        "totalRevenue": 1740,
+        "transactionCount": 8
+      },
+      {
+        "date": "2026-09-08",
+        "cashRevenue": 555,
+        "onlineRevenue": 735,
+        "totalRevenue": 1930,
+        "transactionCount": 8
+      },
+      {
+        "date": "2026-09-09",
+        "cashRevenue": 850,
+        "onlineRevenue": 600,
+        "totalRevenue": 1670,
+        "transactionCount": 8
+      },
+      {
+        "date": "2026-09-10",
+        "cashRevenue": 540,
+        "onlineRevenue": 610,
+        "totalRevenue": 1670,
+        "transactionCount": 7
+      },
+      {
+        "date": "2026-09-11",
+        "cashRevenue": 660,
+        "onlineRevenue": 950,
+        "totalRevenue": 2090,
+        "transactionCount": 9
+      },
+      {
+        "date": "2026-09-12",
+        "cashRevenue": 750,
+        "onlineRevenue": 1280,
+        "totalRevenue": 2790,
+        "transactionCount": 12
+      },
+      {
+        "date": "2026-09-13",
+        "cashRevenue": 810,
+        "onlineRevenue": 985,
+        "totalRevenue": 2485,
+        "transactionCount": 12
+      },
+      {
+        "date": "2026-09-14",
+        "cashRevenue": 660,
+        "onlineRevenue": 1080,
+        "totalRevenue": 2080,
+        "transactionCount": 10
+      },
+      {
+        "date": "2026-09-15",
+        "cashRevenue": 740,
+        "onlineRevenue": 645,
+        "totalRevenue": 1595,
+        "transactionCount": 9
+      },
+      {
+        "date": "2026-09-16",
+        "cashRevenue": 555,
+        "onlineRevenue": 935,
+        "totalRevenue": 1910,
+        "transactionCount": 9
+      },
+      {
+        "date": "2026-09-17",
+        "cashRevenue": 690,
+        "onlineRevenue": 905,
+        "totalRevenue": 1985,
+        "transactionCount": 9
+      },
+      {
+        "date": "2026-09-18",
+        "cashRevenue": 465,
+        "onlineRevenue": 1095,
+        "totalRevenue": 1980,
+        "transactionCount": 10
+      },
+      {
+        "date": "2026-09-19",
+        "cashRevenue": 880,
+        "onlineRevenue": 1225,
+        "totalRevenue": 2455,
+        "transactionCount": 11
+      },
+      {
+        "date": "2026-09-20",
+        "cashRevenue": 1165,
+        "onlineRevenue": 1335,
+        "totalRevenue": 3360,
+        "transactionCount": 14
+      },
+      {
+        "date": "2026-09-21",
+        "cashRevenue": 700,
+        "onlineRevenue": 380,
+        "totalRevenue": 1300,
+        "transactionCount": 8
+      },
+      {
+        "date": "2026-09-22",
+        "cashRevenue": 585,
+        "onlineRevenue": 925,
+        "totalRevenue": 1730,
+        "transactionCount": 9
+      },
+      {
+        "date": "2026-09-23",
+        "cashRevenue": 960,
+        "onlineRevenue": 980,
+        "totalRevenue": 2480,
+        "transactionCount": 11
+      },
+      {
+        "date": "2026-09-24",
+        "cashRevenue": 540,
+        "onlineRevenue": 1010,
+        "totalRevenue": 2190,
+        "transactionCount": 10
+      },
+      {
+        "date": "2026-09-25",
+        "cashRevenue": 840,
+        "onlineRevenue": 875,
+        "totalRevenue": 2125,
+        "transactionCount": 10
+      },
+      {
+        "date": "2026-09-26",
+        "cashRevenue": 800,
+        "onlineRevenue": 1510,
+        "totalRevenue": 3070,
+        "transactionCount": 14
+      },
+      {
+        "date": "2026-09-27",
+        "cashRevenue": 1320,
+        "onlineRevenue": 1295,
+        "totalRevenue": 3165,
+        "transactionCount": 14
+      },
+      {
+        "date": "2026-09-28",
+        "cashRevenue": 555,
+        "onlineRevenue": 825,
+        "totalRevenue": 2020,
+        "transactionCount": 9
+      },
+      {
+        "date": "2026-09-29",
+        "cashRevenue": 960,
+        "onlineRevenue": 1055,
+        "totalRevenue": 2405,
+        "transactionCount": 11
+      },
+      {
+        "date": "2026-09-30",
+        "cashRevenue": 365,
+        "onlineRevenue": 1205,
+        "totalRevenue": 2210,
+        "transactionCount": 10
+      },
+      {
+        "date": "2026-10-01",
+        "cashRevenue": 810,
+        "onlineRevenue": 755,
+        "totalRevenue": 1915,
+        "transactionCount": 10
+      },
+      {
+        "date": "2026-10-02",
+        "cashRevenue": 675,
+        "onlineRevenue": 885,
+        "totalRevenue": 1680,
+        "transactionCount": 7
+      }
+    ]
+  }
+}

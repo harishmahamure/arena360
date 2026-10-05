@@ -1,0 +1,21 @@
+{
+  "request": "/stats/usage?startDate=2026-09-26&endDate=2026-10-02",
+  "data": {
+    "current": {
+      "totalSessions": 40,
+      "activeSessions": 0,
+      "completedSessions": 40,
+      "totalHours": 79,
+      "totalMinutes": 4740,
+      "averageSessionDuration": 118.5
+    },
+    "previous": {
+      "totalSessions": 40,
+      "activeSessions": 0,
+      "completedSessions": 40,
+      "totalHours": 79,
+      "totalMinutes": 4740,
+      "averageSessionDuration": 118.5
+    }
+  }
+}

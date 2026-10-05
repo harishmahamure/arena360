@@ -1,0 +1,67 @@
+{
+  "request": "/stats/finance/report?startDate=2026-10-02&endDate=2026-10-02",
+  "data": {
+    "approvedExpenses": "255.0000",
+    "creditCollections": "170.0000",
+    "currency": "INR",
+    "currentOutstanding": "12465.0000",
+    "daily": [
+      {
+        "date": "2026-10-02",
+        "expenses": "255.0000",
+        "sales": "1850.00"
+      }
+    ],
+    "endDate": "2026-10-02",
+    "expensesByCategory": [
+      {
+        "amount": "255.0000",
+        "count": 1,
+        "label": "DEMO Maintenance"
+      }
+    ],
+    "locationLabel": "All locations",
+    "pendingExpenseCount": 0,
+    "pendingExpenses": "0.0000",
+    "pendingSales": "60.00",
+    "refundedSales": "300.00",
+    "saleCount": 9,
+    "sales": "1850.00",
+    "salesByPayment": [
+      {
+        "amount": "480.00",
+        "count": 2,
+        "label": "cash"
+      },
+      {
+        "amount": "340.00",
+        "count": 2,
+        "label": "credit"
+      },
+      {
+        "amount": "640.00",
+        "count": 3,
+        "label": "online"
+      },
+      {
+        "amount": "390.00",
+        "count": 2,
+        "label": "split_payment"
+      }
+    ],
+    "salesByType": [
+      {
+        "amount": "980.00",
+        "count": 5,
+        "label": "plan_purchase"
+      },
+      {
+        "amount": "870.00",
+        "count": 4,
+        "label": "product_purchase"
+      }
+    ],
+    "startDate": "2026-10-02",
+    "timezone": "UTC"
+  }
+}

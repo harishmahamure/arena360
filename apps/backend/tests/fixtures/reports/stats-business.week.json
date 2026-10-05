@@ -1,0 +1,1119 @@
+{
+  "request": "/stats/business?startDate=2026-09-26&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-09-26",
+      "endDate": "2026-10-02",
+      "previousStartDate": "2026-09-19",
+      "observedUntil": "2026-10-02T18:30:00+00:00",
+      "timezone": "Asia/Kolkata"
+    },
+    "dailySales": [
+      {
+        "date": "2026-09-19",
+        "revenue": 2280,
+        "planRevenue": 1240,
+        "posRevenue": 1040,
+        "transactions": 11,
+        "buyers": 11
+      },
+      {
+        "date": "2026-09-20",
+        "revenue": 2930,
+        "planRevenue": 1500,
+        "posRevenue": 1430,
+        "transactions": 14,
+        "buyers": 14
+      },
+      {
+        "date": "2026-09-21",
+        "revenue": 1190,
+        "planRevenue": 760,
+        "posRevenue": 430,
+        "transactions": 8,
+        "buyers": 8
+      },
+      {
+        "date": "2026-09-22",
+        "revenue": 1620,
+        "planRevenue": 860,
+        "posRevenue": 760,
+        "transactions": 9,
+        "buyers": 9
+      },
+      {
+        "date": "2026-09-23",
+        "revenue": 2210,
+        "planRevenue": 1280,
+        "posRevenue": 930,
+        "transactions": 11,
+        "buyers": 11
+      },
+      {
+        "date": "2026-09-24",
+        "revenue": 1870,
+        "planRevenue": 1280,
+        "posRevenue": 590,
+        "transactions": 10,
+        "buyers": 10
+      },
+      {
+        "date": "2026-09-25",
+        "revenue": 1920,
+        "planRevenue": 1160,
+        "posRevenue": 760,
+        "transactions": 10,
+        "buyers": 10
+      },
+      {
+        "date": "2026-09-26",
+        "revenue": 2690,
+        "planRevenue": 1620,
+        "posRevenue": 1070,
+        "transactions": 14,
+        "buyers": 14
+      },
+      {
+        "date": "2026-09-27",
+        "revenue": 2890,
+        "planRevenue": 1700,
+        "posRevenue": 1190,
+        "transactions": 14,
+        "buyers": 14
+      },
+      {
+        "date": "2026-09-28",
+        "revenue": 1700,
+        "planRevenue": 940,
+        "posRevenue": 760,
+        "transactions": 9,
+        "buyers": 9
+      },
+      {
+        "date": "2026-09-29",
+        "revenue": 2210,
+        "planRevenue": 1280,
+        "posRevenue": 930,
+        "transactions": 11,
+        "buyers": 11
+      },
+      {
+        "date": "2026-09-30",
+        "revenue": 1890,
+        "planRevenue": 1280,
+        "posRevenue": 610,
+        "transactions": 10,
+        "buyers": 10
+      },
+      {
+        "date": "2026-10-01",
+        "revenue": 1740,
+        "planRevenue": 980,
+        "posRevenue": 760,
+        "transactions": 10,
+        "buyers": 10
+      },
+      {
+        "date": "2026-10-02",
+        "revenue": 1510,
+        "planRevenue": 640,
+        "posRevenue": 870,
+        "transactions": 7,
+        "buyers": 7
+      }
+    ],
+    "hourlyUsage": [
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 8,
+        "hours": 0.5,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 9,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 10,
+        "hours": 1.3,
+        "starts": 2
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 11,
+        "hours": 1.9,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 12,
+        "hours": 1.3,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 13,
+        "hours": 1.3,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 14,
+        "hours": 1.2,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 15,
+        "hours": 1.9,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 16,
+        "hours": 1.2,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 17,
+        "hours": 1.5,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 18,
+        "hours": 0.9,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 19,
+        "hours": 0.7,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-26",
+        "weekday": 6,
+        "hour": 20,
+        "hours": 0.3,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 8,
+        "hours": 0.1,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 9,
+        "hours": 1.5,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 10,
+        "hours": 1.5,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 11,
+        "hours": 1.6,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 12,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 13,
+        "hours": 1.5,
+        "starts": 2
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 14,
+        "hours": 1.7,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 15,
+        "hours": 1.5,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 16,
+        "hours": 1.1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 17,
+        "hours": 1.3,
+        "starts": 2
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 18,
+        "hours": 1.9,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 19,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-27",
+        "weekday": 7,
+        "hour": 20,
+        "hours": 0.3,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 7,
+        "hours": 0.5,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 8,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 9,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 10,
+        "hours": 0.5,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 11,
+        "hours": 0.3,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 12,
+        "hours": 1.7,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 13,
+        "hours": 1.3,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 14,
+        "hours": 1.6,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 15,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-28",
+        "weekday": 1,
+        "hour": 16,
+        "hours": 0.1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 8,
+        "hours": 0.5,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 9,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 10,
+        "hours": 1.3,
+        "starts": 2
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 11,
+        "hours": 1.9,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 12,
+        "hours": 1.3,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 13,
+        "hours": 1.3,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 14,
+        "hours": 1.2,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 15,
+        "hours": 1.9,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 16,
+        "hours": 1.1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-29",
+        "weekday": 2,
+        "hour": 17,
+        "hours": 0.5,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 8,
+        "hours": 0.1,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 9,
+        "hours": 1.5,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 10,
+        "hours": 1.5,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 11,
+        "hours": 1.6,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 12,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 13,
+        "hours": 1.5,
+        "starts": 2
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 14,
+        "hours": 1.7,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 15,
+        "hours": 1.5,
+        "starts": 1
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 16,
+        "hours": 1.1,
+        "starts": 0
+      },
+      {
+        "date": "2026-09-30",
+        "weekday": 3,
+        "hour": 17,
+        "hours": 0.5,
+        "starts": 0
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 9,
+        "hours": 0.1,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 10,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 11,
+        "hours": 1.2,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 12,
+        "hours": 1.7,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 13,
+        "hours": 1.3,
+        "starts": 0
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 14,
+        "hours": 1.6,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 15,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 16,
+        "hours": 0.6,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-01",
+        "weekday": 4,
+        "hour": 17,
+        "hours": 0.5,
+        "starts": 0
+      },
+      {
+        "date": "2026-10-02",
+        "weekday": 5,
+        "hour": 12,
+        "hours": 0.3,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-02",
+        "weekday": 5,
+        "hour": 13,
+        "hours": 1,
+        "starts": 0
+      },
+      {
+        "date": "2026-10-02",
+        "weekday": 5,
+        "hour": 14,
+        "hours": 1.2,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-02",
+        "weekday": 5,
+        "hour": 15,
+        "hours": 1.9,
+        "starts": 1
+      },
+      {
+        "date": "2026-10-02",
+        "weekday": 5,
+        "hour": 16,
+        "hours": 1.1,
+        "starts": 0
+      },
+      {
+        "date": "2026-10-02",
+        "weekday": 5,
+        "hour": 17,
+        "hours": 0.5,
+        "starts": 0
+      }
+    ],
+    "stations": [
+      {
+        "id": "049b15e9-316f-4c15-ac64-1c7333315217",
+        "name": "DEMO PC 06",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 0,
+        "hours": 168
+      },
+      {
+        "id": "a4fa78cf-defa-4a5e-acc6-cff2547e3137",
+        "name": "DEMO PC 08",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 0,
+        "hours": 168
+      },
+      {
+        "id": "8eccc096-87c2-4b40-a895-17a57765716c",
+        "name": "DEMO PC 10",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 0,
+        "hours": 168
+      },
+      {
+        "id": "e0be2787-f216-445c-af52-6a045af317e7",
+        "name": "DEMO PC 12",
+        "location": "Demo gaming floor",
+        "status": "under_maintenance",
+        "sessions": 0,
+        "hours": 168
+      },
+      {
+        "id": "90a59ec7-4cb1-4ef0-a47c-9a015334a12b",
+        "name": "DEMO PC 07",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 7,
+        "hours": 14
+      },
+      {
+        "id": "d08eba9d-5126-4497-a9e2-f0bd9b8b8c7f",
+        "name": "DEMO PC 11",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 6,
+        "hours": 14
+      },
+      {
+        "id": "d631f561-1885-493a-a90c-b1b442baf123",
+        "name": "DEMO PC 09",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 7,
+        "hours": 13
+      },
+      {
+        "id": "7457b3f5-a897-475d-ac38-32698f3b2de6",
+        "name": "DEMO PC 05",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 6,
+        "hours": 12
+      },
+      {
+        "id": "f62d153a-e050-46b4-a69c-8ea60dc2b09a",
+        "name": "DEMO PC 03",
+        "location": "Demo gaming floor",
+        "status": "in_use",
+        "sessions": 5,
+        "hours": 10
+      },
+      {
+        "id": "d25acc4e-331e-4b69-afe4-dd6c690dd98b",
+        "name": "DEMO PC 01",
+        "location": "Demo gaming floor",
+        "status": "in_use",
+        "sessions": 5,
+        "hours": 9
+      },
+      {
+        "id": "0446b218-e647-4a8e-ae47-cfb08e2bb367",
+        "name": "DEMO PC 04",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 2,
+        "hours": 4
+      },
+      {
+        "id": "16f6949e-aeef-4cdb-ad5b-57949ac4fd71",
+        "name": "DEMO PC 02",
+        "location": "Demo gaming floor",
+        "status": "available",
+        "sessions": 2,
+        "hours": 3
+      }
+    ],
+    "customers": {
+      "visitors": 31,
+      "newVisitors": 0,
+      "repeatVisitors": 31,
+      "frequentVisitors": 1,
+      "atRisk": 0,
+      "priorVisitors": 30,
+      "retainedVisitors": 29
+    },
+    "customerDetails": [
+      {
+        "id": "8ef3d812-e9ca-4b97-a25f-26249ef55048",
+        "name": "demo.player.20",
+        "visits": 2,
+        "firstVisit": "2026-08-11",
+        "lastVisit": "2026-10-02",
+        "spend": 480,
+        "daysAbsent": 0
+      },
+      {
+        "id": "c4a4c39c-922e-430a-a2f5-ade480294c09",
+        "name": "demo.player.26",
+        "visits": 3,
+        "firstVisit": "2026-09-18",
+        "lastVisit": "2026-10-02",
+        "spend": 920,
+        "daysAbsent": 0
+      },
+      {
+        "id": "db2e4ef9-878a-4d1d-a315-a8ceacff3047",
+        "name": "demo.player.14",
+        "visits": 2,
+        "firstVisit": "2026-08-05",
+        "lastVisit": "2026-10-02",
+        "spend": 490,
+        "daysAbsent": 0
+      },
+      {
+        "id": "08c635c0-adb7-462b-ac05-e789de356a43",
+        "name": "demo.player.25",
+        "visits": 2,
+        "firstVisit": "2026-09-17",
+        "lastVisit": "2026-10-01",
+        "spend": 760,
+        "daysAbsent": 1
+      },
+      {
+        "id": "d9d79766-0cb4-40b6-a8ad-19b9f945086c",
+        "name": "demo.player.19",
+        "visits": 1,
+        "firstVisit": "2026-08-16",
+        "lastVisit": "2026-10-01",
+        "spend": 310,
+        "daysAbsent": 1
+      },
+      {
+        "id": "66926cea-ac71-4572-afb4-d76130907102",
+        "name": "demo.player.07",
+        "visits": 1,
+        "firstVisit": "2026-08-04",
+        "lastVisit": "2026-10-01",
+        "spend": 240,
+        "daysAbsent": 1
+      },
+      {
+        "id": "098d4327-636d-4b28-afe3-394fc3a1947f",
+        "name": "demo.player.13",
+        "visits": 1,
+        "firstVisit": "2026-08-04",
+        "lastVisit": "2026-10-01",
+        "spend": 350,
+        "daysAbsent": 1
+      },
+      {
+        "id": "0f46499f-1ad7-478a-a683-225e29bfbc80",
+        "name": "demo.player.01",
+        "visits": 2,
+        "firstVisit": "2026-08-16",
+        "lastVisit": "2026-10-01",
+        "spend": 880,
+        "daysAbsent": 1
+      },
+      {
+        "id": "a21aa841-b60d-4aaf-ac7c-2f99a962d229",
+        "name": "demo.player.24",
+        "visits": 2,
+        "firstVisit": "2026-08-09",
+        "lastVisit": "2026-09-30",
+        "spend": 940,
+        "daysAbsent": 2
+      },
+      {
+        "id": "92b5acc1-9a74-46c5-a7a6-29bee8d1a47a",
+        "name": "demo.player.12",
+        "visits": 1,
+        "firstVisit": "2026-08-09",
+        "lastVisit": "2026-09-30",
+        "spend": 220,
+        "daysAbsent": 2
+      },
+      {
+        "id": "2482c74c-23c5-484c-a60a-0fb4a8c92e7b",
+        "name": "demo.player.18",
+        "visits": 1,
+        "firstVisit": "2026-08-09",
+        "lastVisit": "2026-09-30",
+        "spend": 330,
+        "daysAbsent": 2
+      },
+      {
+        "id": "fdbcda86-395b-4fb3-ac8b-08aa16ca5613",
+        "name": "demo.player.06",
+        "visits": 1,
+        "firstVisit": "2026-08-09",
+        "lastVisit": "2026-09-30",
+        "spend": 220,
+        "daysAbsent": 2
+      },
+      {
+        "id": "5517f29b-c1c7-4777-a0e7-973139eb4f5c",
+        "name": "demo.player.32",
+        "visits": 2,
+        "firstVisit": "2026-09-18",
+        "lastVisit": "2026-09-30",
+        "spend": 540,
+        "daysAbsent": 2
+      },
+      {
+        "id": "df93f17a-c7f1-49a1-a87a-ee6cc2bb667b",
+        "name": "demo.player.17",
+        "visits": 1,
+        "firstVisit": "2026-08-08",
+        "lastVisit": "2026-09-29",
+        "spend": 330,
+        "daysAbsent": 3
+      },
+      {
+        "id": "1d11fae2-d64f-4cb6-af86-4037fe8c2fae",
+        "name": "demo.player.23",
+        "visits": 2,
+        "firstVisit": "2026-08-08",
+        "lastVisit": "2026-09-29",
+        "spend": 560,
+        "daysAbsent": 3
+      },
+      {
+        "id": "bd9ce2dd-55e1-4184-aa63-b85fbe4b8308",
+        "name": "demo.player.11",
+        "visits": 1,
+        "firstVisit": "2026-08-08",
+        "lastVisit": "2026-09-29",
+        "spend": 430,
+        "daysAbsent": 3
+      },
+      {
+        "id": "1c825162-8154-499d-a738-691356e071fd",
+        "name": "demo.player.31",
+        "visits": 1,
+        "firstVisit": "2026-09-17",
+        "lastVisit": "2026-09-29",
+        "spend": 780,
+        "daysAbsent": 3
+      },
+      {
+        "id": "86416fa1-5b0e-485c-afeb-a8c21de2d846",
+        "name": "demo.player.05",
+        "visits": 1,
+        "firstVisit": "2026-08-08",
+        "lastVisit": "2026-09-29",
+        "spend": 600,
+        "daysAbsent": 3
+      },
+      {
+        "id": "2392c21b-0b4f-468c-ace6-37bbd1d5dfb2",
+        "name": "demo.player.16",
+        "visits": 1,
+        "firstVisit": "2026-08-07",
+        "lastVisit": "2026-09-28",
+        "spend": 270,
+        "daysAbsent": 4
+      },
+      {
+        "id": "99aba8a8-a949-4579-a6f3-829ef9375ae7",
+        "name": "demo.player.04",
+        "visits": 1,
+        "firstVisit": "2026-08-07",
+        "lastVisit": "2026-09-28",
+        "spend": 480,
+        "daysAbsent": 4
+      },
+      {
+        "id": "583dedd2-b665-42e1-a3c0-00f9ca321fbb",
+        "name": "demo.player.10",
+        "visits": 1,
+        "firstVisit": "2026-08-13",
+        "lastVisit": "2026-09-28",
+        "spend": 420,
+        "daysAbsent": 4
+      },
+      {
+        "id": "cb8f691a-933d-41cd-a088-bbba2f31fb56",
+        "name": "demo.player.27",
+        "visits": 1,
+        "firstVisit": "2026-09-19",
+        "lastVisit": "2026-09-27",
+        "spend": 260,
+        "daysAbsent": 5
+      },
+      {
+        "id": "9ce141a4-47d8-4785-ac1e-5096be05b4fe",
+        "name": "demo.player.21",
+        "visits": 1,
+        "firstVisit": "2026-08-12",
+        "lastVisit": "2026-09-27",
+        "spend": 250,
+        "daysAbsent": 5
+      },
+      {
+        "id": "7cfe4d9b-5830-4e12-aae0-8392c8068ee3",
+        "name": "demo.player.09",
+        "visits": 1,
+        "firstVisit": "2026-08-06",
+        "lastVisit": "2026-09-27",
+        "spend": 300,
+        "daysAbsent": 5
+      },
+      {
+        "id": "3e04948b-62f3-4e93-aaf4-3a605d47cba6",
+        "name": "demo.player.15",
+        "visits": 1,
+        "firstVisit": "2026-08-06",
+        "lastVisit": "2026-09-27",
+        "spend": 300,
+        "daysAbsent": 5
+      },
+      {
+        "id": "476713d2-9136-4155-ae3a-2a1bd6270e28",
+        "name": "demo.player.03",
+        "visits": 1,
+        "firstVisit": "2026-08-06",
+        "lastVisit": "2026-09-27",
+        "spend": 340,
+        "daysAbsent": 5
+      },
+      {
+        "id": "1d143738-c419-445b-ade5-74bb532545c5",
+        "name": "demo.player.29",
+        "visits": 1,
+        "firstVisit": "2026-09-12",
+        "lastVisit": "2026-09-27",
+        "spend": 580,
+        "daysAbsent": 5
+      },
+      {
+        "id": "2596a5b7-457a-4112-a0e6-ec25fac31525",
+        "name": "demo.player.08",
+        "visits": 1,
+        "firstVisit": "2026-08-05",
+        "lastVisit": "2026-09-26",
+        "spend": 280,
+        "daysAbsent": 6
+      },
+      {
+        "id": "fae7b465-3b7e-4070-adcc-a18101964780",
+        "name": "demo.player.28",
+        "visits": 1,
+        "firstVisit": "2026-09-20",
+        "lastVisit": "2026-09-26",
+        "spend": 540,
+        "daysAbsent": 6
+      },
+      {
+        "id": "556a5736-76b4-4971-ac88-83baa4be7130",
+        "name": "demo.player.02",
+        "visits": 1,
+        "firstVisit": "2026-08-05",
+        "lastVisit": "2026-09-26",
+        "spend": 540,
+        "daysAbsent": 6
+      },
+      {
+        "id": "23b10940-8750-41c2-a9a5-c07f89aae215",
+        "name": "demo.player.22",
+        "visits": 1,
+        "firstVisit": "2026-08-13",
+        "lastVisit": "2026-09-26",
+        "spend": 310,
+        "daysAbsent": 6
+      },
+      {
+        "id": "ef0dcb5d-0175-4d8d-a754-f07e71669cab",
+        "name": "demo.player.30",
+        "visits": 0,
+        "firstVisit": "2026-09-16",
+        "lastVisit": "2026-09-22",
+        "spend": 380,
+        "daysAbsent": 10
+      }
+    ],
+    "plans": [
+      {
+        "id": "c018d97e-917e-43e7-a96b-b207c501f979",
+        "name": "DEMO Squad Marathon",
+        "purchases": 13,
+        "buyers": 13,
+        "repeatBuyers": 0,
+        "revenue": 3900,
+        "hoursSold": 39
+      },
+      {
+        "id": "b7256499-f817-4498-a3c9-16a4f4218ffd",
+        "name": "DEMO Ranked Duo",
+        "purchases": 13,
+        "buyers": 13,
+        "repeatBuyers": 0,
+        "revenue": 2860,
+        "hoursSold": 26
+      },
+      {
+        "id": "27293a26-be88-497b-ad52-e7697e1ed632",
+        "name": "DEMO Quick Play",
+        "purchases": 14,
+        "buyers": 14,
+        "repeatBuyers": 0,
+        "revenue": 1680,
+        "hoursSold": 14
+      }
+    ],
+    "wallets": {
+      "holders": 2,
+      "activeWallets": 2,
+      "expiring7Days": 0,
+      "expiredWallets": 131,
+      "remainingHours": 3
+    },
+    "products": [
+      {
+        "id": "13a76696-e580-4fd6-a2df-d7d373ddde4a",
+        "name": "DEMO Energy Drink",
+        "quantity": 19,
+        "revenue": 2660,
+        "transactions": 9
+      },
+      {
+        "id": "8a0eeaf6-6695-4839-a197-9cfaef1bcf86",
+        "name": "DEMO Sandwich",
+        "quantity": 16,
+        "revenue": 1920,
+        "transactions": 8
+      },
+      {
+        "id": "3e092958-94d4-4f70-ac6e-17468cc1cb60",
+        "name": "DEMO Chips",
+        "quantity": 13,
+        "revenue": 650,
+        "transactions": 6
+      },
+      {
+        "id": "984c0f5b-7b6b-4701-a928-b79a3e40db24",
+        "name": "DEMO Cola",
+        "quantity": 10,
+        "revenue": 600,
+        "transactions": 6
+      },
+      {
+        "id": "9d475123-3043-4751-a46f-d2a8fbdc008e",
+        "name": "DEMO Water",
+        "quantity": 12,
+        "revenue": 360,
+        "transactions": 6
+      }
+    ],
+    "pos": {
+      "revenue": 6190,
+      "transactions": 35,
+      "visitingCustomers": 31,
+      "attachedCustomers": 29
+    },
+    "staff": [
+      {
+        "id": "2f56894d-286c-42f9-ad69-2d16b88991ac",
+        "name": "demo.counter",
+        "shiftHours": 140,
+        "revenue": 14630,
+        "transactions": 75,
+        "sessions": 0
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "superadmin",
+        "shiftHours": 0,
+        "revenue": 0,
+        "transactions": 0,
+        "sessions": 0
+      }
+    ]
+  }
+}

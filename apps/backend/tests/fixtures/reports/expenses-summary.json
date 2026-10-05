@@ -1,0 +1,37 @@
+{
+  "request": "/expenses/summary",
+  "data": [
+    {
+      "categoryName": "DEMO Maintenance",
+      "budgetAmount": 8000,
+      "budgetPeriod": "monthly",
+      "totalSpent": 4415,
+      "remainingBudget": 3585,
+      "expenseCount": 18
+    },
+    {
+      "categoryName": "DEMO Utilities",
+      "budgetAmount": 18000,
+      "budgetPeriod": "monthly",
+      "totalSpent": 4405,
+      "remainingBudget": 13595,
+      "expenseCount": 17
+    },
+    {
+      "categoryName": "DEMO Consumables",
+      "budgetAmount": 12000,
+      "budgetPeriod": "monthly",
+      "totalSpent": 4055,
+      "remainingBudget": 7945,
+      "expenseCount": 17
+    },
+    {
+      "categoryName": "Inventory purchases",
+      "budgetAmount": null,
+      "budgetPeriod": null,
+      "totalSpent": 0,
+      "remainingBudget": null,
+      "expenseCount": 0
+    }
+  ]
+}

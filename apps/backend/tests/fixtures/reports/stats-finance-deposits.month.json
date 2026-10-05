@@ -1,0 +1,33 @@
+{
+  "request": "/stats/finance/deposits?startDate=2026-09-03&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-09-02T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-09-02 - 2026-10-02",
+      "previousLabel": "2026-08-04 - 2026-09-03"
+    },
+    "metrics": {
+      "current": {
+        "pendingCount": 1,
+        "pendingAmount": 100,
+        "approvedCount": 4,
+        "approvedAmount": 400,
+        "rejectedCount": 1,
+        "rejectedAmount": 100,
+        "bankAmount": 200,
+        "homeAmount": 200
+      },
+      "previous": {
+        "pendingCount": 0,
+        "pendingAmount": 0,
+        "approvedCount": 6,
+        "approvedAmount": 600,
+        "rejectedCount": 0,
+        "rejectedAmount": 0,
+        "bankAmount": 300,
+        "homeAmount": 300
+      }
+    }
+  }
+}

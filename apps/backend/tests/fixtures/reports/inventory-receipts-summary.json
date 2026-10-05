@@ -1,0 +1,50 @@
+{
+  "request": "/inventory/receipts/summary?from=2026-08-04T00%3A00%3A00Z&to=2026-10-03T00%3A00%3A00Z",
+  "data": [
+    {
+      "productId": "3e092958-94d4-4f70-ac6e-17468cc1cb60",
+      "productName": "DEMO Chips",
+      "vendorId": "c3c60f32-85e1-41ff-a581-e23268d99b1b",
+      "vendorName": "DEMO Refreshment Supply",
+      "totalBoxes": 8,
+      "totalPieces": 96,
+      "estimatedCost": 2400
+    },
+    {
+      "productId": "984c0f5b-7b6b-4701-a928-b79a3e40db24",
+      "productName": "DEMO Cola",
+      "vendorId": "c3c60f32-85e1-41ff-a581-e23268d99b1b",
+      "vendorName": "DEMO Refreshment Supply",
+      "totalBoxes": 9,
+      "totalPieces": 108,
+      "estimatedCost": 3240
+    },
+    {
+      "productId": "13a76696-e580-4fd6-a2df-d7d373ddde4a",
+      "productName": "DEMO Energy Drink",
+      "vendorId": "c3c60f32-85e1-41ff-a581-e23268d99b1b",
+      "vendorName": "DEMO Refreshment Supply",
+      "totalBoxes": 11,
+      "totalPieces": 132,
+      "estimatedCost": 10560
+    },
+    {
+      "productId": "8a0eeaf6-6695-4839-a197-9cfaef1bcf86",
+      "productName": "DEMO Sandwich",
+      "vendorId": "c3c60f32-85e1-41ff-a581-e23268d99b1b",
+      "vendorName": "DEMO Refreshment Supply",
+      "totalBoxes": 11,
+      "totalPieces": 132,
+      "estimatedCost": 8580
+    },
+    {
+      "productId": "9d475123-3043-4751-a46f-d2a8fbdc008e",
+      "productName": "DEMO Water",
+      "vendorId": "c3c60f32-85e1-41ff-a581-e23268d99b1b",
+      "vendorName": "DEMO Refreshment Supply",
+      "totalBoxes": 6,
+      "totalPieces": 72,
+      "estimatedCost": 864
+    }
+  ]
+}

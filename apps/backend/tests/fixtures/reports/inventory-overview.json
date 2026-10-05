@@ -1,0 +1,118 @@
+{
+  "request": "/inventory/overview",
+  "data": {
+    "totalPieces": 26,
+    "estimatedStockValue": 987,
+    "lowStockProducts": 4,
+    "outOfStockProducts": 1,
+    "openPurchaseOrders": 0,
+    "pendingTransfers": 0,
+    "pendingWasteEvents": 0,
+    "recentMovements": [
+      {
+        "id": "da7da2ce-dea8-4496-a589-cda64ad50b04",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "3e092958-94d4-4f70-ac6e-17468cc1cb60",
+        "productName": "DEMO Chips",
+        "delta": -3,
+        "movementType": "sale",
+        "referenceId": "36feecbe-1daa-4ffb-adaf-b41abcbe2f25",
+        "referenceType": "transaction",
+        "createdBy": "2f56894d-286c-42f9-ad69-2d16b88991ac",
+        "createdAt": "2026-10-02T09:54:00Z"
+      },
+      {
+        "id": "bb976e8e-04d7-4a62-a476-dfffce8e8f27",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "984c0f5b-7b6b-4701-a928-b79a3e40db24",
+        "productName": "DEMO Cola",
+        "delta": -1,
+        "movementType": "sale",
+        "referenceId": "830ad7d7-67d3-41b2-a291-54be46ffcf1f",
+        "referenceType": "transaction",
+        "createdBy": "2f56894d-286c-42f9-ad69-2d16b88991ac",
+        "createdAt": "2026-10-02T08:30:00Z"
+      },
+      {
+        "id": "f5539ebc-8192-4725-af6a-9013b91be57b",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "8a0eeaf6-6695-4839-a197-9cfaef1bcf86",
+        "productName": "DEMO Sandwich",
+        "delta": -2,
+        "movementType": "sale",
+        "referenceId": "4009e1cb-d67c-40eb-a360-b15a1814176a",
+        "referenceType": "transaction",
+        "createdBy": "2f56894d-286c-42f9-ad69-2d16b88991ac",
+        "createdAt": "2026-10-02T07:06:00Z"
+      },
+      {
+        "id": "3393cdcc-7fa5-488b-a48c-d0ee81a5cc51",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "13a76696-e580-4fd6-a2df-d7d373ddde4a",
+        "productName": "DEMO Energy Drink",
+        "delta": -3,
+        "movementType": "sale",
+        "referenceId": "1bd31f9b-8a5b-40f7-afe6-c242715b233e",
+        "referenceType": "transaction",
+        "createdBy": "2f56894d-286c-42f9-ad69-2d16b88991ac",
+        "createdAt": "2026-10-02T05:42:00Z"
+      },
+      {
+        "id": "022e4425-fd88-4dc3-ab90-8cf0263026bd",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "8a0eeaf6-6695-4839-a197-9cfaef1bcf86",
+        "productName": "DEMO Sandwich",
+        "delta": -5,
+        "movementType": "waste",
+        "referenceId": "ce559ed6-9db6-494a-a9f4-a1a0f8b87742",
+        "referenceType": "stock_waste",
+        "createdBy": null,
+        "createdAt": "2026-10-01T17:00:00Z"
+      },
+      {
+        "id": "1313d8ff-cebc-40e5-a657-89fd7b8ad173",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "984c0f5b-7b6b-4701-a928-b79a3e40db24",
+        "productName": "DEMO Cola",
+        "delta": -2,
+        "movementType": "waste",
+        "referenceId": "3460cb78-1f68-4490-ae62-19918417ac5d",
+        "referenceType": "stock_waste",
+        "createdBy": null,
+        "createdAt": "2026-10-01T17:00:00Z"
+      },
+      {
+        "id": "63d046cd-b8d8-4ef9-ab8b-bda8208415bd",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "3e092958-94d4-4f70-ac6e-17468cc1cb60",
+        "productName": "DEMO Chips",
+        "delta": -4,
+        "movementType": "waste",
+        "referenceId": "5266751c-4d3d-4317-ac71-ef70c3839841",
+        "referenceType": "stock_waste",
+        "createdBy": null,
+        "createdAt": "2026-10-01T17:00:00Z"
+      },
+      {
+        "id": "f54bc10b-0fa1-4879-a68c-fb811e0e6228",
+        "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+        "locationName": "DEMO Cafe Counter",
+        "productId": "9d475123-3043-4751-a46f-d2a8fbdc008e",
+        "productName": "DEMO Water",
+        "delta": -6,
+        "movementType": "waste",
+        "referenceId": "f4311230-69a9-48fe-a04b-bbd0c96e4323",
+        "referenceType": "stock_waste",
+        "createdBy": null,
+        "createdAt": "2026-10-01T17:00:00Z"
+      }
+    ]
+  }
+}
