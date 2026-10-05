@@ -20,8 +20,12 @@ prost = "0.14.1"
 http-body-util = "0.1"
 ipnet = "2"
 
-# Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
+# Database: PostgreSQL control plane, per-tenant SQLite and DuckDB (ADR-0043)
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json"] }
+duckdb = { version = "1.10506", features = ["bundled"] }
+
+# Object storage for WAL replication, snapshots, Parquet (Wasabi, S3-compatible; ADR-0043)
+object_store = { version = "0.14", features = ["aws"] }
 
 # Cache (DRAFT-0043)
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
