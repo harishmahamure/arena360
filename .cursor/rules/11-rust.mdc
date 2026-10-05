@@ -11,7 +11,7 @@ Follow @~/.cursor/rules/rust-standards.mdc for KISS, DRY, and ownership patterns
 ## Stack contract (ADR-0009)
 
 - **Framework**: Axum 0.7 + tower-http middleware
-- **Database**: SQLx 0.7 with compile-time checked queries; run `sqlx prepare` for offline CI
+- **Database** (ADR-0043): SQLx with PostgreSQL for the control plane and SQLite for per-tenant operational data; DuckDB for per-tenant analytics. `docs/architecture/data-platform.md` is the source of truth
 - **OpenAPI**: utoipa — source of truth for `@gaming-cafe/api-types`
 - **Auth**: jsonwebtoken, HS256, existing `JWT_SECRET`
 - **SSE**: `tokio::broadcast` for event distribution
@@ -39,4 +39,4 @@ Error responses use `ErrorCode` values from `@gaming-cafe/contracts`.
 ## Constraints
 
 - No new external crates without a DRAFT ADR (see `20-adr-discipline.mdc`).
-- No ORM — raw SQL via SQLx migrations in `apps/backend/migrations/`.
+- No ORM — raw SQL via SQLx migrations in `apps/backend/migrations/control/` (PostgreSQL) and `apps/backend/migrations/tenant/` (SQLite).

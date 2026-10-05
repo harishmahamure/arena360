@@ -1,5 +1,7 @@
 # Reporting with JetStream and ClickHouse
 
+> **Superseded** by `docs/architecture/data-platform.md`, ADR-0043, and `docs/architecture/duckdb-analytics-schema.md` (per-tenant DuckDB; ClickHouse removed). This describes the current code until Phase 3 of `docs/plans/data-platform-build-plan.md` completes.
+
 PostgreSQL owns transactions, payment and credit validation, session state, stock mutations, authentication, configuration, and operational record lookups. ClickHouse owns every `/stats/*` query, finance report, expense category summary, credit portfolio summary, inventory overview, receipt summary, and waste summary. Pagination counts, unread notification counts, per-player credit headroom, and reorder actions remain transactional PostgreSQL queries.
 
 ```mermaid

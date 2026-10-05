@@ -1,5 +1,7 @@
 # Shared-table tenancy
 
+> **Superseded** by `docs/architecture/data-platform.md` and ADR-0043 (one SQLite database per tenant). This describes the current code until the migration in `docs/plans/data-platform-build-plan.md` completes.
+
 Organizations are the tenant boundary. Users remain global identities and join
 businesses through `organization_memberships`. Venue locations belong to one
 organization.

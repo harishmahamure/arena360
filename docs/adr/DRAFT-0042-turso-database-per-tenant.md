@@ -1,10 +1,15 @@
 # DRAFT-0042: Turso database per tenant
 
-**Status**: Proposed
+**Status**: Rejected (2026-10-05)
 **Date**: 2026-10-03
 **Deciders**: Founder / backend owner
-**Supersedes**: ADR-0009 (PostgreSQL and SQLx portion only; Axum and the layered `apps/backend` tree remain)
-**Replaces**: shared-table tenancy described in `docs/architecture/tenancy.md`
+**Would have superseded**: ADR-0009 (PostgreSQL and SQLx portion only)
+
+## Outcome
+
+Rejected by the owner on 2026-10-05 in favour of staying on PostgreSQL. ADR-0009 and the shared-table tenancy in `docs/architecture/tenancy.md` remain in force. The cost of rewriting the schema and repositories outweighs the database savings at the current stage. Revisit if physical per-tenant isolation becomes a contractual requirement or per-tenant database cost becomes material.
+
+The analysis below is kept for reference.
 
 ## Context
 
@@ -97,7 +102,7 @@ Analytics (outbox to NATS JetStream to ClickHouse) and caching (Redis) stay as t
 
 ## Implementation Notes
 
-The implementation sequence, scope, and exit criteria are in `docs/plans/0042-turso-database-per-tenant.md`. No application code changes until this ADR is accepted. A spike porting the sessions and transactions slice validates effort and latency before the full migration.
+Not implemented. The estimated effort was 9–12 developer-weeks: a 1–2 week spike porting sessions and transactions, foundations, repository porting, realtime and analytics changes, and a cutover with data reconciliation.
 
 ## References
 
