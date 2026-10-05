@@ -139,8 +139,8 @@ Adopt `docs/architecture/data-platform.md` in full. The implementation decisions
 
 | # | Decision | Proposed default | Needed by |
 |---|---|---|---|
-| 4 | Backup and archive encryption | Per-tenant data key; tenant deletion destroys the key | Phase 4 (backup) |
-| 5 | Cell availability target | Single-node cells; recovery time measured in restore drills and published as the target | Phase 4 (recovery) |
+| 4 | Backup and archive encryption | Per-tenant data key; tenant deletion destroys the key | M8 (replication and recovery) |
+| 5 | Cell availability target | Single-node cells; recovery time measured in restore drills and published as the target | M8 (replication and recovery) |
 
 Decided: 1 (WAL replication to Wasabi every 2 minutes, decision 26), 2 (5-minute lease, decision 30), 3 (time zone and UTC, decisions 27–29), and the object storage provider and layout (decisions 9 and 31).
 
