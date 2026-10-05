@@ -1,5 +1,8 @@
+use super::Roles;
+
 /// Application settings loaded from environment variables.
 pub struct Settings {
+    pub roles: Roles,
     pub database_url: String,
     pub database_listener_url: String,
     pub database_min_connections: u32,
@@ -32,6 +35,11 @@ impl Settings {
 
         let database_url = resolve_database_url();
         Self {
+            roles: std::env::var("ARENA_ROLES")
+                .map(|value| {
+                    Roles::parse(&value).unwrap_or_else(|err| panic!("invalid ARENA_ROLES: {err}"))
+                })
+                .unwrap_or_default(),
             database_listener_url: std::env::var("DATABASE_LISTENER_URL")
                 .ok()
                 .filter(|value| !value.is_empty())

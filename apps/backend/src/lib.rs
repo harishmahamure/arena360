@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod app;
 pub mod cache;
 pub mod config;
+pub mod control;
 pub mod dto;
 pub mod error;
 pub mod handlers;
@@ -15,6 +16,8 @@ pub mod repositories;
 pub mod rpc;
 pub mod services;
 pub mod sse;
+pub mod storage;
+pub mod tenancy;
 pub mod validation;
 
 pub mod access;

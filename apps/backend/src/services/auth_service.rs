@@ -783,6 +783,7 @@ mod access_token_tests {
 
     fn test_settings(jwt_access_expiration: &str) -> Arc<Settings> {
         Arc::new(Settings {
+            roles: crate::config::Roles::ALL,
             database_url: "postgres://localhost:5432/test".to_string(),
             database_listener_url: "postgres://localhost:5432/test".to_string(),
             database_min_connections: 0,
