@@ -98,7 +98,8 @@ M8 depends only on M5, so it can run before M6 and M7 if launch timing calls for
   - `replication_generations` and `snapshot_manifests`. — M
   - Done: self-contained 12-table PostgreSQL baseline with tenant/cell state checks, lease expiry and generation constraints, global staff identities, memberships, location metadata, subscriptions, licences, and replication lineage. Applied and invariant-tested against an empty PostgreSQL database.
 - [ ] API-0010: Move auth and organization management to the control role, so JWTs carry `tenant_id`. Device tokens (ADR-0017/0018 behaviour) carry `tenant_id` and `location_id`. — M
-- [ ] API-0013: Signed tenant entitlement (license) cached in the cell, so business operations never query the control plane (§51). The same cache carries the tenant time zone. — S
+- [x] API-0013: Signed tenant entitlement (license) cached in the cell, so business operations never query the control plane (§51). The same cache carries the tenant time zone. — S
+  - Done: control repository provisions the initial subscription and licence; HMAC-signed entitlements carry tenant ID, IANA timezone, revision, limits, validity, and grace period. The cell cache rejects tampering and revision rollback. Its integration test closes PostgreSQL after caching and continues successfully.
 - [ ] TEST-0011: A UTC-only check that fails if any API payload, outbox event, or stored timestamp is written without a `Z` offset or as a local time. — S
 
 **Done when:** a tenant can be created with a time zone; staff and devices sign in and receive tokens carrying `tenant_id`; the cell validates entitlement from its signed cache with the control plane stopped.
