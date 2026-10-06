@@ -3,6 +3,7 @@ use super::Roles;
 /// Application settings loaded from environment variables.
 pub struct Settings {
     pub roles: Roles,
+    pub cell_id: Option<uuid::Uuid>,
     pub database_url: String,
     pub control_database_url: Option<String>,
     pub database_listener_url: String,
@@ -41,6 +42,14 @@ impl Settings {
                     Roles::parse(&value).unwrap_or_else(|err| panic!("invalid ARENA_ROLES: {err}"))
                 })
                 .unwrap_or_default(),
+            cell_id: std::env::var("ARENA_CELL_ID")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .map(|value| {
+                    value
+                        .parse()
+                        .unwrap_or_else(|_| panic!("ARENA_CELL_ID must be a UUID"))
+                }),
             database_listener_url: std::env::var("DATABASE_LISTENER_URL")
                 .ok()
                 .filter(|value| !value.is_empty())

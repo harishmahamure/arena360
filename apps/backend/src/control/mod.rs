@@ -3,10 +3,12 @@
 //! Business operations never depend on it synchronously (§51).
 
 pub mod entitlement;
+pub mod lease;
 mod repository;
 
 use sqlx::{migrate::Migrator, PgPool};
 
+pub use lease::{LeaseClient, LeaseConfig, LeaseGrant, LeaseRepository};
 pub use repository::{CreateTenant, Repository, Tenant};
 
 static MIGRATOR: Migrator = sqlx::migrate!("migrations/control");

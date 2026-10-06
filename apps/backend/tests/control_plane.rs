@@ -2,7 +2,10 @@
 //! CONTROL_TEST_DATABASE_URL=... cargo test --test control_plane -- --ignored
 
 use chrono::{Duration, Utc};
-use gaming_cafe_api::control::{entitlement::EntitlementCache, CreateTenant, Repository};
+use gaming_cafe_api::control::{
+    entitlement::EntitlementCache, CreateTenant, LeaseClient, LeaseConfig, LeaseRepository,
+    Repository,
+};
 use gaming_cafe_api::{
     cache::NoopCache,
     config::{Roles, Settings},
@@ -14,6 +17,7 @@ use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
 #[tokio::test]
 #[ignore = "requires an isolated control-plane database"]
@@ -176,9 +180,94 @@ async fn authenticates_staff_and_invalidates_disabled_membership() {
     assert_eq!(challenge_count, 1);
 }
 
+#[tokio::test]
+#[ignore = "requires an isolated control-plane database"]
+async fn ownership_lease_fences_competing_cells_and_advances_generation() {
+    let database_url =
+        std::env::var("CONTROL_TEST_DATABASE_URL").expect("CONTROL_TEST_DATABASE_URL is required");
+    let pool = PgPoolOptions::new()
+        .max_connections(3)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    gaming_cafe_api::control::migrate(&pool).await.unwrap();
+
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let first_cell: uuid::Uuid =
+        sqlx::query_scalar("INSERT INTO cells (name, address) VALUES ($1, $2) RETURNING id")
+            .bind(format!("lease-a-{suffix}"))
+            .bind(format!("http://lease-a-{suffix}.internal"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let second_cell: uuid::Uuid =
+        sqlx::query_scalar("INSERT INTO cells (name, address) VALUES ($1, $2) RETURNING id")
+            .bind(format!("lease-b-{suffix}"))
+            .bind(format!("http://lease-b-{suffix}.internal"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let tenant = Repository::new(pool.clone())
+        .create_tenant(CreateTenant {
+            slug: format!("lease-{suffix}"),
+            name: "Lease test".into(),
+            timezone: "UTC".into(),
+            owner_cell: Some(first_cell),
+            subscription_plan: "trial".into(),
+            entitlements: json!({}),
+            trial_ends_at: Utc::now() + Duration::days(30),
+            entitlement_grace_until: Utc::now() + Duration::days(37),
+        })
+        .await
+        .unwrap();
+    let config = LeaseConfig {
+        lease_duration: StdDuration::from_secs(10),
+        renewal_interval: StdDuration::from_secs(2),
+        fence_before_expiry: StdDuration::from_secs(3),
+        reassignment_skew: StdDuration::from_secs(1),
+    };
+    let first_client = LeaseClient::new(pool.clone(), first_cell, config).unwrap();
+    let first_grant = first_client.acquire(tenant.id).await.unwrap();
+    assert_eq!(first_grant.ownership_generation, 1);
+    assert_eq!(first_client.writable_generation(tenant.id).unwrap(), 1);
+    assert!(first_client.ensure_writable(tenant.id, 2).is_err());
+
+    let repository = LeaseRepository::new(pool.clone());
+    assert!(repository
+        .acquire(tenant.id, second_cell, config)
+        .await
+        .is_err());
+
+    sqlx::query(
+        "UPDATE tenant_leases \
+         SET renewed_at = clock_timestamp() - INTERVAL '3 seconds', \
+             expires_at = clock_timestamp() - INTERVAL '2 seconds' \
+         WHERE tenant_id = $1",
+    )
+    .bind(tenant.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let second_grant = repository
+        .acquire(tenant.id, second_cell, config)
+        .await
+        .unwrap();
+    assert_eq!(second_grant.ownership_generation, 2);
+    assert!(first_client.renew(tenant.id).await.is_err());
+    assert!(first_client.writable_generation(tenant.id).is_err());
+    let owner: (uuid::Uuid, i64) =
+        sqlx::query_as("SELECT owner_cell, ownership_generation FROM tenants WHERE id = $1")
+            .bind(tenant.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(owner, (second_cell, 2));
+}
+
 fn test_settings(database_url: String) -> Settings {
     Settings {
         roles: Roles::ALL,
+        cell_id: None,
         database_url: database_url.clone(),
         control_database_url: Some(database_url.clone()),
         database_listener_url: database_url,

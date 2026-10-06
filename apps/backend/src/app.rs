@@ -31,6 +31,7 @@ use utoipa_swagger_ui::SwaggerUi;
 pub struct AppState {
     pub db: PgPool,
     pub control_db: Option<PgPool>,
+    pub leases: Option<Arc<crate::control::LeaseClient>>,
     pub cache: Arc<dyn CacheService>,
     pub settings: Arc<Settings>,
     pub metrics: Arc<crate::metrics::Metrics>,
@@ -81,6 +82,26 @@ pub async fn build_state() -> Arc<AppState> {
     } else {
         None
     };
+    let leases = if settings.roles.cell {
+        settings
+            .cell_id
+            .zip(control_db.clone())
+            .map(|(cell_id, pool)| {
+                Arc::new(
+                    crate::control::LeaseClient::new(
+                        pool,
+                        cell_id,
+                        crate::control::LeaseConfig::default(),
+                    )
+                    .expect("invalid ownership lease configuration"),
+                )
+            })
+    } else {
+        None
+    };
+    if let Some(client) = &leases {
+        client.clone().spawn_renewal();
+    }
     let cache = create_cache(settings.redis_url.as_deref()).await;
     let metrics = Arc::new(crate::metrics::Metrics::default());
     spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
@@ -249,6 +270,7 @@ pub async fn build_state() -> Arc<AppState> {
         ws_connections,
         db: pool,
         control_db,
+        leases,
         cache,
         settings,
         metrics,
