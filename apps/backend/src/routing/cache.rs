@@ -50,7 +50,7 @@ impl RoutingCache {
                       tenant.timezone
                FROM tenants tenant
                JOIN cells cell ON cell.id = tenant.owner_cell
-               WHERE tenant.state NOT IN ('DELETED', 'FAILED', 'COLD')
+               WHERE tenant.state NOT IN ('PROVISIONING', 'DELETED', 'FAILED', 'COLD')
                  AND cell.state <> 'OFFLINE'"#,
         )
         .fetch_all(&self.pool)
@@ -82,7 +82,7 @@ impl RoutingCache {
                FROM tenants tenant
                JOIN cells cell ON cell.id = tenant.owner_cell
                WHERE tenant.id = $1
-                 AND tenant.state NOT IN ('DELETED', 'FAILED', 'COLD')
+                 AND tenant.state NOT IN ('PROVISIONING', 'DELETED', 'FAILED', 'COLD')
                  AND cell.state <> 'OFFLINE'"#,
         )
         .bind(tenant_id)

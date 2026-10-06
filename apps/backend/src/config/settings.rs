@@ -4,6 +4,7 @@ use super::Roles;
 pub struct Settings {
     pub roles: Roles,
     pub cell_id: Option<uuid::Uuid>,
+    pub tenant_data_dir: std::path::PathBuf,
     pub database_url: String,
     pub control_database_url: Option<String>,
     pub database_listener_url: String,
@@ -50,6 +51,9 @@ impl Settings {
                         .parse()
                         .unwrap_or_else(|_| panic!("ARENA_CELL_ID must be a UUID"))
                 }),
+            tenant_data_dir: std::env::var("TENANT_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::path::PathBuf::from("data/tenants")),
             database_listener_url: std::env::var("DATABASE_LISTENER_URL")
                 .ok()
                 .filter(|value| !value.is_empty())

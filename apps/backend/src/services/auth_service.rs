@@ -983,6 +983,7 @@ mod access_token_tests {
         Arc::new(Settings {
             roles: crate::config::Roles::ALL,
             cell_id: None,
+            tenant_data_dir: std::path::PathBuf::from("data/tenants"),
             database_url: "postgres://localhost:5432/test".to_string(),
             control_database_url: None,
             database_listener_url: "postgres://localhost:5432/test".to_string(),

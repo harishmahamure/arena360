@@ -3,6 +3,7 @@
 
 mod db;
 mod migration;
+mod provisioning;
 mod retry;
 
 use sqlx::{migrate::Migrator, SqliteConnection, SqlitePool};
@@ -11,6 +12,10 @@ pub use db::{tenant_path, TenantDb, TenantDbConfig, TenantDbManager, TenantLease
 pub use migration::{
     MigrationContext, MigrationHook, MigrationOrchestrator, MigrationOrchestratorConfig,
     MigrationOutcome, MigrationState, PendingTenantMigration, PostgresMigrationState,
+};
+pub use provisioning::{
+    InitialSettingOverride, PostgresProvisioningControl, ProvisionTenant, ProvisionedTenant,
+    ProvisioningControl, TenantProvisioner,
 };
 pub use retry::{
     is_sqlite_busy, retry_foreground, BackgroundBackoff, SqliteBusyMetrics, SqliteRetryConfig,

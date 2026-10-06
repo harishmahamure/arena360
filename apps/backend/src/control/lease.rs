@@ -87,6 +87,27 @@ impl LeaseRepository {
         cell_id: Uuid,
         config: LeaseConfig,
     ) -> Result<LeaseGrant, AppError> {
+        self.acquire_with_activation(tenant_id, cell_id, config, true)
+            .await
+    }
+
+    pub async fn acquire_for_provisioning(
+        &self,
+        tenant_id: Uuid,
+        cell_id: Uuid,
+        config: LeaseConfig,
+    ) -> Result<LeaseGrant, AppError> {
+        self.acquire_with_activation(tenant_id, cell_id, config, false)
+            .await
+    }
+
+    async fn acquire_with_activation(
+        &self,
+        tenant_id: Uuid,
+        cell_id: Uuid,
+        config: LeaseConfig,
+        activate: bool,
+    ) -> Result<LeaseGrant, AppError> {
         let config = config.validate()?;
         let mut tx = self.pool.begin().await?;
         let cell_state: Option<String> =
@@ -171,16 +192,18 @@ impl LeaseRepository {
         .await?;
         sqlx::query(
             r#"UPDATE tenants
-               SET owner_cell = $2, ownership_generation = $3, state = 'ACTIVE',
+               SET owner_cell = $2, ownership_generation = $3,
+                   state = CASE WHEN $4 THEN 'ACTIVE' ELSE state END,
                    updated_at = clock_timestamp()
                WHERE id = $1"#,
         )
         .bind(tenant_id)
         .bind(cell_id)
         .bind(generation)
+        .bind(activate)
         .execute(&mut *tx)
         .await?;
-        if taking_ownership {
+        if taking_ownership && activate {
             sqlx::query("SELECT pg_notify($1, $2)")
                 .bind(crate::routing::ROUTING_CHANGED_CHANNEL)
                 .bind(tenant_id.to_string())
@@ -342,11 +365,25 @@ impl LeaseClient {
         })
     }
 
+    pub fn cell_id(&self) -> Uuid {
+        self.cell_id
+    }
+
     pub async fn acquire(&self, tenant_id: Uuid) -> Result<LeaseGrant, AppError> {
         let request_sent_at = Instant::now();
         let grant = self
             .repository
             .acquire(tenant_id, self.cell_id, self.config)
+            .await?;
+        self.store_acquired(grant.clone(), request_sent_at)?;
+        Ok(grant)
+    }
+
+    pub async fn acquire_for_provisioning(&self, tenant_id: Uuid) -> Result<LeaseGrant, AppError> {
+        let request_sent_at = Instant::now();
+        let grant = self
+            .repository
+            .acquire_for_provisioning(tenant_id, self.cell_id, self.config)
             .await?;
         self.store_acquired(grant.clone(), request_sent_at)?;
         Ok(grant)

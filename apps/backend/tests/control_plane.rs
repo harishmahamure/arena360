@@ -384,6 +384,7 @@ fn test_settings(database_url: String) -> Settings {
     Settings {
         roles: Roles::ALL,
         cell_id: None,
+        tenant_data_dir: std::path::PathBuf::from("data/tenants"),
         database_url: database_url.clone(),
         control_database_url: Some(database_url.clone()),
         database_listener_url: database_url,

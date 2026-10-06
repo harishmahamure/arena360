@@ -32,6 +32,8 @@ pub struct AppState {
     pub db: PgPool,
     pub control_db: Option<PgPool>,
     pub leases: Option<Arc<crate::control::LeaseClient>>,
+    pub tenant_dbs: Option<Arc<crate::tenancy::TenantDbManager>>,
+    pub tenant_provisioner: Option<Arc<crate::tenancy::TenantProvisioner>>,
     pub routing: Option<Arc<crate::routing::TenantRouter>>,
     pub cache: Arc<dyn CacheService>,
     pub settings: Arc<Settings>,
@@ -103,6 +105,33 @@ pub async fn build_state() -> Arc<AppState> {
     if let Some(client) = &leases {
         client.clone().spawn_renewal();
     }
+    let tenant_dbs = leases.as_ref().map(|leases| {
+        let manager = Arc::new(
+            crate::tenancy::TenantDbManager::new(
+                crate::tenancy::TenantDbConfig {
+                    root: settings.tenant_data_dir.clone(),
+                    ..crate::tenancy::TenantDbConfig::default()
+                },
+                leases.clone(),
+            )
+            .expect("invalid tenant database configuration"),
+        );
+        manager.clone().spawn_reaper();
+        manager
+    });
+    let tenant_provisioner = match (control_db.clone(), leases.clone()) {
+        (Some(control_pool), Some(leases)) => {
+            let control = Arc::new(crate::tenancy::PostgresProvisioningControl::new(
+                crate::control::Repository::new(control_pool),
+                leases,
+            ));
+            Some(Arc::new(crate::tenancy::TenantProvisioner::new(
+                settings.tenant_data_dir.clone(),
+                control,
+            )))
+        }
+        _ => None,
+    };
     let routing = if settings.roles.router {
         match (control_db.clone(), settings.control_database_url.clone()) {
             (Some(control_pool), Some(control_url)) => {
@@ -294,6 +323,8 @@ pub async fn build_state() -> Arc<AppState> {
         db: pool,
         control_db,
         leases,
+        tenant_dbs,
+        tenant_provisioner,
         routing,
         cache,
         settings,
