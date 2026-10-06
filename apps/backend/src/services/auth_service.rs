@@ -330,7 +330,12 @@ impl AuthService {
             None
         };
 
-        let token = self.generate_player_token(&user, device.id)?;
+        let token = self.generate_player_token_for(
+            &user,
+            device.id,
+            device.organization_id,
+            device.location_id,
+        )?;
 
         Ok(AuthResponseDto {
             accessToken: token,
@@ -375,25 +380,40 @@ impl AuthService {
     }
 
     pub fn generate_device_token(&self, device_id: Uuid) -> Result<String, AppError> {
+        self.generate_device_token_for(
+            device_id,
+            DEFAULT_ORGANIZATION_ID,
+            crate::models::DEFAULT_VENUE_LOCATION_ID,
+        )
+    }
+
+    pub fn generate_device_token_for(
+        &self,
+        device_id: Uuid,
+        tenant_id: Uuid,
+        location_id: Uuid,
+    ) -> Result<String, AppError> {
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_device_expiration);
         let id = device_id.to_string();
+        let tenant_id = tenant_id.to_string();
 
         let claims = JwtUserClaims {
             sub: id.clone(),
             permissions: vec![],
-            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            allowedTenants: vec![tenant_id.clone()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: id.clone(),
-            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
+            tenantId: tenant_id.clone(),
             roles: vec!["device".to_string()],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            orgIds: vec![tenant_id],
             deviceId: Some(id),
+            locationId: Some(location_id.to_string()),
         };
 
         encode(
@@ -405,25 +425,42 @@ impl AuthService {
     }
 
     pub fn generate_player_token(&self, user: &User, device_id: Uuid) -> Result<String, AppError> {
+        self.generate_player_token_for(
+            user,
+            device_id,
+            DEFAULT_ORGANIZATION_ID,
+            crate::models::DEFAULT_VENUE_LOCATION_ID,
+        )
+    }
+
+    pub fn generate_player_token_for(
+        &self,
+        user: &User,
+        device_id: Uuid,
+        tenant_id: Uuid,
+        location_id: Uuid,
+    ) -> Result<String, AppError> {
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_player_expiration);
         let role = user.role.clone().unwrap_or_else(|| "player".to_string());
+        let tenant_id = tenant_id.to_string();
 
         let claims = JwtUserClaims {
             sub: user.id.to_string(),
             permissions: vec![],
-            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            allowedTenants: vec![tenant_id.clone()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: user.id.to_string(),
-            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
+            tenantId: tenant_id.clone(),
             roles: vec![role],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            orgIds: vec![tenant_id],
             deviceId: Some(device_id.to_string()),
+            locationId: Some(location_id.to_string()),
         };
 
         encode(
@@ -667,6 +704,7 @@ impl AuthService {
             appId: "game-zone-backend".to_string(),
             orgIds: org_ids,
             deviceId: None,
+            locationId: None,
         };
 
         encode(
@@ -887,5 +925,30 @@ mod access_token_tests {
             "expected ~7d TTL, got {ttl_secs}s"
         );
         assert!(ttl_secs > 15 * 60, "admin must not use hardcoded 15m TTL");
+    }
+
+    #[tokio::test]
+    async fn device_token_carries_its_tenant_and_location() {
+        let settings = test_settings("15m");
+        let decoding_key = DecodingKey::from_secret(settings.jwt_secret.as_bytes());
+        let auth = test_auth_service(settings);
+        let device_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let location_id = Uuid::new_v4();
+
+        let token = auth
+            .generate_device_token_for(device_id, tenant_id, location_id)
+            .expect("device token");
+        let mut validation = Validation::default();
+        validation.validate_exp = false;
+        validation.set_audience(&["gamezone"]);
+        validation.set_issuer(&["gamezone"]);
+        let claims = decode::<JwtUserClaims>(&token, &decoding_key, &validation)
+            .expect("decode")
+            .claims;
+
+        assert_eq!(claims.deviceId, Some(device_id.to_string()));
+        assert_eq!(claims.tenantId, tenant_id.to_string());
+        assert_eq!(claims.locationId, Some(location_id.to_string()));
     }
 }

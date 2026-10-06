@@ -23,6 +23,7 @@ fn claims(kind: &str, permissions: &[&str]) -> JwtUserClaims {
         exp: None,
         appId: "test".into(),
         deviceId: None,
+        locationId: None,
     }
 }
 

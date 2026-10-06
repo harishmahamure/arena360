@@ -17,6 +17,7 @@ fn admin_claims() -> JwtUserClaims {
         appId: "test".to_string(),
         orgIds: vec![],
         deviceId: None,
+        locationId: None,
     }
 }
 

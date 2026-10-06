@@ -159,6 +159,8 @@ pub struct JwtUserClaims {
     pub orgIds: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deviceId: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locationId: Option<String>,
 }
 
 impl JwtUserClaims {
@@ -217,6 +219,7 @@ mod jwt_tests {
             appId: "game-zone-backend".to_string(),
             orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             deviceId: None,
+            locationId: None,
         }
     }
 
@@ -236,6 +239,7 @@ mod jwt_tests {
             appId: "game-zone-kiosk".to_string(),
             orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
             deviceId: Some(device_id.to_string()),
+            locationId: None,
         }
     }
 

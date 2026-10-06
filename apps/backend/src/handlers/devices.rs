@@ -176,7 +176,10 @@ pub async fn provision_device(
         .devices
         .provision(dto, claims.user_id_uuid(), organization_id(&claims)?)
         .await?;
-    let token = state.auth.generate_device_token(device.id)?;
+    let token =
+        state
+            .auth
+        .generate_device_token_for(device.id, device.organization_id, device.location_id)?;
     ok(DeviceRegisterResponseDto {
         accessToken: token,
         device: RegisteredDeviceDto::from(device),

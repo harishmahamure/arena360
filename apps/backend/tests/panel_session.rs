@@ -39,6 +39,7 @@ async fn rejects_disabled_deleted_role_changed_and_revoked_membership_sessions()
         exp: Some(chrono::Utc::now().timestamp() + 60),
         appId: "test".into(),
         deviceId: None,
+        locationId: None,
     };
     assert!(panel_session_active(&pool, &claims).await.unwrap());
     for update in [
