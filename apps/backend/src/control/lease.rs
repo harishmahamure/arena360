@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -89,7 +90,7 @@ impl LeaseRepository {
         let config = config.validate()?;
         let mut tx = self.pool.begin().await?;
         let cell_state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM cells WHERE id = $1")
+            sqlx::query_scalar("SELECT state FROM cells WHERE id = $1 FOR SHARE")
                 .bind(cell_id)
                 .fetch_optional(&mut *tx)
                 .await?;
@@ -217,6 +218,98 @@ impl LeaseRepository {
         .await?;
         Ok(grant)
     }
+
+    pub async fn handoff(
+        &self,
+        tenant_id: Uuid,
+        source_cell: Uuid,
+        source_generation: i64,
+        target_cell: Uuid,
+        config: LeaseConfig,
+    ) -> Result<LeaseGrant, AppError> {
+        let config = config.validate()?;
+        if source_cell == target_cell {
+            return Err(AppError::BadRequest(
+                "Lease handoff requires a different target cell".into(),
+            ));
+        }
+
+        let mut tx = self.pool.begin().await?;
+        let target_state: Option<String> =
+            sqlx::query_scalar("SELECT state FROM cells WHERE id = $1 FOR SHARE")
+                .bind(target_cell)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if target_state.as_deref() != Some("ACTIVE") {
+            return Err(AppError::Forbidden("Target cell is not active".into()));
+        }
+
+        let tenant: Option<(Option<Uuid>, i64, String)> = sqlx::query_as(
+            "SELECT owner_cell, ownership_generation, state \
+             FROM tenants WHERE id = $1 FOR UPDATE",
+        )
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((tenant_owner, tenant_generation, tenant_state)) = tenant else {
+            return Err(AppError::NotFound("Tenant not found".into()));
+        };
+        let lease: Option<(Uuid, i64)> = sqlx::query_as(
+            "SELECT owner_cell, ownership_generation \
+             FROM tenant_leases WHERE tenant_id = $1 FOR UPDATE",
+        )
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if tenant_state == "DELETED" || tenant_state == "FAILED" {
+            return Err(AppError::Forbidden(
+                "Tenant cannot transfer ownership".into(),
+            ));
+        }
+        if tenant_owner != Some(source_cell)
+            || tenant_generation != source_generation
+            || lease != Some((source_cell, source_generation))
+        {
+            return Err(AppError::Conflict(
+                "Source cell no longer owns this tenant generation".into(),
+            ));
+        }
+
+        let target_generation = source_generation
+            .checked_add(1)
+            .ok_or_else(|| AppError::Internal("ownership generation overflow".into()))?;
+        let lease_millis = duration_millis(config.lease_duration)?;
+        let grant = sqlx::query_as::<_, LeaseGrant>(
+            r#"UPDATE tenant_leases
+               SET owner_cell = $2,
+                   ownership_generation = $3,
+                   renewed_at = clock_timestamp(),
+                   expires_at = clock_timestamp() + $4 * INTERVAL '1 millisecond'
+               WHERE tenant_id = $1
+               RETURNING tenant_id, owner_cell, ownership_generation, expires_at"#,
+        )
+        .bind(tenant_id)
+        .bind(target_cell)
+        .bind(target_generation)
+        .bind(lease_millis)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"UPDATE tenants
+               SET owner_cell = $2,
+                   ownership_generation = $3,
+                   state = 'ACTIVE',
+                   updated_at = clock_timestamp()
+               WHERE id = $1"#,
+        )
+        .bind(tenant_id)
+        .bind(target_cell)
+        .bind(target_generation)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(grant)
+    }
 }
 
 #[derive(Clone)]
@@ -243,7 +336,7 @@ impl LeaseClient {
             .repository
             .acquire(tenant_id, self.cell_id, self.config)
             .await?;
-        self.store(grant.clone(), request_sent_at)?;
+        self.store_acquired(grant.clone(), request_sent_at)?;
         Ok(grant)
     }
 
@@ -261,7 +354,7 @@ impl LeaseClient {
                 .remove(&tenant_id);
             return Err(AppError::Forbidden("Ownership lease was fenced".into()));
         };
-        self.store(grant.clone(), request_sent_at)?;
+        self.store_renewed(grant.clone(), request_sent_at)?;
         Ok(grant)
     }
 
@@ -294,6 +387,32 @@ impl LeaseClient {
         let generation = self.current_generation(tenant_id)?;
         self.ensure_writable(tenant_id, generation)?;
         Ok(generation)
+    }
+
+    /// Fence the local writer, flush its remaining WAL, then atomically transfer ownership.
+    ///
+    /// The local lease stays fenced if flushing or the control-plane transaction fails.
+    pub async fn handoff<F, Fut>(
+        &self,
+        tenant_id: Uuid,
+        target_cell: Uuid,
+        flush_remaining_wal: F,
+    ) -> Result<LeaseGrant, AppError>
+    where
+        F: FnOnce(i64) -> Fut,
+        Fut: Future<Output = Result<(), AppError>>,
+    {
+        let generation = self.fence_for_handoff(tenant_id)?;
+        flush_remaining_wal(generation).await?;
+        self.repository
+            .handoff(
+                tenant_id,
+                self.cell_id,
+                generation,
+                target_cell,
+                self.config,
+            )
+            .await
     }
 
     pub fn spawn_renewal(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
@@ -331,12 +450,47 @@ impl LeaseClient {
             .ok_or_else(|| AppError::Forbidden("Tenant has no ownership lease".into()))
     }
 
-    fn store(&self, grant: LeaseGrant, request_sent_at: Instant) -> Result<(), AppError> {
+    fn fence_for_handoff(&self, tenant_id: Uuid) -> Result<i64, AppError> {
+        let mut leases = self
+            .leases
+            .write()
+            .map_err(|_| AppError::Internal("lease state lock poisoned".into()))?;
+        let lease = leases
+            .remove(&tenant_id)
+            .ok_or_else(|| AppError::Forbidden("Tenant has no ownership lease".into()))?;
+        if !lease.is_writable_at(Instant::now()) {
+            return Err(AppError::Forbidden(
+                "Tenant ownership lease is self-fenced".into(),
+            ));
+        }
+        Ok(lease.grant.ownership_generation)
+    }
+
+    fn store_acquired(&self, grant: LeaseGrant, request_sent_at: Instant) -> Result<(), AppError> {
         let measured = MeasuredLease::new(grant, request_sent_at, self.config);
+        let tenant_id = measured.grant.tenant_id;
         self.leases
             .write()
             .map_err(|_| AppError::Internal("lease state lock poisoned".into()))?
-            .insert(measured.grant.tenant_id, measured);
+            .insert(tenant_id, measured);
+        Ok(())
+    }
+
+    fn store_renewed(&self, grant: LeaseGrant, request_sent_at: Instant) -> Result<(), AppError> {
+        let mut leases = self
+            .leases
+            .write()
+            .map_err(|_| AppError::Internal("lease state lock poisoned".into()))?;
+        let still_held = leases.get(&grant.tenant_id).is_some_and(|current| {
+            current.grant.ownership_generation == grant.ownership_generation
+        });
+        if !still_held {
+            return Err(AppError::Forbidden(
+                "Ownership lease was fenced for handoff".into(),
+            ));
+        }
+        let measured = MeasuredLease::new(grant, request_sent_at, self.config);
+        leases.insert(measured.grant.tenant_id, measured);
         Ok(())
     }
 }
@@ -392,5 +546,21 @@ mod tests {
             reassignment_skew: Duration::ZERO,
         };
         assert!(config.validate().is_err());
+    }
+
+    #[tokio::test]
+    async fn in_flight_renewal_cannot_restore_a_handoff_fence() {
+        let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
+        let client = LeaseClient::new(pool, Uuid::new_v4(), LeaseConfig::default()).unwrap();
+        let grant = grant();
+        client
+            .store_acquired(grant.clone(), Instant::now())
+            .unwrap();
+        assert_eq!(
+            client.fence_for_handoff(grant.tenant_id).unwrap(),
+            grant.ownership_generation
+        );
+        assert!(client.store_renewed(grant.clone(), Instant::now()).is_err());
+        assert!(client.writable_generation(grant.tenant_id).is_err());
     }
 }

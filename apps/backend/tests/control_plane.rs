@@ -255,13 +255,65 @@ async fn ownership_lease_fences_competing_cells_and_advances_generation() {
     assert_eq!(second_grant.ownership_generation, 2);
     assert!(first_client.renew(tenant.id).await.is_err());
     assert!(first_client.writable_generation(tenant.id).is_err());
-    let owner: (uuid::Uuid, i64) =
+    let owner_after_takeover: (uuid::Uuid, i64) =
         sqlx::query_as("SELECT owner_cell, ownership_generation FROM tenants WHERE id = $1")
             .bind(tenant.id)
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(owner, (second_cell, 2));
+    assert_eq!(owner_after_takeover, (second_cell, 2));
+
+    let second_client = LeaseClient::new(pool.clone(), second_cell, config).unwrap();
+    assert_eq!(
+        second_client
+            .acquire(tenant.id)
+            .await
+            .unwrap()
+            .ownership_generation,
+        2
+    );
+    let fenced_client = second_client.clone();
+    let handoff = second_client
+        .handoff(tenant.id, first_cell, move |generation| async move {
+            assert_eq!(generation, 2);
+            assert!(fenced_client.writable_generation(tenant.id).is_err());
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert_eq!(handoff.owner_cell, first_cell);
+    assert_eq!(handoff.ownership_generation, 3);
+    let owner_after_handoff: (uuid::Uuid, i64) =
+        sqlx::query_as("SELECT owner_cell, ownership_generation FROM tenants WHERE id = $1")
+            .bind(tenant.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(owner_after_handoff, (first_cell, 3));
+    assert_eq!(
+        first_client
+            .acquire(tenant.id)
+            .await
+            .unwrap()
+            .ownership_generation,
+        3
+    );
+    assert!(first_client
+        .handoff(tenant.id, second_cell, |_| async {
+            Err(gaming_cafe_api::error::AppError::Internal(
+                "simulated WAL upload failure".into(),
+            ))
+        })
+        .await
+        .is_err());
+    let owner_after_failed_flush: (uuid::Uuid, i64) =
+        sqlx::query_as("SELECT owner_cell, ownership_generation FROM tenants WHERE id = $1")
+            .bind(tenant.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(owner_after_failed_flush, (first_cell, 3));
+    assert!(first_client.writable_generation(tenant.id).is_err());
 }
 
 fn test_settings(database_url: String) -> Settings {
