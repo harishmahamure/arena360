@@ -120,9 +120,12 @@ M1 verified: control-plane integration tests cover tenant time zones, signed ent
   - Done: handoff first installs an in-memory fence that cannot be undone by an in-flight renewal, then runs the WAL flush/upload hook. The control transaction locks the tenant and lease, validates the source generation and active target, and atomically switches routing ownership, lease ownership, and the incremented generation without waiting for expiry. Failures leave the old client fenced and never switch ownership.
 - [x] API-0012: Routing cache (in-memory, refreshed from the control plane, invalidated on ownership change), plus a router that proxies HTTP, SSE, and WebSocket traffic to the owner cell. In single-process mode it dispatches in-process. — M
   - Done: authenticated tenant requests resolve through a PostgreSQL-backed in-memory routing cache carrying owner, generation, schema version, and time zone. Transactional ownership notifications refresh entries immediately, with periodic full refresh for recovery. Local owners dispatch in-process; dedicated routers and non-owner cells stream HTTP/SSE request and response bodies or bridge WebSocket frames to the owner. A routed-request marker prevents stale-cache proxy loops.
-- [ ] TEST-0010: Two cell processes attempt to own one tenant. Only the current generation writes. A cell cut off from PostgreSQL stops writing before its lease expires. Reassignment never happens before expiry plus the skew margin. Lease timings are configurable so tests run in seconds. — M
+- [x] TEST-0010: Two cell processes attempt to own one tenant. Only the current generation writes. A cell cut off from PostgreSQL stops writing before its lease expires. Reassignment never happens before expiry plus the skew margin. Lease timings are configurable so tests run in seconds. — M
+  - Done: independent cell clients race on one tenant and exactly one generation becomes writable. A separate owner pool is then closed to simulate control-plane cutoff: writes continue inside the measured safety window, self-fence before database expiry, and replacement remains blocked until expiry plus skew before acquiring the next generation.
 
 **Done when:** TEST-0010 passes; requests for a tenant reach its owner cell over HTTP, SSE, and WebSocket; stopping the control plane for less than the fencing window doesn't interrupt writes.
+
+M2 verified: timed multi-cell fencing passes with second-scale configuration; HTTP/SSE streaming and WebSocket frame bridging are exercised against live local servers; routing decisions and ownership-change notifications are covered by control-plane integration tests.
 
 ---
 
