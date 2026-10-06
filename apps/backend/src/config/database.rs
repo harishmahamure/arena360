@@ -5,10 +5,13 @@ use tracing::info;
 use super::Settings;
 
 pub async fn create_pool(settings: &Settings) -> PgPool {
-    let connect_options: PgConnectOptions = settings
-        .database_url
+    create_pool_for(&settings.database_url, settings).await
+}
+
+pub async fn create_pool_for(database_url: &str, settings: &Settings) -> PgPool {
+    let connect_options: PgConnectOptions = database_url
         .parse::<PgConnectOptions>()
-        .expect("Invalid DATABASE_URL")
+        .expect("Invalid PostgreSQL database URL")
         .statement_cache_capacity(0);
 
     let pool = PgPoolOptions::new()

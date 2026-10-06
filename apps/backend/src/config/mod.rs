@@ -2,7 +2,7 @@ mod database;
 mod roles;
 mod settings;
 
-pub use database::{create_pool, ping};
+pub use database::{create_pool, create_pool_for, ping};
 pub use roles::Roles;
 pub use settings::Settings;
 

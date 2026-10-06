@@ -52,7 +52,12 @@ pub async fn auth_middleware(
         .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
 
     let claims = decode_token(&state, token)?;
-    if !panel_session_active(&state.db, &claims).await? {
+    let session_active = if let Some(control_db) = &state.control_db {
+        control_panel_session_active(control_db, &claims).await?
+    } else {
+        panel_session_active(&state.db, &claims).await?
+    };
+    if !session_active {
         return Err(AppError::Unauthorized(
             "Account or organization access changed; sign in again".to_string(),
         ));
@@ -147,6 +152,54 @@ pub async fn panel_session_active(
         return Ok(false);
     }
     let current = crate::access::effective(pool, organization_id, user_id).await?;
+    let mut issued = claims.permissions.clone();
+    issued.sort();
+    issued.dedup();
+    Ok(current == issued)
+}
+
+pub async fn control_panel_session_active(
+    pool: &sqlx::PgPool,
+    claims: &JwtUserClaims,
+) -> Result<bool, sqlx::Error> {
+    if !claims.is_admin_or_staff() {
+        return Ok(true);
+    }
+    let Some(user_id) = claims.user_id_uuid() else {
+        return Ok(false);
+    };
+    let Ok(tenant_id) = Uuid::parse_str(&claims.tenantId) else {
+        return Ok(false);
+    };
+    let row = sqlx::query_as::<_, (serde_json::Value,)>(
+        r#"SELECT m.permissions
+           FROM users u
+           JOIN organization_memberships m ON m.user_id = u.id
+           JOIN tenants t ON t.id = m.tenant_id
+             AND t.state NOT IN ('DELETED', 'FAILED')
+           WHERE u.id = $1
+             AND u.is_active
+             AND u.deleted_at IS NULL
+             AND m.tenant_id = $2
+             AND m.is_active
+             AND m.role = ANY($3)"#,
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(&claims.roles)
+    .fetch_optional(pool)
+    .await?;
+    let Some((permissions,)) = row else {
+        return Ok(false);
+    };
+    let mut current: Vec<String> = permissions
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|permission| permission.as_str().map(str::to_string))
+        .collect();
+    current.sort();
+    current.dedup();
     let mut issued = claims.permissions.clone();
     issued.sort();
     issued.dedup();

@@ -23,6 +23,7 @@ use crate::validation::{normalize_username, trim_secret};
 
 pub struct AuthService {
     pool: PgPool,
+    control_pool: Option<PgPool>,
     users: Arc<UserService>,
     session_repo: SessionRepository,
     shift_repo: ShiftRepository,
@@ -39,12 +40,18 @@ impl AuthService {
     ) -> Self {
         Self {
             pool: pool.clone(),
+            control_pool: None,
             users,
             session_repo: SessionRepository::new(pool.clone()),
             shift_repo: ShiftRepository::new(pool),
             balances,
             settings,
         }
+    }
+
+    pub fn with_control_pool(mut self, control_pool: Option<PgPool>) -> Self {
+        self.control_pool = control_pool;
+        self
     }
 
     pub async fn login_admin(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
@@ -95,8 +102,25 @@ impl AuthService {
                 Uuid::new_v4().simple()
             );
             let token_hash = Self::panel_challenge_hash(&challenge_token);
-            sqlx::query(
-                r#"INSERT INTO panel_auth_challenges
+            if let Some(pool) = &self.control_pool {
+                sqlx::query(
+                    r#"INSERT INTO auth_challenges
+                        (token_hash, user_id, kind, expires_at, attempts, created_at)
+                       VALUES ($1, $2, 'PANEL_MFA', $3, 0, NOW())
+                       ON CONFLICT (user_id, kind) DO UPDATE SET
+                         token_hash = EXCLUDED.token_hash,
+                         expires_at = EXCLUDED.expires_at,
+                         attempts = 0,
+                         created_at = NOW()"#,
+                )
+                .bind(token_hash)
+                .bind(user.id)
+                .bind(expires_at)
+                .execute(pool)
+                .await?;
+            } else {
+                sqlx::query(
+                    r#"INSERT INTO panel_auth_challenges
                     ("tokenHash", "userId", "expiresAt", attempts, "createdAt")
                    VALUES ($1, $2, $3, 0, NOW())
                    ON CONFLICT ("userId") DO UPDATE SET
@@ -104,12 +128,13 @@ impl AuthService {
                      "expiresAt" = EXCLUDED."expiresAt",
                      attempts = 0,
                      "createdAt" = NOW()"#,
-            )
-            .bind(token_hash)
-            .bind(user.id)
-            .bind(expires_at)
-            .execute(&self.pool)
-            .await?;
+                )
+                .bind(token_hash)
+                .bind(user.id)
+                .bind(expires_at)
+                .execute(&self.pool)
+                .await?;
+            }
             return Ok(PanelLoginResponseDto::MfaRequired {
                 challenge_token,
                 expires_at,
@@ -124,19 +149,37 @@ impl AuthService {
         dto: PanelMfaDto,
     ) -> Result<PanelLoginResponseDto, AppError> {
         let token_hash = Self::panel_challenge_hash(dto.challengeToken.trim());
-        let mut tx = self.pool.begin().await?;
-        let challenge: Option<(Uuid, chrono::DateTime<Utc>, i32)> = sqlx::query_as(
-            r#"SELECT "userId", "expiresAt", attempts
-               FROM panel_auth_challenges WHERE "tokenHash" = $1 FOR UPDATE"#,
-        )
-        .bind(&token_hash)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let pool = self.control_pool.as_ref().unwrap_or(&self.pool);
+        let mut tx = pool.begin().await?;
+        let challenge: Option<(Uuid, chrono::DateTime<Utc>, i32)> = if self.control_pool.is_some() {
+            sqlx::query_as(
+                r#"SELECT user_id, expires_at, attempts
+                       FROM auth_challenges
+                       WHERE token_hash = $1 AND kind = 'PANEL_MFA'
+                       FOR UPDATE"#,
+            )
+            .bind(&token_hash)
+            .fetch_optional(&mut *tx)
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"SELECT "userId", "expiresAt", attempts
+                       FROM panel_auth_challenges WHERE "tokenHash" = $1 FOR UPDATE"#,
+            )
+            .bind(&token_hash)
+            .fetch_optional(&mut *tx)
+            .await?
+        };
         let Some((user_id, expires_at, attempts)) = challenge else {
             return Err(AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"));
         };
         if expires_at <= Utc::now() || attempts >= 5 {
-            sqlx::query(r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#)
+            let delete_sql = if self.control_pool.is_some() {
+                "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
+            } else {
+                r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#
+            };
+            sqlx::query(delete_sql)
                 .bind(&token_hash)
                 .execute(&mut *tx)
                 .await?;
@@ -144,9 +187,9 @@ impl AuthService {
             return Err(AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"));
         }
         let user = self
-            .users
-            .get_by_id(user_id)
-            .await
+            .identity_user_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"))
             .map_err(|_| AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"))?;
 
         if !matches!(user.role.as_deref(), Some("admin" | "staff")) || !user.is_active {
@@ -158,24 +201,38 @@ impl AuthService {
             .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_MFA"))?;
         if !verify_totp_code(secret, dto.code.trim(), &user.username)? {
             if attempts >= 4 {
-                sqlx::query(r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#)
+                let delete_sql = if self.control_pool.is_some() {
+                    "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
+                } else {
+                    r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#
+                };
+                sqlx::query(delete_sql)
                     .bind(&token_hash)
                     .execute(&mut *tx)
                     .await?;
             } else {
-                sqlx::query(
+                let update_sql = if self.control_pool.is_some() {
+                    "UPDATE auth_challenges SET attempts = attempts + 1 \
+                     WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
+                } else {
                     r#"UPDATE panel_auth_challenges SET attempts = attempts + 1
-                       WHERE "tokenHash" = $1"#,
-                )
-                .bind(&token_hash)
-                .execute(&mut *tx)
-                .await?;
+                       WHERE "tokenHash" = $1"#
+                };
+                sqlx::query(update_sql)
+                    .bind(&token_hash)
+                    .execute(&mut *tx)
+                    .await?;
             }
             tx.commit().await?;
             return Err(AppError::unauthorized_code("AUTH_INVALID_MFA"));
         }
 
-        sqlx::query(r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#)
+        let delete_sql = if self.control_pool.is_some() {
+            "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
+        } else {
+            r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#
+        };
+        sqlx::query(delete_sql)
             .bind(&token_hash)
             .execute(&mut *tx)
             .await?;
@@ -190,8 +247,7 @@ impl AuthService {
 
     async fn authenticate_panel(&self, username: &str, password: &str) -> Result<User, AppError> {
         let user = self
-            .users
-            .find_by_username_for_auth(username)
+            .identity_user_by_username(username, None)
             .await?
             .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
         if !matches!(user.role.as_deref(), Some("admin" | "staff")) {
@@ -207,8 +263,29 @@ impl AuthService {
         user: &User,
     ) -> Result<PanelLoginResponseDto, AppError> {
         let token = self.generate_access_token(user).await?;
-        let organization: Uuid = sqlx::query_scalar(r#"SELECT "organizationId" FROM organization_memberships WHERE "userId"=$1 AND "isActive" AND EXISTS (SELECT 1 FROM organizations o WHERE o.id="organizationId" AND o."isActive") ORDER BY "createdAt" LIMIT 1"#).bind(user.id).fetch_one(&self.pool).await?;
-        let permissions = crate::access::effective(&self.pool, organization, user.id).await?;
+        let permissions = if let Some(pool) = &self.control_pool {
+            sqlx::query_scalar::<_, serde_json::Value>(
+                r#"SELECT m.permissions
+                   FROM organization_memberships m
+                   JOIN tenants t ON t.id = m.tenant_id
+                   WHERE m.user_id = $1 AND m.role = $2 AND m.is_active
+                     AND t.state NOT IN ('DELETED', 'FAILED')
+                   ORDER BY m.created_at
+                   LIMIT 1"#,
+            )
+            .bind(user.id)
+            .bind(user.role.as_deref())
+            .fetch_one(pool)
+            .await?
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|permission| permission.as_str().map(str::to_string))
+            .collect()
+        } else {
+            let organization: Uuid = sqlx::query_scalar(r#"SELECT "organizationId" FROM organization_memberships WHERE "userId"=$1 AND "isActive" AND EXISTS (SELECT 1 FROM organizations o WHERE o.id="organizationId" AND o."isActive") ORDER BY "createdAt" LIMIT 1"#).bind(user.id).fetch_one(&self.pool).await?;
+            crate::access::effective(&self.pool, organization, user.id).await?
+        };
         let next_step = if permissions.iter().any(|p| p == "shifts:write")
             && !permissions.iter().any(|p| p == "access:manage")
         {
@@ -477,8 +554,7 @@ impl AuthService {
         password: &str,
     ) -> Result<User, AppError> {
         let user = self
-            .users
-            .find_by_username_for_auth(username)
+            .identity_user_by_username(username, Some("staff"))
             .await?
             .ok_or_else(|| {
                 tracing::error!(
@@ -511,6 +587,75 @@ impl AuthService {
         }
 
         Ok(user)
+    }
+
+    async fn identity_user_by_username(
+        &self,
+        username: &str,
+        required_role: Option<&str>,
+    ) -> Result<Option<User>, AppError> {
+        let Some(pool) = &self.control_pool else {
+            return self.users.find_by_username_for_auth(username).await;
+        };
+
+        sqlx::query_as::<_, User>(
+            r#"SELECT u.id, u.email, u.username, u.password_hash, u.is_active,
+                      u.first_name, u.last_name, u.phone_number, membership.role,
+                      0::float8 AS credit_limit,
+                      NULL::text AS session_otp_id, NULL::text AS session_otp,
+                      u.totp_secret, u.totp_enabled,
+                      NULL::uuid AS created_by, NULL::uuid AS updated_by,
+                      u.created_at, u.updated_at, u.deleted_at, u.avatar_url
+               FROM users u
+               JOIN LATERAL (
+                 SELECT m.role
+                 FROM organization_memberships m
+                 JOIN tenants t ON t.id = m.tenant_id
+                 WHERE m.user_id = u.id
+                   AND m.is_active
+                   AND t.state NOT IN ('DELETED', 'FAILED')
+                   AND ($2::text IS NULL OR m.role = $2)
+                 ORDER BY m.created_at
+                 LIMIT 1
+               ) membership ON TRUE
+               WHERE u.username = $1 AND u.deleted_at IS NULL"#,
+        )
+        .bind(username)
+        .bind(required_role)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)
+    }
+
+    async fn identity_user_by_id(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
+        let Some(pool) = &self.control_pool else {
+            return self.users.get_by_id(user_id).await.map(Some);
+        };
+
+        sqlx::query_as::<_, User>(
+            r#"SELECT u.id, u.email, u.username, u.password_hash, u.is_active,
+                      u.first_name, u.last_name, u.phone_number, membership.role,
+                      0::float8 AS credit_limit,
+                      NULL::text AS session_otp_id, NULL::text AS session_otp,
+                      u.totp_secret, u.totp_enabled,
+                      NULL::uuid AS created_by, NULL::uuid AS updated_by,
+                      u.created_at, u.updated_at, u.deleted_at, u.avatar_url
+               FROM users u
+               JOIN LATERAL (
+                 SELECT m.role
+                 FROM organization_memberships m
+                 JOIN tenants t ON t.id = m.tenant_id
+                 WHERE m.user_id = u.id AND m.is_active
+                   AND t.state NOT IN ('DELETED', 'FAILED')
+                 ORDER BY m.created_at
+                 LIMIT 1
+               ) membership ON TRUE
+               WHERE u.id = $1 AND u.deleted_at IS NULL"#,
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)
     }
 
     pub async fn authenticate_staff_with_totp(
@@ -556,8 +701,7 @@ impl AuthService {
         password: &str,
     ) -> Result<User, AppError> {
         let user = self
-            .users
-            .find_by_username_for_auth(username)
+            .identity_user_by_username(username, Some("admin"))
             .await?
             .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
 
@@ -640,22 +784,38 @@ impl AuthService {
     }
 
     async fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
-        let mut memberships: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
-            r#"SELECT "organizationId", permissions
+        let mut memberships: Vec<(Uuid, serde_json::Value)> = if let Some(pool) = &self.control_pool
+        {
+            sqlx::query_as(
+                r#"SELECT m.tenant_id, m.permissions
+                       FROM organization_memberships m
+                       JOIN tenants t ON t.id = m.tenant_id
+                       WHERE m.user_id = $1 AND m.role = $2 AND m.is_active
+                         AND t.state NOT IN ('DELETED', 'FAILED')
+                       ORDER BY m.created_at"#,
+            )
+            .bind(user.id)
+            .bind(user.role.as_deref())
+            .fetch_all(pool)
+            .await?
+        } else {
+            sqlx::query_as(
+                    r#"SELECT "organizationId", permissions
                FROM organization_memberships
                WHERE "userId" = $1 AND "isActive" = TRUE
                  AND EXISTS (SELECT 1 FROM organizations o WHERE o.id="organizationId" AND o."isActive")
                ORDER BY "createdAt""#,
-        )
-        .bind(user.id)
-        .fetch_all(&self.pool)
-        .await?;
+                )
+                .bind(user.id)
+                .fetch_all(&self.pool)
+                .await?
+        };
         if memberships.is_empty() {
             return Err(AppError::Forbidden(
                 "User has no active organization membership".to_string(),
             ));
         }
-        if matches!(user.role.as_deref(), Some("admin" | "staff")) {
+        if self.control_pool.is_none() && matches!(user.role.as_deref(), Some("admin" | "staff")) {
             let grants = crate::access::effective(&self.pool, memberships[0].0, user.id).await?;
             memberships[0].1 = serde_json::json!(grants);
         }
@@ -823,6 +983,7 @@ mod access_token_tests {
         Arc::new(Settings {
             roles: crate::config::Roles::ALL,
             database_url: "postgres://localhost:5432/test".to_string(),
+            control_database_url: None,
             database_listener_url: "postgres://localhost:5432/test".to_string(),
             database_min_connections: 0,
             database_max_connections: 1,

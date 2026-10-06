@@ -11,7 +11,7 @@ use tower_http::{
 };
 
 use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
-use crate::config::{create_pool, load_dotenv, Settings};
+use crate::config::{create_pool, create_pool_for, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::{auth_middleware, global_rate_limit, request_context, request_deadline};
 use crate::openapi::ApiDoc;
@@ -30,6 +30,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 pub struct AppState {
     pub db: PgPool,
+    pub control_db: Option<PgPool>,
     pub cache: Arc<dyn CacheService>,
     pub settings: Arc<Settings>,
     pub metrics: Arc<crate::metrics::Metrics>,
@@ -71,6 +72,15 @@ pub async fn build_state() -> Arc<AppState> {
     load_dotenv();
     let settings = Arc::new(Settings::from_env());
     let pool = create_pool(settings.as_ref()).await;
+    let control_db = if let Some(url) = settings.control_database_url.as_deref() {
+        let control_pool = create_pool_for(url, settings.as_ref()).await;
+        crate::control::migrate(&control_pool)
+            .await
+            .expect("control-plane migrations failed");
+        Some(control_pool)
+    } else {
+        None
+    };
     let cache = create_cache(settings.redis_url.as_deref()).await;
     let metrics = Arc::new(crate::metrics::Metrics::default());
     spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
@@ -157,7 +167,8 @@ pub async fn build_state() -> Arc<AppState> {
             settings.clone(),
             balances_for_auth,
             users.clone(),
-        ),
+        )
+        .with_control_pool(control_db.clone()),
         config: config_service.clone(),
         users: users.clone(),
         devices: devices.clone(),
@@ -237,6 +248,7 @@ pub async fn build_state() -> Arc<AppState> {
         rooms,
         ws_connections,
         db: pool,
+        control_db,
         cache,
         settings,
         metrics,

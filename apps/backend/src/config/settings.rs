@@ -4,6 +4,7 @@ use super::Roles;
 pub struct Settings {
     pub roles: Roles,
     pub database_url: String,
+    pub control_database_url: Option<String>,
     pub database_listener_url: String,
     pub database_min_connections: u32,
     pub database_max_connections: u32,
@@ -44,6 +45,9 @@ impl Settings {
                 .ok()
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| database_url.clone()),
+            control_database_url: std::env::var("CONTROL_DATABASE_URL")
+                .ok()
+                .filter(|value| !value.is_empty()),
             database_url,
             database_min_connections: env_parse("DATABASE_MIN_CONNECTIONS", 2),
             database_max_connections: std::env::var("DATABASE_MAX_CONNECTIONS")
