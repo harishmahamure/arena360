@@ -107,7 +107,7 @@ pub fn kiosk_session_response(
         sessionId: started.session.id.to_string(),
         balanceId: started.balance_id.to_string(),
         deviceId: started.session.device_id.to_string(),
-        startTime: started.session.start_time.to_rfc3339(),
+        startTime: crate::time::utc_timestamp(&started.session.start_time),
         remainingMinutes: started.remaining_minutes as f64,
         walletBalanceMinutes: started.wallet_balance_minutes as f64,
         resumed: started.resumed,
@@ -115,7 +115,7 @@ pub fn kiosk_session_response(
         deductionProfile: deduction_profile,
         cafeTimezone: started.cafe_timezone.clone(),
         timeCreditsConsumed: Some(started.time_credits_consumed),
-        expiryDate: started.expiry_date.to_rfc3339(),
+        expiryDate: crate::time::utc_timestamp(&started.expiry_date),
     }
 }
 

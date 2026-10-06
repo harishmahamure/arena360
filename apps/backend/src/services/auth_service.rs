@@ -347,7 +347,7 @@ impl AuthService {
                         "deviceId": session.device_id.to_string(),
                         "deviceName": session.device_name,
                         "sessionId": session.session_id.to_string(),
-                        "sessionStartTime": session.start_time.to_rfc3339(),
+                        "sessionStartTime": crate::time::utc_timestamp(&session.start_time),
                     })),
                 ));
             }

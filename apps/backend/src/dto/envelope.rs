@@ -16,7 +16,7 @@ impl<T: Serialize> SuccessResponse<T> {
         Self {
             success: true,
             status_code: status.as_u16(),
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: crate::time::utc_timestamp(&Utc::now()),
             data,
         }
     }

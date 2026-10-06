@@ -553,8 +553,8 @@ impl StatsService {
             let shift_revenue = self.revenue_stats(shift_start_dt, shift_end).await?;
             (
                 Some(PeriodDto {
-                    start_date: shift_start_dt.to_rfc3339(),
-                    end_date: shift_end.to_rfc3339(),
+                    start_date: crate::time::utc_timestamp(&shift_start_dt),
+                    end_date: crate::time::utc_timestamp(&shift_end),
                     label: "Current shift".to_string(),
                     previous_label: String::new(),
                 }),
@@ -566,8 +566,8 @@ impl StatsService {
 
         Ok(StaffDashboardStatsDto {
             period: PeriodDto {
-                start_date: period_start.to_rfc3339(),
-                end_date: period_end.to_rfc3339(),
+                start_date: crate::time::utc_timestamp(&period_start),
+                end_date: crate::time::utc_timestamp(&period_end),
                 label: format!(
                     "{} - {}",
                     period_start.format("%Y-%m-%d"),
@@ -1590,8 +1590,8 @@ fn period_dto(
     prev_end: DateTime<Utc>,
 ) -> PeriodDto {
     PeriodDto {
-        start_date: period_start.to_rfc3339(),
-        end_date: period_end.to_rfc3339(),
+        start_date: crate::time::utc_timestamp(&period_start),
+        end_date: crate::time::utc_timestamp(&period_end),
         label: format!(
             "{} - {}",
             period_start.format("%Y-%m-%d"),

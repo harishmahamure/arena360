@@ -380,10 +380,7 @@ impl SessionService {
         if snapshot.get("policyRules").is_some() {
             let (timezone, _, _) = self
                 .settings
-                .venue_pricing_context(
-                    device.organization_id,
-                    Some(device.location_id),
-                )
+                .venue_pricing_context(device.organization_id, Some(device.location_id))
                 .await?;
             snapshot["policyTimezone"] = serde_json::Value::String(timezone);
         }
@@ -419,7 +416,7 @@ impl SessionService {
             "deviceId": dto.device_id.to_string(),
             "playerId": balance.player_id.to_string(),
             "balanceId": dto.balance_id.to_string(),
-            "startTime": session.start_time.to_rfc3339(),
+            "startTime": crate::time::utc_timestamp(&session.start_time),
             "walletMinutesAtStart": balance.remaining_minutes,
             "sourcePlanIdAtStart": balance.source_plan_id.map(|id| id.to_string()),
             "remainingMinutes": remaining as f64,
@@ -487,7 +484,7 @@ impl SessionService {
                         "deviceId": open.device_id.to_string(),
                         "deviceName": open.device_name,
                         "sessionId": open.session_id.to_string(),
-                        "sessionStartTime": open.start_time.to_rfc3339(),
+                        "sessionStartTime": crate::time::utc_timestamp(&open.start_time),
                     })),
                 ));
             }
@@ -752,7 +749,7 @@ impl SessionService {
             "sessionId": updated.id.to_string(),
             "deviceId": session.device_id.to_string(),
             "remainingMinutes": remaining_minutes,
-            "endTime": updated.end_time.map(|t| t.to_rfc3339()),
+            "endTime": updated.end_time.as_ref().map(crate::time::utc_timestamp),
         });
         if let Some(reason) = &reason {
             payload["reason"] = serde_json::Value::String(reason.clone());
@@ -798,7 +795,7 @@ impl SessionService {
                 "playerId": player_id.to_string(),
                 "reason": reason,
                 "remainingMinutes": remaining_minutes,
-                "endTime": updated.end_time.map(|t| t.to_rfc3339()),
+                "endTime": updated.end_time.as_ref().map(crate::time::utc_timestamp),
             });
             let _ = self
                 .outbox

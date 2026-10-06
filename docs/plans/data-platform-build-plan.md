@@ -101,9 +101,12 @@ M8 depends only on M5, so it can run before M6 and M7 if launch timing calls for
   - Done: `CONTROL_DATABASE_URL` initializes and migrates a dedicated control-plane pool; staff, admin, panel MFA, live membership validation, and internal tenant provisioning use the control schema while player and business operations remain on the transitional operational pool. Staff JWTs carry role-matched tenant memberships and permissions; device/player tokens carry tenant and location context.
 - [x] API-0013: Signed tenant entitlement (license) cached in the cell, so business operations never query the control plane (§51). The same cache carries the tenant time zone. — S
   - Done: control repository provisions the initial subscription and licence; HMAC-signed entitlements carry tenant ID, IANA timezone, revision, limits, validity, and grace period. The cell cache rejects tampering and revision rollback. Its integration test closes PostgreSQL after caching and continues successfully.
-- [ ] TEST-0011: A UTC-only check that fails if any API payload, outbox event, or stored timestamp is written without a `Z` offset or as a local time. — S
+- [x] TEST-0011: A UTC-only check that fails if any API payload, outbox event, or stored timestamp is written without a `Z` offset or as a local time. — S
+  - Done: one canonical formatter emits RFC 3339 timestamps with `Z`; outbox publication recursively rejects local or non-`Z` timestamp strings; contract tests cover API envelopes, outbox payloads, canonical formatter usage, and prohibit timezone-naive timestamp types in PostgreSQL migrations.
 
 **Done when:** a tenant can be created with a time zone; staff and devices sign in and receive tokens carrying `tenant_id`; the cell validates entitlement from its signed cache with the control plane stopped.
+
+M1 verified: control-plane integration tests cover tenant time zones, signed entitlement cache operation after PostgreSQL closes, staff tenant claims, live membership invalidation, and panel MFA storage; device/player claim tests cover tenant and location context.
 
 ---
 

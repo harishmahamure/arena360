@@ -300,10 +300,10 @@ impl ClickHouse {
                     .with_timezone(&FixedOffset::east_opt(19_800).unwrap())
                     .date_naive()
                     .to_string(),
-                observed_until: end.to_rfc3339(),
+                observed_until: crate::time::utc_timestamp(&end),
                 timezone: "Asia/Kolkata".into(),
             },
-            generated_at: now.to_rfc3339(),
+            generated_at: crate::time::utc_timestamp(&now),
             daily_sales,
             hourly_usage,
             stations,
@@ -325,8 +325,8 @@ mod tests {
     fn windows_are_bounded_and_use_ist_calendar_days() {
         let now = "2026-10-03T03:00:00Z".parse().unwrap();
         let w = Window::new(Some("2026-10-01"), Some("2026-10-02"), now).unwrap();
-        assert_eq!(w.start.to_rfc3339(), "2026-09-30T18:30:00+00:00");
-        assert_eq!(w.end.to_rfc3339(), "2026-10-02T18:30:00+00:00");
+        assert_eq!(crate::time::utc_timestamp(&w.start), "2026-09-30T18:30:00Z");
+        assert_eq!(crate::time::utc_timestamp(&w.end), "2026-10-02T18:30:00Z");
         assert_eq!((w.start - w.previous_start).num_days(), 2);
         for (a, b) in [
             ("2026-02-30", "2026-03-01"),

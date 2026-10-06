@@ -39,6 +39,9 @@ impl OutboxService {
         audience_room_id: Option<Uuid>,
         durable: bool,
     ) -> Result<i64, AppError> {
+        crate::time::validate_utc_timestamps(&payload).map_err(|error| {
+            AppError::Internal(format!("outbox event {event_type} contains {error}"))
+        })?;
         let row: (i64,) = sqlx::query_as(
             r#"INSERT INTO realtime_outbox
                (channel, event_type, payload, audience_role, audience_user_id, audience_room_id, durable)

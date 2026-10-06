@@ -169,16 +169,16 @@ pub async fn end_session(
             .and_then(|b| b.deduction_profile.as_ref())
             .and_then(|p| serde_json::to_value(p).ok());
         let time_credits_consumed = session.time_credits_consumed.map(|v| v as f64);
-        let expiry_date = balance.expiry_date.to_rfc3339();
+        let expiry_date = crate::time::utc_timestamp(&balance.expiry_date);
         return ok(KioskSessionResponseDto {
             sessionId: session.id.to_string(),
             balanceId: balance_id.to_string(),
             deviceId: session.device_id.to_string(),
-            startTime: session.start_time.to_rfc3339(),
+            startTime: crate::time::utc_timestamp(&session.start_time),
             remainingMinutes: remaining as f64,
             walletBalanceMinutes: remaining as f64,
             resumed: false,
-            endTime: session.end_time.map(|t| t.to_rfc3339()),
+            endTime: session.end_time.as_ref().map(crate::time::utc_timestamp),
             deductionProfile: deduction_profile.and_then(|value| {
                 serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value)
                     .ok()
@@ -209,17 +209,17 @@ pub async fn end_session(
     let deduction_profile =
         crate::services::session_service::session_profile_value(&balance, &ended).cloned();
     let time_credits_consumed = ended.time_credits_consumed.map(|v| v as f64);
-    let expiry_date = balance.expiry_date.to_rfc3339();
+    let expiry_date = crate::time::utc_timestamp(&balance.expiry_date);
 
     ok(KioskSessionResponseDto {
         sessionId: ended.id.to_string(),
         balanceId: balance_id.to_string(),
         deviceId: ended.device_id.to_string(),
-        startTime: ended.start_time.to_rfc3339(),
+        startTime: crate::time::utc_timestamp(&ended.start_time),
         remainingMinutes: remaining as f64,
         walletBalanceMinutes: remaining as f64,
         resumed: false,
-        endTime: ended.end_time.map(|t| t.to_rfc3339()),
+        endTime: ended.end_time.as_ref().map(crate::time::utc_timestamp),
         deductionProfile: deduction_profile.and_then(|value| {
             serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value).ok()
         }),

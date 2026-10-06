@@ -153,7 +153,7 @@ impl IntoResponse for AppError {
             status_code: status.as_u16(),
             message: self.message(),
             error: self.error_label().to_string(),
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: crate::time::utc_timestamp(&Utc::now()),
             details: self.details(),
         };
 

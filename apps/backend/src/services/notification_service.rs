@@ -119,7 +119,7 @@ impl NotificationService {
                 "payload": activity.payload,
                 "entityType": activity.entity_type,
                 "entityId": activity.entity_id.map(|id| id.to_string()),
-                "createdAt": activity.created_at.to_rfc3339(),
+                "createdAt": crate::time::utc_timestamp(&activity.created_at),
             });
             let channel = format!("user:{user_id}");
             let _ = self

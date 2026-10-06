@@ -52,7 +52,7 @@ pub async fn live_check(State(state): State<Arc<AppState>>) -> ApiResult<LiveHea
     };
     ok(LiveHealthData {
         status: "ok",
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: crate::time::utc_timestamp(&chrono::Utc::now()),
         db,
         redis,
     })
