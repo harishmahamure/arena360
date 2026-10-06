@@ -66,7 +66,7 @@ M8 depends only on M5, so it can run before M6 and M7 if launch timing calls for
   - Done: 31 fixtures (month, week, and day windows) captured with `pnpm report:fixtures` from the committed code, with Redis caching disabled. The script captures twice and fails on any difference. `generatedAt` is stripped as volatile. `/inventory/overview` `recentMovements` is ordered only by `createdAt`, so ties come back in any order; fixtures sort ties by `id`. The SQLite port should add `id` as a tie-breaker to every `ORDER BY "createdAt"` list.
   - Re-capture: migrate and seed an empty database, run `analytics_worker --backfill`, run the backend with `LEGACY_REST_ENABLED=true` and `REDIS_URL=` (empty), then `pnpm report:fixtures` (or `--check`).
 - [x] API-0001: Add crates per ADR-0043: `sqlx` `sqlite` feature, `duckdb` (bundled), `object_store` (S3-compatible, for Wasabi). Measure the clean and incremental build-time impact. — S
-  - Done: `duckdb` 1.10506 (bundled), `object_store` 0.14 (`aws`), `sqlx` `sqlite`. The first build after adding them took about 57 minutes on a heavily loaded development machine, almost all of it compiling DuckDB's bundled C++. That is a one-time cost until `cargo clean` or a DuckDB upgrade. Incremental builds are unchanged (15 s vs 22 s baseline). Release and Docker builds pay the bundled cost on every cold cache, so CI needs a cached Cargo target directory before M6. No feature flag is needed yet; if linking slows down once M6 uses DuckDB, link a prebuilt `libduckdb` locally instead of `bundled`.
+  - Done: `duckdb` 1.10506 (bundled), `object_store` 0.14 (`aws`), `sqlx` `sqlite`. The first build after adding them took about 57 minutes on a heavily loaded development machine, almost all of it compiling DuckDB's bundled C++. Incremental builds are unchanged (15 s vs 22 s baseline). A later `cargo check` started another cold C++ build because Cargo uses a separate profile, so DuckDB is opt-in as `duckdb-analytics` until M6. Release, CI, and Docker builds with that feature need a cached Cargo target directory; if linking remains slow, link a prebuilt `libduckdb` locally instead of `bundled`.
 - [x] API-0002: Module layout inside `apps/backend/src`, keeping the handler → service → repository layering:
   - `control/`: control-plane repositories and services;
   - `tenancy/`: tenant context, routing cache, lease client;
@@ -88,7 +88,7 @@ M8 depends only on M5, so it can run before M6 and M7 if launch timing calls for
 
 **Goal:** the global PostgreSQL holds tenants, users, and entitlements, and users sign in through it.
 
-- [ ] DB-0001: Control-plane schema (`migrations/control/`):
+- [x] DB-0001: Control-plane schema (`migrations/control/`):
   - `cells`: id, address, state, capacity weights;
   - `tenants`: id, owner_cell, storage_engine, generation, schema_version, state, timezone (IANA, required; ADR-0043 decision 28);
   - `tenant_leases`: tenant_id, owner_cell, ownership_generation, expires_at;
@@ -96,6 +96,7 @@ M8 depends only on M5, so it can run before M6 and M7 if launch timing calls for
   - `locations`;
   - minimal `subscriptions` and `licenses`;
   - `replication_generations` and `snapshot_manifests`. — M
+  - Done: self-contained 12-table PostgreSQL baseline with tenant/cell state checks, lease expiry and generation constraints, global staff identities, memberships, location metadata, subscriptions, licences, and replication lineage. Applied and invariant-tested against an empty PostgreSQL database.
 - [ ] API-0010: Move auth and organization management to the control role, so JWTs carry `tenant_id`. Device tokens (ADR-0017/0018 behaviour) carry `tenant_id` and `location_id`. — M
 - [ ] API-0013: Signed tenant entitlement (license) cached in the cell, so business operations never query the control plane (§51). The same cache carries the tenant time zone. — S
 - [ ] TEST-0011: A UTC-only check that fails if any API payload, outbox event, or stored timestamp is written without a `Z` offset or as a local time. — S
