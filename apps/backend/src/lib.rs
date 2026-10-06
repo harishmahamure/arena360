@@ -14,6 +14,7 @@ pub mod proto;
 pub mod realtime;
 pub mod repositories;
 pub mod rpc;
+pub mod routing;
 pub mod services;
 pub mod sse;
 pub mod storage;

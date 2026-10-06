@@ -32,6 +32,7 @@ pub struct AppState {
     pub db: PgPool,
     pub control_db: Option<PgPool>,
     pub leases: Option<Arc<crate::control::LeaseClient>>,
+    pub routing: Option<Arc<crate::routing::TenantRouter>>,
     pub cache: Arc<dyn CacheService>,
     pub settings: Arc<Settings>,
     pub metrics: Arc<crate::metrics::Metrics>,
@@ -102,6 +103,28 @@ pub async fn build_state() -> Arc<AppState> {
     if let Some(client) = &leases {
         client.clone().spawn_renewal();
     }
+    let routing = if settings.roles.router {
+        match (control_db.clone(), settings.control_database_url.clone()) {
+            (Some(control_pool), Some(control_url)) => {
+                let cache = Arc::new(crate::routing::RoutingCache::new(control_pool));
+                cache
+                    .refresh_all()
+                    .await
+                    .expect("initial routing cache refresh failed");
+                cache
+                    .clone()
+                    .spawn_refresh(std::time::Duration::from_secs(30));
+                cache.clone().spawn_invalidation_listener(control_url);
+                Some(Arc::new(
+                    crate::routing::TenantRouter::new(cache, settings.cell_id)
+                        .expect("routing proxy initialization failed"),
+                ))
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
     let cache = create_cache(settings.redis_url.as_deref()).await;
     let metrics = Arc::new(crate::metrics::Metrics::default());
     spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
@@ -271,6 +294,7 @@ pub async fn build_state() -> Arc<AppState> {
         db: pool,
         control_db,
         leases,
+        routing,
         cache,
         settings,
         metrics,
@@ -858,6 +882,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/rollback",
             post(handlers::pricing_rules::rollback_version),
         )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::routing::route_tenant_request,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,

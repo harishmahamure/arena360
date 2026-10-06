@@ -18,13 +18,29 @@ pub async fn ws_upgrade(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let token = extract_ws_token(&headers)?;
     let claims = decode_token_for_ws(&state, &token)?;
-    if !crate::middleware::auth::panel_session_active(&state.db, &claims).await? {
+    let session_active = if let Some(control_db) = &state.control_db {
+        crate::middleware::auth::control_panel_session_active(control_db, &claims).await?
+    } else {
+        crate::middleware::auth::panel_session_active(&state.db, &claims).await?
+    };
+    if !session_active {
         return Err(AppError::Unauthorized(
             "Account or organization access changed; sign in again".into(),
         ));
+    }
+    if let Some(router) = &state.routing {
+        let tenant_id = uuid::Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Forbidden("Select a tenant".into()))?;
+        if let Some(address) = router.remote_address(tenant_id).await? {
+            if headers.contains_key(crate::routing::ROUTED_HEADER) {
+                return Err(crate::routing::routing_loop_error());
+            }
+            return crate::routing::proxy_websocket_upgrade(ws, headers, &address, "/realtime")
+                .await;
+        }
     }
 
     let pool = state.db.clone();
@@ -35,7 +51,8 @@ pub async fn ws_upgrade(
     Ok(ws
         .max_message_size(64 * 1024)
         .protocols(["arena360.protobuf.v1"])
-        .on_upgrade(move |socket| connection::run(socket, claims, pool, registry, outbox, metrics)))
+        .on_upgrade(move |socket| connection::run(socket, claims, pool, registry, outbox, metrics))
+        .into_response())
 }
 
 fn extract_ws_token(headers: &HeaderMap) -> Result<String, AppError> {

@@ -180,6 +180,13 @@ impl LeaseRepository {
         .bind(generation)
         .execute(&mut *tx)
         .await?;
+        if taking_ownership {
+            sqlx::query("SELECT pg_notify($1, $2)")
+                .bind(crate::routing::ROUTING_CHANGED_CHANNEL)
+                .bind(tenant_id.to_string())
+                .execute(&mut *tx)
+                .await?;
+        }
         tx.commit().await?;
         Ok(grant)
     }
@@ -307,6 +314,11 @@ impl LeaseRepository {
         .bind(target_generation)
         .execute(&mut *tx)
         .await?;
+        sqlx::query("SELECT pg_notify($1, $2)")
+            .bind(crate::routing::ROUTING_CHANGED_CHANNEL)
+            .bind(tenant_id.to_string())
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(grant)
     }

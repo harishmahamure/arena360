@@ -11,6 +11,7 @@ use gaming_cafe_api::{
     config::{Roles, Settings},
     dto::{JwtUserClaims, PanelLoginResponseDto, StaffLoginDto},
     middleware::auth::control_panel_session_active,
+    routing::{RoutingCache, TenantRouter, ROUTING_CHANGED_CHANNEL},
     services::{AuthService, BalanceService, UserService},
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
@@ -272,6 +273,48 @@ async fn ownership_lease_fences_competing_cells_and_advances_generation() {
             .ownership_generation,
         2
     );
+    let routing = Arc::new(RoutingCache::new(pool.clone()));
+    routing.refresh_all().await.unwrap();
+    assert_eq!(
+        routing
+            .resolve(tenant.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .owner_cell,
+        second_cell
+    );
+    let second_router = TenantRouter::new(routing.clone(), Some(second_cell)).unwrap();
+    let first_router = TenantRouter::new(routing.clone(), Some(first_cell)).unwrap();
+    let dedicated_router = TenantRouter::new(routing.clone(), None).unwrap();
+    assert!(second_router
+        .remote_address(tenant.id)
+        .await
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        first_router
+            .remote_address(tenant.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        format!("http://lease-b-{suffix}.internal")
+    );
+    assert_eq!(
+        dedicated_router
+            .remote_address(tenant.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        format!("http://lease-b-{suffix}.internal")
+    );
+    let mut routing_notifications = sqlx::postgres::PgListener::connect(&database_url)
+        .await
+        .unwrap();
+    routing_notifications
+        .listen(ROUTING_CHANGED_CHANNEL)
+        .await
+        .unwrap();
     let fenced_client = second_client.clone();
     let handoff = second_client
         .handoff(tenant.id, first_cell, move |generation| async move {
@@ -281,6 +324,27 @@ async fn ownership_lease_fences_competing_cells_and_advances_generation() {
         })
         .await
         .unwrap();
+    let notification =
+        tokio::time::timeout(StdDuration::from_secs(1), routing_notifications.recv())
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(notification.payload(), tenant.id.to_string());
+    routing.invalidate(tenant.id).await;
+    assert_eq!(
+        routing
+            .resolve(tenant.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .owner_cell,
+        first_cell
+    );
+    assert!(first_router
+        .remote_address(tenant.id)
+        .await
+        .unwrap()
+        .is_none());
     assert_eq!(handoff.owner_cell, first_cell);
     assert_eq!(handoff.ownership_generation, 3);
     let owner_after_handoff: (uuid::Uuid, i64) =
