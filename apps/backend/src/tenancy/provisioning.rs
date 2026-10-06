@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::control::{CreateTenant, LeaseClient, Repository, Tenant};
 use crate::error::AppError;
 
-use super::{migrate, target_schema_version, tenant_path};
+use super::{format_sqlite_timestamp, migrate, target_schema_version, tenant_path};
 
 const ADMIN_PERMISSIONS: &str = r#"["access:read","access:manage","team:read","team:write","kitchen:read","kitchen:write","kitchen:manage","finance:read","activity:read","events:admin","events:staff","notifications:read","devices:read","devices:write","plans:read","plans:write","products:read","products:write","sessions:read","sessions:write","stats:read","transactions:read","transactions:write","player-plans:read","player-plans:write","players:read","players:write","units:read","units:write","shifts:read","shifts:write","shifts:force_close","cash-registers:read","cash-registers:write","cash-registers:reconcile","cash-registers:adjust_opening","cash-deposits:read","cash-deposits:write","cash-deposits:approve","credit:read","credit:write","credit-limit:write","staff-gaming-allowance:read","staff-gaming-allowance:write","expenses:read","expenses:write","expenses:approve","vendors:read","vendors:write","config:read","config:write","settings:read","settings:write","rules:read","rules:edit","rules:publish","games:read","games:write","inventory:read","inventory:manage","inventory:transfer_request","inventory:transfer_fulfill","inventory:waste_record","inventory:waste_approve","procurement:read","procurement:write","procurement:approve","procurement:receive","inventory:reorder_manage"]"#;
 const STAFF_PERMISSIONS: &str = r#"["devices:read","plans:read","products:read","sessions:read","sessions:write","stats:read","transactions:read","transactions:write","player-plans:read","player-plans:write","players:read","players:write","units:read","shifts:read","shifts:write","cash-registers:read","cash-registers:write","cash-deposits:read","cash-deposits:write","credit:read","credit:write","expenses:read","settings:read","rules:read","games:read","inventory:read","inventory:transfer_request","inventory:waste_record","procurement:read","procurement:write","procurement:receive","kitchen:read","kitchen:write","events:staff","team:read","notifications:read"]"#;
@@ -315,7 +315,8 @@ async fn seed_defaults(path: &Path, settings: &[InitialSettingOverride]) -> Resu
         .await?;
     let mut connection = pool.acquire().await?;
     let mut transaction = connection.begin().await?;
-    let timestamp = crate::time::utc_timestamp(&Utc::now());
+    let timestamp = format_sqlite_timestamp(&Utc::now())
+        .map_err(|error| AppError::Internal(format!("format tenant timestamp: {error}")))?;
     seed_units(&mut transaction, &timestamp).await?;
     seed_roles(&mut transaction, &timestamp).await?;
     seed_settings(&mut transaction, settings, &timestamp).await?;

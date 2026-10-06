@@ -5,9 +5,11 @@ mod db;
 mod migration;
 mod provisioning;
 mod retry;
+mod values;
 
 use sqlx::{migrate::Migrator, SqliteConnection, SqlitePool};
 
+pub use crate::time::{format_sqlite_timestamp, parse_sqlite_timestamp, SqliteTimestampError};
 pub use db::{tenant_path, TenantDb, TenantDbConfig, TenantDbManager, TenantLease};
 pub use migration::{
     MigrationContext, MigrationHook, MigrationOrchestrator, MigrationOrchestratorConfig,
@@ -20,6 +22,7 @@ pub use provisioning::{
 pub use retry::{
     is_sqlite_busy, retry_foreground, BackgroundBackoff, SqliteBusyMetrics, SqliteRetryConfig,
 };
+pub use values::{decimal_to_scale4, scale4_to_decimal, MoneyConversionError};
 
 static TENANT_MIGRATOR: Migrator = sqlx::migrate!("migrations/tenant");
 
