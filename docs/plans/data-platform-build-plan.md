@@ -133,7 +133,8 @@ M2 verified: timed multi-cell fencing passes with second-scale configuration; HT
 
 **Goal:** tenants get their own SQLite database with migrations, provisioning, and an outbox, ready for the API port.
 
-- [ ] DB-0010a: Tenant SQLite baseline scaffolding and conventions (UUID v7 text, fixed-width UTC text timestamps, scale-4 integer money, JSON text checks, no `organizationId`), plus the `outbox_events` table (envelope in the DuckDB schema doc, `sequence INTEGER PRIMARY KEY AUTOINCREMENT`). — S
+- [x] DB-0010a: Tenant SQLite baseline scaffolding and conventions (UUID v7 text, fixed-width UTC text timestamps, scale-4 integer money, JSON text checks, no `organizationId`), plus the `outbox_events` table (envelope in the DuckDB schema doc, `sequence INTEGER PRIMARY KEY AUTOINCREMENT`). — S
+  - Done: accepted ADR-0044 fixes the tenant storage representation. Migration `tenant/0001_foundation.sql` creates a strict, physically tenant-isolated transactional outbox with canonical UUID text, fixed-width UTC timestamps, validated object JSON, boolean/schema constraints, and non-reused commit-order sequences. Migration tests reject malformed representations and tenant discriminator columns.
 - [ ] API-0020: `TenantDb` handle: one writer connection plus a small read pool per open tenant, WAL mode, bounded `busy_timeout`, foreground retry with jitter and background back-off (§55). Idle tenants are closed. Opening requires a valid lease (M2). — M
 - [ ] API-0021: Migration runner and orchestrator. Applies per tenant, records the version in the control plane, is resumable, and limits concurrency per cell (§52–53). It exposes pre- and post-migration hooks, which M8 uses for snapshots. — M
 - [ ] API-0022: Tenant provisioning: create the files, migrate, seed defaults (units, settings, roles), register the tenant, and acquire the lease. — S
