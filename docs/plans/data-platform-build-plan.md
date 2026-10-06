@@ -143,7 +143,8 @@ M2 verified: timed multi-cell fencing passes with second-scale configuration; HT
   - Done: accepted ADR-0045 defines the bootstrap schema and retry semantics. Provisioning now registers or resumes a `PROVISIONING` control-plane tenant, safely creates and migrates its SQLite file, idempotently seeds eleven canonical units, seven access roles, and validated setting overrides, acquires a non-routing lease, then atomically records the schema version and activates routing. The cell state owns the database manager and provisioner; retries preserve customizations and unmanaged existing files are rejected.
 - [x] API-0023: Money helpers (Decimal ↔ scale-4 integer) and timestamp helpers, with property tests. — S
   - Done: exact Decimal ↔ scale-4 integer helpers reject excess precision and overflow, while fixed-width SQLite timestamp helpers format and strictly parse microsecond UTC text. Property tests cover every generated `i64` money round trip and randomized instants across the supported four-digit-year range; provisioning now uses the canonical storage formatter.
-- [ ] API-0025: Outbox writer helper used inside repository transactions. — S
+- [x] API-0025: Outbox writer helper used inside repository transactions. — S
+  - Done: tenant repositories can write UUID-v7 event snapshots through their existing SQLite transaction. The helper validates event names, schema version, object payloads, UTC timestamps, and forbidden credential fields before inserting the canonical envelope. Integration coverage proves a sample business row and its outbox event commit or roll back together.
 
 **Done when:** provisioning creates a working tenant database; the orchestrator migrates 50 test tenants and resumes correctly after an injected failure; money helpers pass property tests; an outbox row is written in the same transaction as a sample business write.
 

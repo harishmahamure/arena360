@@ -3,6 +3,7 @@
 
 mod db;
 mod migration;
+mod outbox;
 mod provisioning;
 mod retry;
 mod values;
@@ -15,6 +16,7 @@ pub use migration::{
     MigrationContext, MigrationHook, MigrationOrchestrator, MigrationOrchestratorConfig,
     MigrationOutcome, MigrationState, PendingTenantMigration, PostgresMigrationState,
 };
+pub use outbox::{write_outbox_event, NewOutboxEvent, WrittenOutboxEvent};
 pub use provisioning::{
     InitialSettingOverride, PostgresProvisioningControl, ProvisionTenant, ProvisionedTenant,
     ProvisioningControl, TenantProvisioner,
