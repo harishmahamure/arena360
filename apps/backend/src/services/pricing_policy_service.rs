@@ -763,10 +763,13 @@ impl PricingPolicyService {
     }
 
     pub async fn active_plan_policy_for(
-        &self,
-        organization_id: Uuid,
-        location_id: Option<Uuid>,
+        &self, organization_id: Uuid, location_id: Option<Uuid>,
     ) -> Result<PricingPolicy, AppError> {
+        let values = self.repo.active_policies(organization_id, location_id).await?;
+        Self::combine_plan_policies(values)
+    }
+
+    pub(crate) fn combine_plan_policies(values: Vec<serde_json::Value>) -> Result<PricingPolicy, AppError> {
         let mut combined = PricingPolicy {
             base_rate: "0".into(),
             rules: vec![],
@@ -775,11 +778,7 @@ impl PricingPolicyService {
             maximum_price: None,
         };
         let mut has_plan_policy = false;
-        for value in self
-            .repo
-            .active_policies(organization_id, location_id)
-            .await?
-        {
+        for value in values {
             let policy: PricingPolicy = serde_json::from_value(value).map_err(|error| {
                 AppError::Internal(format!("Invalid published policy: {error}"))
             })?;

@@ -422,6 +422,14 @@ impl ConfigService {
         let result=TenantSettingsRepository::new(db).delete_override(organization,location,key,expected,reason,actor,request,inherited.as_ref()).await?;
         if result{self.invalidate_scoped(organization,key,location).await?;}Ok(result)
     }
+    pub async fn resolve_value_tenant(
+        &self, db: Arc<TenantDb>, organization_id: Uuid, location_id: Option<Uuid>, key: &str,
+    ) -> Result<serde_json::Value, AppError> {
+        self.effective_tenant(db, organization_id, EffectiveSettingsQuery { location_id, category: None })
+            .await?.into_iter().find(|setting| setting.key == key).map(|setting| setting.value)
+            .ok_or_else(|| AppError::NotFound(format!("Setting '{key}' not found")))
+    }
+
     pub async fn effective_pricing_tenant(
         &self,
         db: Arc<TenantDb>,

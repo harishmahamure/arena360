@@ -47,6 +47,10 @@ impl TenantFixture {
             .await
             .unwrap();
         gaming_cafe_api::tenancy::migrate(&pool).await.unwrap();
+        sqlx::query("INSERT INTO tenant_runtime(singleton,timezone) VALUES(1,'UTC')")
+            .execute(&pool)
+            .await
+            .unwrap();
         pool.close().await;
         let manager = TenantDbManager::new(
             TenantDbConfig {

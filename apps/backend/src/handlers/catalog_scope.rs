@@ -103,8 +103,7 @@ pub async fn save_product(
     )
     .await?;
     let db = state.business_db(&claims).await?;
-    save_tenant_scope(&scope, "products", id, dto, db).await?;
-    state.cache.invalidate_prefix("products:").await?;
+    catalog_scope::save_tenant_scope(&scope, "products", id, dto, db).await?;
     ok(view(&state, &claims, "products", id).await?.scope)
 }
 pub async fn get_plan(
@@ -128,130 +127,6 @@ pub async fn save_plan(
     )
     .await?;
     let db = state.business_db(&claims).await?;
-    save_tenant_scope(&scope, "plans", id, dto, db).await?;
-    state.cache.invalidate_prefix("plans:").await?;
+    catalog_scope::save_tenant_scope(&scope, "plans", id, dto, db).await?;
     ok(view(&state, &claims, "plans", id).await?.scope)
-}
-
-async fn save_tenant_scope(
-    scope: &LocationScope,
-    kind: &str,
-    id: Uuid,
-    dto: CatalogScope,
-    db: Arc<crate::tenancy::TenantDb>,
-) -> Result<(), AppError> {
-    if dto.location_ids.len() > 200 || dto.prices.len() > 200 {
-        return Err(AppError::BadRequest("Too many locations".into()));
-    }
-    let (all, old_rows) = match kind {
-        "products" => {
-            TenantProductRepository::new(db.clone())
-                .location_scope(id)
-                .await?
-        }
-        "plans" => {
-            TenantPlanRepository::new(db.clone())
-                .location_scope(id)
-                .await?
-        }
-        _ => return Err(AppError::NotFound("Unknown catalog".into())),
-    };
-    let old_locations = if all {
-        vec![]
-    } else {
-        old_rows
-            .iter()
-            .map(|(location_id, _)| *location_id)
-            .collect()
-    };
-    let old_location_set = old_locations
-        .iter()
-        .copied()
-        .collect::<std::collections::HashSet<_>>();
-    let new_location_set = dto
-        .location_ids
-        .iter()
-        .copied()
-        .collect::<std::collections::HashSet<_>>();
-    let availability_unchanged =
-        all == dto.location_ids.is_empty() && old_location_set == new_location_set;
-    if availability_unchanged {
-        catalog_scope::authorize(scope, &old_locations, false)?;
-    } else {
-        catalog_scope::authorize(scope, &old_locations, true)?;
-        catalog_scope::authorize(scope, &dto.location_ids, true)?;
-    }
-    if !scope.organization_admin
-        && dto
-            .prices
-            .iter()
-            .any(|price| !scope.locations.contains(&price.location_id))
-    {
-        return Err(AppError::Forbidden(
-            "You can only change prices at your assigned locations".into(),
-        ));
-    }
-    let active: Vec<Uuid> = sqlx::query_scalar(
-        "SELECT unhex(replace(id,'-','')) FROM venue_locations WHERE is_active=1",
-    )
-    .fetch_all(&db.read_pool()?)
-    .await?;
-    if dto.location_ids.iter().any(|id| !active.contains(id))
-        || dto.prices.iter().any(|price| {
-            !price.price.is_finite()
-                || price.price < 0.0
-                || !active.contains(&price.location_id)
-                || (!dto.location_ids.is_empty() && !dto.location_ids.contains(&price.location_id))
-        })
-    {
-        return Err(AppError::BadRequest("Choose active locations in this business and nonnegative prices within the item's availability".into()));
-    }
-    let mut unique = std::collections::HashSet::new();
-    if dto
-        .prices
-        .iter()
-        .any(|price| !unique.insert(price.location_id))
-    {
-        return Err(AppError::BadRequest(
-            "Each location can have only one price".into(),
-        ));
-    }
-    let prices = dto
-        .prices
-        .into_iter()
-        .map(|price| (price.location_id, price.price))
-        .collect();
-    match kind {
-        "products" => {
-            let repo = TenantProductRepository::new(db);
-            if !scope.organization_admin && availability_unchanged {
-                repo.replace_authorized_location_prices(
-                    id,
-                    dto.location_ids,
-                    prices,
-                    scope.locations.clone(),
-                )
-                .await
-            } else {
-                repo.replace_location_scope(id, dto.location_ids, prices)
-                    .await
-            }
-        }
-        "plans" => {
-            let repo = TenantPlanRepository::new(db);
-            if !scope.organization_admin && availability_unchanged {
-                repo.replace_authorized_location_prices(
-                    id,
-                    dto.location_ids,
-                    prices,
-                    scope.locations.clone(),
-                )
-                .await
-            } else {
-                repo.replace_location_scope(id, dto.location_ids, prices)
-                    .await
-            }
-        }
-        _ => unreachable!("kind checked above"),
-    }
 }

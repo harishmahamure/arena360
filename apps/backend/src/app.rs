@@ -281,7 +281,7 @@ pub async fn build_state() -> Arc<AppState> {
         config: config_service.clone(),
         users: users.clone(),
         devices: devices.clone(),
-        plans: PlanService::new(pool.clone(), cache.clone(), config_service.clone()),
+        plans: PlanService::new(config_service.clone()),
         pricing_rules,
         player_plans: player_plans.clone(),
         balances: balances.clone(),
