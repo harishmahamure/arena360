@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0032
+## Completed through API-0029
 
-- 25 planned tasks completed.
+- 27 planned tasks completed.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -52,9 +52,22 @@
   runtime lag deduplication, source-tenant ACL enforcement, immutable event snapshots, and
   durable-delivery-before-send ordering.
 
+- Strict tenant back-office schema and fenced inventory/procurement paths, with exact purchase-order snapshots and atomic receipts, expenses, cash entries, and outbox events.
+
 ## Current task
 
-- [ ] `DB-0010c` — Add the remaining tenant back-office SQLite schema.
+- [ ] `API-0030` — Port shifts, cash registers, deposits, expenses, and expense categories.
+
+## M5 queue
+
+- [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).
+- [x] `API-0029` — Inventory and procurement (`828a90c`).
+- [ ] `API-0030` — Shifts, cash, and expenses.
+- [ ] `API-0031` — Settings, notifications, access locks, and kitchen.
+- [ ] `API-0033` — Operational cutover and shared-table compatibility removal.
+- [ ] `OPS-0010` — Tenant service demo seed.
+- [ ] `TEST-0020` — SQLite/control-plane integration harnesses.
+- [ ] `OPS-0011` — Retire operational PostgreSQL and merge.
 
 ## M4 queue
 
@@ -77,7 +90,8 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed implementation commit: `246d5b4` (`API-0032`).
+- Latest completed implementation commit: `828a90c` (`API-0029`).
+- Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 ## Update rule
 
