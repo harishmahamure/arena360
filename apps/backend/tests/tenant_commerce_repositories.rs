@@ -206,6 +206,68 @@ async fn kiosk_placement_does_not_deduct_and_conversion_is_atomic() {
         )
         .await
         .unwrap();
+    let filter = serde_json::from_value(serde_json::json!({"limit":1})).unwrap();
+    assert_eq!(
+        kiosk
+            .list_scoped(&filter, Some(&[fixture.venue]))
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    assert_eq!(
+        kiosk
+            .list_scoped(&filter, Some(&[fixture.other_venue]))
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        kiosk.list_scoped(&filter, Some(&[])).await.unwrap().total,
+        0
+    );
+    // Session snapshots, not a moved device, determine the order venue.
+    sqlx::query("UPDATE devices SET location_id=? WHERE id=?")
+        .bind(fixture.other_venue.to_string())
+        .bind(fixture.device.to_string())
+        .execute(&fixture.admin)
+        .await
+        .unwrap();
+    assert_eq!(
+        kiosk.venue_for_order(order.id).await.unwrap(),
+        fixture.venue
+    );
+    assert_eq!(
+        kiosk
+            .list_scoped(&filter, Some(&[fixture.venue]))
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    sqlx::query("UPDATE devices SET location_id=? WHERE id=?")
+        .bind(fixture.venue.to_string())
+        .bind(fixture.device.to_string())
+        .execute(&fixture.admin)
+        .await
+        .unwrap();
+    let before = fixture.atomic_counts().await;
+    assert!(kiosk
+        .update_status_for_shift(order.id, "preparing", Uuid::now_v7(), fixture.staff)
+        .await
+        .is_err());
+    assert_eq!(fixture.atomic_counts().await, before);
+    assert_eq!(kiosk.get(order.id).await.unwrap().status, "pending");
+    kiosk
+        .update_status_for_shift(order.id, "preparing", fixture.shift, fixture.staff)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE kiosk_orders SET status='pending' WHERE id=?")
+        .bind(order.id.to_string())
+        .execute(&fixture.admin)
+        .await
+        .unwrap();
     assert_eq!(fixture.stock().await, 5);
     let placed_payload: String = sqlx::query_scalar(
         "SELECT payload FROM outbox_events
@@ -1223,6 +1285,28 @@ async fn kitchen_queue_is_opt_in_atomic_and_uses_sale_snapshots() {
     assert_eq!(tickets[0]["transactionId"], sale.id.to_string());
     assert_eq!(tickets[0]["items"][0]["name"], "Cola");
     let id = Uuid::parse_str(tickets[0]["id"].as_str().unwrap()).unwrap();
+    let local =
+        gaming_cafe_api::services::TenantKitchenService::scoped(f.db.clone(), vec![f.venue]);
+    let remote =
+        gaming_cafe_api::services::TenantKitchenService::scoped(f.db.clone(), vec![f.other_venue]);
+    let empty = gaming_cafe_api::services::TenantKitchenService::scoped(f.db.clone(), vec![]);
+    assert_eq!(
+        local.list(false).await.unwrap().as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(remote.list(false).await.unwrap(), serde_json::json!([]));
+    assert_eq!(empty.list(false).await.unwrap(), serde_json::json!([]));
+    let before = f.atomic_counts().await;
+    assert!(remote
+        .advance(id, "preparing", 1, None, f.staff)
+        .await
+        .is_err());
+    assert!(empty
+        .advance(id, "preparing", 1, None, f.staff)
+        .await
+        .is_err());
+    assert_eq!(f.atomic_counts().await, before);
+    assert_eq!(local.list(false).await.unwrap()[0]["revision"], 1);
     sqlx::query("UPDATE products SET name='Renamed' WHERE id=?")
         .bind(f.product.to_string())
         .execute(&f.admin)

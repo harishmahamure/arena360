@@ -11,13 +11,17 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct TenantKitchenService {
     db: Arc<TenantDb>,
+    venues: Option<Vec<Uuid>>,
 }
 fn decode(s: String) -> Result<Value, AppError> {
     serde_json::from_str(&s).map_err(|e| AppError::Internal(e.to_string()))
 }
 impl TenantKitchenService {
     pub fn new(db: Arc<TenantDb>) -> Self {
-        Self { db }
+        Self { db, venues: None }
+    }
+    pub fn scoped(db: Arc<TenantDb>, venues: Vec<Uuid>) -> Self {
+        Self { db, venues: Some(venues) }
     }
     pub(crate) async fn enqueue_on(
         c: &mut SqliteConnection,
@@ -102,7 +106,7 @@ impl TenantKitchenService {
     pub async fn list(&self, history: bool) -> Result<Value, AppError> {
         let cutoff = format_sqlite_timestamp(&(chrono::Utc::now() - chrono::Duration::days(7)))
             .map_err(|e| AppError::Internal(e.to_string()))?;
-        let rows: Vec<String> = sqlx::query_scalar("SELECT json_object('id',k.id,'transactionId',k.transaction_id,'status',k.status,'revision',k.revision,'items',json(k.items),'customer',k.customer,'notes',k.notes,'createdAt',k.created_at,'updatedAt',k.updated_at,'dueAt',k.due_at,'paymentStatus',t.payment_status,'events',json((SELECT COALESCE(json_group_array(json(x)),'[]') FROM(SELECT json_object('status',e.status,'actor',u.username,'reason',e.reason,'at',e.created_at) x FROM kitchen_ticket_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.ticket_id=k.id ORDER BY e.id)))) FROM kitchen_tickets k JOIN transactions t ON t.id=k.transaction_id WHERE CASE WHEN ? THEN k.status IN('served','cancelled') AND k.updated_at>? ELSE k.status IN('queued','preparing','ready') END ORDER BY CASE WHEN ? THEN k.created_at END DESC,k.created_at,k.id LIMIT 500").bind(history).bind(cutoff).bind(history).fetch_all(&self.db.read_pool()?).await?;
+        let rows: Vec<String> = sqlx::query_scalar("SELECT json_object('id',k.id,'transactionId',k.transaction_id,'status',k.status,'revision',k.revision,'items',json(k.items),'customer',k.customer,'notes',k.notes,'createdAt',k.created_at,'updatedAt',k.updated_at,'dueAt',k.due_at,'paymentStatus',t.payment_status,'events',json((SELECT COALESCE(json_group_array(json(x)),'[]') FROM(SELECT json_object('status',e.status,'actor',u.username,'reason',e.reason,'at',e.created_at) x FROM kitchen_ticket_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.ticket_id=k.id ORDER BY e.id)))) FROM kitchen_tickets k JOIN transactions t ON t.id=k.transaction_id WHERE CASE WHEN ? THEN k.status IN('served','cancelled') AND k.updated_at>? ELSE k.status IN('queued','preparing','ready') END AND (? IS NULL OR t.location_id IN (SELECT value FROM json_each(?))) ORDER BY CASE WHEN ? THEN k.created_at END DESC,k.created_at,k.id LIMIT 500").bind(history).bind(cutoff).bind(self.venues.as_ref().map(|v| json!(v).to_string())).bind(self.venues.as_ref().map(|v| json!(v).to_string())).bind(history).fetch_all(&self.db.read_pool()?).await?;
         let mut values = rows
             .into_iter()
             .map(decode)
@@ -130,12 +134,16 @@ impl TenantKitchenService {
                 "Cancellation needs a reason of 1–500 characters".into(),
             ));
         }
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let row: Option<(String, i32, String, String)> = sqlx::query_as("SELECT k.status,k.revision,t.payment_status,t.location_id FROM kitchen_tickets k JOIN transactions t ON t.id=k.transaction_id WHERE k.id=?").bind(id.to_string()).fetch_optional(&mut *c).await?;
                     let (old, revision, payment, venue) = row.ok_or_else(|| AppError::NotFound("Kitchen ticket not found".into()))?;
+                    if venues.as_ref().is_some_and(|allowed| !allowed.iter().any(|id| id.to_string() == venue)) {
+                        return Err(AppError::Forbidden("Kitchen ticket is outside the permitted venues".into()));
+                    }
                     if revision != expected {
                         return Err(AppError::Conflict("Ticket changed. Refresh and try again.".into()));
                     }

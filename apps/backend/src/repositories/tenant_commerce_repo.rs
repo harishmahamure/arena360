@@ -2283,6 +2283,10 @@ impl TenantKioskOrderRepository {
         &self,
         filters: &KioskOrderFilterDto,
     ) -> Result<PaginationResult<KioskOrderWithItems>, AppError> {
+        self.list_scoped(filters, None).await
+    }
+
+    pub async fn list_scoped(&self, filters: &KioskOrderFilterDto, locations: Option<&[Uuid]>) -> Result<PaginationResult<KioskOrderWithItems>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(20).clamp(1, 100);
         let mut query = QueryBuilder::<Sqlite>::new(
@@ -2296,6 +2300,7 @@ impl TenantKioskOrderRepository {
              LEFT JOIN devices d ON d.id=ko.device_id LEFT JOIN users u ON u.id=ko.player_id
              WHERE 1=1",
         );
+        append_venue_scope(&mut query, "(SELECT s.location_id FROM usage_sessions s WHERE s.id=ko.session_id)", locations);
         kiosk_filters(&mut query, filters);
         query
             .push(" ORDER BY ko.created_at DESC,ko.id DESC LIMIT ")
@@ -2313,6 +2318,7 @@ impl TenantKioskOrderRepository {
         }
         let mut count =
             QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM kiosk_orders ko WHERE 1=1");
+        append_venue_scope(&mut count, "(SELECT s.location_id FROM usage_sessions s WHERE s.id=ko.session_id)", locations);
         kiosk_filters(&mut count, filters);
         let total = count
             .build_query_scalar()
@@ -2337,6 +2343,12 @@ impl TenantKioskOrderRepository {
         id: Uuid,
         status: &str,
     ) -> Result<KioskOrderWithItems, AppError> {
+        self.update_status_inner(id, status, None).await
+    }
+    pub async fn update_status_for_shift(&self, id: Uuid, status: &str, shift: Uuid, actor: Uuid) -> Result<KioskOrderWithItems, AppError> {
+        self.update_status_inner(id, status, Some((shift, actor))).await
+    }
+    async fn update_status_inner(&self, id: Uuid, status: &str, shift_actor: Option<(Uuid, Uuid)>) -> Result<KioskOrderWithItems, AppError> {
         if !matches!(
             status,
             kiosk_order_status::PREPARING | kiosk_order_status::CANCELLED
@@ -2352,6 +2364,11 @@ impl TenantKioskOrderRepository {
             &db,
             Box::new(move |connection| {
                 Box::pin(async move {
+                    if let Some((shift, actor)) = shift_actor {
+                        let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shifts sh JOIN kiosk_orders ko ON ko.id=? JOIN usage_sessions s ON s.id=ko.session_id WHERE sh.id=? AND sh.user_id=? AND sh.status='active' AND sh.location_id=s.location_id)")
+                            .bind(id.to_string()).bind(shift.to_string()).bind(actor.to_string()).fetch_one(&mut *connection).await?;
+                        if !valid { return Err(AppError::Forbidden("Active shift must match the order venue".into())); }
+                    }
                     let location: Option<String> = sqlx::query_scalar(
                         "UPDATE kiosk_orders SET status=?,updated_at=?
                          WHERE id=? AND status IN ('pending','preparing')

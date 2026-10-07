@@ -1,12 +1,15 @@
 use crate::{
+    access::scope::{requested_location, LocationScope},
     app::AppState,
     dto::{ok, ApiResult},
     error::AppError,
     middleware::{AdminOrStaff, AdminUser},
+    repositories::TenantSettingsRepository,
     services::TenantKitchenService,
 };
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use serde::Deserialize;
@@ -22,9 +25,18 @@ pub struct TicketQuery {
 pub async fn list(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(query): Query<TicketQuery>,
 ) -> ApiResult<Value> {
-    ok(TenantKitchenService::new(state.business_db(&claims).await?)
+    let db = state.business_db(&claims).await?;
+    let scope = LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "kitchen:read",
+        requested_location(&headers)?,
+    )
+    .await?;
+    ok(TenantKitchenService::scoped(db, scope.locations)
         .list(query.history.unwrap_or(false))
         .await?)
 }
@@ -43,7 +55,9 @@ pub async fn advance(
     Path(id): Path<Uuid>,
     Json(dto): Json<AdvanceTicket>,
 ) -> ApiResult<Value> {
-    ok(TenantKitchenService::new(state.business_db(&claims).await?)
+    let db = state.business_db(&claims).await?;
+    let scope = LocationScope::resolve_tenant(db.clone(), &claims, "kitchen:write", None).await?;
+    ok(TenantKitchenService::scoped(db, scope.locations)
         .advance(
             id,
             &dto.status,
@@ -60,6 +74,13 @@ pub async fn menu(
     AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Value> {
+    let db = state.business_db(&claims).await?;
+    let actor = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    TenantSettingsRepository::new(db.clone())
+        .ensure_access(db.tenant_id(), actor, "kitchen:manage")
+        .await?;
     ok(TenantKitchenService::new(state.business_db(&claims).await?)
         .menu()
         .await?)
@@ -80,6 +101,13 @@ pub async fn save_menu(
     Path(id): Path<Uuid>,
     Json(dto): Json<MenuSetting>,
 ) -> ApiResult<Value> {
+    let db = state.business_db(&claims).await?;
+    let actor = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    TenantSettingsRepository::new(db.clone())
+        .ensure_access(db.tenant_id(), actor, "kitchen:manage")
+        .await?;
     ok(TenantKitchenService::new(state.business_db(&claims).await?)
         .save_menu(
             id,

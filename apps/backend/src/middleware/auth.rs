@@ -124,6 +124,7 @@ pub async fn authorize_tenant_request(
                 | "shifts"
                 | "inventory"
                 | "transactions"
+                | "kiosk-orders"
                 | "credit"
                 | "realtime"
                 | "metrics"

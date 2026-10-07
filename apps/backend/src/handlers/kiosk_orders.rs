@@ -1,10 +1,12 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::access::scope::{requested_location, LocationScope};
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::{require_staff_for_counter, AdminOrStaff, PlayerUser};
@@ -13,6 +15,7 @@ use crate::models::{
     KioskOrderWithItems, Transaction, UpdateKioskOrderDto,
 };
 use crate::openapi::responses::ErrorEnvelope;
+use crate::repositories::{TenantKioskOrderRepository, TenantShiftRepository};
 
 #[utoipa::path(
     get,
@@ -108,13 +111,20 @@ pub async fn current_order(
 pub async fn list_orders(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(filters): Query<KioskOrderFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<KioskOrderWithItems>> {
-    let result = state
-        .kiosk_orders
-        .list_tenant(state.business_db(&claims).await?, filters)
-        .await?;
-    ok(result)
+    let db = state.business_db(&claims).await?;
+    let scope = LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "transactions:read",
+        requested_location(&headers)?,
+    )
+    .await?;
+    ok(TenantKioskOrderRepository::new(db)
+        .list_scoped(&filters, Some(&scope.locations))
+        .await?)
 }
 
 #[utoipa::path(
@@ -133,6 +143,11 @@ pub async fn get_order(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<KioskOrderWithItems> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantKioskOrderRepository::new(db.clone())
+        .venue_for_order(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "transactions:read", Some(venue)).await?;
     let order = state
         .kiosk_orders
         .get_by_id_tenant(state.business_db(&claims).await?, id)
@@ -158,21 +173,31 @@ pub async fn update_order(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateKioskOrderDto>,
 ) -> ApiResult<KioskOrderWithItems> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantKioskOrderRepository::new(db.clone())
+        .venue_for_order(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "transactions:write", Some(venue)).await?;
     require_staff_for_counter(&claims)?;
     let user_id = claims.user_id_uuid().ok_or_else(|| {
         crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
     })?;
-    crate::repositories::TenantShiftRepository::new(state.business_db(&claims).await?)
+    let shift = TenantShiftRepository::new(db.clone())
         .find_active_by_user(user_id)
         .await?
         .ok_or_else(|| {
             crate::error::AppError::BadRequest("No active shift found for current user".to_string())
         })?;
-    let order = state
-        .kiosk_orders
-        .update_status_tenant(state.business_db(&claims).await?, id, &dto.status)
-        .await?;
-    ok(order)
+    if TenantShiftRepository::new(db).location_id(shift.id).await? != venue {
+        return Err(crate::error::AppError::Forbidden(
+            "Active shift must match the order venue".into(),
+        ));
+    }
+    ok(
+        TenantKioskOrderRepository::new(state.business_db(&claims).await?)
+            .update_status_for_shift(id, &dto.status, shift.id, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -194,6 +219,11 @@ pub async fn convert_order(
     Path(id): Path<Uuid>,
     Json(dto): Json<ConvertKioskOrderDto>,
 ) -> ApiResult<Transaction> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantKioskOrderRepository::new(db.clone())
+        .venue_for_order(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "transactions:write", Some(venue)).await?;
     let user_id = claims.user_id_uuid().ok_or_else(|| {
         crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
     })?;
