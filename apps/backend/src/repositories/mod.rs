@@ -21,6 +21,7 @@ pub mod settings_repo;
 pub mod shift_repo;
 pub mod tenant_catalog_repo;
 pub mod tenant_commerce_repo;
+pub mod tenant_user_repo;
 pub mod tenant_venue_repo;
 pub mod transaction_product_repo;
 pub mod transaction_repo;
@@ -56,6 +57,10 @@ pub use tenant_catalog_repo::{
 };
 pub use tenant_commerce_repo::{
     TenantCreditRepository, TenantKioskOrderRepository, TenantTransactionRepository,
+};
+pub use tenant_user_repo::{
+    StaffProjectionResult, TenantCreatePlayer, TenantLocationRoleGrant, TenantStaffProjection,
+    TenantUserRepository,
 };
 pub use tenant_venue_repo::{
     TenantBalanceRepository, TenantDeviceRepository, TenantPlayerPlanRepository,

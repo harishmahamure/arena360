@@ -26,6 +26,9 @@ use crate::services::{BalanceService, UserService};
 use crate::tenancy::TenantDb;
 use crate::validation::{normalize_username, trim_secret};
 
+const TENANT_PLAYER_DUMMY_PASSWORD_HASH: &str =
+    "$2b$12$dprJEXAvjHcojSitMeEB1uwqnBOMCoctwdsvqEIhYFRxP1IGRvmx6";
+
 pub struct AuthService {
     pool: PgPool,
     control_pool: Option<PgPool>,
@@ -440,22 +443,20 @@ impl AuthService {
         if device.status == "under_maintenance" {
             return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
         }
-        // Identity stays in PostgreSQL until API-0028 projects players and staff.
         let user = self
-            .authenticate_kiosk_user(
-                &normalize_username(&dto.username),
-                &trim_secret(&dto.password),
-            )
+            .users
+            .find_by_username_for_auth_tenant(db.clone(), &normalize_username(&dto.username))
             .await?;
-        if user.role.as_deref() == Some("staff")
-            && self
-                .shift_repo
-                .find_active_by_user(user.id)
-                .await?
-                .is_some()
-        {
-            return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
-        }
+        let password = trim_secret(&dto.password);
+        let password_hash = user
+            .as_ref()
+            .and_then(|found| found.password_hash.as_deref())
+            .unwrap_or(TENANT_PLAYER_DUMMY_PASSWORD_HASH);
+        let password_valid = verify(&password, password_hash).unwrap_or(false);
+        let user = match (user, password_valid) {
+            (Some(user), true) => user,
+            _ => return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS")),
+        };
         let sessions = TenantSessionRepository::new(db.clone());
         let active_session = if let Some(open) = sessions.find_open_for_player(user.id).await? {
             if open.device_id != device.id {

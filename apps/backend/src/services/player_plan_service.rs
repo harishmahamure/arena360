@@ -10,7 +10,7 @@ use crate::models::{
 };
 use crate::repositories::{
     PlanRepository, PlayerPlanRepository, TenantPlanRepository, TenantPlayerPlanRepository,
-    UserRepository,
+    TenantUserRepository, UserRepository,
 };
 use crate::tenancy::TenantDb;
 
@@ -99,21 +99,9 @@ impl PlayerPlanService {
                 "Cannot assign an inactive plan".into(),
             ));
         }
-        let user: Option<(bool,)> =
-            sqlx::query_as("SELECT is_active FROM users WHERE id=? AND deleted_at IS NULL")
-                .bind(dto.player_id.to_string())
-                .fetch_optional(&db.read_pool()?)
-                .await?;
-        match user {
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "User with ID {} not found",
-                    dto.player_id
-                )))
-            }
-            Some((false,)) => return Err(AppError::BadRequest("User is not active".into())),
-            Some((true,)) => {}
-        }
+        TenantUserRepository::new(db.clone())
+            .require_active_player(dto.player_id)
+            .await?;
         let purchase_date = dto.purchase_date.unwrap_or_else(Utc::now);
         TenantPlayerPlanRepository::new(db)
             .create(
