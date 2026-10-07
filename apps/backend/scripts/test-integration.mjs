@@ -11,6 +11,21 @@ import pg from 'pg';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const manifest = join(root, 'apps/backend/Cargo.toml');
+// Cargo filters native loader paths outside its target directory. Assign the SDK
+// path in the test runner, after Cargo (and macOS shell launchers) have run.
+const loaderVariable = process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH';
+const analyticsFeatures = process.env.DUCKDB_LIB_DIR
+  ? [
+      '--no-default-features',
+      '--features',
+      'duckdb-analytics',
+      '--config',
+      `target.'cfg(all())'.runner = ${JSON.stringify([
+        'env',
+        `${loaderVariable}=${process.env.DUCKDB_LIB_DIR}`,
+      ])}`,
+    ]
+  : [];
 const controlTargets = [
   'control_plane',
   'ownership_fencing',
@@ -205,6 +220,7 @@ async function runJetstream(env, required = false) {
             'test',
             '--manifest-path',
             manifest,
+            ...analyticsFeatures,
             '--test',
             target,
             '--',
@@ -266,12 +282,21 @@ async function main() {
       '[backend integration] Temporary control database created; tenant tests use isolated SQLite files.\n',
     );
     if (!args.includes('--control-only'))
-      await command('cargo', ['test', '--manifest-path', manifest], { env });
+      await command('cargo', ['test', '--manifest-path', manifest, ...analyticsFeatures], { env });
     // Only control targets include ignored tests; external analytics/Redis suites retain their explicit gates.
     const targets = controlTargets.flatMap((target) => ['--test', target]);
     await command(
       'cargo',
-      ['test', '--manifest-path', manifest, ...targets, '--', '--ignored', '--test-threads=1'],
+      [
+        'test',
+        '--manifest-path',
+        manifest,
+        ...analyticsFeatures,
+        ...targets,
+        '--',
+        '--ignored',
+        '--test-threads=1',
+      ],
       { env },
     );
     if (!args.includes('--control-only')) await runJetstream(env);

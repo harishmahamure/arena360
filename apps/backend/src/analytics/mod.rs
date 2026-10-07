@@ -8,3 +8,6 @@ pub use client::{query_as, ClickHouse};
 pub mod scope;
 
 pub mod publisher;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod tenant_db;

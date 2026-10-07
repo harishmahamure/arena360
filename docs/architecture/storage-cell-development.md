@@ -141,3 +141,21 @@ checksum-verified server runtime. Without a local runtime the two JetStream gate
 are explicitly reported as skipped; the SQLite/control checks still run.
 
 Run only the two disposable JetStream checks with `pnpm backend:test:integration --jetstream-only`; this mode requires a local server runtime and does not create a control database.
+
+### DuckDB development builds
+
+DuckDB's Rust dependency is pinned to the native 1.5.6 release family. Build with
+`--features duckdb-bundled` to compile its bundled source. For faster local builds,
+use the official matching shared library and `--features duckdb-analytics`:
+
+```sh
+DUCKDB_LIB_DIR=/path/to/duckdb-1.5.6 pnpm backend:test:integration
+```
+
+The runner enables the feature and assigns the native loader path after Cargo
+launches each test. For direct Cargo runs, use a target runner that assigns
+`DYLD_LIBRARY_PATH` on macOS or `LD_LIBRARY_PATH` on Linux; shell launchers and
+Cargo can filter externally supplied loader paths. Supply a matching
+native library, not a different DuckDB version. No system library is installed by
+the repository commands. The two feature choices use the same Rust implementation
+and schema; bundled builds require a cached target directory for practical rebuilds.

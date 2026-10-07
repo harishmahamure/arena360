@@ -61,7 +61,6 @@ jobs:
         with: { components: rustfmt, clippy }
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: apps/backend }
-      - run: cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml
       - name: Disposable JetStream runtime
         run: |
           set -euo pipefail
@@ -69,4 +68,13 @@ jobs:
           echo '77fe7dd69ff5144126026b78355900be0ab0bb4339dc61a7621dcc9b9e9d07a6  /tmp/nats-server.tar.gz' | sha256sum --check
           tar -xzf /tmp/nats-server.tar.gz -C /tmp
           echo 'NATS_SERVER_BIN=/tmp/nats-server-v2.12.6-linux-amd64/nats-server' >> "$GITHUB_ENV"
+      - name: Matching DuckDB shared library
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.5.6/libduckdb-linux-amd64.zip -o /tmp/duckdb.zip
+          echo 'b845005f5132a7d8180057c35e14a7626632258782f871a90861b19c1c03841b  /tmp/duckdb.zip' | sha256sum --check
+          unzip -q /tmp/duckdb.zip -d /tmp/arena360-duckdb
+          echo 'DUCKDB_LIB_DIR=/tmp/arena360-duckdb' >> "$GITHUB_ENV"
+          echo 'LD_LIBRARY_PATH=/tmp/arena360-duckdb' >> "$GITHUB_ENV"
+      - run: cargo clippy --all-targets --features duckdb-analytics --manifest-path apps/backend/Cargo.toml
       - run: pnpm backend:test:integration

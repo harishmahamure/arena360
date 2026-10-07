@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through OPS-0020
+## Completed through DB-0020
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -107,6 +107,12 @@
 - The runner/CI exercise both gates against fresh disposable servers. Success, missing Cargo and interruption cleanup are verified. The normal/control suite (373), setup unit checks (3) and two live gates total 378 passing checks across the recorded runs.
 - API-0040 implementation: `497c3e2`.
 
+### DB-0020 completed
+
+- Tenant-local DuckDB schema and transactional checksum migrations preserve exact decimals, generated values and existing checkpoints. All storage operations are lease fenced; fresh state is REBUILDING.
+- Six schema/rollback/fencing/timezone tests pass, and the complete SQLite/DuckDB/control/JetStream run passes 384 checks. Native SDK versions/checksums are pinned in CI, and loader paths are assigned in Cargo test runners.
+- OPS-0020 implementation: `a46c943`. Next: `API-0041` analytics consumer.
+
 ## M5 queue
 
 - [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).
@@ -139,7 +145,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed implementation commit: `7ae41d7` (`OPS-0011`); integration harness `2492b35`.
+- Latest completed item: `DB-0020`; 384 backend checks pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.
