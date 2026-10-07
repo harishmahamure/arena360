@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::AdminUser;
+use crate::middleware::{AdminUser, AuthUser};
 use crate::models::{CreateUnitDto, Unit, UnitFilterDto, UpdateUnitDto};
 use crate::openapi::responses::{ErrorEnvelope, UnitEnvelope, UnitPaginationEnvelope};
 
@@ -25,10 +25,14 @@ use crate::openapi::responses::{ErrorEnvelope, UnitEnvelope, UnitPaginationEnvel
     tag = "units"
 )]
 pub async fn list_units(
+    AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<UnitFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<Unit>> {
-    let result = state.units.list(filters).await?;
+    let result = {
+        let db = state.business_db(&claims).await?;
+        state.units.list_tenant(db, filters).await?
+    };
     ok(result)
 }
 
@@ -47,8 +51,15 @@ pub async fn list_units(
     security(("bearer_auth" = [])),
     tag = "units"
 )]
-pub async fn get_unit(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<Unit> {
-    let unit = state.units.get_by_id(id).await?;
+pub async fn get_unit(
+    AuthUser(claims): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Unit> {
+    let unit = {
+        let db = state.business_db(&claims).await?;
+        state.units.get_tenant(db, id).await?
+    };
     ok(unit)
 }
 
@@ -71,7 +82,13 @@ pub async fn create_unit(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = state.units.create(dto, claims.user_id_uuid()).await?;
+    let unit = {
+        let db = state.business_db(&claims).await?;
+        state
+            .units
+            .create_tenant(db, dto, claims.user_id_uuid())
+            .await?
+    };
     created(unit)
 }
 
@@ -99,7 +116,13 @@ pub async fn update_unit(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = state.units.update(id, dto, claims.user_id_uuid()).await?;
+    let unit = {
+        let db = state.business_db(&claims).await?;
+        state
+            .units
+            .update_tenant(db, id, dto, claims.user_id_uuid())
+            .await?
+    };
     ok(unit)
 }
 
@@ -120,10 +143,13 @@ pub async fn update_unit(
     tag = "units"
 )]
 pub async fn delete_unit(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, crate::error::AppError> {
-    state.units.delete(id).await?;
+    {
+        let db = state.business_db(&claims).await?;
+        state.units.delete_tenant(db, id).await?;
+    }
     Ok(StatusCode::NO_CONTENT)
 }

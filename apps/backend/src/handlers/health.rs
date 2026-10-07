@@ -44,7 +44,11 @@ pub async fn health_check(_state: State<Arc<AppState>>) -> ApiResult<HealthData>
     tag = "health"
 )]
 pub async fn live_check(State(state): State<Arc<AppState>>) -> ApiResult<LiveHealthData> {
-    let db = if ping(&state.db).await { "up" } else { "down" };
+    let db = if storage_ready(&state).await {
+        "up"
+    } else {
+        "down"
+    };
     let redis = if cache::ping(state.cache.as_ref()).await {
         "up"
     } else {
@@ -52,7 +56,7 @@ pub async fn live_check(State(state): State<Arc<AppState>>) -> ApiResult<LiveHea
     };
     ok(LiveHealthData {
         status: "ok",
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: crate::time::utc_timestamp(&chrono::Utc::now()),
         db,
         redis,
     })
@@ -68,7 +72,7 @@ pub async fn live_check(State(state): State<Arc<AppState>>) -> ApiResult<LiveHea
     tag = "health"
 )]
 pub async fn ready_check(State(state): State<Arc<AppState>>) -> ApiResult<ReadyHealthData> {
-    let db_up = ping(&state.db).await;
+    let db_up = storage_ready(&state).await;
     if db_up {
         ok(ReadyHealthData {
             status: "ok",
@@ -95,7 +99,7 @@ pub async fn ready_check(State(state): State<Arc<AppState>>) -> ApiResult<ReadyH
     tag = "health"
 )]
 pub async fn health_check_legacy(state: State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let db_up = ping(&state.db).await;
+    let db_up = storage_ready(&state).await;
     let redis_up = cache::ping(state.cache.as_ref()).await;
     Json(serde_json::json!({
         "status": if db_up { "ok" } else { "error" },
@@ -109,4 +113,37 @@ pub async fn health_check_legacy(state: State<Arc<AppState>>) -> Json<serde_json
             "redis": { "status": if redis_up { "up" } else { "degraded" } }
         }
     }))
+}
+
+/// Readiness checks only the stores required by this process's configured roles.
+/// A cell can continue serving its valid leases during a control-plane outage.
+async fn storage_ready(state: &AppState) -> bool {
+    if state.settings.roles.control {
+        let Some(pool) = state.control_db.as_ref() else {
+            return false;
+        };
+        if !ping(pool).await {
+            return false;
+        }
+    }
+    if state.settings.roles.router && state.routing.is_none() {
+        return false;
+    }
+    if state.settings.roles.cell {
+        let Some(manager) = state.tenant_dbs.as_ref() else {
+            return false;
+        };
+        for db in manager.open_handles().await {
+            if db.ensure_current_owner().is_err() {
+                return false;
+            }
+            let Ok(pool) = db.background_read_pool() else {
+                return false;
+            };
+            if sqlx::query("SELECT 1").execute(&pool).await.is_err() {
+                return false;
+            }
+        }
+    }
+    true
 }

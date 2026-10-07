@@ -1,195 +1,95 @@
-//! Integration tests for user list and auth Redis caching (DRAFT-0043 Phase 3).
-//! Run with: `cargo test --test user_cache -- --ignored`
+//! Tenant user reads bypass obsolete global credential caches.
+mod support;
+use gaming_cafe_api::{
+    dto::JwtUserClaims,
+    models::{UpdateUserDto, UserFilterDto},
+    services::UserService,
+};
+use support::TenantFixture;
 
-use gaming_cafe_api::app::build_state;
-use gaming_cafe_api::cache::keys;
-use gaming_cafe_api::config::load_dotenv;
-use gaming_cafe_api::models::{UpdateUserDto, UserFilterDto};
-use std::sync::Arc;
-
-async fn setup() -> Option<Arc<gaming_cafe_api::app::AppState>> {
-    load_dotenv();
-    if std::env::var("DATABASE_URL").is_err() && std::env::var("DB_HOST").is_err() {
-        return None;
+#[tokio::test]
+async fn user_reads_are_tenant_local_and_never_expose_credentials() {
+    let a = TenantFixture::new().await;
+    let b = TenantFixture::new().await;
+    let alice = a.player("same-name").await;
+    let bob = b.player("same-name").await;
+    let users = UserService::new();
+    let first = users
+        .list_tenant(a.db.clone(), UserFilterDto::default())
+        .await
+        .unwrap();
+    let again = users
+        .list_tenant(a.db.clone(), UserFilterDto::default())
+        .await
+        .unwrap();
+    assert_eq!(first.total, 1);
+    assert_eq!(first.data[0].id, alice);
+    assert_eq!(again.data[0].id, alice);
+    let other = users
+        .list_tenant(b.db.clone(), UserFilterDto::default())
+        .await
+        .unwrap();
+    assert_eq!(other.data[0].id, bob);
+    assert!(users.get_by_id_tenant(a.db.clone(), bob).await.is_err());
+    for user in [&first.data[0], &other.data[0]] {
+        assert!(user.password_hash.is_none());
+        assert!(user.totp_secret.is_none());
+        assert!(user.session_otp.is_none());
     }
-    let state = build_state().await;
-    if !state.cache.is_available() {
-        eprintln!("skip: Redis unavailable (set REDIS_URL or start docker-compose Redis)");
-        return None;
-    }
-    Some(state)
+    a.close().await;
+    b.close().await;
 }
 
 #[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
-async fn user_list_populates_and_reuses_cache() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let filters = UserFilterDto {
-        role: Some("player".to_string()),
-        page: Some(1),
-        limit: Some(10),
-        ..Default::default()
-    };
-    let cache_key = keys::users_list(&keys::filter_hash(&filters));
-
-    let first = state.users.list(filters.clone()).await.expect("list users");
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some(),
-        "expected list result to be cached under {cache_key}"
-    );
-
-    let second = state.users.list(filters).await.expect("cached list");
-    assert_eq!(first.total, second.total);
-    assert_eq!(first.data.len(), second.data.len());
-}
-
-#[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
-async fn user_update_invalidates_list_cache() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let filters = UserFilterDto {
-        role: Some("player".to_string()),
-        page: Some(1),
-        limit: Some(1),
-        ..Default::default()
-    };
-    let cache_key = keys::users_list(&keys::filter_hash(&filters));
-
-    let listed = state.users.list(filters.clone()).await.expect("list users");
-    let Some(player) = listed.data.first() else {
-        eprintln!("skip: no players in database");
-        return;
-    };
-
-    let original_first_name = player.first_name.clone();
-
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
-
-    state
-        .users
-        .update(
-            player.id,
-            UpdateUserDto {
-                username: None,
-                phone_number: None,
-                first_name: Some("CacheInvTest".to_string()),
-                last_name: None,
-                role: None,
-                is_active: None,
-            },
+async fn user_changes_and_password_rotation_are_visible_without_cached_credentials() {
+    let fixture = TenantFixture::new().await;
+    let id = fixture.player("before-name").await;
+    let users = UserService::new();
+    let auth = users
+        .find_by_username_for_auth_tenant(fixture.db.clone(), "before-name")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(bcrypt::verify("initial-password", auth.password_hash.as_deref().unwrap()).unwrap());
+    users
+        .update_tenant(
+            fixture.db.clone(),
+            id,
+            serde_json::from_value::<UpdateUserDto>(
+                serde_json::json!({"username":"after-name","firstName":"New name"}),
+            )
+            .unwrap(),
             None,
         )
         .await
-        .expect("update player");
-
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_none(),
-        "expected users:list keys to be busted after update"
-    );
-
-    state
-        .users
-        .update(
-            player.id,
-            UpdateUserDto {
-                username: None,
-                phone_number: None,
-                first_name: original_first_name,
-                last_name: None,
-                role: None,
-                is_active: None,
-            },
-            None,
-        )
+        .unwrap();
+    assert!(users
+        .find_by_username_for_auth_tenant(fixture.db.clone(), "before-name")
         .await
-        .expect("restore player first name");
-}
-
-#[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
-async fn auth_username_lookup_populates_cache() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let row = sqlx::query_as::<_, (String,)>(
-        r#"SELECT username FROM users
-           WHERE role IN ('staff', 'admin') AND "isActive" = true AND "deletedAt" IS NULL
-           LIMIT 1"#,
-    )
-    .fetch_optional(&state.db)
-    .await
-    .expect("query staff");
-
-    let Some((username,)) = row else {
-        eprintln!("skip: no active staff/admin in database");
-        return;
-    };
-
-    let cache_key = keys::user_username(&username);
-
-    state
-        .cache
-        .delete(&[&cache_key])
+        .unwrap()
+        .is_none());
+    let claims: JwtUserClaims = serde_json::from_value(serde_json::json!({
+        "sub":id,"userId":id,"tenantId":fixture.db.tenant_id(),"roles":["player"],
+        "iss":"gamezone","aud":"gamezone","appId":"game-zone-kiosk","orgIds":[fixture.db.tenant_id()],
+        "permissions":[],"allowedTenants":[fixture.db.tenant_id()]
+    })).unwrap();
+    users
+        .change_password_tenant(fixture.db.clone(), id, "rotated-password", &claims)
         .await
-        .expect("clear auth cache");
-
-    state
-        .users
-        .find_by_username_for_auth(&username)
+        .unwrap();
+    let auth = users
+        .find_by_username_for_auth_tenant(fixture.db.clone(), "after-name")
         .await
-        .expect("auth lookup")
-        .expect("user exists");
-
-    let cached_value = state
-        .cache
-        .get_value(&cache_key)
+        .unwrap()
+        .unwrap();
+    assert!(bcrypt::verify("rotated-password", auth.password_hash.as_deref().unwrap()).unwrap());
+    assert!(!bcrypt::verify("initial-password", auth.password_hash.as_deref().unwrap()).unwrap());
+    let public = users
+        .get_by_id_tenant(fixture.db.clone(), id)
         .await
-        .expect("redis read")
-        .expect("expected auth profile cached under {cache_key}");
-    assert!(
-        cached_value.get("password_hash").and_then(|v| v.as_str()).is_some(),
-        "auth cache must include password_hash for login"
-    );
-
-    let id_key = state
-        .users
-        .find_by_username_for_auth(&username)
-        .await
-        .expect("cached auth lookup")
-        .expect("user exists")
-        .id;
-    let id_cache_key = keys::user_id(&id_key);
-    assert!(
-        state
-            .cache
-            .get_value(&id_cache_key)
-            .await
-            .expect("redis read")
-            .is_some(),
-        "expected public profile warmed at {id_cache_key}"
-    );
+        .unwrap();
+    assert_eq!(public.first_name.as_deref(), Some("New name"));
+    assert!(public.password_hash.is_none());
+    assert!(public.totp_secret.is_none());
+    fixture.close().await;
 }

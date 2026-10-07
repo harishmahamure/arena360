@@ -54,7 +54,7 @@ interface DataGridProps<T = Record<string, unknown>> {
   renderMobileCard?: (row: T, rowActions: Action<T>[]) => ReactNode;
 }
 
-export function DataGrid<T extends Record<string, unknown>>({
+export function DataGrid<T extends object>({
   columns,
   data,
   actions = [],
@@ -75,7 +75,7 @@ export function DataGrid<T extends Record<string, unknown>>({
     if (typeof rowKey === 'function') {
       return rowKey(row);
     }
-    const key = row[rowKey];
+    const key = (row as Record<string, unknown>)[rowKey];
     if (typeof key === 'string' || typeof key === 'number') {
       return key;
     }
@@ -111,7 +111,7 @@ export function DataGrid<T extends Record<string, unknown>>({
   const paperSx = {
     borderRadius: 1,
     border: `1px solid ${theme.palette.divider}`,
-    boxShadow: theme.shadows[2],
+    boxShadow: 'none',
     overflow: maxHeight ? 'auto' : 'hidden',
     transition: 'all 0.3s ease-in-out',
     maxHeight: maxHeight,
@@ -250,6 +250,7 @@ export function DataGrid<T extends Record<string, unknown>>({
                           <Tooltip key={action.label} title={action.label} arrow>
                             <span>
                               <IconButton
+                                aria-label={action.label}
                                 color={action.color || 'default'}
                                 size="small"
                                 onClick={(e) => {

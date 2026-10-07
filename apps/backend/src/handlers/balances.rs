@@ -16,7 +16,6 @@ use crate::openapi::responses::{
     BalanceEnvelope, BalanceFlatEnvelope, BalancePaginationEnvelope, BalanceValidationEnvelope,
     ErrorEnvelope,
 };
-use crate::realtime::publish_balance_updated_for_player;
 use crate::services::BalanceService;
 
 #[utoipa::path(
@@ -38,7 +37,10 @@ pub async fn list_balances(
 ) -> ApiResult<crate::dto::PaginationResult<PlayerPlanBalanceResponse>> {
     let filters =
         BalanceService::enforce_player_scope(filters, &claims.userId, claims.is_admin_or_staff())?;
-    let result = state.balances.list(filters).await?;
+    let result = state
+        .balances
+        .list_tenant(state.business_db(&claims).await?, filters)
+        .await?;
     ok(result)
 }
 
@@ -63,7 +65,10 @@ pub async fn list_my_active_balances(
     filters.player_id = Some(user_uuid);
     filters.status = Some(balance_status::ACTIVE.to_string());
     filters.usable_only = Some(true);
-    let result = state.balances.list(filters).await?;
+    let result = state
+        .balances
+        .list_tenant(state.business_db(&claims).await?, filters)
+        .await?;
     ok(result)
 }
 
@@ -85,7 +90,10 @@ pub async fn get_best_balance(
 ) -> ApiResult<PlayerPlanBalance> {
     let player_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::Unauthorized("Authentication required".to_string()))?;
-    let balance = state.balances.get_best_balance(player_id).await?;
+    let balance = state
+        .balances
+        .get_best_balance_tenant(state.business_db(&claims).await?, player_id)
+        .await?;
     ok(balance)
 }
 
@@ -108,12 +116,14 @@ pub async fn purchase_balance(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<PurchaseBalanceDto>,
 ) -> ApiResult<PlayerPlanBalance> {
-    let player_id = dto.player_id;
     let balance = state
         .balances
-        .purchase_or_recharge(dto, claims.user_id_uuid())
+        .purchase_or_recharge_tenant(
+            state.business_db(&claims).await?,
+            dto,
+            claims.user_id_uuid(),
+        )
         .await?;
-    publish_balance_updated_for_player(&state.db, &state.outbox, player_id, &balance).await;
     created(balance)
 }
 
@@ -138,7 +148,10 @@ pub async fn get_balance(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PlayerPlanBalanceResponse> {
-    let balance = state.balances.get_by_id(id).await?;
+    let balance = state
+        .balances
+        .get_by_id_tenant(state.business_db(&claims).await?, id)
+        .await?;
     BalanceService::ensure_owner_or_admin(
         &claims.userId,
         claims.is_admin_or_staff(),
@@ -168,12 +181,15 @@ pub async fn validate_access(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<BalanceValidationResult> {
-    let balance = state.balances.get_by_id(id).await?;
+    let balance = state
+        .balances
+        .get_by_id_tenant(state.business_db(&claims).await?, id)
+        .await?;
     BalanceService::ensure_owner_or_admin(
         &claims.userId,
         claims.is_admin_or_staff(),
         balance.player_id,
     )?;
-    let result = state.balances.validate_access(id, None, None).await?;
+    let result = state.balances.validate_access_tenant(state.business_db(&claims).await?, id, None, None).await?;
     ok(result)
 }

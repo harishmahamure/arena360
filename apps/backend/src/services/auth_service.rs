@@ -10,42 +10,49 @@ use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::dto::{
-    ActiveSessionDto, AuthResponseDto, CreateSsoTokenDto, CreateSsoTokenResponseDto,
-    DevicePairingResponseDto, JwtUserClaims, LoginDto, RateLimitClaims, RedeemSsoTokenDto,
-    StaffLoginDto,
+    ActiveSessionDto, AuthResponseDto, JwtUserClaims, LoginDto, PanelLoginResponseDto, PanelMfaDto,
+    RateLimitClaims, StaffLoginDto,
 };
 use crate::error::AppError;
-use crate::models::{deduction_profile::DeductionProfile, Device, User};
-use crate::repositories::{SessionRepository, ShiftRepository, SsoRepository};
+use crate::models::{
+    deduction_profile::DeductionProfile, Device, PlayerPlanBalance, User,
+};
+use crate::repositories::{
+    TenantBalanceRepository, TenantSessionRepository,
+};
 use crate::services::session_service::display_remaining_for_session;
-use crate::services::{BalanceService, UserService};
-use crate::validation::{normalize_username, trim_secret};
 use crate::services::totp_util::verify_totp_code;
+use crate::services::BalanceService;
+use crate::tenancy::TenantDb;
+use crate::validation::{normalize_username, trim_secret};
+
+const TENANT_PLAYER_DUMMY_PASSWORD_HASH: &str =
+    "$2b$12$dprJEXAvjHcojSitMeEB1uwqnBOMCoctwdsvqEIhYFRxP1IGRvmx6";
 
 pub struct AuthService {
-    users: Arc<UserService>,
-    session_repo: SessionRepository,
-    shift_repo: ShiftRepository,
-    sso_repo: SsoRepository,
-    balances: Arc<BalanceService>,
+    control_pool: Option<PgPool>,
     settings: Arc<Settings>,
 }
 
 impl AuthService {
-    pub fn new(
-        pool: PgPool,
-        settings: Arc<Settings>,
-        balances: Arc<BalanceService>,
-        users: Arc<UserService>,
-    ) -> Self {
+    pub fn new(settings: Arc<Settings>) -> Self {
         Self {
-            users,
-            session_repo: SessionRepository::new(pool.clone()),
-            shift_repo: ShiftRepository::new(pool.clone()),
-            sso_repo: SsoRepository::new(pool),
-            balances,
+            control_pool: None,
             settings,
         }
+    }
+
+    pub fn with_control_pool(mut self, control_pool: Option<PgPool>) -> Self {
+        self.control_pool = control_pool;
+        self
+    }
+
+    fn control_database(&self) -> Result<&PgPool, AppError> {
+        self.control_pool.as_ref().ok_or_else(|| AppError::Api {
+            code: "CONTROL_AUTH_UNAVAILABLE".into(),
+            status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            details: None,
+        })
     }
 
     pub async fn login_admin(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
@@ -53,7 +60,7 @@ impl AuthService {
         let password = trim_secret(&dto.password);
         let user = self.authenticate_admin(&username, &password).await?;
         Self::verify_totp_if_enabled(&user, dto.totp.as_deref())?;
-        self.issue_auth_response(&user)
+        self.issue_auth_response(&user).await
     }
 
     pub async fn login_staff(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
@@ -69,7 +76,7 @@ impl AuthService {
 
         Self::verify_totp_if_enabled(&user, dto.totp.as_deref())?;
 
-        let token = self.generate_access_token(&user)?;
+        let token = self.generate_access_token(&user).await?;
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),
@@ -78,114 +85,316 @@ impl AuthService {
         })
     }
 
-    pub async fn login_player(
-        &self,
-        device: &Device,
-        dto: LoginDto,
-    ) -> Result<AuthResponseDto, AppError> {
-        if device.registration_status != "registered" {
-            return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
-        }
-
-        if device.status == "under_maintenance" {
-            return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
-        }
-
-        // Fingerprint drift is enforced in the player-login handler (ADR-0017)
-        // before this call, using the optional fingerprint in PlayerLoginDto.
-
+    pub async fn login_panel(&self, dto: StaffLoginDto) -> Result<PanelLoginResponseDto, AppError> {
+        self.control_database()?;
         let user = self
-            .authenticate_kiosk_user(
+            .authenticate_panel(
                 &normalize_username(&dto.username),
                 &trim_secret(&dto.password),
             )
-            .await?;
+            .await
+            .map_err(|_| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
 
-        let is_staff = user.role.as_deref() == Some("staff");
-        if is_staff
-            && self
-                .shift_repo
-                .find_active_by_user(user.id)
-                .await?
-                .is_some()
-        {
-            return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
+        if user.totp_enabled {
+            let now = Utc::now();
+            let expires_at = now + Duration::minutes(5);
+            let challenge_token = format!(
+                "pch_{}_{}",
+                Uuid::new_v4().simple(),
+                Uuid::new_v4().simple()
+            );
+            let token_hash = Self::panel_challenge_hash(&challenge_token);
+            let pool = self.control_database()?;
+            sqlx::query(
+                r#"INSERT INTO auth_challenges
+                        (token_hash, user_id, kind, expires_at, attempts, created_at)
+                       VALUES ($1, $2, 'PANEL_MFA', $3, 0, NOW())
+                       ON CONFLICT (user_id, kind) DO UPDATE SET
+                         token_hash = EXCLUDED.token_hash,
+                         expires_at = EXCLUDED.expires_at,
+                         attempts = 0,
+                         created_at = NOW()"#,
+            )
+            .bind(token_hash)
+            .bind(user.id)
+            .bind(expires_at)
+            .execute(pool)
+            .await?;
+            return Ok(PanelLoginResponseDto::MfaRequired {
+                challenge_token,
+                expires_at,
+            });
         }
 
-        let open_session = self
-            .session_repo
-            .find_open_session_for_player(user.id)
-            .await?;
+        self.panel_authenticated_response(&user).await
+    }
 
-        let active_session = if let Some(session) = open_session {
-            if session.device_id != device.id {
+    pub async fn verify_panel_mfa(
+        &self,
+        dto: PanelMfaDto,
+    ) -> Result<PanelLoginResponseDto, AppError> {
+        let token_hash = Self::panel_challenge_hash(dto.challengeToken.trim());
+        let pool = self.control_database()?;
+        let mut tx = pool.begin().await?;
+        let challenge: Option<(Uuid, chrono::DateTime<Utc>, i32)> = sqlx::query_as(
+            r#"SELECT user_id, expires_at, attempts
+                       FROM auth_challenges
+                       WHERE token_hash = $1 AND kind = 'PANEL_MFA'
+                       FOR UPDATE"#,
+        )
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((user_id, expires_at, attempts)) = challenge else {
+            return Err(AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"));
+        };
+        if expires_at <= Utc::now() || attempts >= 5 {
+            let delete_sql =
+                "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
+            sqlx::query(delete_sql)
+                .bind(&token_hash)
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            return Err(AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"));
+        }
+        let user = self
+            .identity_user_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"))
+            .map_err(|_| AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"))?;
+
+        if !matches!(user.role.as_deref(), Some("admin" | "staff")) || !user.is_active {
+            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
+        }
+        let secret = user
+            .totp_secret
+            .as_deref()
+            .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_MFA"))?;
+        if !verify_totp_code(secret, dto.code.trim(), &user.username)? {
+            if attempts >= 4 {
+                let delete_sql =
+                    "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
+                sqlx::query(delete_sql)
+                    .bind(&token_hash)
+                    .execute(&mut *tx)
+                    .await?;
+            } else {
+                let update_sql = "UPDATE auth_challenges SET attempts = attempts + 1 \
+                     WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
+                sqlx::query(update_sql)
+                    .bind(&token_hash)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            tx.commit().await?;
+            return Err(AppError::unauthorized_code("AUTH_INVALID_MFA"));
+        }
+
+        let delete_sql = "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
+        sqlx::query(delete_sql)
+            .bind(&token_hash)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        self.panel_authenticated_response(&user).await
+    }
+
+    fn panel_challenge_hash(token: &str) -> String {
+        hex::encode(Sha256::digest(token.as_bytes()))
+    }
+
+    async fn authenticate_panel(&self, username: &str, password: &str) -> Result<User, AppError> {
+        let user = self
+            .identity_user_by_username(username, None)
+            .await?
+            .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
+        if !matches!(user.role.as_deref(), Some("admin" | "staff")) {
+            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
+        }
+        self.verify_password(password, user.password_hash.as_deref())?;
+        self.ensure_active(&user)?;
+        Ok(user)
+    }
+
+    async fn panel_authenticated_response(
+        &self,
+        user: &User,
+    ) -> Result<PanelLoginResponseDto, AppError> {
+        let token = self.generate_access_token(user).await?;
+        let pool = self.control_database()?;
+        let permissions: Vec<String> = sqlx::query_scalar::<_, serde_json::Value>(
+            r#"SELECT m.permissions
+                   FROM organization_memberships m
+                   JOIN tenants t ON t.id = m.tenant_id
+                   WHERE m.user_id = $1 AND m.role = $2 AND m.is_active
+                     AND t.state NOT IN ('DELETED', 'FAILED')
+                   ORDER BY m.created_at
+                   LIMIT 1"#,
+        )
+        .bind(user.id)
+        .bind(user.role.as_deref())
+        .fetch_one(pool)
+        .await?
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|permission| permission.as_str().map(str::to_string))
+        .collect();
+        let next_step = if permissions.iter().any(|p| p == "shifts:write")
+            && !permissions.iter().any(|p| p == "access:manage")
+        {
+            "shift_setup"
+        } else {
+            "dashboard"
+        };
+        Ok(PanelLoginResponseDto::Authenticated {
+            access_token: token,
+            user: user.to_auth_user(),
+            next_step: next_step.to_string(),
+        })
+    }
+
+    pub async fn login_player_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        device: &Device,
+        dto: LoginDto,
+        timezone: String,
+    ) -> Result<AuthResponseDto, AppError> {
+        if device.organization_id != db.tenant_id() {
+            return Err(AppError::Unauthorized("Kiosk tenant mismatch".into()));
+        }
+        if device.registration_status != "registered" {
+            return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
+        }
+        if device.status == "under_maintenance" {
+            return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
+        }
+        let username = normalize_username(&dto.username);
+        let local_player = crate::repositories::TenantUserRepository::new(db.clone()).find_player_for_auth(&username).await?;
+        let global_staff = if local_player.is_none() {
+            if let Some(control) = &self.control_pool {
+                crate::control::identity::IdentityRepository::new(control.clone()).kiosk_staff_identity(db.tenant_id(), &username).await?
+            } else { None }
+        } else { None };
+        let authenticating_staff = global_staff.is_some();
+        let user = local_player.or(global_staff);
+        let password = trim_secret(&dto.password);
+        let password_hash = user
+            .as_ref()
+            .and_then(|found| found.password_hash.as_deref())
+            .unwrap_or(TENANT_PLAYER_DUMMY_PASSWORD_HASH);
+        let password_valid = verify(&password, password_hash).unwrap_or(false);
+        let user = match (user, password_valid) {
+            (Some(user), true) => user,
+            _ => return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS")),
+        };
+        let user = if authenticating_staff {
+            crate::control::staff_projection::sync_user(self.control_pool.as_ref().unwrap(), db.clone(), user.id).await?;
+            let projected = crate::repositories::TenantUserRepository::new(db.clone()).require_active_staff(user.id).await?;
+            if projected.role.as_deref() != Some("staff") {return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));}
+            projected
+        } else { user };
+        let is_staff = user.role.as_deref() == Some("staff");
+        if is_staff {
+            if crate::repositories::TenantShiftRepository::new(db.clone()).find_active_by_user(user.id).await?.is_some() {
+                return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
+            }
+            let allowance = TenantBalanceRepository::new(db.clone()).find_existing_for_scope(user.id,None,None,crate::models::plan_kind::STAFF_ALLOWANCE).await?
+                .ok_or_else(||AppError::forbidden_code("STAFF_ALLOWANCE_NONE"))?;
+            let validation = BalanceService::validate_balance(&allowance,Some(device),None);
+            if !validation.valid { return Err(BalanceService::validation_to_app_error_for_balance(&allowance,validation)); }
+        }
+        let sessions = TenantSessionRepository::new(db.clone());
+        let active_session = if let Some(open) = sessions.find_open_for_player(user.id).await? {
+            if open.device_id != device.id {
                 return Err(AppError::conflict_code(
                     "PLAYER_ALREADY_IN_SESSION",
-                    Some(json!({
-                        "deviceId": session.device_id.to_string(),
-                        "deviceName": session.device_name,
-                        "sessionId": session.session_id.to_string(),
-                        "sessionStartTime": session.start_time.to_rfc3339(),
-                    })),
+                    Some(
+                        json!({"deviceId":open.device_id,"deviceName":open.device_name,
+                        "sessionId":open.session_id,"sessionStartTime":crate::time::utc_timestamp(&open.start_time)}),
+                    ),
                 ));
             }
-
-            let validation = self
-                .balances
-                .validate_access(session.balance_id, Some(device), None)
-                .await?;
-            if !validation.valid {
-                let balance = self.balances.get_raw(session.balance_id).await?;
-                return Err(BalanceService::validation_to_app_error_for_balance(
-                    &balance,
-                    validation,
-                ));
-            }
-
-            let balance = self.balances.get_raw(session.balance_id).await?;
-            let usage_session = self
-                .session_repo
-                .find_by_id(session.session_id)
+            let balance = TenantBalanceRepository::new(db.clone())
+                .find_by_id(open.balance_id)
                 .await?
-                .ok_or_else(|| {
-                    AppError::NotFound("Open session record missing".to_string())
-                })?;
-            let remaining = display_remaining_for_session(
-                &balance,
-                &usage_session,
-                &self.settings.cafe_timezone,
-            );
-            let deduction_profile = balance
-                .deduction_profile
-                .as_ref()
-                .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok());
+                .ok_or_else(|| AppError::NotFound("Open balance record missing".into()))?;
+            let validation = BalanceService::validate_balance(&balance, Some(device), None);
+            if !validation.valid {
+                return Err(BalanceService::validation_to_app_error_for_balance(
+                    &balance, validation,
+                ));
+            }
+            let session = sessions
+                .find_by_id(open.session_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Open session record missing".into()))?;
             Some(ActiveSessionDto {
-                id: session.session_id.to_string(),
+                id: session.id.to_string(),
                 startTime: session.start_time,
-                balanceId: session.balance_id.to_string(),
-                remainingMinutes: remaining as f64,
+                balanceId: balance.id.to_string(),
+                remainingMinutes: display_remaining_for_session(&balance, &session, &timezone)
+                    as f64,
                 walletBalanceMinutes: balance.remaining_minutes as f64,
-                deductionProfile: deduction_profile,
-                cafeTimezone: self.settings.cafe_timezone.clone(),
-                timeCreditsConsumed: Some(
-                    usage_session.time_credits_consumed.map(|v| v as f64).unwrap_or(0.0),
-                ),
+                deductionProfile: crate::services::session_service::session_profile_value(
+                    &balance, &session,
+                )
+                .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok()),
+                cafeTimezone: timezone,
+                timeCreditsConsumed: Some(session.time_credits_consumed.unwrap_or(0) as f64),
                 expiryDate: balance.expiry_date,
             })
         } else if is_staff {
-            self.balances
-                .require_staff_allowance_for_device(user.id, device)
-                .await?;
             None
         } else {
-            self.balances
-                .require_usable_for_device(user.id, device)
+            let balances = TenantBalanceRepository::new(db)
+                .list(&crate::models::BalanceFilterDto {
+                    player_id: Some(user.id),
+                    status: Some("active".into()),
+                    usable_only: Some(true),
+                    limit: Some(100),
+                    ..Default::default()
+                })
                 .await?;
+            let usable = balances.data.into_iter().any(|row| {
+                let raw: PlayerPlanBalance = PlayerPlanBalance {
+                    id: row.id,
+                    player_id: row.player_id,
+                    device_type: row.device_type,
+                    device_sub_type: row.device_sub_type,
+                    kind: row.kind,
+                    remaining_minutes: row.remaining_minutes,
+                    expiry_date: row.expiry_date,
+                    window_start: row.window_start,
+                    window_end: row.window_end,
+                    status: row.status,
+                    source_plan_id: row.source_plan_id,
+                    allowed_days: row.allowed_days,
+                    allowed_months: row.allowed_months,
+                    deduction_profile: row.deduction_profile,
+                    created_by: row.created_by,
+                    updated_by: row.updated_by,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    deleted_at: row.deleted_at,
+                };
+                BalanceService::device_scope_matches(&raw, device)
+                    && BalanceService::validate_balance(&raw, Some(device), None).valid
+            });
+            if !usable {
+                return Err(AppError::forbidden_code("PLAN_NOT_ACTIVATED"));
+            }
             None
         };
-
-        let token = self.generate_player_token(&user, device.id)?;
-
+        let token = self.generate_player_token_for(
+            &user,
+            device.id,
+            device.organization_id,
+            device.location_id,
+        )?;
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),
@@ -194,191 +403,33 @@ impl AuthService {
         })
     }
 
-    pub async fn authenticate_player(
+    pub fn generate_device_token_for(
         &self,
-        username: &str,
-        password: &str,
-    ) -> Result<User, AppError> {
-        let user = self.authenticate_kiosk_user(username, password).await?;
-        if user.role.as_deref() != Some("player") {
-            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
-        }
-        Ok(user)
-    }
-
-    async fn authenticate_kiosk_user(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<User, AppError> {
-        let user = self
-            .users
-            .find_by_username_for_auth(username)
-            .await?
-            .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
-
-        let role = user.role.as_deref();
-        if role != Some("player") && role != Some("staff") {
-            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
-        }
-
-        self.verify_password_for_player(password, user.password_hash.as_deref())?;
-        self.ensure_active_for_player(&user)?;
-
-        Ok(user)
-    }
-
-    pub async fn create_sso_token(
-        &self,
-        dto: CreateSsoTokenDto,
-        created_by: Uuid,
-    ) -> Result<CreateSsoTokenResponseDto, AppError> {
-        let purpose = dto.purpose.trim();
-        if purpose != "tv_provision" && purpose != "tv_login" {
-            return Err(AppError::BadRequest(
-                "purpose must be tv_provision or tv_login".to_string(),
-            ));
-        }
-
-        let device_id = match purpose {
-            "tv_provision" => {
-                let raw = dto
-                    .deviceId
-                    .as_deref()
-                    .ok_or_else(|| AppError::BadRequest("deviceId is required".to_string()))?;
-                Some(
-                    Uuid::parse_str(raw)
-                        .map_err(|_| AppError::BadRequest("Invalid deviceId".to_string()))?,
-                )
-            }
-            _ => dto
-                .deviceId
-                .as_deref()
-                .map(|raw| {
-                    Uuid::parse_str(raw)
-                        .map_err(|_| AppError::BadRequest("Invalid deviceId".to_string()))
-                })
-                .transpose()?,
-        };
-
-        let raw_token = Uuid::new_v4().to_string();
-        let token_hash = hash_sso_token(&raw_token);
-        let expires_at = Utc::now() + Duration::minutes(5);
-
-        self.sso_repo
-            .insert(&token_hash, purpose, device_id, created_by, expires_at)
-            .await?;
-
-        Ok(CreateSsoTokenResponseDto {
-            token: raw_token,
-            expiresAt: expires_at.to_rfc3339(),
-            deviceId: device_id.map(|id| id.to_string()),
-        })
-    }
-
-    pub async fn redeem_sso_token(
-        &self,
-        dto: RedeemSsoTokenDto,
-    ) -> Result<AuthResponseDto, AppError> {
-        let token = dto.token.trim();
-        if token.is_empty() {
-            return Err(AppError::BadRequest("token is required".to_string()));
-        }
-
-        let row = self
-            .sso_repo
-            .find_valid_by_hash(&hash_sso_token(token))
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("Invalid or expired SSO token".to_string()))?;
-
-        if row.redeemed_at.is_some() {
-            return Err(AppError::Unauthorized("SSO token already used".to_string()));
-        }
-        if row.expires_at < Utc::now() {
-            return Err(AppError::Unauthorized("SSO token expired".to_string()));
-        }
-
-        let staff_id = row
-            .created_by
-            .ok_or_else(|| AppError::Internal("SSO token missing creator".to_string()))?;
-        let user = self
-            .users
-            .get_by_id(staff_id)
-            .await
-            .map_err(|_| AppError::Unauthorized("SSO creator not found".to_string()))?;
-
-        if !user.role.as_deref().is_some_and(|r| r == "admin" || r == "staff") {
-            return Err(AppError::Forbidden("SSO creator is not staff".to_string()));
-        }
-        self.ensure_active(&user)?;
-
-        self.sso_repo.mark_redeemed(row.id).await?;
-        let access_token = self.generate_access_token(&user)?;
-
-        Ok(AuthResponseDto {
-            accessToken: access_token,
-            user: user.to_auth_user(),
-            shiftId: None,
-            activeSession: None,
-        })
-    }
-
-    pub fn generate_pairing_token(&self, device_id: Uuid) -> Result<DevicePairingResponseDto, AppError> {
-        let now = Utc::now();
-        let expires_at = now + Duration::minutes(5);
-        let id = device_id.to_string();
-
-        let claims = JwtUserClaims {
-            sub: id.clone(),
-            permissions: vec![],
-            allowedTenants: vec![],
-            rateLimit: Some(RateLimitClaims { qps: 100 }),
-            iss: "gamezone".to_string(),
-            aud: serde_json::json!("gamezone"),
-            iat: Some(now.timestamp()),
-            exp: Some(expires_at.timestamp()),
-            userId: id.clone(),
-            tenantId: "dualshock-arena".to_string(),
-            roles: vec!["device_pairing".to_string()],
-            appId: "game-zone-console-tv".to_string(),
-            orgIds: vec![],
-            deviceId: Some(id.clone()),
-        };
-
-        let token = encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(self.settings.jwt_secret.as_bytes()),
-        )
-        .map_err(AppError::Jwt)?;
-
-        Ok(DevicePairingResponseDto {
-            accessToken: token,
-            expiresAt: expires_at.to_rfc3339(),
-            deviceId: id,
-        })
-    }
-
-    pub fn generate_device_token(&self, device_id: Uuid) -> Result<String, AppError> {
+        device_id: Uuid,
+        tenant_id: Uuid,
+        location_id: Uuid,
+    ) -> Result<String, AppError> {
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_device_expiration);
         let id = device_id.to_string();
+        let tenant_id = tenant_id.to_string();
 
         let claims = JwtUserClaims {
             sub: id.clone(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![tenant_id.clone()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: id.clone(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: tenant_id.clone(),
             roles: vec!["device".to_string()],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![],
+            orgIds: vec![tenant_id],
             deviceId: Some(id),
+            locationId: Some(location_id.to_string()),
         };
 
         encode(
@@ -389,26 +440,35 @@ impl AuthService {
         .map_err(AppError::Jwt)
     }
 
-    pub fn generate_player_token(&self, user: &User, device_id: Uuid) -> Result<String, AppError> {
+    pub fn generate_player_token_for(
+        &self,
+        user: &User,
+        device_id: Uuid,
+        tenant_id: Uuid,
+        location_id: Uuid,
+    ) -> Result<String, AppError> {
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_player_expiration);
-        let role = user.role.clone().unwrap_or_else(|| "player".to_string());
+        // Playing credentials carry player capabilities even when the account is staff.
+        let role = "player".to_string();
+        let tenant_id = tenant_id.to_string();
 
         let claims = JwtUserClaims {
             sub: user.id.to_string(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![tenant_id.clone()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: user.id.to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: tenant_id.clone(),
             roles: vec![role],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![],
+            orgIds: vec![tenant_id],
             deviceId: Some(device_id.to_string()),
+            locationId: Some(location_id.to_string()),
         };
 
         encode(
@@ -425,8 +485,7 @@ impl AuthService {
         password: &str,
     ) -> Result<User, AppError> {
         let user = self
-            .users
-            .find_by_username_for_auth(username)
+            .identity_user_by_username(username, Some("staff"))
             .await?
             .ok_or_else(|| {
                 tracing::error!(
@@ -461,6 +520,78 @@ impl AuthService {
         Ok(user)
     }
 
+    async fn identity_user_by_username(
+        &self,
+        username: &str,
+        required_role: Option<&str>,
+    ) -> Result<Option<User>, AppError> {
+        let pool = self.control_database()?;
+
+        sqlx::query_as::<_, User>(
+            r#"SELECT u.id, u.email, u.username, u.password_hash, u.is_active,
+                      u.first_name, u.last_name, u.phone_number, membership.role,
+                      0::float8 AS credit_limit,
+                      NULL::text AS session_otp_id, NULL::text AS session_otp,
+                      u.totp_secret, u.totp_enabled,
+                      NULL::uuid AS created_by, NULL::uuid AS updated_by,
+                      u.created_at, u.updated_at, u.deleted_at, u.avatar_url
+               FROM users u
+               JOIN LATERAL (
+                 SELECT m.role
+                 FROM organization_memberships m
+                 JOIN tenants t ON t.id = m.tenant_id
+                 WHERE m.user_id = u.id
+                   AND m.is_active
+                   AND t.state NOT IN ('DELETED', 'FAILED')
+                   AND ($2::text IS NULL OR m.role = $2)
+                 ORDER BY m.created_at
+                 LIMIT 1
+               ) membership ON TRUE
+               WHERE u.username = $1 AND u.deleted_at IS NULL"#,
+        )
+        .bind(username)
+        .bind(required_role)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)
+    }
+
+    async fn identity_user_by_id(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
+        let pool = self.control_database()?;
+
+        sqlx::query_as::<_, User>(
+            r#"SELECT u.id, u.email, u.username, u.password_hash, u.is_active,
+                      u.first_name, u.last_name, u.phone_number, membership.role,
+                      0::float8 AS credit_limit,
+                      NULL::text AS session_otp_id, NULL::text AS session_otp,
+                      u.totp_secret, u.totp_enabled,
+                      NULL::uuid AS created_by, NULL::uuid AS updated_by,
+                      u.created_at, u.updated_at, u.deleted_at, u.avatar_url
+               FROM users u
+               JOIN LATERAL (
+                 SELECT m.role
+                 FROM organization_memberships m
+                 JOIN tenants t ON t.id = m.tenant_id
+                 WHERE m.user_id = u.id AND m.is_active
+                   AND t.state NOT IN ('DELETED', 'FAILED')
+                 ORDER BY m.created_at
+                 LIMIT 1
+               ) membership ON TRUE
+               WHERE u.id = $1 AND u.deleted_at IS NULL"#,
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(AppError::Database)
+    }
+
+    pub async fn verify_optional_staff_totp(&self, user_id: Uuid, code: Option<&str>) -> Result<(), AppError> {
+        let user = self.identity_user_by_id(user_id).await?
+            .ok_or_else(|| AppError::Unauthorized("Staff identity not found".into()))?;
+        self.ensure_active(&user)?;
+        Self::verify_totp_if_enabled(&user, code)
+    }
+
     pub async fn authenticate_staff_with_totp(
         &self,
         username: &str,
@@ -488,8 +619,41 @@ impl AuthService {
         }
     }
 
-    pub fn issue_auth_response(&self, user: &User) -> Result<AuthResponseDto, AppError> {
-        let token = self.generate_access_token(user)?;
+    /// Authentication can consult the control plane; the issued grants come from
+    /// the selected tenant. Refresh and handover keep this tenant selected.
+    pub async fn issue_tenant_auth_response(&self, db: Arc<crate::tenancy::TenantDb>, user_id: Uuid) -> Result<AuthResponseDto, AppError> {
+        let pool = self.control_pool.as_ref().ok_or_else(|| AppError::Api { code:"CONTROL_AUTH_UNAVAILABLE".into(),status:axum::http::StatusCode::SERVICE_UNAVAILABLE,details:None })?;
+        let memberships: Vec<(Uuid,String)> = sqlx::query_as("SELECT m.tenant_id,m.role FROM organization_memberships m JOIN users u ON u.id=m.user_id JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=$1 AND m.is_active AND u.is_active AND u.deleted_at IS NULL AND t.state NOT IN('DELETED','FAILED') ORDER BY m.created_at,m.tenant_id")
+            .bind(user_id).fetch_all(pool).await?;
+        let role = memberships.iter().find(|m| m.0 == db.tenant_id()).map(|m| m.1.clone())
+            .ok_or_else(|| AppError::Forbidden("Active membership required in the selected tenant".into()))?;
+        crate::control::staff_projection::sync_user(pool,db.clone(),user_id).await?;
+        let mut user = crate::repositories::TenantUserRepository::new(db.clone()).require_active_staff(user_id).await?;
+        user.role = Some(role);
+        let grants = crate::repositories::TenantSettingsRepository::new(db.clone()).effective_permissions(user_id).await?;
+        let mut scopes = vec![(db.tenant_id(),serde_json::json!(grants))];
+        scopes.extend(memberships.into_iter().filter(|m| m.0 != db.tenant_id()).map(|m| (m.0,serde_json::json!([]))));
+        Ok(AuthResponseDto { accessToken:self.encode_access_token(&user,&scopes)?,user:user.to_auth_user(),shiftId:None,activeSession:None })
+    }
+
+    /// Renew a valid owning-cell session from the local membership projection.
+    /// Allowed tenant IDs remain bounded by the previously signed token.
+    pub async fn issue_local_tenant_auth_response(&self,db:Arc<crate::tenancy::TenantDb>,user_id:Uuid,allowed:&[String]) -> Result<AuthResponseDto,AppError> {
+        if !allowed.iter().any(|id| id==&db.tenant_id().to_string()) {
+            return Err(AppError::Forbidden("Token does not allow the selected tenant".into()));
+        }
+        let user=crate::repositories::TenantUserRepository::new(db.clone()).require_active_staff(user_id).await?;
+        let grants=crate::repositories::TenantSettingsRepository::new(db.clone()).effective_permissions(user_id).await?;
+        let mut scopes=vec![(db.tenant_id(),serde_json::json!(grants))];
+        let mut seen=std::collections::HashSet::from([db.tenant_id()]);
+        for id in allowed.iter().filter_map(|id|Uuid::parse_str(id).ok()) {
+            if seen.insert(id) {scopes.push((id,serde_json::json!([])));}
+        }
+        Ok(AuthResponseDto {accessToken:self.encode_access_token(&user,&scopes)?,user:user.to_auth_user(),shiftId:None,activeSession:None})
+    }
+
+    pub async fn issue_auth_response(&self, user: &User) -> Result<AuthResponseDto, AppError> {
+        let token = self.generate_access_token(user).await?;
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),
@@ -504,8 +668,7 @@ impl AuthService {
         password: &str,
     ) -> Result<User, AppError> {
         let user = self
-            .users
-            .find_by_username_for_auth(username)
+            .identity_user_by_username(username, Some("admin"))
             .await?
             .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
 
@@ -556,21 +719,6 @@ impl AuthService {
         }
     }
 
-    fn verify_password_for_player(
-        &self,
-        password: &str,
-        hash: Option<&str>,
-    ) -> Result<(), AppError> {
-        let Some(hash) = hash else {
-            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
-        };
-        if verify(password, hash).unwrap_or(false) {
-            Ok(())
-        } else {
-            Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))
-        }
-    }
-
     fn ensure_active(&self, user: &User) -> Result<(), AppError> {
         if user.is_active {
             Ok(())
@@ -579,34 +727,71 @@ impl AuthService {
         }
     }
 
-    fn ensure_active_for_player(&self, user: &User) -> Result<(), AppError> {
-        if user.is_active {
-            Ok(())
-        } else {
-            Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))
+    async fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
+        let pool = self.control_database()?;
+        let memberships: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
+            r#"SELECT m.tenant_id, m.permissions
+                       FROM organization_memberships m
+                       JOIN tenants t ON t.id = m.tenant_id
+                       WHERE m.user_id = $1 AND m.is_active
+                         AND t.state NOT IN ('DELETED', 'FAILED')
+                       ORDER BY (m.role = $2) DESC, m.created_at, m.tenant_id"#,
+        )
+        .bind(user.id)
+        .bind(user.role.as_deref())
+        .fetch_all(pool)
+        .await?;
+        if memberships.is_empty() {
+            return Err(AppError::Forbidden(
+                "User has no active organization membership".to_string(),
+            ));
         }
+        self.encode_access_token(user, &memberships)
     }
 
-    fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
+    fn encode_access_token(
+        &self,
+        user: &User,
+        memberships: &[(Uuid, serde_json::Value)],
+    ) -> Result<String, AppError> {
         let role = user.role.clone().unwrap_or_else(|| "player".to_string());
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_access_expiration);
+        let org_ids: Vec<String> = memberships.iter().map(|(id, _)| id.to_string()).collect();
+        let permissions: Vec<String> = memberships
+            .iter()
+            .take(1)
+            .flat_map(|(_, value)| {
+                value
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|permission| permission.as_str().map(str::to_string))
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let tenant_id = org_ids
+            .first()
+            .cloned()
+            .ok_or_else(|| AppError::Forbidden("No active organization selected".to_string()))?;
 
         let claims = JwtUserClaims {
             sub: user.id.to_string(),
-            permissions: vec![],
-            allowedTenants: vec![],
+            permissions,
+            allowedTenants: org_ids.clone(),
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + exp_duration).timestamp()),
             userId: user.id.to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: tenant_id,
             roles: vec![role],
             appId: "game-zone-backend".to_string(),
-            orgIds: vec![],
+            orgIds: org_ids,
             deviceId: None,
+            locationId: None,
         };
 
         encode(
@@ -616,12 +801,6 @@ impl AuthService {
         )
         .map_err(AppError::Jwt)
     }
-}
-
-fn hash_sso_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    format!("{:x}", hasher.finalize())
 }
 
 fn parse_duration(value: &str) -> Duration {
@@ -669,6 +848,7 @@ mod admin_totp_tests {
             created_at: now,
             updated_at: now,
             deleted_at: None,
+            avatar_url: None,
         }
     }
 
@@ -705,9 +885,7 @@ mod admin_totp_tests {
             6,
             1,
             30,
-            Secret::Encoded(secret)
-                .to_bytes()
-                .expect("secret bytes"),
+            Secret::Encoded(secret).to_bytes().expect("secret bytes"),
             Some("GameZone".to_string()),
             "admin".to_string(),
         )
@@ -724,14 +902,19 @@ mod access_token_tests {
     use jsonwebtoken::{decode, DecodingKey, Validation};
     use std::sync::Arc;
 
-    use crate::cache::NoopCache;
     use crate::config::Settings;
-    use crate::services::BalanceService;
 
     fn test_settings(jwt_access_expiration: &str) -> Arc<Settings> {
         Arc::new(Settings {
-            database_url: "postgres://localhost:5432/test".to_string(),
+            roles: crate::config::Roles::ALL,
+            cell_id: None,
+            tenant_data_dir: std::path::PathBuf::from("data/tenants"),
+            control_database_url: None,
+            database_min_connections: 0,
             database_max_connections: 1,
+            database_acquire_timeout_seconds: 2,
+            database_idle_timeout_seconds: 600,
+            database_max_lifetime_seconds: 1800,
             redis_url: None,
             jwt_secret: "your-jwt-secret-change-this-my-secret-sova".to_string(),
             jwt_access_expiration: jwt_access_expiration.to_string(),
@@ -741,15 +924,29 @@ mod access_token_tests {
             port: 3000,
             cafe_timezone: "UTC".to_string(),
             zeptomail_token: None,
+            legacy_rest_enabled: false,
+            trusted_proxy_cidrs: Vec::new(),
+            max_concurrent_requests: 256,
         })
     }
 
     fn test_auth_service(settings: Arc<Settings>) -> AuthService {
-        let pool = PgPool::connect_lazy("postgres://localhost:5432/test").expect("lazy pool");
-        let cache = Arc::new(NoopCache);
-        let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
-        let balances = Arc::new(BalanceService::new(pool.clone(), cache));
-        AuthService::new(pool, settings, balances, users)
+        AuthService::new(settings)
+    }
+
+    #[tokio::test]
+    async fn panel_auth_requires_control_storage_without_a_legacy_fallback() {
+        let auth = test_auth_service(test_settings("1h"));
+        let error = auth.login_panel(StaffLoginDto {
+            username: "staff".into(), password: "password".into(), totp: None,
+        }).await.unwrap_err();
+        assert!(matches!(error, AppError::Api { ref code, status, .. }
+            if code == "CONTROL_AUTH_UNAVAILABLE" && status == axum::http::StatusCode::SERVICE_UNAVAILABLE));
+        let error = auth.verify_panel_mfa(PanelMfaDto {
+            challengeToken: "missing".into(), code: "123456".into(),
+        }).await.unwrap_err();
+        assert!(matches!(error, AppError::Api { ref code, .. }
+            if code == "CONTROL_AUTH_UNAVAILABLE"));
     }
 
     fn test_user() -> User {
@@ -774,7 +971,18 @@ mod access_token_tests {
             created_at: now,
             updated_at: now,
             deleted_at: None,
+            avatar_url: None,
         }
+    }
+
+    #[test]
+    fn panel_challenge_hash_is_deterministic_and_does_not_store_the_token() {
+        let token = "pch_private-single-use-token";
+        let hash = AuthService::panel_challenge_hash(token);
+        assert_eq!(hash.len(), 64);
+        assert_ne!(hash, token);
+        assert_eq!(hash, AuthService::panel_challenge_hash(token));
+        assert_ne!(hash, AuthService::panel_challenge_hash("pch_other-token"));
     }
 
     #[tokio::test]
@@ -783,7 +991,15 @@ mod access_token_tests {
         let auth = test_auth_service(settings);
         let user = test_user();
 
-        let token = auth.generate_access_token(&user).expect("token");
+        let token = auth
+            .encode_access_token(
+                &user,
+                &[(
+                    Uuid::now_v7(),
+                    serde_json::json!(["settings:read"]),
+                )],
+            )
+            .expect("token");
         let mut validation = Validation::default();
         validation.validate_exp = false;
         validation.set_audience(&["gamezone"]);
@@ -806,5 +1022,30 @@ mod access_token_tests {
             "expected ~7d TTL, got {ttl_secs}s"
         );
         assert!(ttl_secs > 15 * 60, "admin must not use hardcoded 15m TTL");
+    }
+
+    #[tokio::test]
+    async fn device_token_carries_its_tenant_and_location() {
+        let settings = test_settings("15m");
+        let decoding_key = DecodingKey::from_secret(settings.jwt_secret.as_bytes());
+        let auth = test_auth_service(settings);
+        let device_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let location_id = Uuid::new_v4();
+
+        let token = auth
+            .generate_device_token_for(device_id, tenant_id, location_id)
+            .expect("device token");
+        let mut validation = Validation::default();
+        validation.validate_exp = false;
+        validation.set_audience(&["gamezone"]);
+        validation.set_issuer(&["gamezone"]);
+        let claims = decode::<JwtUserClaims>(&token, &decoding_key, &validation)
+            .expect("decode")
+            .claims;
+
+        assert_eq!(claims.deviceId, Some(device_id.to_string()));
+        assert_eq!(claims.tenantId, tenant_id.to_string());
+        assert_eq!(claims.locationId, Some(location_id.to_string()));
     }
 }

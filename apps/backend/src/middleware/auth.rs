@@ -18,9 +18,11 @@ const PUBLIC_EXACT: &[&str] = &[
     "/auth/login",
     "/auth/login/admin",
     "/auth/login/staff",
-    "/auth/sso/redeem",
-    "/auth/device-pairing",
+    "/auth/login/panel",
+    "/auth/login/panel/mfa",
+    "/branding",
     "/health/live",
+    "/metrics",
     "/realtime",
 ];
 
@@ -51,12 +53,113 @@ pub async fn auth_middleware(
 
     let claims = decode_token(&state, token)?;
     req.extensions_mut().insert(claims);
+    Ok(next.run(req).await)
+}
+
+/// Runs on the owning cell, after signature validation and tenant routing.
+pub async fn authorize_tenant_request(
+    State(state): State<Arc<AppState>>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Result<Response, AppError> {
+    let path = req.uri().path().to_string();
+    if req.method() == axum::http::Method::OPTIONS || is_public(&path) {
+        return Ok(next.run(req).await);
+    }
+    let mut claims = req
+        .extensions()
+        .get::<JwtUserClaims>()
+        .cloned()
+        .ok_or_else(|| AppError::Unauthorized("Authentication required".into()))?;
+    if claims.appId == "game-zone-kiosk" && claims.deviceId.is_some() && claims.is_admin_or_staff()
+    {
+        return Err(AppError::Forbidden(
+            "Use a panel session for staff operations".into(),
+        ));
+    }
+    if claims.is_admin_or_staff() {
+        let db = state.business_db(&claims).await?;
+        let user = claims
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        let settings = crate::repositories::TenantSettingsRepository::new(db.clone());
+        let mut member = settings.membership_context(user).await?;
+        if path == "/auth/refresh"
+            && member
+                .as_ref()
+                .is_none_or(|m| !claims.roles.contains(&m.role))
+        {
+            if let Some(control) = &state.control_db {
+                crate::control::staff_projection::sync_user(control, db, user).await?;
+                member = settings.membership_context(user).await?;
+            }
+        }
+        let member = member
+            .filter(|m| claims.roles.contains(&m.role))
+            .ok_or_else(|| {
+                AppError::Unauthorized("Account or tenant access changed; sign in again".into())
+            })?;
+        claims.permissions = settings.effective_permissions(user).await?;
+        claims.roles = vec![member.role];
+    }
+    if claims.is_admin_or_staff() {
+        crate::access::routes::authorize(&claims, req.method().as_str(), &path)?;
+    }
+    req.extensions_mut().insert(claims);
 
     Ok(next.run(req).await)
 }
 
+pub async fn control_panel_session_active(
+    pool: &sqlx::PgPool,
+    claims: &JwtUserClaims,
+) -> Result<bool, sqlx::Error> {
+    if !claims.is_admin_or_staff() {
+        return Ok(true);
+    }
+    let Some(user_id) = claims.user_id_uuid() else {
+        return Ok(false);
+    };
+    let Ok(tenant_id) = Uuid::parse_str(&claims.tenantId) else {
+        return Ok(false);
+    };
+    let row = sqlx::query_as::<_, (serde_json::Value,)>(
+        r#"SELECT m.permissions
+           FROM users u
+           JOIN organization_memberships m ON m.user_id = u.id
+           JOIN tenants t ON t.id = m.tenant_id
+             AND t.state NOT IN ('DELETED', 'FAILED')
+           WHERE u.id = $1
+             AND u.is_active
+             AND u.deleted_at IS NULL
+             AND m.tenant_id = $2
+             AND m.is_active
+             AND m.role = ANY($3)"#,
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(&claims.roles)
+    .fetch_optional(pool)
+    .await?;
+    let Some((permissions,)) = row else {
+        return Ok(false);
+    };
+    let mut current: Vec<String> = permissions
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|permission| permission.as_str().map(str::to_string))
+        .collect();
+    current.sort();
+    current.dedup();
+    let mut issued = claims.permissions.clone();
+    issued.sort();
+    issued.dedup();
+    Ok(current == issued)
+}
+
 pub fn require_admin(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if claims.is_admin() {
+    if crate::access::managed(claims) || claims.is_admin() {
         Ok(())
     } else {
         Err(AppError::Forbidden("Admin access required".to_string()))
@@ -74,7 +177,9 @@ pub fn require_admin_or_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
 }
 
 pub fn require_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if claims.is_staff() {
+    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write")
+        || !crate::access::managed(claims) && claims.is_staff()
+    {
         Ok(())
     } else {
         Err(AppError::Forbidden("Shifts are staff-only".to_string()))
@@ -82,7 +187,9 @@ pub fn require_staff(claims: &JwtUserClaims) -> Result<(), AppError> {
 }
 
 pub fn require_staff_for_counter(claims: &JwtUserClaims) -> Result<(), AppError> {
-    if claims.is_staff() {
+    if crate::access::managed(claims) && crate::access::has(claims, "shifts:write")
+        || !crate::access::managed(claims) && claims.is_staff()
+    {
         Ok(())
     } else {
         Err(AppError::Forbidden(
@@ -117,9 +224,10 @@ fn extract_bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
-fn decode_token(state: &AppState, token: &str) -> Result<JwtUserClaims, AppError> {
+pub(crate) fn decode_token(state: &AppState, token: &str) -> Result<JwtUserClaims, AppError> {
     let mut validation = Validation::default();
     validation.validate_exp = true;
+    validation.leeway = 0;
     validation.set_audience(&["gamezone"]);
     validation.set_issuer(&["gamezone"]);
 
@@ -303,7 +411,11 @@ where
 
         let player_claims = decode_token(&app_state, player_token)?;
 
-        if !player_claims.roles.iter().any(|r| r == "player" || r == "staff") {
+        if !player_claims
+            .roles
+            .iter()
+            .any(|r| r == "player" || r == "staff")
+        {
             return Err(AppError::Forbidden(
                 "Player or staff access required".to_string(),
             ));
@@ -316,12 +428,20 @@ where
             .user_id_uuid()
             .ok_or_else(|| AppError::Internal("Invalid device ID in token".to_string()))?;
 
-        if player_device != kiosk_device {
+        if player_device != kiosk_device
+            || player_claims.tenantId != device_claims.tenantId
+            || player_claims.locationId != device_claims.locationId
+        {
             return Err(AppError::Forbidden(
                 "Player token deviceId does not match device token".to_string(),
             ));
         }
 
+        let player_claims = crate::realtime::tenant_transport::current_claims(
+            app_state.business_db(&device_claims).await?,
+            &player_claims,
+        )
+        .await?;
         Ok(PlayerUser(player_claims))
     }
 }

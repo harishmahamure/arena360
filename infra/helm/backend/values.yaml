@@ -1,4 +1,4 @@
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: harishmahamure/arena360
@@ -53,8 +53,8 @@ resources:
     memory: 128Mi
 
 autoscaling:
-  enabled: true
-  minReplicas: 2
+  enabled: false
+  minReplicas: 1
   maxReplicas: 4
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 75
@@ -90,9 +90,18 @@ readinessProbe:
   failureThreshold: 3
 
 env:
+  ARENA_ROLES: control,cell,router
+  TENANT_DATA_DIR: /var/lib/arena360/tenants
   PORT: "3000"
   RUST_ENV: production
   DATABASE_MAX_CONNECTIONS: "10"
+  DATABASE_MIN_CONNECTIONS: "2"
+  DATABASE_ACQUIRE_TIMEOUT_SECONDS: "2"
+  DATABASE_IDLE_TIMEOUT_SECONDS: "600"
+  DATABASE_MAX_LIFETIME_SECONDS: "1800"
+  MAX_CONCURRENT_REQUESTS: "256"
+  LEGACY_REST_ENABLED: "false"
+  TRUSTED_PROXY_CIDRS: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   REDIS_URL: "redis://arena360-redis:6379"
   JWT_ACCESS_EXPIRATION: 15m
   JWT_PLAYER_EXPIRATION: 24h
@@ -106,6 +115,10 @@ envFromSecrets:
   - envName: DATABASE_URL
     name: arena360-backend-secrets
     key: DATABASE_URL
+  - envName: DATABASE_LISTENER_URL
+    name: arena360-backend-secrets
+    key: DATABASE_LISTENER_URL
+    optional: true
   - envName: REDIS_URL
     name: arena360-redis-secrets
     key: REDIS_URL
@@ -151,3 +164,11 @@ podDisruptionBudget:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# One owning-cell process per persistent tenant directory until M9 introduces cell orchestration.
+persistence:
+  enabled: true
+  existingClaim: ""
+  size: 20Gi
+  storageClass: ""
+  mountPath: /var/lib/arena360/tenants

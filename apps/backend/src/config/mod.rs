@@ -1,7 +1,9 @@
 mod database;
+mod roles;
 mod settings;
 
-pub use database::{create_pool, ping};
+pub use database::{create_pool_for, ping};
+pub use roles::Roles;
 pub use settings::Settings;
 
 /// Load `.env` from the crate directory (`apps/backend/.env`), then fall back to cwd.

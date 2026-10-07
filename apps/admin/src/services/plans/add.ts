@@ -3,6 +3,7 @@ import { http } from '@gaming-cafe/utils';
 import type { PlanResponse, PlanTypeValue } from './list';
 
 export interface CreatePlanPayload {
+  locationIds?: string[];
   name: string;
   description?: string;
   price: number;

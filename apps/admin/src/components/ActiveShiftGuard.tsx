@@ -9,7 +9,7 @@ interface ActiveShiftGuardProps {
 }
 
 export function ActiveShiftGuard({ children }: ActiveShiftGuardProps) {
-  const { isStaff, isAdmin } = usePermissions();
+  const { isStaff } = usePermissions();
 
   const {
     data: activeShift,
@@ -22,11 +22,11 @@ export function ActiveShiftGuard({ children }: ActiveShiftGuardProps) {
     enabled: isStaff,
   });
 
-  if (isAdmin && !isStaff) {
+  if (!isStaff) {
     return (
       <Box sx={{ px: 4, py: 3, maxWidth: 560 }}>
         <Alert severity="warning" sx={{ mb: 2 }}>
-          Counter operations require Staff login. Sign out and use the Staff tab on the login page.
+          Your role needs shift access before you can perform counter operations.
         </Alert>
         <Button component={Link} to="/" variant="contained">
           Go to dashboard
@@ -47,11 +47,10 @@ export function ActiveShiftGuard({ children }: ActiveShiftGuardProps) {
     return (
       <Box sx={{ px: 4, py: 3, maxWidth: 560 }}>
         <Alert severity="warning" sx={{ mb: 2 }}>
-          You need an active shift before you can perform this action. Start a shift from the
-          dashboard, then return here.
+          You need an active shift before you can perform this action.
         </Alert>
-        <Button component={Link} to="/" variant="contained">
-          Go to dashboard
+        <Button component={Link} to="/shift/setup" variant="contained">
+          Set up shift
         </Button>
       </Box>
     );

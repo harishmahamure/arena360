@@ -1,3 +1,6 @@
+use crate::access::scope::{requested_location, LocationScope};
+use crate::services::catalog_scope::{self, CatalogCreate};
+use axum::http::HeaderMap;
 use axum::{
     extract::{Path, Query, State},
     Json,
@@ -7,9 +10,34 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
-use crate::middleware::AdminUser;
-use crate::models::{CreateProductDto, Product, ProductFilterDto, UpdateProductDto};
-use crate::openapi::responses::{ErrorEnvelope, ProductEnvelope, ProductPaginationEnvelope};
+use crate::error::AppError;
+use crate::middleware::{AdminUser, AuthUser};
+use crate::models::{
+    CreateProductDto, CurrentPricesQuery, Product, ProductCurrentPrice, ProductFilterDto,
+    ProductRecipe, UpdateProductDto,
+};
+use crate::openapi::responses::{
+    ErrorEnvelope, ProductCurrentPriceListEnvelope, ProductEnvelope, ProductPaginationEnvelope,
+    ProductRecipeEnvelope,
+};
+use crate::repositories::TenantProductRepository;
+
+async fn authorize_tenant_product(
+    db: Arc<crate::tenancy::TenantDb>,
+    id: Uuid,
+    scope: &LocationScope,
+    write: bool,
+) -> Result<(), AppError> {
+    let (all, rows) = TenantProductRepository::new(db).location_scope(id).await?;
+    let locations = if all {
+        vec![]
+    } else {
+        rows.into_iter()
+            .map(|(location_id, _)| location_id)
+            .collect()
+    };
+    catalog_scope::authorize(scope, &locations, write)
+}
 
 #[utoipa::path(
     get,
@@ -24,10 +52,27 @@ use crate::openapi::responses::{ErrorEnvelope, ProductEnvelope, ProductPaginatio
     tag = "products"
 )]
 pub async fn list_products(
+    AuthUser(claims): AuthUser,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<ProductFilterDto>,
+    Query(mut filters): Query<ProductFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<Product>> {
-    let result = state.products.list(filters).await?;
+    let requested = filters.location_id.or(requested_location(&headers)?);
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:read",
+        requested,
+    )
+    .await?;
+    filters.allowed_location_ids = Some(scope.locations.clone());
+    let result = {
+        let db = state.business_db(&claims).await?;
+        state
+            .products
+            .list_tenant(db, scope.locations, filters)
+            .await?
+    };
     ok(result)
 }
 
@@ -47,10 +92,22 @@ pub async fn list_products(
     tag = "products"
 )]
 pub async fn get_product(
+    AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Product> {
-    let product = state.products.get_by_id(id).await?;
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:read",
+        None,
+    )
+    .await?;
+    let product = {
+        let db = state.business_db(&claims).await?;
+        authorize_tenant_product(db.clone(), id, &scope, false).await?;
+        state.products.get_tenant(db, id).await?
+    };
     ok(product)
 }
 
@@ -71,9 +128,35 @@ pub async fn get_product(
 pub async fn create_product(
     AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
-    Json(dto): Json<CreateProductDto>,
+    headers: HeaderMap,
+    Json(payload): Json<CatalogCreate<CreateProductDto>>,
 ) -> ApiResult<Product> {
-    let product = state.products.create(dto, claims.user_id_uuid()).await?;
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:write",
+        None,
+    )
+    .await?;
+    let requested = payload.location_ids.or(if scope.organization_admin {
+        None
+    } else {
+        requested_location(&headers)?.map(|id| vec![id])
+    });
+    let locations = catalog_scope::create_locations_tenant(
+        state.business_db(&claims).await?,
+        &scope,
+        requested,
+    )
+    .await?;
+    let dto = payload.item;
+    let product = {
+        let db = state.business_db(&claims).await?;
+        state
+            .products
+            .create_tenant(db, locations, dto, claims.user_id_uuid())
+            .await?
+    };
     created(product)
 }
 
@@ -101,11 +184,161 @@ pub async fn update_product(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateProductDto>,
 ) -> ApiResult<Product> {
-    let product = state
-        .products
-        .update(id, dto, claims.user_id_uuid())
-        .await?;
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:write",
+        None,
+    )
+    .await?;
+    let product = {
+        let db = state.business_db(&claims).await?;
+        authorize_tenant_product(db.clone(), id, &scope, true).await?;
+        state
+            .products
+            .update_tenant(db, id, dto, claims.user_id_uuid())
+            .await?
+    };
     ok(product)
+}
+
+#[utoipa::path(
+    get,
+    path = "/products/current-prices",
+    params(CurrentPricesQuery),
+    responses(
+        (status = 200, description = "Sale price of each product right now, after published product pricing rules and before options", body = ProductCurrentPriceListEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "products"
+)]
+pub async fn current_prices(
+    AuthUser(claims): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<CurrentPricesQuery>,
+    headers: HeaderMap,
+) -> ApiResult<Vec<ProductCurrentPrice>> {
+    let venue_location_id = if claims.is_admin_or_staff() {
+        let org = Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+        let user = claims
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        let location = LocationScope::resolve_tenant(
+            state.business_db(&claims).await?,
+            &claims,
+            "products:read",
+            query.venue_location_id.or(requested_location(&headers)?),
+        )
+        .await?
+        .first()?;
+        crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .ensure_location_permission(org, location, user, "products:read")
+            .await?;
+        location
+    } else if let Some(device_id) = claims.deviceId.as_deref() {
+        state
+            .devices
+            .get_tenant(
+                state.business_db(&claims).await?,
+                Uuid::parse_str(device_id)
+                    .map_err(|_| AppError::Unauthorized("Invalid device identity".into()))?,
+            )
+            .await?
+            .location_id
+    } else {
+        return Err(AppError::BadRequest(
+            "A device location is required to price products".into(),
+        ));
+    };
+    if let Some(store_id) = query.location_id {
+        let store =
+            crate::repositories::TenantInventoryRepository::new(state.business_db(&claims).await?)
+                .get_location(store_id)
+                .await?;
+        if store.venue_location_id != venue_location_id {
+            return Err(AppError::BadRequest(
+                "Store location must belong to the selected venue".into(),
+            ));
+        }
+    }
+    {
+        let db = state.business_db(&claims).await?;
+        return ok(state
+            .products
+            .current_prices_tenant(db, query.location_id, venue_location_id, &state.config)
+            .await?);
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/products/{id}/recipe",
+    params(("id" = Uuid, Path, description = "Product ID")),
+    responses(
+        (status = 200, description = "Recipe ingredients and options", body = ProductRecipeEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "products"
+)]
+pub async fn get_recipe(
+    AuthUser(claims): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<ProductRecipe> {
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:read",
+        None,
+    )
+    .await?;
+    {
+        let db = state.business_db(&claims).await?;
+        authorize_tenant_product(db.clone(), id, &scope, false).await?;
+        ok(state.product_recipes.get_tenant(db, id).await?)
+    }
+}
+
+#[utoipa::path(
+    put,
+    path = "/products/{id}/recipe",
+    params(("id" = Uuid, Path, description = "Product ID")),
+    request_body = ProductRecipe,
+    responses(
+        (status = 200, description = "Recipe replaced", body = ProductRecipeEnvelope),
+        (status = 400, description = "Bad request", body = ErrorEnvelope),
+        (status = 401, description = "Unauthorized", body = ErrorEnvelope),
+        (status = 403, description = "Forbidden", body = ErrorEnvelope),
+        (status = 404, description = "Not found", body = ErrorEnvelope),
+        (status = 500, description = "Internal server error", body = ErrorEnvelope),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "products"
+)]
+pub async fn save_recipe(
+    AdminUser(claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(recipe): Json<ProductRecipe>,
+) -> ApiResult<ProductRecipe> {
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:write",
+        None,
+    )
+    .await?;
+    {
+        let db = state.business_db(&claims).await?;
+        authorize_tenant_product(db.clone(), id, &scope, true).await?;
+        ok(state.product_recipes.save_tenant(db, id, recipe).await?)
+    }
 }
 
 #[utoipa::path(
@@ -125,10 +358,21 @@ pub async fn update_product(
     tag = "products"
 )]
 pub async fn delete_product(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Product> {
-    let product = state.products.delete(id).await?;
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:write",
+        None,
+    )
+    .await?;
+    let product = {
+        let db = state.business_db(&claims).await?;
+        authorize_tenant_product(db.clone(), id, &scope, true).await?;
+        state.products.delete_tenant(db, id).await?
+    };
     ok(product)
 }

@@ -38,7 +38,7 @@ pub struct StockWasteEventWithLines {
     pub lines: Vec<StockWasteLine>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockWasteLineDto {
     pub product_id: Uuid,
@@ -47,7 +47,7 @@ pub struct CreateStockWasteLineDto {
     pub note: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockWasteEventDto {
     pub location_id: Uuid,
@@ -55,13 +55,13 @@ pub struct CreateStockWasteEventDto {
     pub lines: Vec<CreateStockWasteLineDto>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RejectStockWasteDto {
     pub rejection_reason: String,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct StockWasteFilterDto {
     pub status: Option<String>,

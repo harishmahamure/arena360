@@ -1,10 +1,10 @@
 use axum::extract::{Query, State};
-use chrono::Duration;
+use axum::http::HeaderMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::app::AppState;
-use crate::dto::ok;
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::openapi::responses::{
     DashboardStatsEnvelope, ErrorEnvelope, FinanceDepositStatsEnvelope,
@@ -13,12 +13,13 @@ use crate::openapi::responses::{
 };
 use crate::services::stats_service::{
     FinanceDepositStatsDto, FinanceReconciliationStatsDto, FinanceVarianceStatsDto, PeriodPair,
-    RevenueByPaymentMethodDto, StatsService, UsageStatsDto,
+    RevenueByPaymentMethodDto, UsageStatsDto,
 };
 
 #[derive(serde::Deserialize, Default, ToSchema, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct StatsQuery {
+    pub venue_location_id: Option<Uuid>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     /// When false, previous-period metrics are omitted. Defaults to true.
@@ -28,13 +29,10 @@ pub struct StatsQuery {
 #[derive(serde::Deserialize, Default, ToSchema, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct StaffStatsQuery {
+    pub venue_location_id: Option<Uuid>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub shift_start: Option<String>,
-}
-
-fn compare_enabled(compare: Option<bool>) -> bool {
-    compare.unwrap_or(true)
 }
 
 #[utoipa::path(
@@ -52,15 +50,24 @@ fn compare_enabled(compare: Option<bool>) -> bool {
     tag = "stats"
 )]
 pub async fn dashboard_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
+    headers: HeaderMap,
 ) -> crate::dto::ApiResult<crate::services::stats_service::DashboardStatsDto> {
-    let stats = state
-        .stats
-        .get_dashboard_stats(query.start_date, query.end_date, compare_enabled(query.compare))
-        .await?;
-    ok(stats)
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "finance:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -78,15 +85,24 @@ pub async fn dashboard_stats(
     tag = "stats"
 )]
 pub async fn staff_dashboard_stats(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StaffStatsQuery>,
+    headers: HeaderMap,
 ) -> crate::dto::ApiResult<crate::services::stats_service::StaffDashboardStatsDto> {
-    let stats = state
-        .stats
-        .get_staff_dashboard_stats(query.start_date, query.end_date, query.shift_start)
-        .await?;
-    ok(stats)
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "stats:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -104,21 +120,24 @@ pub async fn staff_dashboard_stats(
     tag = "stats"
 )]
 pub async fn revenue_by_payment_method(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
+    headers: HeaderMap,
 ) -> crate::dto::ApiResult<PeriodPair<RevenueByPaymentMethodDto>> {
-    let compare = compare_enabled(query.compare);
-    let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
-    let diff = (end - start).num_days().max(1);
-    let prev_start = start - Duration::days(diff);
-    let prev_end = end - Duration::days(diff);
-
-    let stats = state
-        .stats
-        .get_revenue_by_payment_method(start, end, prev_start, prev_end, compare)
-        .await?;
-    ok(stats)
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "finance:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -136,21 +155,24 @@ pub async fn revenue_by_payment_method(
     tag = "stats"
 )]
 pub async fn usage_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
+    headers: HeaderMap,
 ) -> crate::dto::ApiResult<PeriodPair<UsageStatsDto>> {
-    let compare = compare_enabled(query.compare);
-    let (start, end) = StatsService::resolve_stats_period(query.start_date, query.end_date);
-    let diff = (end - start).num_days().max(1);
-    let prev_start = start - Duration::days(diff);
-    let prev_end = end - Duration::days(diff);
-
-    let stats = state
-        .stats
-        .get_usage_stats(start, end, prev_start, prev_end, compare)
-        .await?;
-    ok(stats)
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "stats:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -168,18 +190,24 @@ pub async fn usage_stats(
     tag = "stats"
 )]
 pub async fn finance_reconciliation_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
+    headers: HeaderMap,
 ) -> crate::dto::ApiResult<FinanceReconciliationStatsDto> {
-    ok(state
-        .stats
-        .get_finance_reconciliation_stats(
-            query.start_date,
-            query.end_date,
-            compare_enabled(query.compare),
-        )
-        .await?)
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "finance:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -197,18 +225,24 @@ pub async fn finance_reconciliation_stats(
     tag = "stats"
 )]
 pub async fn finance_deposit_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
+    headers: HeaderMap,
 ) -> crate::dto::ApiResult<FinanceDepositStatsDto> {
-    ok(state
-        .stats
-        .get_finance_deposit_stats(
-            query.start_date,
-            query.end_date,
-            compare_enabled(query.compare),
-        )
-        .await?)
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "finance:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -226,16 +260,56 @@ pub async fn finance_deposit_stats(
     tag = "stats"
 )]
 pub async fn finance_variance_stats(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
+    headers: HeaderMap,
 ) -> crate::dto::ApiResult<FinanceVarianceStatsDto> {
-    ok(state
-        .stats
-        .get_finance_variance_stats(
-            query.start_date,
-            query.end_date,
-            compare_enabled(query.compare),
-        )
-        .await?)
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "finance:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
+}
+
+#[derive(serde::Deserialize, Default, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BusinessQuery {
+    pub venue_location_id: Option<Uuid>,
+    /// Inclusive IST calendar date, YYYY-MM-DD. Defaults to the last 30 days.
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+}
+
+#[utoipa::path(get, path = "/stats/business", params(BusinessQuery),
+    responses((status = 200, description = "Business analytics from ClickHouse", body = crate::openapi::responses::BusinessAnalyticsEnvelope),
+    (status = 400, body = ErrorEnvelope), (status = 403, body = ErrorEnvelope), (status = 503, body = ErrorEnvelope)),
+    security(("bearer_auth" = [])), tag = "stats")]
+pub async fn business_stats(
+    AdminUser(claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<BusinessQuery>,
+    headers: HeaderMap,
+) -> crate::dto::ApiResult<crate::analytics::business::BusinessReport> {
+    let _scope = crate::access::scope::report_scope_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        &headers,
+        query.venue_location_id,
+        "finance:read",
+    )
+    .await?;
+    Err(crate::error::AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }

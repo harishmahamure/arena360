@@ -1,7 +1,7 @@
 import type { UserRole } from '@gaming-cafe/contracts';
 import { type Action, type Column, FormButton, ListPage } from '@gaming-cafe/ui';
 import { toastUtils, useAsyncAction } from '@gaming-cafe/utils';
-import { Block, CheckCircle, Delete, Edit } from '@mui/icons-material';
+import { Block, CheckCircle, Edit } from '@mui/icons-material';
 import {
   Avatar,
   Box,
@@ -18,7 +18,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
-import { deletePlayer } from '../../../services/players/delete';
 import { getPlayers, type PlayerResponse } from '../../../services/players/list';
 import { updatePlayer } from '../../../services/players/update';
 import { buildListUrl } from '../../../utils/buildListUrl';
@@ -68,7 +67,7 @@ export default function PlayersPage() {
   const [confirmTarget, setConfirmTarget] = useState<{
     id: string;
     username: string;
-    action: 'deactivate' | 'delete';
+    action: 'deactivate';
   } | null>(null);
   const {
     loading: actionLoading,
@@ -103,7 +102,12 @@ export default function PlayersPage() {
     [navigate],
   );
 
-  const { data, isLoading, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['players', debouncedSearch, page, roleFilter, activeFilter],
     queryFn: () =>
       getPlayers({
@@ -237,24 +241,15 @@ export default function PlayersPage() {
       show: (row) => row.isActive,
       disabled: () => actionLoading,
     },
-    {
-      icon: <Delete color="error" />,
-      label: 'Deactivate Player',
-      onClick: (row) =>
-        setConfirmTarget({
-          id: row.id,
-          username: row.username,
-          action: 'delete',
-        }),
-      disabled: () => actionLoading,
-    },
   ];
 
   return (
     <>
       <ListPage<PlayerResponse>
+        error={listError ? 'Could not load records. Please try again.' : null}
+        onRetry={() => void refetch()}
         title="Players"
-        description="Manage your game zone players and admins here."
+        description="Manage player profiles, team access, and account status."
         data={data?.data || []}
         columns={columns}
         actions={canWrite ? actions : []}
@@ -290,14 +285,11 @@ export default function PlayersPage() {
           }
         }}
       >
-        <DialogTitle>
-          {confirmTarget?.action === 'delete' ? 'Deactivate player?' : 'Deactivate account?'}
-        </DialogTitle>
+        <DialogTitle>Deactivate player?</DialogTitle>
         <DialogContent>
           <Typography>
-            {confirmTarget?.action === 'delete'
-              ? `This will deactivate @${confirmTarget.username}. They will no longer be able to sign in or start sessions.`
-              : `Deactivate @${confirmTarget?.username}? They will not be able to sign in until reactivated.`}
+            Deactivate @{confirmTarget?.username}? They will not be able to sign in until
+            reactivated.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -323,11 +315,7 @@ export default function PlayersPage() {
               if (!confirmTarget) return;
               void run(async () => {
                 try {
-                  if (confirmTarget.action === 'delete') {
-                    await deletePlayer(confirmTarget.id);
-                  } else {
-                    await updatePlayer(confirmTarget.id, { isActive: false });
-                  }
+                  await updatePlayer(confirmTarget.id, { isActive: false });
                   toastUtils.success('Player deactivated successfully');
                   refetch();
                   setTimeout(() => {
@@ -335,11 +323,7 @@ export default function PlayersPage() {
                     reset();
                   }, 800);
                 } catch {
-                  toastUtils.error(
-                    confirmTarget.action === 'delete'
-                      ? 'Failed to deactivate player'
-                      : 'Failed to update player status',
-                  );
+                  toastUtils.error('Failed to update player status');
                   throw new Error('deactivate failed');
                 }
               });

@@ -1,9 +1,12 @@
-import { Permission, permissionsForRole, type UserRole } from '@gaming-cafe/contracts';
+import { Permission } from '@gaming-cafe/contracts';
+import { panelClaims, sessionPermissions } from '../lib/authSession';
 import { useSelector } from './store';
 
 export function usePermissions() {
-  const role = useSelector((state) => state.auth.role) as UserRole | '';
-  const permissions = role ? permissionsForRole(role) : [];
+  useSelector((state) => state.auth);
+  const claims = panelClaims();
+  const role = claims ? (claims.roles?.includes('admin') ? 'admin' : 'staff') : '';
+  const permissions = sessionPermissions(claims);
 
   const can = (permission: Permission) => permissions.includes(permission);
 
@@ -11,8 +14,8 @@ export function usePermissions() {
     role,
     permissions,
     can,
-    isAdmin: role === 'admin',
-    isStaff: role === 'staff',
+    isAdmin: can(Permission.AccessManage),
+    isStaff: can(Permission.ShiftsWrite),
   };
 }
 

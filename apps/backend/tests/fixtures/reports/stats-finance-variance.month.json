@@ -1,0 +1,301 @@
+{
+  "request": "/stats/finance/variance?startDate=2026-09-03&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-09-02T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-09-02 - 2026-10-02",
+      "previousLabel": "2026-08-04 - 2026-09-03"
+    },
+    "metrics": {
+      "current": {
+        "totalVariance": -30,
+        "averageVariance": -1,
+        "overCount": 3,
+        "shortCount": 3,
+        "evenCount": 24,
+        "registerCount": 30
+      },
+      "previous": {
+        "totalVariance": -30,
+        "averageVariance": -1,
+        "overCount": 3,
+        "shortCount": 3,
+        "evenCount": 24,
+        "registerCount": 30
+      }
+    },
+    "registers": [
+      {
+        "id": "cf387f85-500a-43c8-ab3d-9a9b3bc14cb8",
+        "shiftId": "614a9df3-14a0-41d4-a090-448dc65b5dfd",
+        "status": "reconciled",
+        "variance": -20,
+        "closingBalance": 1440,
+        "expectedClosing": 1460,
+        "updatedAt": "2026-09-23T20:00:00Z"
+      },
+      {
+        "id": "e4364fff-046d-4d32-a60f-f01432a8c3fe",
+        "shiftId": "92733c6b-8938-43cf-acb7-ceec4131c54d",
+        "status": "reconciled",
+        "variance": -20,
+        "closingBalance": 1190,
+        "expectedClosing": 1210,
+        "updatedAt": "2026-09-13T20:00:00Z"
+      },
+      {
+        "id": "6ba52f6d-1305-429a-a96b-ee715d029649",
+        "shiftId": "b73cff18-465b-4294-ac4d-8f8a03ca6006",
+        "status": "reconciled",
+        "variance": -20,
+        "closingBalance": 1120,
+        "expectedClosing": 1140,
+        "updatedAt": "2026-09-03T20:00:00Z"
+      },
+      {
+        "id": "ae35f335-94e1-4d1f-a875-84dabffb50c5",
+        "shiftId": "da8d2d14-9875-4ccb-acfb-7ad88a9ae735",
+        "status": "reconciled",
+        "variance": 10,
+        "closingBalance": 1830,
+        "expectedClosing": 1820,
+        "updatedAt": "2026-09-27T20:00:00Z"
+      },
+      {
+        "id": "13e42cd1-00ce-40cf-a030-8de2c8aa4253",
+        "shiftId": "191eb396-16a5-46a7-a787-eb10a67b7e72",
+        "status": "reconciled",
+        "variance": 10,
+        "closingBalance": 875,
+        "expectedClosing": 865,
+        "updatedAt": "2026-09-18T20:00:00Z"
+      },
+      {
+        "id": "fed67a3a-35e2-4b10-ab0c-fc8f43b2c81f",
+        "shiftId": "8c2b3c7b-ac26-4ceb-abc3-6ea2a2752f17",
+        "status": "reconciled",
+        "variance": 10,
+        "closingBalance": 1360,
+        "expectedClosing": 1350,
+        "updatedAt": "2026-09-09T20:00:00Z"
+      },
+      {
+        "id": "f0739df6-b7bc-4075-abae-f47adf4662e2",
+        "shiftId": "87ff6c8d-461f-4642-abd3-ad20e1afbd6f",
+        "status": "closed",
+        "variance": 0,
+        "closingBalance": 1310,
+        "expectedClosing": 1310,
+        "updatedAt": "2026-10-01T20:00:00Z"
+      },
+      {
+        "id": "8880ee89-9a99-431f-aa67-93ffc16906c4",
+        "shiftId": "2a69df43-00bd-4952-a92e-8bc6b953911c",
+        "status": "closed",
+        "variance": 0,
+        "closingBalance": 865,
+        "expectedClosing": 865,
+        "updatedAt": "2026-09-30T20:00:00Z"
+      },
+      {
+        "id": "21a8e07f-9fe6-47fc-a59a-f9ae7bbf91c1",
+        "shiftId": "f2f86baa-72ca-48be-a650-48229b3e7cc6",
+        "status": "closed",
+        "variance": 0,
+        "closingBalance": 1460,
+        "expectedClosing": 1460,
+        "updatedAt": "2026-09-29T20:00:00Z"
+      },
+      {
+        "id": "cdbbdcf7-b359-493a-a142-62163803f3d0",
+        "shiftId": "cd6277d3-8752-468f-add5-fab372618d0e",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1055,
+        "expectedClosing": 1055,
+        "updatedAt": "2026-09-28T20:00:00Z"
+      },
+      {
+        "id": "28391529-0226-416e-a1ef-ea7b33327550",
+        "shiftId": "ec59c5af-0062-4cdc-a759-454db01349c6",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1300,
+        "expectedClosing": 1300,
+        "updatedAt": "2026-09-26T20:00:00Z"
+      },
+      {
+        "id": "7d0de259-d5a1-45e3-afb6-bc80e07b1124",
+        "shiftId": "8e93fc30-19c5-4ce6-a899-49d71c8c5435",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1340,
+        "expectedClosing": 1340,
+        "updatedAt": "2026-09-25T20:00:00Z"
+      },
+      {
+        "id": "2a73b559-aa5e-4530-ab53-e7e69bff9ac9",
+        "shiftId": "5a556685-7cb7-4503-af8d-95b468cc62b0",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1040,
+        "expectedClosing": 1040,
+        "updatedAt": "2026-09-24T20:00:00Z"
+      },
+      {
+        "id": "34974a83-c97c-44f1-a30a-0cbc6b2d762c",
+        "shiftId": "16d8f242-1729-4685-a9c1-b1e341294a36",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1085,
+        "expectedClosing": 1085,
+        "updatedAt": "2026-09-22T20:00:00Z"
+      },
+      {
+        "id": "d5ef840e-3758-4797-a56f-f848095f4679",
+        "shiftId": "1d6319a9-be2f-4bce-a65b-dca97b719f7a",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1200,
+        "expectedClosing": 1200,
+        "updatedAt": "2026-09-21T20:00:00Z"
+      },
+      {
+        "id": "c2a959b5-9bfd-470b-ac99-508223e2bc87",
+        "shiftId": "794e8dc0-9a75-4fba-a71b-2aefeb094a0e",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1665,
+        "expectedClosing": 1665,
+        "updatedAt": "2026-09-20T20:00:00Z"
+      },
+      {
+        "id": "7483dacc-ce46-42b0-a88f-d53b6c1a3410",
+        "shiftId": "d5bcba45-b583-45ec-a2fb-c5f5e9b8423e",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1380,
+        "expectedClosing": 1380,
+        "updatedAt": "2026-09-19T20:00:00Z"
+      },
+      {
+        "id": "869a9cd3-1c13-4f68-aeb0-f1bdc894b69c",
+        "shiftId": "44905bf2-d3fc-41a8-a3b8-97e2072db54a",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1190,
+        "expectedClosing": 1190,
+        "updatedAt": "2026-09-17T20:00:00Z"
+      },
+      {
+        "id": "dffa281d-33db-484a-a830-ad2575b015f4",
+        "shiftId": "8abff2ab-21bc-4fa1-aa3d-f66abc82810b",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1055,
+        "expectedClosing": 1055,
+        "updatedAt": "2026-09-16T20:00:00Z"
+      },
+      {
+        "id": "f37f34d3-2eea-4b40-a2b2-0eaead7ce2eb",
+        "shiftId": "874d34da-952d-4c6e-abe9-9beaf04f21d5",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1240,
+        "expectedClosing": 1240,
+        "updatedAt": "2026-09-15T20:00:00Z"
+      },
+      {
+        "id": "0c1f5d3a-dd0a-4a2e-a381-421fcbfd1f46",
+        "shiftId": "b3427f76-2682-4ab8-a3ba-bdd47f265396",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1160,
+        "expectedClosing": 1160,
+        "updatedAt": "2026-09-14T20:00:00Z"
+      },
+      {
+        "id": "14783aa8-f4d2-4d20-a00b-ef6d70e3301e",
+        "shiftId": "4dd271e4-4d0e-4810-a520-30fd34571848",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1250,
+        "expectedClosing": 1250,
+        "updatedAt": "2026-09-12T20:00:00Z"
+      },
+      {
+        "id": "b914e03c-018c-40b0-abdb-4157a769fc9d",
+        "shiftId": "5f704a83-4b93-42b0-a454-c3cd3f9418ec",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1160,
+        "expectedClosing": 1160,
+        "updatedAt": "2026-09-11T20:00:00Z"
+      },
+      {
+        "id": "d055431d-5e6d-426f-a2ea-82e22204b3b7",
+        "shiftId": "28e627a5-2804-445d-a727-add914b47090",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1040,
+        "expectedClosing": 1040,
+        "updatedAt": "2026-09-10T20:00:00Z"
+      },
+      {
+        "id": "9d46dd2b-accb-4763-a817-3c5dc04e11ca",
+        "shiftId": "7af439ff-5c47-40e6-a205-f366137ccdf1",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 955,
+        "expectedClosing": 955,
+        "updatedAt": "2026-09-08T20:00:00Z"
+      },
+      {
+        "id": "3bcecda6-0f9e-4bb7-ace7-1c9a780661ce",
+        "shiftId": "d7f9931c-5de0-42e1-afef-60a52b38a4f5",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1120,
+        "expectedClosing": 1120,
+        "updatedAt": "2026-09-07T20:00:00Z"
+      },
+      {
+        "id": "c5b62b02-7b84-4240-a6ba-d9462dd0abab",
+        "shiftId": "ed5f5c0f-ae31-493d-af15-fe3f8527282d",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1285,
+        "expectedClosing": 1285,
+        "updatedAt": "2026-09-06T20:00:00Z"
+      },
+      {
+        "id": "e06e7c32-e4ce-4ab8-acce-e786ddffc735",
+        "shiftId": "4a4956f4-0cf2-4552-a760-64a94366915a",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1680,
+        "expectedClosing": 1680,
+        "updatedAt": "2026-09-05T20:00:00Z"
+      },
+      {
+        "id": "a88e1f47-898b-4357-afc8-647428445eab",
+        "shiftId": "a51b32a6-328d-47cb-a1ce-22734e7c36f8",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 965,
+        "expectedClosing": 965,
+        "updatedAt": "2026-09-04T20:00:00Z"
+      },
+      {
+        "id": "0962513a-75ef-4174-a9d4-fda300e9dad9",
+        "shiftId": "7931d037-90a2-4b22-ade3-39cf6dff9168",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1130,
+        "expectedClosing": 1130,
+        "updatedAt": "2026-09-02T20:00:00Z"
+      }
+    ]
+  }
+}

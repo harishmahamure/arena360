@@ -4,7 +4,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import TextField from '@mui/material/TextField';
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
-import { type Control, Controller, type FieldValues } from 'react-hook-form';
+import { type Control, Controller, type FieldValues, useWatch } from 'react-hook-form';
 
 export interface SearchOption {
   id: string | number;
@@ -38,11 +38,25 @@ export function RHFSearchOnEnterAutocomplete<T extends SearchOption>({
   multiple = false,
   onSearchComplete,
 }: Props<T>) {
+  const currentValue = useWatch({ name, control });
   const [inputValue, setInputValue] = React.useState('');
   const [debouncedValue, setDebouncedValue] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const [selectedOption, setSelectedOption] = React.useState<T | null>(null);
   const [selectedOptions, setSelectedOptions] = React.useState<T[]>([]);
+  React.useEffect(() => {
+    if (
+      currentValue == null ||
+      currentValue === '' ||
+      (Array.isArray(currentValue) && currentValue.length === 0)
+    ) {
+      setSelectedOption(null);
+      setSelectedOptions([]);
+    }
+  }, [currentValue]);
+  React.useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
   // Debounce the input value
   React.useEffect(() => {
     const timer = setTimeout(() => {

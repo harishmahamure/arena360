@@ -46,14 +46,19 @@ export default function PlansPage() {
     [navigate],
   );
 
-  const { data, isLoading, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['plans', debouncedSearch, page, planType, isActive],
     queryFn: () =>
       getPlans({
         search: debouncedSearch.length > 2 ? debouncedSearch : undefined,
         page: page,
         planType: planType as PlanTypeValue | undefined,
-        isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
+        isActive: isActive === 'true' ? 1 : isActive === 'false' ? 0 : undefined,
       }),
   });
 
@@ -199,6 +204,8 @@ export default function PlansPage() {
 
   return (
     <ListPage<PlanResponse>
+      error={listError ? 'Could not load records. Please try again.' : null}
+      onRetry={() => void refetch()}
       title="Plans"
       description="Manage your gaming plans and subscriptions here."
       data={data?.data || []}

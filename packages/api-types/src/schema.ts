@@ -20,22 +20,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/device-pairing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["device_pairing"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/auth/login/admin": {
         parameters: {
             query?: never;
@@ -46,6 +30,38 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["login_admin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["login_panel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login/panel/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verify_panel_mfa"];
         delete?: never;
         options?: never;
         head?: never;
@@ -110,38 +126,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["register_player"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/sso/redeem": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["redeem_sso_token"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/sso/tokens": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["create_sso_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -772,6 +756,166 @@ export interface paths {
         patch: operations["update_location"];
         trace?: never;
     };
+    "/inventory/movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["inventory_list_movements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["inventory_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/purchase-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["purchase_orders_list"];
+        put?: never;
+        post: operations["purchase_orders_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/purchase-orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["purchase_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["purchase_orders_update"];
+        trace?: never;
+    };
+    "/inventory/purchase-orders/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/purchase-orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/purchase-orders/{id}/mark-ordered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["mark_ordered"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/purchase-orders/{id}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["receive_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/purchase-orders/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reject_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/purchase-orders/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submit_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/inventory/receipts": {
         parameters: {
             query?: never;
@@ -796,6 +940,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["receipt_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/reorder-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_reorder_rules"];
+        put?: never;
+        post: operations["upsert_reorder_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory/reorder-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["reorder_suggestions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1067,7 +1243,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_products"];
+        get: operations["kiosk_list_products"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1218,6 +1394,198 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["mark_read"];
+        trace?: never;
+    };
+    "/organizations/{org_id}/configuration-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["configuration_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["venue_locations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_rule_sets"];
+        put?: never;
+        post: operations["create_rule_set"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_versions"];
+        put?: never;
+        post: operations["create_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["publish_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rollback_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["simulate_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["validate_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["settings_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["effective_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["setting_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/settings/overrides/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["upsert_setting_override"];
+        post?: never;
+        delete: operations["delete_setting_override"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/plans": {
@@ -1588,6 +1956,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/shifts/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["start_shift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shifts/start-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["start_context"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/shifts/{id}": {
         parameters: {
             query?: never;
@@ -1762,38 +2162,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_transaction"];
-        trace?: never;
-    };
-    "/tv/sessions/current": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["current_session"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tv/sessions/{id}/end": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["end_session"];
         trace?: never;
     };
     "/units": {
@@ -2120,6 +2488,7 @@ export interface components {
             timestamp: string;
         };
         AuthUserDto: {
+            email?: string | null;
             firstName?: string | null;
             id: string;
             isActive: boolean;
@@ -2437,6 +2806,25 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        ConfigurationSnapshot: {
+            etag: string;
+            /** Format: date-time */
+            generatedAt: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: int64 */
+            revision: number;
+            settings: components["schemas"]["ResolvedSetting"][];
+        };
+        ConfigurationSnapshotEnvelope: {
+            data: components["schemas"]["ConfigurationSnapshot"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         ConvertKioskOrderDto: {
             /** Format: double */
             cashAmount?: number | null;
@@ -2549,6 +2937,16 @@ export interface components {
             /** Format: int32 */
             validityDays?: number | null;
         };
+        CreatePricingRuleSetDto: {
+            description?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            name: string;
+            policy: components["schemas"]["PricingPolicy"];
+        };
+        CreatePricingRuleVersionDto: {
+            policy: components["schemas"]["PricingPolicy"];
+        };
         CreateProductDto: {
             category?: string | null;
             /** Format: double */
@@ -2574,6 +2972,20 @@ export interface components {
             /** Format: int32 */
             unitsPerPurchaseUnit?: number | null;
         };
+        CreatePurchaseOrderDto: {
+            /** Format: uuid */
+            destinationLocationId: string;
+            /** Format: double */
+            discount?: number | null;
+            /** Format: date */
+            expectedDeliveryDate?: string | null;
+            /** Format: double */
+            freight?: number | null;
+            lines: components["schemas"]["PurchaseOrderLineInput"][];
+            notes?: string | null;
+            /** Format: uuid */
+            vendorId: string;
+        };
         CreateRoomDto: {
             description?: string | null;
             name: string;
@@ -2588,15 +3000,6 @@ export interface components {
             /** Format: date-time */
             startTime?: string | null;
         };
-        CreateSsoTokenDto: {
-            deviceId?: string | null;
-            purpose: string;
-        };
-        CreateSsoTokenResponseDto: {
-            deviceId?: string | null;
-            expiresAt: string;
-            token: string;
-        };
         CreateStockAdjustmentDto: {
             lines: components["schemas"]["CreateStockAdjustmentLineDto"][];
             /** Format: uuid */
@@ -2610,6 +3013,7 @@ export interface components {
             productId: string;
         };
         CreateStockReceiptDto: {
+            exceptionalReason: string;
             lines: components["schemas"]["CreateStockReceiptLineDto"][];
             /** Format: uuid */
             locationId: string;
@@ -3021,14 +3425,6 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
-        DevicePairingDto: {
-            deviceId: string;
-        };
-        DevicePairingResponseDto: {
-            accessToken: string;
-            deviceId: string;
-            expiresAt: string;
-        };
         DeviceRegisterResponseDto: {
             accessToken: string;
             device: components["schemas"]["RegisteredDeviceDto"];
@@ -3055,9 +3451,6 @@ export interface components {
             staffTotp?: string | null;
             /** Format: int32 */
             timeCreditsConsumed?: number | null;
-        };
-        EndTvSessionDto: {
-            reason?: string | null;
         };
         ErrorEnvelope: {
             details?: unknown;
@@ -3478,6 +3871,66 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        InventoryOverviewDto: {
+            /** Format: double */
+            estimatedStockValue: number;
+            /** Format: int64 */
+            lowStockProducts: number;
+            /** Format: int64 */
+            openPurchaseOrders: number;
+            /** Format: int64 */
+            outOfStockProducts: number;
+            /** Format: int64 */
+            pendingTransfers: number;
+            /** Format: int64 */
+            pendingWasteEvents: number;
+            recentMovements: components["schemas"]["StockMovementRow"][];
+            /** Format: int64 */
+            totalPieces: number;
+        };
+        InventoryOverviewEnvelope: {
+            data: components["schemas"]["InventoryOverviewDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        InventoryReorderRule: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            /** Format: int32 */
+            leadTimeDays: number;
+            /** Format: uuid */
+            locationId: string;
+            /** Format: int32 */
+            minimumPieces: number;
+            /** Format: uuid */
+            preferredVendorId?: string | null;
+            /** Format: uuid */
+            productId: string;
+            productName?: string | null;
+            /** Format: int32 */
+            targetPieces: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        InventoryReorderRuleEnvelope: {
+            data: components["schemas"]["InventoryReorderRule"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        InventoryReorderRuleListEnvelope: {
+            data: components["schemas"]["InventoryReorderRule"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         KioskMenuProduct: {
             category: string;
             description?: string | null;
@@ -3562,7 +4015,7 @@ export interface components {
             expiryDate: string;
             /**
              * Format: double
-             * @description Server-computed effective display remaining (console TV / legacy).
+             * @description Server-computed effective display remaining for legacy clients.
              */
             remainingMinutes: number;
             /** @description True when an existing open session on this device was resumed (crash recovery). */
@@ -3601,10 +4054,14 @@ export interface components {
             limit?: number | null;
             /** Format: uuid */
             locationId?: string | null;
+            lowStock?: boolean | null;
             /** Format: int64 */
             page?: number | null;
             /** Format: uuid */
             productId?: string | null;
+            search?: string | null;
+            sortBy?: string | null;
+            sortOrder?: string | null;
         };
         LocationStockPaginationEnvelope: {
             data: components["schemas"]["LocationStockPaginationPage"];
@@ -3629,6 +4086,7 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             locationId: string;
+            locationName: string;
             /** Format: uuid */
             productId: string;
             productName?: string | null;
@@ -3709,6 +4167,30 @@ export interface components {
             /** Format: uuid */
             transactionId: string;
             transactionType: string;
+        };
+        PanelLoginResponseDto: {
+            accessToken: string;
+            nextStep: string;
+            /** @enum {string} */
+            status: "authenticated";
+            user: components["schemas"]["AuthUserDto"];
+        } | {
+            challengeToken: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @enum {string} */
+            status: "mfa_required";
+        };
+        PanelLoginResponseEnvelope: {
+            data: components["schemas"]["PanelLoginResponseDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PanelMfaDto: {
+            challengeToken: string;
+            code: string;
         };
         PeriodDto: {
             endDate: string;
@@ -4314,6 +4796,142 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        PricingAction: {
+            /** @enum {string} */
+            type: "fixed";
+            value: string;
+        } | {
+            /** @enum {string} */
+            type: "multiplier";
+            value: string;
+        };
+        PricingPolicy: {
+            /** @description Decimal amount encoded as a string to avoid floating-point money errors. */
+            baseRate: string;
+            maximumPrice?: string | null;
+            minimumPrice?: string | null;
+            /** Format: int32 */
+            roundingScale?: number;
+            rules?: components["schemas"]["PricingRule"][];
+        };
+        PricingRule: {
+            action: components["schemas"]["PricingAction"];
+            deviceTypes?: string[];
+            endTime?: string | null;
+            /** Format: date-time */
+            endsAt?: string | null;
+            id: string;
+            name: string;
+            /** Format: int32 */
+            priority: number;
+            startTime?: string | null;
+            /** Format: date-time */
+            startsAt?: string | null;
+            weekdays?: number[];
+        };
+        PricingRuleSet: {
+            /** Format: uuid */
+            activeVersionId?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            description?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            name: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PricingRuleSetDraft: {
+            ruleSet: components["schemas"]["PricingRuleSet"];
+            version: components["schemas"]["PricingRuleVersion"];
+        };
+        PricingRuleSetDraftEnvelope: {
+            data: components["schemas"]["PricingRuleSetDraft"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingRuleSetListEnvelope: {
+            data: components["schemas"]["PricingRuleSet"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingRuleVersion: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: date-time */
+            effectiveAt?: string | null;
+            /** Format: uuid */
+            id: string;
+            policy: unknown;
+            /** Format: date-time */
+            publishedAt?: string | null;
+            /** Format: uuid */
+            publishedBy?: string | null;
+            /** Format: uuid */
+            ruleSetId: string;
+            simulationHash?: string | null;
+            status: string;
+            /** Format: date-time */
+            validatedAt?: string | null;
+            /** Format: int32 */
+            version: number;
+        };
+        PricingRuleVersionEnvelope: {
+            data: components["schemas"]["PricingRuleVersion"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingRuleVersionListEnvelope: {
+            data: components["schemas"]["PricingRuleVersion"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingSimulationDto: {
+            /** Format: date-time */
+            at: string;
+            baseRate?: string | null;
+            deviceType?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
+        };
+        PricingSimulationEnvelope: {
+            data: components["schemas"]["PricingSimulationResult"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PricingSimulationResult: {
+            baseRate: string;
+            currency: string;
+            finalPrice: string;
+            simulationHash: string;
+            timezone: string;
+            trace: components["schemas"]["PricingTraceStep"][];
+        };
+        PricingTraceStep: {
+            action: string;
+            after: string;
+            before: string;
+            ruleId: string;
+            ruleName: string;
+        };
         Product: {
             category: string;
             /** Format: date-time */
@@ -4405,9 +5023,13 @@ export interface components {
             fingerprint: components["schemas"]["DeviceFingerprintDto"];
             location?: string | null;
             name: string;
-            /** @description When `console-tv`, backend rejects non-PlayStation device types. */
+            /** @description Identifies the provisioning client (currently `kiosk`). */
             provisionClient?: string | null;
             serialNumber?: string | null;
+        };
+        PublishPricingRuleVersionDto: {
+            /** Format: date-time */
+            effectiveAt?: string | null;
         };
         PurchaseBalanceDto: {
             /** Format: uuid */
@@ -4416,6 +5038,145 @@ export interface components {
             playerId: string;
             /** Format: uuid */
             transactionId?: string | null;
+        };
+        PurchaseOrder: {
+            /** Format: date-time */
+            approvedAt?: string | null;
+            /** Format: uuid */
+            approvedBy?: string | null;
+            /** Format: date-time */
+            cancelledAt?: string | null;
+            /** Format: uuid */
+            cancelledBy?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: uuid */
+            destinationLocationId: string;
+            /** Format: double */
+            discount: number;
+            /** Format: date */
+            expectedDeliveryDate?: string | null;
+            /** Format: double */
+            freight: number;
+            /** Format: uuid */
+            id: string;
+            notes?: string | null;
+            /** Format: date-time */
+            orderedAt?: string | null;
+            /** Format: uuid */
+            orderedBy?: string | null;
+            poNumber: string;
+            rejectionReason?: string | null;
+            status: string;
+            /** Format: date-time */
+            submittedAt?: string | null;
+            /** Format: uuid */
+            submittedBy?: string | null;
+            /** Format: double */
+            subtotal: number;
+            /** Format: double */
+            tax: number;
+            /** Format: double */
+            total: number;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            vendorId: string;
+            /** Format: int32 */
+            version: number;
+        };
+        PurchaseOrderEnvelope: {
+            data: components["schemas"]["PurchaseOrderWithLines"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PurchaseOrderFilterDto: {
+            /** Format: uuid */
+            destinationLocationId?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: int64 */
+            page?: number | null;
+            search?: string | null;
+            status?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
+        };
+        PurchaseOrderLine: {
+            /** Format: double */
+            boxCostSnapshot: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: double */
+            lineSubtotal: number;
+            /** Format: double */
+            lineTax: number;
+            /** Format: double */
+            lineTotal: number;
+            /** Format: int32 */
+            orderedBoxes: number;
+            /** Format: uuid */
+            productId: string;
+            productName?: string | null;
+            productSku?: string | null;
+            /** Format: uuid */
+            purchaseOrderId: string;
+            /** Format: int32 */
+            receivedBoxes: number;
+            /** Format: double */
+            taxRate: number;
+            /** Format: int32 */
+            unitsPerBoxSnapshot: number;
+        };
+        PurchaseOrderLineInput: {
+            /** Format: double */
+            boxCost: number;
+            /** Format: int32 */
+            orderedBoxes: number;
+            /** Format: uuid */
+            productId: string;
+            /** Format: double */
+            taxRate?: number | null;
+        };
+        PurchaseOrderPaginationEnvelope: {
+            data: components["schemas"]["PurchaseOrderPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PurchaseOrderPaginationPage: {
+            data: components["schemas"]["PurchaseOrder"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        PurchaseOrderReceiptEnvelope: {
+            data: components["schemas"]["ReceivePurchaseOrderResponse"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        PurchaseOrderReceiptLineInput: {
+            /** Format: int32 */
+            acceptedBoxes: number;
+            /** Format: uuid */
+            purchaseOrderLineId: string;
+            /** Format: int32 */
+            rejectedBoxes?: number | null;
+        };
+        PurchaseOrderWithLines: components["schemas"]["PurchaseOrder"] & {
+            lines: components["schemas"]["PurchaseOrderLine"][];
         };
         ReceiptSummaryFilterDto: {
             /** Format: date-time */
@@ -4439,11 +5200,24 @@ export interface components {
             vendorId?: string | null;
             vendorName?: string | null;
         };
+        ReceivePurchaseOrderDto: {
+            invoiceReference: string;
+            lines: components["schemas"]["PurchaseOrderReceiptLineInput"][];
+            notes?: string | null;
+            paymentAccount?: string | null;
+            paymentMethod: string;
+            /** Format: date-time */
+            receiptDate?: string | null;
+        };
+        ReceivePurchaseOrderResponse: {
+            /** Format: uuid */
+            expenseId: string;
+            purchaseOrder: components["schemas"]["PurchaseOrderWithLines"];
+            /** Format: uuid */
+            receiptId: string;
+        };
         ReconcileCashRegisterDto: {
             reconciliationNotes?: string | null;
-        };
-        RedeemSsoTokenDto: {
-            token: string;
         };
         RegisterDto: {
             firstName?: string | null;
@@ -4477,11 +5251,62 @@ export interface components {
         RejectExpenseDto: {
             rejectionReason: string;
         };
+        RejectPurchaseOrderDto: {
+            reason: string;
+        };
         RejectStockTransferDto: {
             rejectionReason: string;
         };
         RejectStockWasteDto: {
             rejectionReason: string;
+        };
+        ReorderSuggestion: {
+            /** Format: int32 */
+            currentPieces: number;
+            /** Format: int32 */
+            leadTimeDays: number;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string;
+            /** Format: int32 */
+            minimumPieces: number;
+            /** Format: uuid */
+            preferredVendorId?: string | null;
+            /** Format: uuid */
+            productId: string;
+            productName: string;
+            /** Format: uuid */
+            ruleId: string;
+            /** Format: int32 */
+            suggestedPieces: number;
+            /** Format: int32 */
+            targetPieces: number;
+        };
+        ReorderSuggestionListEnvelope: {
+            data: components["schemas"]["ReorderSuggestion"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ResolvedSetting: {
+            key: string;
+            overridden: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            sourceId?: string | null;
+            sourceScope: string;
+            /** Format: date-time */
+            updatedAt?: string | null;
+            value: unknown;
+        };
+        ResolvedSettingListEnvelope: {
+            data: components["schemas"]["ResolvedSetting"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         RevenueByPaymentMethodDto: {
             /** Format: double */
@@ -4653,6 +5478,82 @@ export interface components {
             /** Format: double */
             allottedHours: number;
         };
+        SettingCatalogEnvelope: {
+            data: components["schemas"]["SettingDefinition"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        SettingDefinition: {
+            allowedScopes: components["schemas"]["SettingScope"][];
+            category: string;
+            defaultValue: unknown;
+            description: string;
+            key: string;
+            owner: string;
+            sensitive: boolean;
+            validation: unknown;
+            valueType: components["schemas"]["SettingValueType"];
+        };
+        SettingOverride: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: uuid */
+            id: string;
+            key: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            updatedBy?: string | null;
+            value: unknown;
+        };
+        SettingOverrideEnvelope: {
+            data: components["schemas"]["SettingOverride"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        SettingRevision: {
+            /** Format: uuid */
+            actorUserId?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            id: number;
+            key: string;
+            /** Format: uuid */
+            locationId?: string | null;
+            newValue?: unknown;
+            oldValue?: unknown;
+            operation: string;
+            /** Format: uuid */
+            organizationId: string;
+            reason: string;
+            requestId?: string | null;
+            /** Format: int64 */
+            revision: number;
+        };
+        SettingRevisionListEnvelope: {
+            data: components["schemas"]["SettingRevision"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        /** @enum {string} */
+        SettingScope: "organization" | "location";
+        /** @enum {string} */
+        SettingValueType: "string" | "number" | "integer" | "boolean" | "uuid" | "timezone" | "currency";
         SettleCreditDto: {
             /** Format: double */
             cashAmount?: number | null;
@@ -4782,6 +5683,32 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        ShiftStartContextDto: {
+            cashRegister?: null | components["schemas"]["CashRegister"];
+            mode: string;
+            shift?: null | components["schemas"]["Shift"];
+            /** Format: double */
+            suggestedOpeningBalance: number;
+        };
+        ShiftStartContextEnvelope: {
+            data: components["schemas"]["ShiftStartContextDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ShiftStartResponseDto: {
+            cashRegister: components["schemas"]["CashRegister"];
+            resumed: boolean;
+            shift: components["schemas"]["Shift"];
+        };
+        ShiftStartResponseEnvelope: {
+            data: components["schemas"]["ShiftStartResponseDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         StaffDashboardStatsDto: {
             devices: components["schemas"]["StaffDeviceStatsDto"];
             period: components["schemas"]["PeriodDto"];
@@ -4856,6 +5783,12 @@ export interface components {
              */
             balanceId?: string | null;
         };
+        StartShiftDto: {
+            notes?: string | null;
+            /** Format: double */
+            openingBalance: number;
+            openingDenominations?: unknown;
+        };
         StatsQuery: {
             /** @description When false, previous-period metrics are omitted. Defaults to true. */
             compare?: boolean | null;
@@ -4929,6 +5862,64 @@ export interface components {
             statusCode: number;
             success: boolean;
             timestamp: string;
+        };
+        StockMovementFilterDto: {
+            /** Format: uuid */
+            actorId?: string | null;
+            /** Format: date-time */
+            from?: string | null;
+            /** Format: int64 */
+            limit?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            movementType?: string | null;
+            /** Format: int64 */
+            page?: number | null;
+            /** Format: uuid */
+            productId?: string | null;
+            /** Format: uuid */
+            referenceId?: string | null;
+            referenceType?: string | null;
+            /** Format: date-time */
+            to?: string | null;
+        };
+        StockMovementPaginationEnvelope: {
+            data: components["schemas"]["StockMovementPaginationPage"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        StockMovementPaginationPage: {
+            data: components["schemas"]["StockMovementRow"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            totalPages: number;
+        };
+        StockMovementRow: {
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy?: string | null;
+            /** Format: int32 */
+            delta: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            locationId: string;
+            locationName: string;
+            movementType: string;
+            /** Format: uuid */
+            productId: string;
+            productName: string;
+            /** Format: uuid */
+            referenceId?: string | null;
+            referenceType?: string | null;
         };
         StockReceipt: {
             /** Format: date-time */
@@ -5400,18 +6391,6 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
-        TvSessionResponseDto: {
-            balanceId: string;
-            cafeTimezone: string;
-            deductionProfile?: null | components["schemas"]["DeductionProfile"];
-            deviceId: string;
-            expiryDate: string;
-            playerUsername?: string | null;
-            /** Format: double */
-            remainingMinutes: number;
-            sessionId: string;
-            startTime: string;
-        };
         Unit: {
             abbreviation: string;
             /** Format: date-time */
@@ -5586,6 +6565,22 @@ export interface components {
             /** Format: int32 */
             unitsPerPurchaseUnit?: number | null;
         };
+        UpdatePurchaseOrderDto: {
+            /** Format: uuid */
+            destinationLocationId?: string | null;
+            /** Format: double */
+            discount?: number | null;
+            /** Format: date */
+            expectedDeliveryDate?: string | null;
+            /** Format: double */
+            freight?: number | null;
+            lines?: components["schemas"]["PurchaseOrderLineInput"][] | null;
+            notes?: string | null;
+            /** Format: uuid */
+            vendorId?: string | null;
+            /** Format: int32 */
+            version: number;
+        };
         UpdateTransactionDto: {
             notes?: string | null;
             paymentStatus?: string | null;
@@ -5617,6 +6612,29 @@ export interface components {
         };
         UpsertConfigDto: {
             description?: string | null;
+            value: unknown;
+        };
+        UpsertInventoryReorderRuleDto: {
+            isActive?: boolean | null;
+            /** Format: int32 */
+            leadTimeDays?: number | null;
+            /** Format: uuid */
+            locationId: string;
+            /** Format: int32 */
+            minimumPieces: number;
+            /** Format: uuid */
+            preferredVendorId?: string | null;
+            /** Format: uuid */
+            productId: string;
+            /** Format: int32 */
+            targetPieces: number;
+        };
+        UpsertSettingOverrideDto: {
+            /** Format: int64 */
+            expectedRevision?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
+            reason: string;
             value: unknown;
         };
         UsageSession: {
@@ -5849,6 +6867,24 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        VenueLocation: {
+            currency: string;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            name: string;
+            /** Format: uuid */
+            organizationId: string;
+            slug: string;
+            timezone: string;
+        };
+        VenueLocationListEnvelope: {
+            data: components["schemas"]["VenueLocation"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         VerifyTotpSetupDto: {
             code: string;
         };
@@ -5920,64 +6956,6 @@ export interface operations {
             };
         };
     };
-    device_pairing: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DevicePairingDto"];
-            };
-        };
-        responses: {
-            /** @description Pairing JWT for pre-provision WS */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     login_admin: {
         parameters: {
             query?: never;
@@ -6010,6 +6988,90 @@ export interface operations {
                 };
             };
             /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    login_panel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffLoginDto"];
+            };
+        };
+        responses: {
+            /** @description Authenticated or MFA challenge issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PanelLoginResponseEnvelope"];
+                };
+            };
+            /** @description Invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    verify_panel_mfa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PanelMfaDto"];
+            };
+        };
+        responses: {
+            /** @description MFA verified and authenticated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PanelLoginResponseEnvelope"];
+                };
+            };
+            /** @description Invalid or expired MFA challenge */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -6260,115 +7322,6 @@ export interface operations {
             };
             /** @description Too many requests — REGISTRATION_RATE_LIMITED */
             429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    redeem_sso_token: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RedeemSsoTokenDto"];
-            };
-        };
-        responses: {
-            /** @description Staff JWT issued */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponseEnvelope"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    create_sso_token: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateSsoTokenDto"];
-            };
-        };
-        responses: {
-            /** @description SSO token created */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9585,6 +10538,412 @@ export interface operations {
             };
         };
     };
+    inventory_list_movements: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                productId?: string | null;
+                movementType?: string | null;
+                referenceId?: string | null;
+                referenceType?: string | null;
+                actorId?: string | null;
+                from?: string | null;
+                to?: string | null;
+                page?: number | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockMovementPaginationEnvelope"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    inventory_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryOverviewEnvelope"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    purchase_orders_list: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                vendorId?: string | null;
+                destinationLocationId?: string | null;
+                search?: string | null;
+                page?: number | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderPaginationEnvelope"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    purchase_orders_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePurchaseOrderDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    purchase_orders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    purchase_orders_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePurchaseOrderDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approve_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancel_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    mark_ordered: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    receive_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceivePurchaseOrderDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderReceiptEnvelope"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reject_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectPurchaseOrderDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    submit_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_receipts: {
         parameters: {
             query?: never;
@@ -9716,6 +11075,99 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_reorder_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReorderRuleListEnvelope"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    upsert_reorder_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertInventoryReorderRuleDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReorderRuleEnvelope"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reorder_suggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReorderSuggestionListEnvelope"];
+                };
+            };
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10673,7 +12125,7 @@ export interface operations {
             };
         };
     };
-    list_products: {
+    kiosk_list_products: {
         parameters: {
             query?: never;
             header?: never;
@@ -11077,6 +12529,409 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    configuration_snapshot: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                sinceRevision?: number | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigurationSnapshotEnvelope"];
+                };
+            };
+        };
+    };
+    venue_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueLocationListEnvelope"];
+                };
+            };
+        };
+    };
+    list_rule_sets: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleSetListEnvelope"];
+                };
+            };
+        };
+    };
+    create_rule_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePricingRuleSetDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleSetDraftEnvelope"];
+                };
+            };
+        };
+    };
+    list_versions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionListEnvelope"];
+                };
+            };
+        };
+    };
+    create_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePricingRuleVersionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    publish_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishPricingRuleVersionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    rollback_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    simulate_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PricingSimulationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingSimulationEnvelope"];
+                };
+            };
+        };
+    };
+    validate_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                set_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleVersionEnvelope"];
+                };
+            };
+        };
+    };
+    settings_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingCatalogEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    effective_settings: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                category?: string | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedSettingListEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setting_history: {
+        parameters: {
+            query?: {
+                locationId?: string | null;
+                key?: string | null;
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingRevisionListEnvelope"];
+                };
+            };
+        };
+    };
+    upsert_setting_override: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertSettingOverrideDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingOverrideEnvelope"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_setting_override: {
+        parameters: {
+            query: {
+                locationId?: string | null;
+                expectedRevision?: number | null;
+                reason: string;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12798,6 +14653,104 @@ export interface operations {
             };
         };
     };
+    start_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartShiftDto"];
+            };
+        };
+        responses: {
+            /** @description Shift and register started or resumed atomically */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftStartResponseEnvelope"];
+                };
+            };
+            /** @description Invalid opening balance */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Staff only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Concurrent start conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    start_context: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumable shift or carry-forward opening float */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftStartContextEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Staff only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_shift: {
         parameters: {
             query?: never;
@@ -13532,112 +15485,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    current_session: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current TV session or null */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Forbidden — not a PlayStation device */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    end_session: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Session ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EndTvSessionDto"];
-            };
-        };
-        responses: {
-            /** @description Session ended */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unauthorized */
             401: {

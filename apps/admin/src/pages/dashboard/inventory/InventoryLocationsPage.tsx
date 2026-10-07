@@ -16,14 +16,17 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
+import { getVenueLocations } from '../../../services/config';
 import {
   createInventoryLocation,
   getInventoryLocations,
   type InventoryLocation,
   updateInventoryLocation,
 } from '../../../services/inventory';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 export default function InventoryLocationsPage() {
   const { can } = usePermissions();
@@ -34,19 +37,31 @@ export default function InventoryLocationsPage() {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'warehouse' | 'store'>('store');
   const [isActive, setIsActive] = useState(true);
+  const [venueLocationId, setVenueLocationId] = useState('');
+  const [filterVenueId, setFilterVenueId] = useState('');
   const [search, setSearch] = useState('');
 
+  const organizationId = currentOrganizationId();
+  const venues = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
+  useEffect(() => {
+    if (!filterVenueId && venues.data?.length) setFilterVenueId(venues.data[0]?.id ?? '');
+  }, [filterVenueId, venues.data]);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['inventory-locations'],
-    queryFn: () => getInventoryLocations({ limit: 50 }),
+    queryKey: ['inventory-locations', filterVenueId],
+    queryFn: () => getInventoryLocations({ limit: 50, venueLocationId: filterVenueId }),
+    enabled: !!filterVenueId,
   });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (editing) {
-        return updateInventoryLocation(editing.id, { name, kind, isActive });
+        return updateInventoryLocation(editing.id, { name, kind, isActive, venueLocationId });
       }
-      return createInventoryLocation({ name, kind, isActive });
+      return createInventoryLocation({ name, kind, isActive, venueLocationId });
     },
     onSuccess: () => {
       toastUtils.success(editing ? 'Location updated' : 'Location created');
@@ -61,6 +76,7 @@ export default function InventoryLocationsPage() {
     setName('');
     setKind('store');
     setIsActive(true);
+    setVenueLocationId(filterVenueId);
     setDialogOpen(true);
   };
 
@@ -69,11 +85,18 @@ export default function InventoryLocationsPage() {
     setName(loc.name);
     setKind(loc.kind);
     setIsActive(loc.isActive);
+    setVenueLocationId(loc.venueLocationId ?? filterVenueId);
     setDialogOpen(true);
   };
 
   const columns: Column<InventoryLocation>[] = [
     { id: 'name', label: 'Name', minWidth: 180 },
+    {
+      id: 'venueLocationId',
+      label: 'Venue',
+      minWidth: 140,
+      format: (value) => venues.data?.find((venue) => venue.id === value)?.name ?? '—',
+    },
     {
       id: 'kind',
       label: 'Type',
@@ -106,6 +129,20 @@ export default function InventoryLocationsPage() {
 
   return (
     <>
+      <TextField
+        select
+        size="small"
+        label="Venue"
+        value={filterVenueId}
+        onChange={(event) => setFilterVenueId(event.target.value)}
+        sx={{ mb: 2, mx: { xs: 2, md: 4 }, minWidth: 220 }}
+      >
+        {venues.data?.map((venue) => (
+          <MenuItem key={venue.id} value={venue.id}>
+            {venue.name}
+          </MenuItem>
+        ))}
+      </TextField>
       {error && (
         <Alert severity="error" sx={{ mb: 2, mx: { xs: 2, md: 4 }, mt: { xs: 2, md: 3 } }}>
           Failed to load locations
@@ -126,43 +163,80 @@ export default function InventoryLocationsPage() {
         addButtonLabel="Add Location"
       />
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={dialogOpen}
+        onClose={saveMutation.isPending ? undefined : () => setDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>{editing ? 'Edit Location' : 'Add Location'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField
-              label="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fullWidth
-              required
-            />
-            <TextField
-              select
-              label="Type"
-              value={kind}
-              onChange={(e) => setKind(e.target.value as 'warehouse' | 'store')}
-              fullWidth
-            >
-              <MenuItem value="warehouse">Warehouse</MenuItem>
-              <MenuItem value="store">Store</MenuItem>
-            </TextField>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-              <Typography variant="body2">Active</Typography>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={!name.trim() || saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}
+          <GuidedForm
+            busy={saveMutation.isPending}
+            onCancel={() => setDialogOpen(false)}
+            actions={
+              <DialogActions>
+                <Button data-wizard-cancel onClick={() => setDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={!name.trim() || !venueLocationId || saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  Save
+                </Button>
+              </DialogActions>
+            }
           >
-            Save
-          </Button>
-        </DialogActions>
+            <GuidedStep
+              title="Location details"
+              validate={() =>
+                !name.trim()
+                  ? 'Enter a location name.'
+                  : !venueLocationId
+                    ? 'Select a venue.'
+                    : undefined
+              }
+            >
+              <TextField
+                select
+                label="Venue"
+                value={venueLocationId}
+                onChange={(e) => setVenueLocationId(e.target.value)}
+                fullWidth
+                required
+              >
+                {venues.data?.map((venue) => (
+                  <MenuItem key={venue.id} value={venue.id}>
+                    {venue.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                fullWidth
+                required
+              />
+              <TextField
+                select
+                label="Type"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as 'warehouse' | 'store')}
+                fullWidth
+              >
+                <MenuItem value="warehouse">Warehouse</MenuItem>
+                <MenuItem value="store">Store</MenuItem>
+              </TextField>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                <Typography variant="body2">Active</Typography>
+              </Box>
+            </GuidedStep>
+          </GuidedForm>
+        </DialogContent>
       </Dialog>
     </>
   );

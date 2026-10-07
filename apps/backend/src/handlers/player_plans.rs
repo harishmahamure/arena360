@@ -39,7 +39,10 @@ pub async fn list_player_plans(
         &claims.userId,
         claims.is_admin_or_staff(),
     )?;
-    let result = state.player_plans.list(filters).await?;
+    let result = state
+        .player_plans
+        .list_tenant(state.business_db(&claims).await?, filters)
+        .await?;
     ok(result)
 }
 
@@ -63,7 +66,10 @@ pub async fn list_my_active_plans(
         .map_err(|_| crate::error::AppError::Unauthorized("Authentication required".to_string()))?;
     filters.player_id = Some(user_uuid);
     filters.status = Some(status::ACTIVE.to_string());
-    let result = state.player_plans.list(filters).await?;
+    let result = state
+        .player_plans
+        .list_tenant(state.business_db(&claims).await?, filters)
+        .await?;
     ok(result)
 }
 
@@ -85,7 +91,10 @@ pub async fn get_best_plan(
 ) -> ApiResult<PlayerPlan> {
     let player_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::Unauthorized("Authentication required".to_string()))?;
-    let player_plan = state.player_plans.get_best_plan(player_id).await?;
+    let player_plan = state
+        .player_plans
+        .get_best_plan_tenant(state.business_db(&claims).await?, player_id)
+        .await?;
     ok(player_plan)
 }
 
@@ -110,7 +119,11 @@ pub async fn assign_plan(
 ) -> ApiResult<PlayerPlan> {
     let player_plan = state
         .player_plans
-        .assign_plan_to_player(dto, claims.user_id_uuid())
+        .assign_plan_to_player_tenant(
+            state.business_db(&claims).await?,
+            dto,
+            claims.user_id_uuid(),
+        )
         .await?;
     created(player_plan)
 }
@@ -136,7 +149,10 @@ pub async fn get_player_plan(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PlayerPlanResponse> {
-    let player_plan = state.player_plans.get_by_id(id).await?;
+    let player_plan = state
+        .player_plans
+        .get_by_id_tenant(state.business_db(&claims).await?, id)
+        .await?;
     PlayerPlanService::ensure_owner_or_admin(
         &claims.userId,
         claims.is_admin_or_staff(),
@@ -166,12 +182,18 @@ pub async fn validate_access(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<ValidationResult> {
-    let player_plan = state.player_plans.get_by_id(id).await?;
+    let player_plan = state
+        .player_plans
+        .get_by_id_tenant(state.business_db(&claims).await?, id)
+        .await?;
     PlayerPlanService::ensure_owner_or_admin(
         &claims.userId,
         claims.is_admin_or_staff(),
         player_plan.player_id,
     )?;
-    let result = state.player_plans.validate_plan_access(id, None).await?;
+    let result = state
+        .player_plans
+        .validate_plan_access_tenant(state.business_db(&claims).await?, id, None)
+        .await?;
     ok(result)
 }

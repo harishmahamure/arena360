@@ -38,14 +38,14 @@ pub struct StockTransferRequestWithLines {
     pub lines: Vec<StockTransferLine>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockTransferLineDto {
     pub product_id: Uuid,
     pub quantity_pieces: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockTransferRequestDto {
     pub from_location_id: Option<Uuid>,
@@ -53,13 +53,13 @@ pub struct CreateStockTransferRequestDto {
     pub lines: Vec<CreateStockTransferLineDto>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RejectStockTransferDto {
     pub rejection_reason: String,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct StockTransferFilterDto {
     pub status: Option<String>,

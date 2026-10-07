@@ -22,7 +22,12 @@ export default function InventoryReceiptReportPage() {
   } = useStatsDateRange();
   const [searchText, setSearchText] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['receipt-summary', apiFilters.startDate, apiFilters.endDate],
     queryFn: () =>
       getReceiptSummary({
@@ -79,6 +84,8 @@ export default function InventoryReceiptReportPage() {
 
   return (
     <ListPage
+      error={listError ? 'Could not load records. Please try again.' : null}
+      onRetry={() => void refetch()}
       title="Receipt Report"
       description="Stock received into warehouse, aggregated by product and vendor"
       columns={columns}

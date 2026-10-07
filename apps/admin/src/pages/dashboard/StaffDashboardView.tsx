@@ -5,7 +5,7 @@ import {
   SESSION_CLOCK_TICK_MS,
 } from '@gaming-cafe/contracts';
 import { EmptyState, ErrorPanel, PageShell } from '@gaming-cafe/ui';
-import { formatRemainingLabel, toastUtils } from '@gaming-cafe/utils';
+import { formatRemainingLabel } from '@gaming-cafe/utils';
 import {
   AccessTime,
   Devices,
@@ -19,14 +19,13 @@ import {
   ShoppingCart,
 } from '@mui/icons-material';
 import { Box, Button, Card, CardContent, Chip, Grid, Skeleton, Typography } from '@mui/material';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { StatCard, type StatTone } from '../../containers/stats/StatCard';
 import { useStaffDashboardStats } from '../../hooks/useStaffDashboardStats';
 import type { SessionResponse } from '../../services/sessions/list';
 import { getSessions } from '../../services/sessions/list';
-import { clockIn } from '../../services/shifts';
 import { formatTypePaymentSubtitle, normalizeRevenue } from '../../services/stats/statsHelpers';
 import { formatDisplayDateTime, formatDuration, now as nowDate } from '../../utils/date';
 import { PendingKioskOrdersPanel } from './kiosk-orders/PendingKioskOrdersPanel';
@@ -114,8 +113,7 @@ function StaffDashboardSkeleton() {
 }
 
 export default function StaffDashboardView() {
-  const queryClient = useQueryClient();
-  const [startingShift, setStartingShift] = useState(false);
+  const navigate = useNavigate();
   const { data: stats, isLoading, error, refetch } = useStaffDashboardStats();
 
   const shiftActive = !!stats?.shift;
@@ -151,20 +149,7 @@ export default function StaffDashboardView() {
       .slice(0, ENDING_SOON_MAX);
   }, [enrichedSessions, clockTick]);
 
-  const handleStartShift = async () => {
-    setStartingShift(true);
-    try {
-      await clockIn();
-      toastUtils.success('Shift started');
-      void queryClient.invalidateQueries({ queryKey: ['activeShift'] });
-      void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
-      void queryClient.invalidateQueries({ queryKey: ['shifts'] });
-    } catch (err: unknown) {
-      toastUtils.error(err instanceof Error ? err.message : 'Failed to start shift');
-    } finally {
-      setStartingShift(false);
-    }
-  };
+  const handleStartShift = () => navigate('/shift/setup');
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -314,10 +299,9 @@ export default function StaffDashboardView() {
             <Button
               variant="contained"
               onClick={() => void handleStartShift()}
-              disabled={startingShift}
               sx={{ minHeight: 44 }}
             >
-              {startingShift ? 'Starting…' : 'Start shift'}
+              Set up shift
             </Button>
           )}
         </CardContent>

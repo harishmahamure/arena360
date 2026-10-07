@@ -11,7 +11,12 @@ export default function InventoryWasteReportPage() {
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['waste-summary', from, to],
     queryFn: () =>
       getWasteSummary({
@@ -64,6 +69,8 @@ export default function InventoryWasteReportPage() {
 
   return (
     <ListPage
+      error={listError ? 'Could not load records. Please try again.' : null}
+      onRetry={() => void refetch()}
       title="Waste Report"
       description="Approved waste aggregated by location, product, and reason"
       columns={columns}

@@ -138,7 +138,12 @@ export default function TransactionsPage() {
     navigate('/product-transactions/new');
   }, [navigate]);
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['product-transactions', page, statusFilter],
     queryFn: () =>
       getTransactions({
@@ -152,6 +157,8 @@ export default function TransactionsPage() {
 
   return (
     <ListPage<Transaction>
+      error={listError ? 'Could not load records. Please try again.' : null}
+      onRetry={() => void refetch()}
       title="POS sales"
       description="Product purchases and snack sales at the counter."
       data={data?.data || []}

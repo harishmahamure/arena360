@@ -1,15 +1,17 @@
-use serde_json::Value;
-use sqlx::PgPool;
-use std::sync::Arc;
-use uuid::Uuid;
-
-use crate::cache::{self, get_or_set, keys, CacheService};
 use crate::error::AppError;
 use crate::models::{
     parse_deduction_profile, parse_time, CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto,
 };
-use crate::repositories::{PlanCreateValues, PlanRepository};
+use crate::repositories::{
+    TenantPlanCreateValues, TenantPlanRepository, TenantPricingPolicyRepository,
+};
+use crate::services::{ConfigService, PricingPolicyService};
+use crate::tenancy::TenantDb;
 use crate::validation::{optional_device_sub_type, optional_device_type};
+use chrono::Utc;
+use serde_json::Value;
+use std::sync::Arc;
+use uuid::Uuid;
 
 const VALID_DAYS: &[&str] = &[
     "monday",
@@ -22,120 +24,195 @@ const VALID_DAYS: &[&str] = &[
 ];
 
 pub struct PlanService {
-    repo: PlanRepository,
-    cache: Arc<dyn CacheService>,
+    settings: Arc<ConfigService>,
 }
-
 impl PlanService {
-    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
-        Self {
-            repo: PlanRepository::new(pool),
-            cache,
-        }
+    pub fn new(settings: Arc<ConfigService>) -> Self {
+        Self { settings }
     }
-
-    async fn invalidate_plans(&self, id: Option<Uuid>) -> Result<(), AppError> {
-        let mut cache_keys = vec![keys::plans_active().to_string()];
-        if let Some(id) = id {
-            cache_keys.push(keys::plan(&id));
-        }
-        cache::invalidate(&*self.cache, &cache_keys).await?;
-        self.cache.invalidate_prefix("plans:list:").await
-    }
-
-    pub async fn list(
+    pub async fn list_tenant(
         &self,
+        db: Arc<TenantDb>,
         filters: PlanFilterDto,
     ) -> Result<crate::dto::PaginationResult<Plan>, AppError> {
-        let cache_key = keys::plans_list(&keys::filter_hash(&filters));
-        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
-            self.repo.list(&filters).await
-        })
-        .await
+        let repo = TenantPlanRepository::new(db.clone());
+        let mut result = repo.list(&filters).await?;
+        if let Some(location_id) = filters.location_id {
+            self.price_tenant_plans(db, &repo, &mut result.data, location_id)
+                .await?;
+        }
+        Ok(result)
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<Plan, AppError> {
-        let cache_key = keys::plan(&id);
-        get_or_set(&*self.cache, &cache_key, keys::ttl::LOOKUP, || async {
-            self.repo
-                .find_by_id(id)
-                .await?
-                .ok_or_else(|| AppError::NotFound(format!("Plan with ID {id} not found")))
-        })
-        .await
-    }
-
-    pub async fn get_active(&self) -> Result<Vec<Plan>, AppError> {
-        get_or_set(
-            &*self.cache,
-            keys::plans_active(),
-            keys::ttl::LOOKUP,
-            || async { self.repo.find_active().await },
-        )
-        .await
-    }
-
-    pub async fn create(
+    pub async fn get_tenant(
         &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<Plan, AppError> {
+        let repo = TenantPlanRepository::new(db.clone());
+        let mut plan = repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Plan with ID {id} not found")))?;
+        if let Some(location_id) = location_id {
+            let (all, rows) = repo.location_scope(id).await?;
+            if !all
+                && !rows
+                    .iter()
+                    .any(|(available_location, _)| *available_location == location_id)
+            {
+                return Err(AppError::BadRequest(
+                    "This catalog item is not available at the selected location".into(),
+                ));
+            }
+            self.price_tenant_plans(db, &repo, std::slice::from_mut(&mut plan), location_id)
+                .await?;
+        }
+        Ok(plan)
+    }
+
+    pub async fn active_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        location_id: Uuid,
+    ) -> Result<Vec<Plan>, AppError> {
+        let repo = TenantPlanRepository::new(db.clone());
+        let mut plans = repo
+            .list(&PlanFilterDto {
+                location_id: Some(location_id),
+                is_active: Some(1),
+                limit: Some(100),
+                ..Default::default()
+            })
+            .await?
+            .data;
+        self.price_tenant_plans(db, &repo, &mut plans, location_id)
+            .await?;
+        Ok(plans)
+    }
+
+    async fn price_tenant_plans(
+        &self,
+        db: Arc<TenantDb>,
+        repo: &TenantPlanRepository,
+        plans: &mut [Plan],
+        location_id: Uuid,
+    ) -> Result<(), AppError> {
+        let pricing = TenantPricingPolicyRepository::new(db.clone());
+        pricing.activate_due().await?;
+        let values = pricing
+            .active_policies(db.tenant_id(), Some(location_id))
+            .await?;
+        let policy = PricingPolicyService::combine_plan_policies(values)?;
+        let organization_id = db.tenant_id();
+        let (timezone, _, _) = self
+            .settings
+            .venue_pricing_context_tenant(db, organization_id, Some(location_id))
+            .await?;
+        for plan in plans {
+            let base = repo
+                .location_price(plan.id, location_id)
+                .await?
+                .unwrap_or(plan.price);
+            plan.current_price = Some(PricingPolicyService::evaluate_plan_price(
+                base,
+                plan.device_type.as_deref(),
+                &policy,
+                Utc::now(),
+                &timezone,
+            )?);
+        }
+        Ok(())
+    }
+
+    pub async fn create_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        locations: Vec<Uuid>,
         dto: CreatePlanDto,
         actor_id: Option<Uuid>,
     ) -> Result<Plan, AppError> {
-        self.validate_create(&dto)?;
-
-        let validity_days = dto.validity_days.unwrap_or(30);
-        let time_credits = dto.time_credits.unwrap_or(60);
-
-        let time_window_start = dto
+        let organization_id = db.tenant_id();
+        let validity_days = match dto.validity_days {
+            Some(value) => value,
+            None => self
+                .settings
+                .resolve_value_tenant(
+                    db.clone(),
+                    organization_id,
+                    None,
+                    "plans.default_validity_days",
+                )
+                .await?
+                .as_i64()
+                .unwrap_or(30) as i32,
+        };
+        let time_credits = match dto.time_credits {
+            Some(value) => value,
+            None => self
+                .settings
+                .resolve_value_tenant(
+                    db.clone(),
+                    organization_id,
+                    None,
+                    "plans.default_time_credits",
+                )
+                .await?
+                .as_i64()
+                .unwrap_or(60) as i32,
+        };
+        self.validate_create(&dto, validity_days, time_credits)?;
+        let start = dto
             .time_window_start
             .as_deref()
             .map(parse_time)
             .transpose()?;
-        let time_window_end = dto.time_window_end.as_deref().map(parse_time).transpose()?;
-        let (dynamic_deduction_enabled, deduction_profile) =
-            Self::resolve_deduction_fields(&dto.dynamic_deduction_enabled, dto.deduction_profile.as_ref())?;
-
-        let plan = self
-            .repo
+        let end = dto.time_window_end.as_deref().map(parse_time).transpose()?;
+        let (dynamic, profile) = Self::resolve_deduction_fields(
+            &dto.dynamic_deduction_enabled,
+            dto.deduction_profile.as_ref(),
+        )?;
+        let plan = TenantPlanRepository::new(db)
+            .with_locations(locations)
             .create(
-                PlanCreateValues {
+                TenantPlanCreateValues {
                     dto: &dto,
                     validity_days,
                     time_credits,
-                    time_window_start,
-                    time_window_end,
-                    dynamic_deduction_enabled,
-                    deduction_profile,
+                    time_window_start: start,
+                    time_window_end: end,
+                    dynamic_deduction_enabled: dynamic,
+                    deduction_profile: profile,
                 },
                 actor_id,
             )
             .await?;
-        self.invalidate_plans(Some(plan.id)).await?;
         Ok(plan)
     }
 
-    pub async fn update(
+    pub async fn delete_tenant(&self, db: Arc<TenantDb>, id: Uuid) -> Result<(), AppError> {
+        TenantPlanRepository::new(db).deactivate(id).await?;
+        Ok(())
+    }
+
+    pub async fn update_tenant(
         &self,
+        db: Arc<TenantDb>,
         id: Uuid,
         dto: UpdatePlanDto,
         actor_id: Option<Uuid>,
     ) -> Result<Plan, AppError> {
-        let existing = self.get_by_id(id).await?;
-
-        if let Some(price) = dto.price {
-            if price <= 0.0 {
-                return Err(AppError::BadRequest(
-                    "price must be greater than 0".to_string(),
-                ));
-            }
+        let existing = self.get_tenant(db.clone(), id, None).await?;
+        if dto.price.is_some_and(|price| price <= 0.0) {
+            return Err(AppError::BadRequest("price must be greater than 0".into()));
         }
-
         let existing_start = existing
             .time_window_start
-            .map(|t| t.format("%H:%M:%S").to_string());
+            .map(|value| value.format("%H:%M:%S").to_string());
         let existing_end = existing
             .time_window_end
-            .map(|t| t.format("%H:%M:%S").to_string());
-
+            .map(|value| value.format("%H:%M:%S").to_string());
         let plan_type = dto.plan_type.as_deref().unwrap_or(&existing.plan_type);
         self.validate_plan_type(
             plan_type,
@@ -146,7 +223,6 @@ impl PlanService {
                 .or(existing_start.as_deref()),
             dto.time_window_end.as_deref().or(existing_end.as_deref()),
         )?;
-
         Self::validate_allowed_days(dto.allowed_days.as_ref().or(existing.allowed_days.as_ref()))?;
         Self::validate_allowed_months(
             dto.allowed_months
@@ -161,64 +237,50 @@ impl PlanService {
                 .as_deref()
                 .or(existing.device_sub_type.as_deref()),
         )?;
-
-        let time_window_start = match dto.time_window_start.as_deref() {
-            Some(value) => Some(parse_time(value)?),
-            None => None,
-        };
-        let time_window_end = match dto.time_window_end.as_deref() {
-            Some(value) => Some(parse_time(value)?),
-            None => None,
-        };
-
-        let dynamic_enabled = dto
+        let start = dto
+            .time_window_start
+            .as_deref()
+            .map(parse_time)
+            .transpose()?;
+        let end = dto.time_window_end.as_deref().map(parse_time).transpose()?;
+        let dynamic = dto
             .dynamic_deduction_enabled
             .unwrap_or(existing.dynamic_deduction_enabled);
-        let profile_value = if dto.dynamic_deduction_enabled == Some(false) {
+        let profile = if dto.dynamic_deduction_enabled == Some(false) {
             None
         } else {
             dto.deduction_profile
                 .as_ref()
                 .or(existing.deduction_profile.as_ref())
         };
-        let (dynamic_deduction_enabled, deduction_profile) = Self::resolve_deduction_fields(
-            &Some(dynamic_enabled),
-            profile_value,
-        )?;
-
-        let plan = self
-            .repo
+        let (dynamic, profile) = Self::resolve_deduction_fields(&Some(dynamic), profile)?;
+        let plan = TenantPlanRepository::new(db)
             .update(
                 id,
                 &dto,
-                time_window_start,
-                time_window_end,
+                start,
+                end,
                 dto.allowed_days.as_ref(),
                 dto.allowed_months.as_ref(),
-                Some(dynamic_deduction_enabled),
-                deduction_profile.as_ref(),
+                Some(dynamic),
+                profile.as_ref(),
                 actor_id,
             )
             .await?;
-        self.invalidate_plans(Some(id)).await?;
         Ok(plan)
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        self.get_by_id(id).await?;
-        self.repo.deactivate(id).await?;
-        self.invalidate_plans(Some(id)).await
-    }
-
-    fn validate_create(&self, dto: &CreatePlanDto) -> Result<(), AppError> {
+    fn validate_create(
+        &self,
+        dto: &CreatePlanDto,
+        validity_days: i32,
+        time_credits: i32,
+    ) -> Result<(), AppError> {
         if dto.price <= 0.0 {
             return Err(AppError::BadRequest(
                 "price must be greater than 0".to_string(),
             ));
         }
-
-        let validity_days = dto.validity_days.unwrap_or(30);
-        let time_credits = dto.time_credits.unwrap_or(60);
 
         self.validate_plan_type(
             &dto.plan_type,

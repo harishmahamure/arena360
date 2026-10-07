@@ -1,49 +1,42 @@
-pub mod balance_repo;
-pub mod cash_deposit_repo;
-pub mod cash_register_repo;
-pub mod config_repo;
-pub mod credit_repo;
-pub mod device_repo;
-pub mod expense_category_repo;
-pub mod expense_repo;
-pub mod game_repo;
-pub mod inventory_repo;
-pub mod kiosk_order_repo;
-pub mod ledger_repo;
-pub mod notification_repo;
-pub mod plan_repo;
-pub mod player_plan_repo;
-pub mod product_repo;
-pub mod session_repo;
-pub mod sso_repo;
-pub mod shift_repo;
-pub mod transaction_product_repo;
-pub mod transaction_repo;
-pub mod unit_repo;
-pub mod user_repo;
-pub mod vendor_repo;
+pub mod tenant_catalog_repo;
+pub mod tenant_commerce_repo;
+pub mod tenant_user_repo;
+pub mod tenant_venue_repo;
 
-pub use balance_repo::BalanceRepository;
-pub use cash_deposit_repo::CashDepositRepository;
-pub use cash_register_repo::CashRegisterRepository;
-pub use config_repo::ConfigRepository;
-pub use credit_repo::CreditRepository;
-pub use device_repo::DeviceRepository;
-pub use expense_category_repo::ExpenseCategoryRepository;
-pub use expense_repo::ExpenseRepository;
-pub use game_repo::GameRepository;
-pub use inventory_repo::InventoryRepository;
-pub use kiosk_order_repo::KioskOrderRepository;
-pub use ledger_repo::LedgerRepository;
-pub use notification_repo::NotificationRepository;
-pub use plan_repo::{PlanCreateValues, PlanRepository};
-pub use player_plan_repo::PlayerPlanRepository;
-pub use product_repo::ProductRepository;
-pub use session_repo::{PlayerOpenSession, SessionRepository};
-pub use sso_repo::SsoRepository;
-pub use shift_repo::ShiftRepository;
-pub use transaction_product_repo::TransactionProductRepository;
-pub use transaction_repo::TransactionRepository;
-pub use unit_repo::UnitRepository;
-pub use user_repo::{CreatePlayerParams, UserRepository};
-pub use vendor_repo::VendorRepository;
+pub use tenant_catalog_repo::{
+    TenantGameRepository, TenantPlanCreateValues, TenantPlanRepository,
+    TenantPricingPolicyRepository, TenantProductRecipeRepository, TenantProductRepository,
+    TenantSettingsRepository, TenantUnitRepository,
+};
+pub use tenant_commerce_repo::{
+    TenantCreditRepository, TenantKioskOrderRepository, TenantTransactionRepository,
+};
+pub use tenant_user_repo::{
+    StaffProjectionResult, TenantCreatePlayer, TenantLocationRoleGrant, TenantStaffProjection,
+    TenantUserRepository,
+};
+pub use tenant_venue_repo::{
+    TenantBalanceRepository, TenantDeviceRepository, TenantPlayerPlanRepository,
+    TenantSessionMutation, TenantSessionRepository,
+};
+
+pub(crate) mod tenant_back_office;
+pub mod tenant_inventory_repo;
+pub mod tenant_vendor_repo;
+pub use tenant_inventory_repo::TenantInventoryRepository;
+pub use tenant_vendor_repo::TenantVendorRepository;
+
+pub mod tenant_finance_repo;
+pub use tenant_finance_repo::{TenantShiftRepository,TenantCashRegisterRepository,TenantCashDepositRepository,TenantExpenseRepository,TenantExpenseCategoryRepository};
+
+pub mod tenant_config_repo;
+pub mod tenant_notification_repo;
+pub use tenant_config_repo::TenantConfigRepository;
+pub use tenant_notification_repo::TenantNotificationRepository;
+
+mod tenant_settings_access;
+
+pub mod tenant_access_repo;
+pub use tenant_access_repo::{TenantAccessRepository,TenantRoleDto,TenantMemberDto,TenantLocationRoleDto};
+
+pub(crate) mod tenant_activity;

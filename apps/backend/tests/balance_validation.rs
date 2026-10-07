@@ -59,6 +59,8 @@ fn validate(balance: &PlayerPlanBalance) -> BalanceValidationResult {
 fn sample_device() -> Device {
     Device {
         id: Uuid::new_v4(),
+        organization_id: Uuid::new_v4(),
+        location_id: Uuid::new_v4(),
         name: "PC-01".to_string(),
         serial_number: None,
         local_ip_address: None,
@@ -233,7 +235,10 @@ fn ledger_reason_constants() {
     assert_eq!(ledger_reason::EXPIRY, "expiry");
     assert_eq!(ledger_reason::ADJUSTMENT, "adjustment");
     assert_eq!(ledger_reason::MIGRATION, "migration");
-    assert_eq!(ledger_reason::STAFF_ALLOWANCE_GRANT, "staff_allowance_grant");
+    assert_eq!(
+        ledger_reason::STAFF_ALLOWANCE_GRANT,
+        "staff_allowance_grant"
+    );
     assert_eq!(
         ledger_reason::STAFF_ALLOWANCE_RENEWAL,
         "staff_allowance_renewal"

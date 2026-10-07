@@ -1,0 +1,40 @@
+{
+  "request": "/stats/finance/variance?startDate=2026-10-02&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-10-01T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-10-01 - 2026-10-02",
+      "previousLabel": "2026-09-30 - 2026-10-01"
+    },
+    "metrics": {
+      "current": {
+        "totalVariance": 0,
+        "averageVariance": 0,
+        "overCount": 0,
+        "shortCount": 0,
+        "evenCount": 1,
+        "registerCount": 1
+      },
+      "previous": {
+        "totalVariance": 0,
+        "averageVariance": 0,
+        "overCount": 0,
+        "shortCount": 0,
+        "evenCount": 1,
+        "registerCount": 1
+      }
+    },
+    "registers": [
+      {
+        "id": "f0739df6-b7bc-4075-abae-f47adf4662e2",
+        "shiftId": "87ff6c8d-461f-4642-abd3-ad20e1afbd6f",
+        "status": "closed",
+        "variance": 0,
+        "closingBalance": 1310,
+        "expectedClosing": 1310,
+        "updatedAt": "2026-10-01T20:00:00Z"
+      }
+    ]
+  }
+}

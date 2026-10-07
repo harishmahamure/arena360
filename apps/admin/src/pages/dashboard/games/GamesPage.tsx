@@ -26,7 +26,12 @@ export default function GamesPage() {
     debounce((query: string) => setDebouncedSearch(query), 500),
   ).current;
 
-  const { data, isLoading, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['games', debouncedSearch, page],
     queryFn: () =>
       getGames({
@@ -119,6 +124,8 @@ export default function GamesPage() {
 
   return (
     <ListPage<GameResponse>
+      error={listError ? 'Could not load records. Please try again.' : null}
+      onRetry={() => void refetch()}
       title="Games"
       description="Manage the kiosk game catalog (thumbnails, logos, background videos)."
       data={data?.data || []}

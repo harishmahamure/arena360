@@ -1,11 +1,9 @@
 # Kiosk media gallery
 
-The kiosk loads a **centrally hosted** media gallery for Setup admins to pick
-logos, posters, and preview videos when configuring allowed software.
-
-> Launching is gated by the client-side allow-list (ADR-0019). Each station's
-> allow-list decides what is shown and what can launch. Optional media URLs on
-> allow-list entries are chosen from this gallery.
+The kiosk loads a centrally hosted media gallery for setup administrators to
+pick logos, posters, and preview videos when configuring allowed software.
+Launching is always gated by the station-local allow-list. Gallery membership
+alone never authorizes an executable.
 
 ## CDN gallery (source of truth)
 

@@ -53,6 +53,24 @@ pub fn configs_all() -> &'static str {
     "configs:all"
 }
 
+pub fn settings_effective(
+    organization_id: &uuid::Uuid,
+    location_id: Option<&uuid::Uuid>,
+    category: Option<&str>,
+) -> String {
+    format!(
+        "settings:{organization_id}:{}:{}",
+        location_id
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "organization".to_string()),
+        category.unwrap_or("all")
+    )
+}
+
+pub fn settings_prefix(organization_id: &uuid::Uuid) -> String {
+    format!("settings:{organization_id}:")
+}
+
 pub fn expense_categories_tree() -> &'static str {
     "expense_categories:tree"
 }
@@ -128,22 +146,22 @@ pub fn stock_level(location_id: &uuid::Uuid, product_id: &uuid::Uuid) -> String 
 }
 
 pub fn stats_dashboard(filter_hash: &str) -> String {
-    format!("stats:v5:dashboard:{filter_hash}")
+    format!("stats:ch:v1:dashboard:{filter_hash}")
 }
 
 pub fn stats_staff(filter_hash: &str) -> String {
-    format!("stats:v5:staff:{filter_hash}")
+    format!("stats:ch:v1:staff:{filter_hash}")
 }
 
 pub fn stats_revenue(filter_hash: &str) -> String {
-    format!("stats:v5:revenue:{filter_hash}")
+    format!("stats:ch:v1:revenue:{filter_hash}")
 }
 
 pub fn stats_usage(filter_hash: &str) -> String {
-    format!("stats:v5:usage:{filter_hash}")
+    format!("stats:ch:v1:usage:{filter_hash}")
 }
 
-pub const STATS_PREFIX: &str = "stats:v5:";
+pub const STATS_PREFIX: &str = "stats:ch:v1:";
 
 pub const NOTIFICATIONS_PREFIX: &str = "notifications:";
 

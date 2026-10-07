@@ -8,6 +8,8 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct Device {
     pub id: Uuid,
+    pub organization_id: Uuid,
+    pub location_id: Uuid,
     pub name: String,
     pub serial_number: Option<String>,
     pub local_ip_address: Option<String>,
@@ -28,6 +30,7 @@ pub struct Device {
 #[serde(rename_all = "camelCase")]
 pub struct CreateDeviceDto {
     pub name: String,
+    pub location_id: Option<Uuid>,
     pub serial_number: Option<String>,
     pub local_ip_address: Option<String>,
     pub device_type: Option<String>,
@@ -41,6 +44,7 @@ pub struct CreateDeviceDto {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateDeviceDto {
     pub name: Option<String>,
+    pub location_id: Option<Uuid>,
     pub serial_number: Option<String>,
     pub local_ip_address: Option<String>,
     pub device_type: Option<String>,
@@ -58,6 +62,7 @@ pub struct UpdateDeviceStatusDto {
 #[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceFilterDto {
+    pub location_id: Option<Uuid>,
     pub status: Option<String>,
     pub device_type: Option<String>,
     pub device_sub_type: Option<String>,

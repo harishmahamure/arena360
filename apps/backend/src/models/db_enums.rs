@@ -1,4 +1,4 @@
-//! Postgres enum labels — keep aligned with `packages/contracts/src/enums.ts`.
+//! Wire enum labels — keep aligned with `packages/contracts/src/enums.ts`.
 
 // Device / plan scope (case-sensitive uppercase)
 pub const DEVICE_TYPES: &[&str] = &["PC", "CONSOLE", "PS5", "PS4", "OTHER"];
@@ -53,11 +53,9 @@ pub const PAYMENT_METHODS: &[&str] = &["cash", "online", "split_payment", "credi
 pub const PAYMENT_STATUSES: &[&str] = &["pending", "completed", "failed", "refunded", "credit"];
 
 pub const INVENTORY_LOCATION_KINDS: &[&str] = &["warehouse", "store"];
-pub const STOCK_TRANSFER_STATUSES: &[&str] =
-    &["pending", "approved", "rejected", "fulfilled"];
+pub const STOCK_TRANSFER_STATUSES: &[&str] = &["pending", "approved", "rejected", "fulfilled"];
 pub const STOCK_WASTE_STATUSES: &[&str] = &["pending", "approved", "rejected"];
-pub const STOCK_WASTE_REASONS: &[&str] =
-    &["expired", "damaged", "spoilage", "sample", "other"];
+pub const STOCK_WASTE_REASONS: &[&str] = &["expired", "damaged", "spoilage", "sample", "other"];
 
 pub fn normalize_uppercase_enum(value: &str, allowed: &[&str]) -> Option<String> {
     let upper = value.trim().to_uppercase();

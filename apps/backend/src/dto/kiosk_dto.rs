@@ -26,7 +26,8 @@ pub struct ProvisionDeviceDto {
     pub deviceType: Option<String>,
     pub deviceSubType: Option<String>,
     pub location: Option<String>,
-    /// When `console-tv`, backend rejects non-PlayStation device types.
+    pub locationId: Option<uuid::Uuid>,
+    /// Identifies the provisioning client (currently `kiosk`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provisionClient: Option<String>,
 }
@@ -77,7 +78,7 @@ pub struct KioskSessionResponseDto {
     pub balanceId: String,
     pub deviceId: String,
     pub startTime: String,
-    /// Server-computed effective display remaining (console TV / legacy).
+    /// Server-computed effective display remaining for legacy clients.
     pub remainingMinutes: f64,
     /// Raw wallet minutes from `player_plan_balances.remainingMinutes`.
     pub walletBalanceMinutes: f64,
@@ -106,7 +107,7 @@ pub fn kiosk_session_response(
         sessionId: started.session.id.to_string(),
         balanceId: started.balance_id.to_string(),
         deviceId: started.session.device_id.to_string(),
-        startTime: started.session.start_time.to_rfc3339(),
+        startTime: crate::time::utc_timestamp(&started.session.start_time),
         remainingMinutes: started.remaining_minutes as f64,
         walletBalanceMinutes: started.wallet_balance_minutes as f64,
         resumed: started.resumed,
@@ -114,30 +115,8 @@ pub fn kiosk_session_response(
         deductionProfile: deduction_profile,
         cafeTimezone: started.cafe_timezone.clone(),
         timeCreditsConsumed: Some(started.time_credits_consumed),
-        expiryDate: started.expiry_date.to_rfc3339(),
+        expiryDate: crate::time::utc_timestamp(&started.expiry_date),
     }
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
-pub struct TvSessionResponseDto {
-    pub sessionId: String,
-    pub balanceId: String,
-    pub deviceId: String,
-    pub startTime: String,
-    pub remainingMinutes: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub playerUsername: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deductionProfile: Option<DeductionProfile>,
-    pub cafeTimezone: String,
-    pub expiryDate: String,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Deserialize, Default, ToSchema)]
-pub struct EndTvSessionDto {
-    pub reason: Option<String>,
 }
 
 #[allow(non_snake_case)]

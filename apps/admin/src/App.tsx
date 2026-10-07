@@ -1,265 +1,445 @@
 import { Permission } from '@gaming-cafe/contracts';
-import { Providers } from '@gaming-cafe/providers';
-import { local, toastUtils } from '@gaming-cafe/utils';
+import { TOAST_CONTAINER_PROPS } from '@gaming-cafe/utils';
+import { CssBaseline } from '@mui/material';
+import { ToastContainer } from 'react-toastify';
+import { AppearanceProvider } from './theme/AppearanceProvider';
+import 'react-toastify/dist/ReactToastify.css';
+import { http, isApiError, local, toastUtils } from '@gaming-cafe/utils';
+import { LinearProgress } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect, useReducer } from 'react';
+import { lazy, Suspense, useEffect, useReducer, useRef } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import RequirePermission from './components/RequirePermission';
+import SessionVerifier from './components/SessionVerifier';
+import { analyticsDashboards } from './constants/analyticsDashboards';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
-import { bootstrapAuthFromToken, registerAdminAuthSession } from './lib/authSession';
+import {
+  bootstrapAuthFromToken,
+  clearAdminSession,
+  panelClaims,
+  registerAdminAuthSession,
+  watchSessionExpiry,
+} from './lib/authSession';
 import { RealtimeProvider } from './lib/realtime';
-import LoginPage from './pages/auth/LoginPage';
-import ActivityLogPage from './pages/dashboard/ActivityLogPage';
-import CashDepositsPage from './pages/dashboard/cash-deposits/CashDepositsPage';
-import CashRegisterDetailPage from './pages/dashboard/cash-registers/CashRegisterDetailPage';
-import CashRegistersPage from './pages/dashboard/cash-registers/CashRegistersPage';
-import CreditPage from './pages/dashboard/credit/CreditPage';
-import CreditSettlementDetailPage from './pages/dashboard/credit/CreditSettlementDetailPage';
-import CreditSettlementsPage from './pages/dashboard/credit/CreditSettlementsPage';
-import DashboardPage from './pages/dashboard/DashboardPage';
-import DeviceDetailPage from './pages/dashboard/devices/DeviceDetailPage';
-import DeviceNewPage from './pages/dashboard/devices/DeviceNewPage';
-import DevicesPage from './pages/dashboard/devices/DevicesPage';
-import ExpenseDetailPage from './pages/dashboard/expenses/ExpenseDetailPage';
-import ExpenseNewPage from './pages/dashboard/expenses/ExpenseNewPage';
-import ExpensesPage from './pages/dashboard/expenses/ExpensesPage';
-import FinanceDepositsPage from './pages/dashboard/finance/FinanceDepositsPage';
-import FinanceReconciliationPage from './pages/dashboard/finance/FinanceReconciliationPage';
-import FinanceVariancePage from './pages/dashboard/finance/FinanceVariancePage';
-import GameDetailPage from './pages/dashboard/games/GameDetailPage';
-import GameNewPage from './pages/dashboard/games/GameNewPage';
-import GamesPage from './pages/dashboard/games/GamesPage';
-import InventoryLocationsPage from './pages/dashboard/inventory/InventoryLocationsPage';
-import InventoryReceiptReportPage from './pages/dashboard/inventory/InventoryReceiptReportPage';
-import InventoryStockPage from './pages/dashboard/inventory/InventoryStockPage';
-import InventoryTransferDetailPage from './pages/dashboard/inventory/InventoryTransferDetailPage';
-import InventoryTransferNewPage from './pages/dashboard/inventory/InventoryTransferNewPage';
-import InventoryTransfersPage from './pages/dashboard/inventory/InventoryTransfersPage';
-import InventoryWarehousePage from './pages/dashboard/inventory/InventoryWarehousePage';
-import InventoryWasteNewPage from './pages/dashboard/inventory/InventoryWasteNewPage';
-import InventoryWastePage from './pages/dashboard/inventory/InventoryWastePage';
-import InventoryWasteReportPage from './pages/dashboard/inventory/InventoryWasteReportPage';
-import KioskOrdersPage from './pages/dashboard/kiosk-orders/KioskOrdersPage';
-import PlanTransactionDetailPage from './pages/dashboard/plan-transactions/PlanTransactionDetailPage';
-import PlanTransactionNewPage from './pages/dashboard/plan-transactions/PlanTransactionNewPage';
-import PlanTransactionsPage from './pages/dashboard/plan-transactions/PlanTransactionsPage';
-import PlanDetailPage from './pages/dashboard/plans/PlanDetailPage';
-import PlanNewPage from './pages/dashboard/plans/PlanNewPage';
-import PlansPage from './pages/dashboard/plans/PlansPage';
-import PlayerDetailPage from './pages/dashboard/players/PlayerDetailPage';
-import PlayerNewPage from './pages/dashboard/players/PlayerNewPage';
-import PlayersPage from './pages/dashboard/players/PlayersPage';
-import ProductTransactionDetailPage from './pages/dashboard/product-transactions/ProductTransactionDetailPage';
-import ProductTransactionNewPage from './pages/dashboard/product-transactions/ProductTransactionNewPage';
-import ProductTransactionsPage from './pages/dashboard/product-transactions/ProductTransactionsPage';
-import ProductDetailPage from './pages/dashboard/products/ProductDetailPage';
-import ProductNewPage from './pages/dashboard/products/ProductNewPage';
-import ProductsPage from './pages/dashboard/products/ProductsPage';
-import SessionDetailPage from './pages/dashboard/sessions/SessionDetailPage';
-import SessionNewPage from './pages/dashboard/sessions/SessionNewPage';
-import SessionsPage from './pages/dashboard/sessions/SessionsPage';
-import SettingsPage from './pages/dashboard/settings/SettingsPage';
-import ShiftDetailPage from './pages/dashboard/shifts/ShiftDetailPage';
-import ShiftsPage from './pages/dashboard/shifts/ShiftsPage';
-import StationsFloorPage from './pages/dashboard/stations/StationsFloorPage';
-import VendorDetailPage from './pages/dashboard/vendors/VendorDetailPage';
-import VendorNewPage from './pages/dashboard/vendors/VendorNewPage';
-import VendorsPage from './pages/dashboard/vendors/VendorsPage';
-import NotFoundPage from './pages/NotFoundPage';
+
 import { StoreContext } from './store';
 import { PERSIST_KEY } from './store/persistance';
 import { rootInitialState, rootReducer } from './store/rootReducer';
 
-const queryClient = new QueryClient();
+const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
+const ShiftSetupPage = lazy(() => import('./pages/auth/ShiftSetupPage'));
+const ActivityLogPage = lazy(() => import('./pages/dashboard/ActivityLogPage'));
+const ProfilePage = lazy(() => import('./pages/dashboard/profile/ProfilePage'));
+const CashDepositsPage = lazy(() => import('./pages/dashboard/cash-deposits/CashDepositsPage'));
+const CashRegisterDetailPage = lazy(
+  () => import('./pages/dashboard/cash-registers/CashRegisterDetailPage'),
+);
+const CashRegistersPage = lazy(() => import('./pages/dashboard/cash-registers/CashRegistersPage'));
+const CreditPage = lazy(() => import('./pages/dashboard/credit/CreditPage'));
+const CreditSettlementDetailPage = lazy(
+  () => import('./pages/dashboard/credit/CreditSettlementDetailPage'),
+);
+const CreditSettlementsPage = lazy(() => import('./pages/dashboard/credit/CreditSettlementsPage'));
+const AnalyticsPage = lazy(() => import('./pages/dashboard/analytics/AnalyticsPage'));
+const AnalyticsIndexPage = lazy(() => import('./pages/dashboard/analytics/AnalyticsIndexPage'));
+const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
+const DeviceDetailPage = lazy(() => import('./pages/dashboard/devices/DeviceDetailPage'));
+const DeviceNewPage = lazy(() => import('./pages/dashboard/devices/DeviceNewPage'));
+const DevicesPage = lazy(() => import('./pages/dashboard/devices/DevicesPage'));
+const ExpenseDetailPage = lazy(() => import('./pages/dashboard/expenses/ExpenseDetailPage'));
+const ExpenseNewPage = lazy(() => import('./pages/dashboard/expenses/ExpenseNewPage'));
+const ExpensesPage = lazy(() => import('./pages/dashboard/expenses/ExpensesPage'));
+const FinanceDepositsPage = lazy(() => import('./pages/dashboard/finance/FinanceDepositsPage'));
+const FinanceReconciliationPage = lazy(
+  () => import('./pages/dashboard/finance/FinanceReconciliationPage'),
+);
+const FinanceVariancePage = lazy(() => import('./pages/dashboard/finance/FinanceVariancePage'));
+const GameDetailPage = lazy(() => import('./pages/dashboard/games/GameDetailPage'));
+const GameNewPage = lazy(() => import('./pages/dashboard/games/GameNewPage'));
+const GamesPage = lazy(() => import('./pages/dashboard/games/GamesPage'));
+const InventoryLocationsPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryLocationsPage'),
+);
+const InventoryMovementsPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryMovementsPage'),
+);
+const InventoryOverviewPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryOverviewPage'),
+);
+const InventoryReceiptReportPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryReceiptReportPage'),
+);
+const InventoryReorderPage = lazy(() => import('./pages/dashboard/inventory/InventoryReorderPage'));
+const InventoryStockPage = lazy(() => import('./pages/dashboard/inventory/InventoryStockPage'));
+const InventoryTransferDetailPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryTransferDetailPage'),
+);
+const InventoryTransferNewPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryTransferNewPage'),
+);
+const InventoryTransfersPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryTransfersPage'),
+);
+const InventoryWarehousePage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryWarehousePage'),
+);
+const InventoryWasteNewPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryWasteNewPage'),
+);
+const InventoryWastePage = lazy(() => import('./pages/dashboard/inventory/InventoryWastePage'));
+const InventoryWasteReportPage = lazy(
+  () => import('./pages/dashboard/inventory/InventoryWasteReportPage'),
+);
+const PurchaseOrderDetailPage = lazy(
+  () => import('./pages/dashboard/inventory/PurchaseOrderDetailPage'),
+);
+const PurchaseOrderNewPage = lazy(() => import('./pages/dashboard/inventory/PurchaseOrderNewPage'));
+const PurchaseOrdersPage = lazy(() => import('./pages/dashboard/inventory/PurchaseOrdersPage'));
+const AccessPage = lazy(() => import('./pages/dashboard/access/AccessPage'));
+const LocationsPage = lazy(() => import('./pages/dashboard/access/LocationsPage'));
+const KitchenPage = lazy(() => import('./pages/dashboard/kitchen/KitchenPage'));
+const FinanceReportPage = lazy(() => import('./pages/dashboard/finance/FinanceReportPage'));
+const KioskOrdersPage = lazy(() => import('./pages/dashboard/kiosk-orders/KioskOrdersPage'));
+const PlanTransactionDetailPage = lazy(
+  () => import('./pages/dashboard/plan-transactions/PlanTransactionDetailPage'),
+);
+const PlanTransactionNewPage = lazy(
+  () => import('./pages/dashboard/plan-transactions/PlanTransactionNewPage'),
+);
+const PlanTransactionsPage = lazy(
+  () => import('./pages/dashboard/plan-transactions/PlanTransactionsPage'),
+);
+const PlanDetailPage = lazy(() => import('./pages/dashboard/plans/PlanDetailPage'));
+const PlanNewPage = lazy(() => import('./pages/dashboard/plans/PlanNewPage'));
+const PlansPage = lazy(() => import('./pages/dashboard/plans/PlansPage'));
+const PlayerDetailPage = lazy(() => import('./pages/dashboard/players/PlayerDetailPage'));
+const PlayerNewPage = lazy(() => import('./pages/dashboard/players/PlayerNewPage'));
+const PlayersPage = lazy(() => import('./pages/dashboard/players/PlayersPage'));
+const ProductTransactionDetailPage = lazy(
+  () => import('./pages/dashboard/product-transactions/ProductTransactionDetailPage'),
+);
+const ProductTransactionNewPage = lazy(
+  () => import('./pages/dashboard/product-transactions/ProductTransactionNewPage'),
+);
+const ProductTransactionsPage = lazy(
+  () => import('./pages/dashboard/product-transactions/ProductTransactionsPage'),
+);
+const ProductDetailPage = lazy(() => import('./pages/dashboard/products/ProductDetailPage'));
+const ProductNewPage = lazy(() => import('./pages/dashboard/products/ProductNewPage'));
+const ProductsPage = lazy(() => import('./pages/dashboard/products/ProductsPage'));
+const SessionDetailPage = lazy(() => import('./pages/dashboard/sessions/SessionDetailPage'));
+const SessionNewPage = lazy(() => import('./pages/dashboard/sessions/SessionNewPage'));
+const SessionsPage = lazy(() => import('./pages/dashboard/sessions/SessionsPage'));
+const SettingsPage = lazy(() => import('./pages/dashboard/settings/SettingsPage'));
+const ShiftDetailPage = lazy(() => import('./pages/dashboard/shifts/ShiftDetailPage'));
+const ShiftsPage = lazy(() => import('./pages/dashboard/shifts/ShiftsPage'));
+const StationsFloorPage = lazy(() => import('./pages/dashboard/stations/StationsFloorPage'));
+const VendorDetailPage = lazy(() => import('./pages/dashboard/vendors/VendorDetailPage'));
+const VendorNewPage = lazy(() => import('./pages/dashboard/vendors/VendorNewPage'));
+const VendorsPage = lazy(() => import('./pages/dashboard/vendors/VendorsPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (count, error) => count < 1 && (!isApiError(error) || error.statusCode >= 500),
+      staleTime: 15_000,
+    },
+  },
+});
 
 function App() {
   const [state, dispatch] = useReducer(rootReducer, rootInitialState);
   const navigate = useNavigate();
-
+  const navigation = useRef(navigate);
   useEffect(() => {
-    registerAdminAuthSession({
-      onSessionExpired: () => {
-        dispatch({ type: 'Reset' });
-        toastUtils.warning('Session expired — please sign in again');
-        if (window.location.pathname !== '/login') {
-          navigate('/login', { replace: true });
-        }
-      },
-    });
-    bootstrapAuthFromToken(dispatch);
+    navigation.current = navigate;
   }, [navigate]);
 
   useEffect(() => {
-    local.set(PERSIST_KEY, JSON.stringify(state));
+    const reset = () => {
+      void queryClient.cancelQueries();
+      queryClient.clear();
+      dispatch({ type: 'Reset' });
+    };
+    const unregister = registerAdminAuthSession({
+      onSessionExpired: () => {
+        toastUtils.warning('Session expired — please sign in again');
+        navigation.current('/login', { replace: true });
+      },
+    });
+    let stopExpiry = () => {};
+    let sessionUserId: string | undefined;
+    const sync = () => {
+      stopExpiry();
+      const userId = panelClaims()?.userId;
+      if (userId !== sessionUserId || !userId) reset();
+      sessionUserId = userId;
+      bootstrapAuthFromToken(dispatch);
+      stopExpiry = watchSessionExpiry(
+        () => {
+          clearAdminSession();
+          toastUtils.warning('Session expired — please sign in again');
+          navigation.current('/login', { replace: true });
+        },
+        undefined,
+        async () => (await http.post<{ accessToken: string }>('/auth/refresh')).accessToken,
+      );
+    };
+    const refresh = () => {
+      void queryClient.invalidateQueries();
+    };
+    const storage = (event: StorageEvent) => {
+      if (event.key === 'arena:data-revision') refresh();
+      if (event.key === 'accessToken' || event.key === null) sync();
+    };
+    sync();
+    window.addEventListener('arena:session-change', sync);
+    window.addEventListener('storage', storage);
+    window.addEventListener('arena:data-change', refresh);
+    return () => {
+      unregister();
+      stopExpiry();
+      window.removeEventListener('arena:session-change', sync);
+      window.removeEventListener('storage', storage);
+      window.removeEventListener('arena:data-change', refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.auth.id && local.get('accessToken')) local.set(PERSIST_KEY, JSON.stringify(state));
   }, [state]);
 
   return (
     <ErrorBoundary>
-      <Providers>
-        <LocalizationProvider dateAdapter={AdapterDateFns}>
-          <StoreContext value={{ dispatch, state }}>
-            <QueryClientProvider client={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <AppearanceProvider accountId={state.auth.id}>
+          <CssBaseline />
+          <ToastContainer {...TOAST_CONTAINER_PROPS} theme="colored" />
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
+            <StoreContext value={{ dispatch, state }}>
               <RealtimeProvider>
-                <Routes>
-                  <Route element={<AuthLayout />}>
-                    <Route path="/login" element={<LoginPage />} />
-                  </Route>
-                  <Route element={<DashboardLayout />}>
-                    <Route path="/" element={<DashboardPage />} />
-                    <Route element={<RequirePermission permission={Permission.PlayersRead} />}>
-                      <Route path="/players" element={<PlayersPage />} />
-                      <Route path="/players/:id" element={<PlayerDetailPage />} />
+                <SessionVerifier />
+                <Suspense fallback={<LinearProgress aria-label="Loading page" />}>
+                  <Routes>
+                    <Route element={<AuthLayout />}>
+                      <Route path="/login" element={<LoginPage />} />
+                      <Route path="/shift/setup" element={<ShiftSetupPage />} />
                     </Route>
-                    <Route element={<RequirePermission permission={Permission.PlayersWrite} />}>
-                      <Route path="/players/new" element={<PlayerNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.DevicesRead} />}>
-                      <Route path="/devices" element={<DevicesPage />} />
-                      <Route path="/devices/:id" element={<DeviceDetailPage />} />
-                      <Route path="/stations" element={<StationsFloorPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.DevicesWrite} />}>
-                      <Route path="/devices/new" element={<DeviceNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.PlansRead} />}>
-                      <Route path="/plans" element={<PlansPage />} />
-                      <Route path="/plans/:id" element={<PlanDetailPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.PlansWrite} />}>
-                      <Route path="/plans/new" element={<PlanNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.PlayerPlansRead} />}>
-                      <Route path="/plan-transactions" element={<PlanTransactionsPage />} />
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/" element={<DashboardPage />} />
+                      <Route element={<RequirePermission permission={Permission.FinanceRead} />}>
+                        <Route path="/analytics">
+                          <Route index element={<AnalyticsIndexPage />} />
+                          {analyticsDashboards.map((dashboard) => (
+                            <Route
+                              key={dashboard.id}
+                              path={dashboard.id}
+                              element={<AnalyticsPage dashboard={dashboard.id} />}
+                            />
+                          ))}
+                        </Route>
+                      </Route>
+                      <Route path="/profile" element={<ProfilePage />} />
+                      <Route element={<RequirePermission permission={Permission.PlayersRead} />}>
+                        <Route path="/players" element={<PlayersPage />} />
+                        <Route path="/players/:id" element={<PlayerDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.PlayersWrite} />}>
+                        <Route path="/players/new" element={<PlayerNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.DevicesRead} />}>
+                        <Route path="/devices" element={<DevicesPage />} />
+                        <Route path="/devices/:id" element={<DeviceDetailPage />} />
+                        <Route path="/stations" element={<StationsFloorPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.DevicesWrite} />}>
+                        <Route path="/devices/new" element={<DeviceNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.PlansRead} />}>
+                        <Route path="/plans" element={<PlansPage />} />
+                        <Route path="/plans/:id" element={<PlanDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.PlansWrite} />}>
+                        <Route path="/plans/new" element={<PlanNewPage />} />
+                      </Route>
                       <Route
-                        path="/plan-transactions/:id"
-                        element={<PlanTransactionDetailPage />}
-                      />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.PlayerPlansWrite} />}>
-                      <Route path="/plan-transactions/new" element={<PlanTransactionNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.SessionsRead} />}>
-                      <Route path="/sessions" element={<SessionsPage />} />
-                      <Route path="/sessions/:id" element={<SessionDetailPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.SessionsWrite} />}>
-                      <Route path="/sessions/new" element={<SessionNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.ProductsRead} />}>
-                      <Route path="/products" element={<ProductsPage />} />
-                      <Route path="/products/:id" element={<ProductDetailPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.ProductsWrite} />}>
-                      <Route path="/products/new" element={<ProductNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.GamesRead} />}>
-                      <Route path="/games" element={<GamesPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.GamesWrite} />}>
-                      <Route path="/games/new" element={<GameNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.GamesRead} />}>
-                      <Route path="/games/:id" element={<GameDetailPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.TransactionsRead} />}>
-                      <Route path="/kiosk-orders" element={<KioskOrdersPage />} />
-                      <Route path="/product-transactions" element={<ProductTransactionsPage />} />
+                        element={<RequirePermission permission={Permission.PlayerPlansRead} />}
+                      >
+                        <Route path="/plan-transactions" element={<PlanTransactionsPage />} />
+                        <Route
+                          path="/plan-transactions/:id"
+                          element={<PlanTransactionDetailPage />}
+                        />
+                      </Route>
                       <Route
-                        path="/product-transactions/:id"
-                        element={<ProductTransactionDetailPage />}
-                      />
-                    </Route>
-                    <Route
-                      element={<RequirePermission permission={Permission.TransactionsWrite} />}
-                    >
+                        element={<RequirePermission permission={Permission.PlayerPlansWrite} />}
+                      >
+                        <Route path="/plan-transactions/new" element={<PlanTransactionNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.SessionsRead} />}>
+                        <Route path="/sessions" element={<SessionsPage />} />
+                        <Route path="/sessions/:id" element={<SessionDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.SessionsWrite} />}>
+                        <Route path="/sessions/new" element={<SessionNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.ProductsRead} />}>
+                        <Route path="/products" element={<ProductsPage />} />
+                        <Route path="/products/:id" element={<ProductDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.ProductsWrite} />}>
+                        <Route path="/products/new" element={<ProductNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.GamesRead} />}>
+                        <Route path="/games" element={<GamesPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.GamesWrite} />}>
+                        <Route path="/games/new" element={<GameNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.GamesRead} />}>
+                        <Route path="/games/:id" element={<GameDetailPage />} />
+                      </Route>
                       <Route
-                        path="/product-transactions/new"
-                        element={<ProductTransactionNewPage />}
-                      />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.ShiftsRead} />}>
-                      <Route path="/shifts" element={<ShiftsPage />} />
-                      <Route path="/shifts/:id" element={<ShiftDetailPage />} />
-                    </Route>
-                    <Route
-                      element={<RequirePermission permission={Permission.CashRegistersRead} />}
-                    >
-                      <Route path="/cash-registers" element={<CashRegistersPage />} />
-                      <Route path="/cash-registers/:id" element={<CashRegisterDetailPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.CashDepositsRead} />}>
-                      <Route path="/cash-deposits" element={<CashDepositsPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.CreditRead} />}>
-                      <Route path="/credit" element={<CreditPage />} />
-                      <Route path="/credit/settlements" element={<CreditSettlementsPage />} />
+                        element={<RequirePermission permission={Permission.TransactionsRead} />}
+                      >
+                        <Route path="/kiosk-orders" element={<KioskOrdersPage />} />
+                        <Route path="/product-transactions" element={<ProductTransactionsPage />} />
+                        <Route
+                          path="/product-transactions/:id"
+                          element={<ProductTransactionDetailPage />}
+                        />
+                      </Route>
                       <Route
-                        path="/credit/settlements/:id"
-                        element={<CreditSettlementDetailPage />}
-                      />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.ExpensesRead} />}>
-                      <Route path="/expenses" element={<ExpensesPage />} />
-                      <Route path="/expenses/:id" element={<ExpenseDetailPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.ExpensesWrite} />}>
-                      <Route path="/expenses/new" element={<ExpenseNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.VendorsRead} />}>
-                      <Route path="/vendors" element={<VendorsPage />} />
-                      <Route path="/vendors/:id" element={<VendorDetailPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.VendorsWrite} />}>
-                      <Route path="/vendors/new" element={<VendorNewPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.InventoryRead} />}>
-                      <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
-                      <Route path="/inventory/stock" element={<InventoryStockPage />} />
-                      <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
-                      <Route path="/inventory/transfers" element={<InventoryTransfersPage />} />
+                        element={<RequirePermission permission={Permission.TransactionsWrite} />}
+                      >
+                        <Route
+                          path="/product-transactions/new"
+                          element={<ProductTransactionNewPage />}
+                        />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.ShiftsRead} />}>
+                        <Route path="/shifts" element={<ShiftsPage />} />
+                        <Route path="/shifts/:id" element={<ShiftDetailPage />} />
+                      </Route>
                       <Route
-                        path="/inventory/transfers/:id"
-                        element={<InventoryTransferDetailPage />}
-                      />
+                        element={<RequirePermission permission={Permission.CashRegistersRead} />}
+                      >
+                        <Route path="/cash-registers" element={<CashRegistersPage />} />
+                        <Route path="/cash-registers/:id" element={<CashRegisterDetailPage />} />
+                      </Route>
                       <Route
-                        path="/inventory/transfers/new"
-                        element={<InventoryTransferNewPage />}
-                      />
-                      <Route path="/inventory/waste" element={<InventoryWastePage />} />
-                      <Route path="/inventory/waste/new" element={<InventoryWasteNewPage />} />
+                        element={<RequirePermission permission={Permission.CashDepositsRead} />}
+                      >
+                        <Route path="/cash-deposits" element={<CashDepositsPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.CreditRead} />}>
+                        <Route path="/credit" element={<CreditPage />} />
+                        <Route path="/credit/settlements" element={<CreditSettlementsPage />} />
+                        <Route
+                          path="/credit/settlements/:id"
+                          element={<CreditSettlementDetailPage />}
+                        />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.ExpensesRead} />}>
+                        <Route path="/expenses" element={<ExpensesPage />} />
+                        <Route path="/expenses/:id" element={<ExpenseDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.ExpensesWrite} />}>
+                        <Route path="/expenses/new" element={<ExpenseNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.VendorsRead} />}>
+                        <Route path="/vendors" element={<VendorsPage />} />
+                        <Route path="/vendors/:id" element={<VendorDetailPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.VendorsWrite} />}>
+                        <Route path="/vendors/new" element={<VendorNewPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.InventoryRead} />}>
+                        <Route path="/inventory" element={<InventoryOverviewPage />} />
+                        <Route path="/inventory/stock" element={<InventoryStockPage />} />
+                        <Route path="/inventory/movements" element={<InventoryMovementsPage />} />
+                        <Route path="/inventory/transfers" element={<InventoryTransfersPage />} />
+                        <Route
+                          path="/inventory/transfers/:id"
+                          element={<InventoryTransferDetailPage />}
+                        />
+                        <Route
+                          path="/inventory/transfers/new"
+                          element={<InventoryTransferNewPage />}
+                        />
+                        <Route path="/inventory/waste" element={<InventoryWastePage />} />
+                        <Route path="/inventory/waste/new" element={<InventoryWasteNewPage />} />
+                        <Route
+                          path="/inventory/waste/report"
+                          element={<InventoryWasteReportPage />}
+                        />
+                        <Route
+                          path="/inventory/receipts/report"
+                          element={<InventoryReceiptReportPage />}
+                        />
+                      </Route>
                       <Route
-                        path="/inventory/waste/report"
-                        element={<InventoryWasteReportPage />}
-                      />
+                        element={<RequirePermission permission={Permission.ProcurementRead} />}
+                      >
+                        <Route path="/inventory/purchase-orders" element={<PurchaseOrdersPage />} />
+                        <Route
+                          path="/inventory/purchase-orders/:id"
+                          element={<PurchaseOrderDetailPage />}
+                        />
+                        <Route path="/inventory/reorder" element={<InventoryReorderPage />} />
+                      </Route>
                       <Route
-                        path="/inventory/receipts/report"
-                        element={<InventoryReceiptReportPage />}
-                      />
+                        element={<RequirePermission permission={Permission.ProcurementWrite} />}
+                      >
+                        <Route
+                          path="/inventory/purchase-orders/new"
+                          element={<PurchaseOrderNewPage />}
+                        />
+                      </Route>
+                      <Route
+                        element={<RequirePermission permission={Permission.InventoryManage} />}
+                      >
+                        <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
+                        <Route path="/inventory/warehouse" element={<InventoryWarehousePage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.AccessRead} />}>
+                        <Route path="/access" element={<AccessPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.LocationsRead} />}>
+                        <Route path="/locations" element={<LocationsPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.KitchenRead} />}>
+                        <Route path="/kitchen" element={<KitchenPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.ActivityRead} />}>
+                        <Route path="/activity-log" element={<ActivityLogPage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.FinanceRead} />}>
+                        <Route
+                          path="/finance/reconciliation"
+                          element={<FinanceReconciliationPage />}
+                        />
+                        <Route path="/finance/reports" element={<FinanceReportPage />} />
+                        <Route path="/finance/deposits" element={<FinanceDepositsPage />} />
+                        <Route path="/finance/variance" element={<FinanceVariancePage />} />
+                      </Route>
+                      <Route element={<RequirePermission permission={Permission.SettingsRead} />}>
+                        <Route path="/settings" element={<SettingsPage />} />
+                      </Route>
+                      <Route path="*" element={<NotFoundPage />} />
                     </Route>
-                    <Route element={<RequirePermission permission={Permission.StatsRead} />}>
-                      <Route
-                        path="/finance/reconciliation"
-                        element={<FinanceReconciliationPage />}
-                      />
-                      <Route path="/finance/deposits" element={<FinanceDepositsPage />} />
-                      <Route path="/finance/variance" element={<FinanceVariancePage />} />
-                      <Route path="/activity-log" element={<ActivityLogPage />} />
-                    </Route>
-                    <Route element={<RequirePermission permission={Permission.ConfigRead} />}>
-                      <Route path="/settings" element={<SettingsPage />} />
-                    </Route>
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Route>
-                </Routes>
+                  </Routes>
+                </Suspense>
               </RealtimeProvider>
-            </QueryClientProvider>
-          </StoreContext>
-        </LocalizationProvider>
-      </Providers>
+            </StoreContext>
+          </LocalizationProvider>
+        </AppearanceProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

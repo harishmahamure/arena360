@@ -1,0 +1,193 @@
+{
+  "request": "/stats/dashboard?startDate=2026-10-02&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-10-01T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-10-01 - 2026-10-02",
+      "previousLabel": "2026-09-30 - 2026-10-01"
+    },
+    "revenue": {
+      "current": {
+        "plan": 810,
+        "merchandise": 870,
+        "total": 1680,
+        "cashRevenue": 675,
+        "onlineRevenue": 885,
+        "creditRevenue": 120,
+        "planTransactionCount": 3,
+        "productTransactionCount": 4,
+        "planCashRevenue": 0,
+        "planOnlineRevenue": 690,
+        "planCreditRevenue": 120,
+        "productCashRevenue": 675,
+        "productOnlineRevenue": 195,
+        "productCreditRevenue": 0,
+        "planCashCount": 0,
+        "planOnlineCount": 2,
+        "planCreditCount": 1,
+        "productCashCount": 4,
+        "productOnlineCount": 2,
+        "productCreditCount": 0
+      },
+      "previous": {
+        "plan": 980,
+        "merchandise": 935,
+        "total": 1915,
+        "cashRevenue": 810,
+        "onlineRevenue": 755,
+        "creditRevenue": 350,
+        "planTransactionCount": 5,
+        "productTransactionCount": 5,
+        "planCashRevenue": 810,
+        "planOnlineRevenue": 170,
+        "planCreditRevenue": 0,
+        "productCashRevenue": 0,
+        "productOnlineRevenue": 585,
+        "productCreditRevenue": 350,
+        "planCashCount": 5,
+        "planOnlineCount": 2,
+        "planCreditCount": 0,
+        "productCashCount": 0,
+        "productOnlineCount": 2,
+        "productCreditCount": 3
+      }
+    },
+    "transactions": {
+      "current": {
+        "totalTransactions": 9,
+        "completedTransactions": 7,
+        "pendingTransactions": 1,
+        "failedTransactions": 0,
+        "averageTransactionAmount": 207.77777777777777
+      },
+      "previous": {
+        "totalTransactions": 11,
+        "completedTransactions": 10,
+        "pendingTransactions": 1,
+        "failedTransactions": 0,
+        "averageTransactionAmount": 185.45454545454547
+      }
+    },
+    "usage": {
+      "current": {
+        "totalSessions": 3,
+        "activeSessions": 0,
+        "completedSessions": 3,
+        "totalHours": 6,
+        "totalMinutes": 360,
+        "averageSessionDuration": 120
+      },
+      "previous": {
+        "totalSessions": 5,
+        "activeSessions": 0,
+        "completedSessions": 5,
+        "totalHours": 9,
+        "totalMinutes": 540,
+        "averageSessionDuration": 108
+      }
+    },
+    "users": {
+      "totalUsers": 34,
+      "activeUsers": 34,
+      "totalPlayers": 32,
+      "activePlayers": 32,
+      "newUsersThisPeriod": 0
+    },
+    "plans": {
+      "totalActivePlans": 2,
+      "totalExpiredPlans": 115,
+      "plansByType": []
+    },
+    "devices": {
+      "totalDevices": 12,
+      "activeDevices": 11,
+      "deviceUtilization": [
+        {
+          "deviceId": "d08eba9d-5126-4497-a9e2-f0bd9b8b8c7f",
+          "deviceName": "DEMO PC 11",
+          "totalHours": 3,
+          "totalSessions": 1,
+          "utilizationPercentage": 12.508686587908269
+        },
+        {
+          "deviceId": "90a59ec7-4cb1-4ef0-a47c-9a015334a12b",
+          "deviceName": "DEMO PC 07",
+          "totalHours": 2,
+          "totalSessions": 1,
+          "utilizationPercentage": 8.339124391938846
+        },
+        {
+          "deviceId": "d631f561-1885-493a-a90c-b1b442baf123",
+          "deviceName": "DEMO PC 09",
+          "totalHours": 1,
+          "totalSessions": 1,
+          "utilizationPercentage": 4.169562195969423
+        }
+      ]
+    },
+    "topPerformers": {
+      "topPlans": [
+        {
+          "planId": "c018d97e-917e-43e7-a96b-b207c501f979",
+          "planName": "DEMO Squad Marathon",
+          "purchaseCount": 1,
+          "revenue": 300
+        },
+        {
+          "planId": "b7256499-f817-4498-a3c9-16a4f4218ffd",
+          "planName": "DEMO Ranked Duo",
+          "purchaseCount": 1,
+          "revenue": 220
+        },
+        {
+          "planId": "27293a26-be88-497b-ad52-e7697e1ed632",
+          "planName": "DEMO Quick Play",
+          "purchaseCount": 1,
+          "revenue": 120
+        }
+      ],
+      "topPlayers": [
+        {
+          "playerId": "1c825162-8154-499d-a738-691356e071fd",
+          "playerName": "Arjun Demo 31",
+          "totalSessions": 0,
+          "totalSpent": 420
+        },
+        {
+          "playerId": "c4a4c39c-922e-430a-a2f5-ade480294c09",
+          "playerName": "Maya Demo 26",
+          "totalSessions": 1,
+          "totalSpent": 300
+        },
+        {
+          "playerId": "86416fa1-5b0e-485c-afeb-a8c21de2d846",
+          "playerName": "Rohan Demo 5",
+          "totalSessions": 0,
+          "totalSpent": 240
+        },
+        {
+          "playerId": "db2e4ef9-878a-4d1d-a315-a8ceacff3047",
+          "playerName": "Tara Demo 14",
+          "totalSessions": 1,
+          "totalSpent": 220
+        },
+        {
+          "playerId": "df93f17a-c7f1-49a1-a87a-ee6cc2bb667b",
+          "playerName": "Aarav Demo 17",
+          "totalSessions": 0,
+          "totalSpent": 150
+        }
+      ]
+    },
+    "revenueTrend": [
+      {
+        "date": "2026-10-02",
+        "cashRevenue": 675,
+        "onlineRevenue": 885,
+        "totalRevenue": 1680,
+        "transactionCount": 7
+      }
+    ]
+  }
+}

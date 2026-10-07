@@ -29,10 +29,7 @@ function formatPlayLine(row: DeductionPlayRow): string {
   return `${periodShortLabel(row.period)} ${row.timeRange}: ${play} (${burnRateHint(row)})`;
 }
 
-export function PlanDeductionSummary({
-  timeCredits,
-  deductionProfile,
-}: PlanDeductionSummaryProps) {
+export function PlanDeductionSummary({ timeCredits, deductionProfile }: PlanDeductionSummaryProps) {
   const credits = timeCredits > 0 ? timeCredits : 0;
   const rows = buildDeductionPlayBreakdown(credits, deductionProfile);
 

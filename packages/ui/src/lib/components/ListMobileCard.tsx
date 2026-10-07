@@ -4,13 +4,13 @@ import { Box, Button, Card, CardContent, Stack, Typography } from '@mui/material
 import type { ReactNode } from 'react';
 import type { Action, Column } from './DataGrid';
 
-export interface ListMobileCardProps<T extends Record<string, unknown>> {
+export interface ListMobileCardProps<T extends object> {
   row: T;
   columns: Column<T>[];
   actions?: Action<T>[];
 }
 
-export function ListMobileCard<T extends Record<string, unknown>>({
+export function ListMobileCard<T extends object>({
   row,
   columns,
   actions = [],
@@ -22,7 +22,7 @@ export function ListMobileCard<T extends Record<string, unknown>>({
       <CardContent>
         <Stack spacing={1.5}>
           {columns.map((column, index) => {
-            const value = row[column.id];
+            const value = (row as Record<PropertyKey, unknown>)[column.id];
             const content: ReactNode = column.format
               ? column.format(value, row)
               : (value as ReactNode);

@@ -1,5 +1,10 @@
-import { permissionsForRole } from '@gaming-cafe/contracts';
-import { CurrencyField, FormButton, FormTextField, IntegerField } from '@gaming-cafe/ui';
+import {
+  CurrencyField,
+  FormButton,
+  FormTextField,
+  IntegerField,
+  WizardProgress,
+} from '@gaming-cafe/ui';
 import {
   local,
   normalizeUsername,
@@ -10,6 +15,7 @@ import {
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardActionArea,
   CardContent,
@@ -19,18 +25,18 @@ import {
   DialogTitle,
   FormControlLabel,
   Grid,
-  Step,
-  StepLabel,
-  Stepper,
+  LinearProgress,
+  Stack,
   Switch,
   TextField,
   Typography,
 } from '@mui/material';
-import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../hooks/store';
 import type { Permission } from '../hooks/usePermissions';
+import { clearAdminSession, sessionPermissions, setAdminToken } from '../lib/authSession';
 import { DENOMINATIONS } from '../services/cash-registers';
 import { closeShift, getExpectedClosing, handoverShift } from '../services/shifts';
 import { getDefaultHomePath } from '../utils/homePath';
@@ -74,7 +80,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
     throttleMs: 1000,
     lockOnSuccess: true,
   });
-  const [expectedClosing, setExpectedClosing] = useState(0);
+
   const [closingBalance, setClosingBalance] = useState('');
   const [closingDenominations, setClosingDenominations] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState('');
@@ -86,22 +92,19 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
   const [validatorTotp, setValidatorTotp] = useState('');
   const [mode, setMode] = useState<'handover' | 'close' | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-
-    getExpectedClosing()
-      .then((data) => {
-        setExpectedClosing(data.expectedClosing);
-      })
-      .catch(() => {
-        setExpectedClosing(0);
-      });
-  }, [open]);
+  const closingQuery = useQuery({
+    queryKey: ['expected-closing'],
+    queryFn: getExpectedClosing,
+    enabled: open,
+    staleTime: 0,
+    retry: false,
+  });
+  const expectedClosing = closingQuery.data?.expectedClosing ?? 0;
 
   const closingAmount = useMemo(() => {
     const fromDenominations = sumDenominations(closingDenominations);
     if (fromDenominations > 0) return fromDenominations;
-    return Number(closingBalance) || 0;
+    return Number(closingBalance);
   }, [closingBalance, closingDenominations]);
 
   const depositAmount = useMemo(
@@ -109,6 +112,9 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
     [depositDenominations],
   );
 
+  const closingConfirmed =
+    closingBalance.trim() !== '' || sumDenominations(closingDenominations) > 0;
+  const closingInvalid = !closingConfirmed || !Number.isFinite(closingAmount) || closingAmount < 0;
   const variance = closingAmount - expectedClosing;
 
   const resetState = () => {
@@ -163,6 +169,8 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
   );
 
   const completeHandover = () => {
+    if (closingInvalid || closingQuery.isError || closingQuery.isLoading) return;
+    const requestToken = local.get('accessToken');
     void run(async () => {
       try {
         const depositInput =
@@ -183,7 +191,8 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
             deposit: depositInput,
           });
 
-          local.remove('accessToken');
+          if (local.get('accessToken') !== requestToken) return;
+          clearAdminSession();
           dispatch({ type: 'Reset' });
           toastUtils.success('Shift closed successfully');
           handleClose();
@@ -200,7 +209,8 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
             deposit: depositInput,
           });
 
-          local.set('accessToken', response.newAccessToken);
+          if (local.get('accessToken') !== requestToken) return;
+          setAdminToken(response.newAccessToken);
           dispatch({
             type: 'SetAuthDetail',
             payload: {
@@ -211,6 +221,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
               lastName: response.newUser.lastName ?? '',
               role: response.newUser.role,
               isActive: response.newUser.isActive,
+              avatarUrl: response.newUser.avatarUrl ?? '',
             },
           });
 
@@ -220,7 +231,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
           void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
           void queryClient.invalidateQueries({ queryKey: ['shifts'] });
           void queryClient.invalidateQueries({ queryKey: ['cash-registers'] });
-          const permissions = permissionsForRole(response.newUser.role);
+          const permissions = sessionPermissions();
           const can = (permission: Permission) => permissions.includes(permission);
           navigate(getDefaultHomePath(can));
         }
@@ -249,6 +260,15 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
         </Typography>
       </DialogTitle>
       <DialogContent sx={{ pt: 1 }}>
+        {closingQuery.isLoading && <LinearProgress aria-label="Loading drawer balance" />}
+        {closingQuery.isError && (
+          <Alert
+            severity="error"
+            action={<Button onClick={() => void closingQuery.refetch()}>Retry</Button>}
+          >
+            Could not verify the drawer balance. Retry before closing the shift.
+          </Alert>
+        )}
         {!mode && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {MODE_OPTIONS.map((option) => (
@@ -270,19 +290,39 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
 
         {mode && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Stepper activeStep={step} sx={{ mb: 1, mt: 1 }}>
-              <Step>
-                <StepLabel>Closing Balance</StepLabel>
-              </Step>
-              <Step>
-                <StepLabel>Cash Deposit</StepLabel>
-              </Step>
-              {mode === 'handover' && (
-                <Step>
-                  <StepLabel>Validator</StepLabel>
-                </Step>
-              )}
-            </Stepper>
+            <WizardProgress
+              titles={[
+                'Closing balance',
+                'Cash deposit',
+                ...(mode === 'handover' ? ['Replacement staff'] : []),
+                'Review & confirm',
+              ]}
+              activeStep={step}
+              disabled={loading}
+              onBackTo={setStep}
+            />
+            {step === (mode === 'handover' ? 3 : 2) && (
+              <Stack spacing={2}>
+                <Alert severity="info">
+                  Confirm the counted cash and deposit before closing this shift.
+                </Alert>
+                <Typography>Expected cash: ₹{expectedClosing.toFixed(2)}</Typography>
+                <Typography>Counted cash: ₹{closingAmount.toFixed(2)}</Typography>
+                <Typography color={variance ? 'warning.main' : 'text.primary'}>
+                  Variance: ₹{variance.toFixed(2)}
+                </Typography>
+                <Typography>
+                  Deposit: ₹{includeDeposit ? depositAmount.toFixed(2) : '0.00'}
+                </Typography>
+                {mode === 'handover' && (
+                  <Typography>Replacement staff: {validatorUsername}</Typography>
+                )}
+                {notes && <Typography>Shift note: {notes}</Typography>}
+                {includeDeposit && depositNotes && (
+                  <Typography>Deposit note: {depositNotes}</Typography>
+                )}
+              </Stack>
+            )}
 
             {step === 0 && (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -445,13 +485,22 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
             Back
           </FormButton>
         )}
-        {mode && step < (mode === 'handover' ? 2 : 1) ? (
+        {mode && step < (mode === 'handover' ? 3 : 2) ? (
           <FormButton
             variant="contained"
             onClick={() => setStep((current) => current + 1)}
-            disabled={loading || (step === 0 && closingAmount <= 0)}
+            disabled={
+              loading ||
+              closingQuery.isLoading ||
+              closingQuery.isError ||
+              (step === 0 && closingInvalid) ||
+              (step === 1 && includeDeposit && depositAmount <= 0) ||
+              (step === 2 &&
+                mode === 'handover' &&
+                (!validatorUsername || !validatorPassword || validatorTotp.length !== 6))
+            }
           >
-            Next
+            {step === (mode === 'handover' ? 2 : 1) ? 'Review details' : 'Next'}
           </FormButton>
         ) : mode ? (
           <FormButton
@@ -464,6 +513,10 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
             errorLabel={errorMessage ?? 'Request failed'}
             disabled={
               disabled ||
+              closingInvalid ||
+              closingQuery.isLoading ||
+              closingQuery.isError ||
+              (includeDeposit && depositAmount <= 0) ||
               (mode === 'handover' &&
                 (!validatorUsername || !validatorPassword || validatorTotp.length !== 6))
             }

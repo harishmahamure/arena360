@@ -15,6 +15,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   type CashRegisterEntry,
@@ -249,59 +250,104 @@ export default function CashRegisterDetailPage() {
         }
       />
 
-      <Dialog open={reconcileOpen} onClose={() => setReconcileOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={reconcileOpen}
+        onClose={reconcileLoading ? undefined : () => setReconcileOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>Reconcile Cash Register</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Mark this cash register as reconciled?
-          </Typography>
-          <TextField
-            fullWidth
-            label="Reconciliation Notes (Optional)"
-            multiline
-            rows={3}
-            value={reconcileNotes}
-            onChange={(e) => setReconcileNotes(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReconcileOpen(false)} disabled={reconcileLoading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => void handleReconcile()}
-            variant="contained"
-            color="success"
-            disabled={reconcileLoading}
+          <GuidedForm
+            busy={reconcileLoading}
+            onCancel={() => setReconcileOpen(false)}
+            actions={
+              <DialogActions>
+                <Button
+                  data-wizard-cancel
+                  onClick={() => setReconcileOpen(false)}
+                  disabled={reconcileLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => void handleReconcile()}
+                  variant="contained"
+                  color="success"
+                  disabled={reconcileLoading}
+                >
+                  Reconcile
+                </Button>
+              </DialogActions>
+            }
           >
-            Reconcile
-          </Button>
-        </DialogActions>
+            <GuidedStep title="Reconciliation notes">
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Mark this cash register as reconciled?
+              </Typography>
+              <TextField
+                fullWidth
+                label="Reconciliation Notes (Optional)"
+                multiline
+                rows={3}
+                value={reconcileNotes}
+                onChange={(e) => setReconcileNotes(e.target.value)}
+              />
+            </GuidedStep>
+          </GuidedForm>
+        </DialogContent>
       </Dialog>
 
-      <Dialog open={balanceOpen} onClose={() => setBalanceOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={balanceOpen}
+        onClose={balanceLoading ? undefined : () => setBalanceOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>Set Opening Balance</DialogTitle>
         <DialogContent>
-          <CurrencyField
-            fullWidth
-            label="Opening Balance"
-            value={openingBalance}
-            onChange={(e) => setOpeningBalance(e.target.value)}
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBalanceOpen(false)} disabled={balanceLoading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => void handleSetBalance()}
-            variant="contained"
-            disabled={balanceLoading}
+          <GuidedForm
+            busy={balanceLoading}
+            onCancel={() => setBalanceOpen(false)}
+            actions={
+              <DialogActions>
+                <Button
+                  data-wizard-cancel
+                  onClick={() => setBalanceOpen(false)}
+                  disabled={balanceLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => void handleSetBalance()}
+                  variant="contained"
+                  disabled={balanceLoading}
+                >
+                  Save
+                </Button>
+              </DialogActions>
+            }
           >
-            Save
-          </Button>
-        </DialogActions>
+            <GuidedStep
+              title="Opening cash"
+              validate={() =>
+                openingBalance === '' ||
+                !Number.isFinite(Number(openingBalance)) ||
+                Number(openingBalance) < 0
+                  ? 'Enter a nonnegative opening balance.'
+                  : undefined
+              }
+            >
+              <CurrencyField
+                fullWidth
+                label="Opening Balance"
+                value={openingBalance}
+                onChange={(e) => setOpeningBalance(e.target.value)}
+                sx={{ mt: 1 }}
+              />
+            </GuidedStep>
+          </GuidedForm>
+        </DialogContent>
       </Dialog>
     </>
   );

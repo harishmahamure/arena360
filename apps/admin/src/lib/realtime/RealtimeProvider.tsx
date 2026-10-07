@@ -1,99 +1,84 @@
-import { isImportantNotificationKind } from '@gaming-cafe/contracts';
+import { isImportantNotificationKind, Permission } from '@gaming-cafe/contracts';
 import { local, toastUtils } from '@gaming-cafe/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { useSelector } from '../../hooks/store';
+import { sessionPermissions } from '../authSession';
 import { RealtimeClient, type ServerFrame } from './client';
 
 interface RealtimeContextValue {
   client: RealtimeClient | null;
+  status: 'connecting' | 'connected' | 'offline';
 }
 
-const RealtimeContext = createContext<RealtimeContextValue>({ client: null });
+const RealtimeContext = createContext<RealtimeContextValue>({ client: null, status: 'offline' });
 
-function getWsUrl(): string {
-  const apiUrl =
-    typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL
-      ? import.meta.env.VITE_API_URL
-      : 'http://localhost:3000';
-
-  const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
-  const host = apiUrl.replace(/^https?:\/\//, '');
-  return `${wsProtocol}://${host}/realtime`;
+export function getWsUrl(): string {
+  if (import.meta.env.VITE_GATEWAY_URL) return import.meta.env.VITE_GATEWAY_URL;
+  const url = new URL(import.meta.env.VITE_API_URL || 'http://localhost:3000');
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.pathname = `${url.pathname.replace(/\/$/, '')}/realtime`;
+  url.search = '';
+  url.hash = '';
+  return url.toString();
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const { id: userId, role } = useSelector((state) => state.auth);
   const accessToken = local.get<string>('accessToken');
-  const clientRef = useRef<RealtimeClient | null>(null);
-
-  const contextValue = useMemo<RealtimeContextValue>(() => {
-    const client = new RealtimeClient(getWsUrl());
-    clientRef.current = client;
-    return { client };
-  }, []);
+  const [contextValue, setContextValue] = useState<RealtimeContextValue>({
+    client: null,
+    status: 'offline',
+  });
 
   useEffect(() => {
-    const client = clientRef.current;
-    if (!client || !accessToken) return;
-
-    client.connect();
+    if (!accessToken || !userId) {
+      setContextValue({ client: null, status: 'offline' });
+      return;
+    }
+    let active = true;
+    const client = new RealtimeClient(getWsUrl(), (status) => {
+      if (!active) return;
+      setContextValue({ client, status });
+      if (status === 'connected') void queryClient.invalidateQueries();
+    });
+    // Events may affect aggregates and detail queries under different keys.
+    // Coalesce a burst into one active-query refresh; inactive queries become stale.
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsubRefresh = client.onAny((frame) => {
+      if (frame.type !== 'Event' || refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        void queryClient.invalidateQueries();
+      }, 250);
+    });
 
     const channels: string[] = ['public'];
-    if (role === 'admin') {
-      channels.push('admin', 'staff');
-    } else if (role === 'staff') {
-      channels.push('staff');
-    }
+    const permissions = sessionPermissions();
+    if (permissions.includes(Permission.EventsAdmin)) channels.push('admin');
+    if (permissions.includes(Permission.EventsStaff)) channels.push('staff');
+    if (permissions.includes(Permission.KitchenRead)) channels.push('kitchen');
+    if (permissions.includes(Permission.SettingsRead) || permissions.includes(Permission.RulesRead))
+      channels.push('configuration');
     if (userId) {
       channels.push(`user:${userId}`);
     }
 
     client.subscribe(channels);
 
-    const unsubSale = client.on('transaction.sale_completed', () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-    });
-
     const unsubApprovalReq = client.on('approval.requested', (frame: ServerFrame) => {
       const entity = (frame.payload?.entity_type as string) ?? 'item';
       toastUtils.info(`New ${entity} awaiting approval`);
-      queryClient.invalidateQueries({ queryKey: ['cash-deposits'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
     });
 
     const unsubApprovalDec = client.on('approval.decided', (frame: ServerFrame) => {
       const status = (frame.payload?.status as string) ?? 'decided';
       const entity = (frame.payload?.entity_type as string) ?? 'item';
       toastUtils.info(`Your ${entity} was ${status}`);
-      queryClient.invalidateQueries({ queryKey: ['cash-deposits'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    });
-
-    const unsubSession = client.on('session.started', () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['devices'] });
-    });
-
-    const unsubSessionEnd = client.on('session.ended', () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['devices'] });
-    });
-
-    const unsubBalance = client.on('balance.updated', () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['player-plans'] });
-    });
-
-    const unsubDevice = client.on('device.status_changed', () => {
-      queryClient.invalidateQueries({ queryKey: ['devices'] });
     });
 
     const unsubNotification = client.on('notification.created', (frame: ServerFrame) => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['activity-log'] });
       const title = frame.payload?.title as string | undefined;
       const kind = frame.payload?.kind as string | undefined;
       if (title && kind && isImportantNotificationKind(kind)) {
@@ -105,26 +90,36 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       const deviceName = (frame.payload?.deviceName as string) ?? 'Station';
       const username = (frame.payload?.playerUsername as string) ?? 'player';
       toastUtils.info(`New order from ${deviceName} — ${username}`);
-      queryClient.invalidateQueries({ queryKey: ['kiosk-orders'] });
     });
 
+    client.connect();
     return () => {
-      unsubSale();
+      active = false;
+      clearTimeout(refreshTimer);
+      unsubRefresh();
       unsubApprovalReq();
       unsubApprovalDec();
-      unsubSession();
-      unsubSessionEnd();
-      unsubBalance();
-      unsubDevice();
       unsubNotification();
       unsubKioskOrder();
       client.disconnect();
     };
   }, [queryClient, userId, role, accessToken]);
 
+  useEffect(() => {
+    if (!accessToken || contextValue.status === 'connected') return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void queryClient.invalidateQueries();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [accessToken, contextValue.status, queryClient]);
+
   return <RealtimeContext value={contextValue}>{children}</RealtimeContext>;
 }
 
 export function useRealtime(): RealtimeClient | null {
   return useContext(RealtimeContext).client;
+}
+
+export function useRealtimeStatus() {
+  return useContext(RealtimeContext).status;
 }

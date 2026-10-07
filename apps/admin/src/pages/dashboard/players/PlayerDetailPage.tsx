@@ -1,4 +1,3 @@
-import type { UserRole } from '@gaming-cafe/contracts';
 import {
   CurrencyField,
   DetailPage,
@@ -33,15 +32,14 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { SessionRemainingClock } from '../../../components/SessionRemainingClock';
 import TotpQrCode from '../../../components/TotpQrCode';
 import { PlayerActivePlansSection } from '../../../containers/players/PlayerActivePlansSection';
 import { PlayerExhaustedPlansSection } from '../../../containers/players/PlayerExhaustedPlansSection';
 import {
-  adminCreateRoleOptions,
   type UpdatePlayerFormData,
   updatePlayerSchema,
-  userRoleOptions,
 } from '../../../containers/players/schemas/player-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import { usePlayerProfile } from '../../../hooks/usePlayerProfile';
@@ -63,10 +61,14 @@ export default function PlayerDetailPage() {
   const { can, isAdmin } = usePermissions();
   const canWrite = can(Permission.PlayersWrite);
   const canSetCreditLimit = can(Permission.CreditLimitWrite);
-  const canManageStaffAllowance = isAdmin;
+  const canManageStaffAllowance = can(Permission.StaffGamingAllowanceWrite);
   const canBuyPlan = can(Permission.PlayerPlansWrite);
   const canStartSession = can(Permission.SessionsWrite);
-  const roleOptions = isAdmin ? userRoleOptions : adminCreateRoleOptions;
+  const roleOptions = [
+    { label: 'Player', value: 'player' },
+    { label: 'Team member', value: 'staff' },
+    { label: 'Team member', value: 'admin' },
+  ];
 
   const {
     player,
@@ -123,21 +125,23 @@ export default function PlayerDetailPage() {
       },
       {
         name: 'role',
-        label: 'Role',
+        label: 'Account type',
+        disabled: true,
         type: 'select',
         gridCols: 6,
         options: roleOptions,
-        helperText: 'User role in the system',
+        helperText: 'Manage custom roles and team access in Access management',
       },
       {
         name: 'isActive',
         label: 'Account Active',
+        disabled: player?.role !== 'player',
         type: 'switch',
         gridCols: 6,
         helperText: 'Toggle to activate/deactivate the account',
       },
     ],
-    [roleOptions],
+    [roleOptions, player?.role],
   );
 
   const [formError, setFormError] = useState<string | undefined>();
@@ -231,8 +235,8 @@ export default function PlayerDetailPage() {
         phoneNumber: data.phoneNumber,
         firstName: data.firstName || undefined,
         lastName: data.lastName || undefined,
-        role: data.role as UserRole,
-        isActive: data.isActive,
+
+        isActive: player?.role === 'player' ? data.isActive : undefined,
       });
 
       setSuccess('Player updated successfully!');
@@ -689,6 +693,14 @@ export default function PlayerDetailPage() {
 
         {player ? (
           <FormBuilder<UpdatePlayerFormData>
+            wizard
+            wizardSteps={[
+              {
+                title: 'Player profile',
+                fields: ['username', 'phoneNumber', 'firstName', 'lastName'],
+              },
+              { title: 'Account access', fields: ['role', 'isActive'] },
+            ]}
             key={player.id}
             fields={editPlayerFormFields}
             schema={updatePlayerSchema}
@@ -718,35 +730,54 @@ export default function PlayerDetailPage() {
               Set to 0 to disable credit purchases for this member.
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, maxWidth: 480, alignItems: 'flex-start' }}>
-              <CurrencyField
-                label="Credit Limit (INR)"
-                size="small"
-                value={creditLimitInput}
-                onChange={(e) => setCreditLimitInput(e.target.value)}
-                helperText="Maximum outstanding credit allowed"
-                sx={{ flex: 1 }}
-              />
-              <Button
-                variant="contained"
-                disabled={creditLimitLoading || creditLimitInput === ''}
-                onClick={async () => {
-                  if (!id) return;
-                  setCreditLimitLoading(true);
-                  try {
-                    await setCreditLimit(id, Number.parseFloat(creditLimitInput));
-                    setSuccess('Credit limit updated');
-                    await queryClient.invalidateQueries({ queryKey: ['player', id] });
-                  } catch (err) {
-                    setFormError(
-                      err instanceof Error ? err.message : 'Failed to update credit limit',
-                    );
-                  } finally {
-                    setCreditLimitLoading(false);
-                  }
-                }}
+              <GuidedForm
+                busy={creditLimitLoading}
+                actions={
+                  <>
+                    <Button
+                      variant="contained"
+                      disabled={creditLimitLoading || creditLimitInput === ''}
+                      onClick={async () => {
+                        if (!id) return;
+                        setCreditLimitLoading(true);
+                        try {
+                          await setCreditLimit(id, Number.parseFloat(creditLimitInput));
+                          setSuccess('Credit limit updated');
+                          await queryClient.invalidateQueries({ queryKey: ['player', id] });
+                        } catch (err) {
+                          setFormError(
+                            err instanceof Error ? err.message : 'Failed to update credit limit',
+                          );
+                        } finally {
+                          setCreditLimitLoading(false);
+                        }
+                      }}
+                    >
+                      Save
+                    </Button>
+                  </>
+                }
               >
-                Save
-              </Button>
+                <GuidedStep
+                  title="Credit allowance"
+                  validate={() =>
+                    creditLimitInput === '' ||
+                    !Number.isFinite(Number(creditLimitInput)) ||
+                    Number(creditLimitInput) < 0
+                      ? 'Enter a nonnegative credit limit.'
+                      : undefined
+                  }
+                >
+                  <CurrencyField
+                    label="Credit Limit (INR)"
+                    size="small"
+                    value={creditLimitInput}
+                    onChange={(e) => setCreditLimitInput(e.target.value)}
+                    helperText="Maximum outstanding credit allowed"
+                    sx={{ flex: 1 }}
+                  />
+                </GuidedStep>
+              </GuidedForm>
             </Box>
           </Box>
         )}
@@ -761,34 +792,51 @@ export default function PlayerDetailPage() {
               Set a new password for this user.
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, maxWidth: 480, alignItems: 'flex-start' }}>
-              <TextField
-                label="New Password"
-                type="password"
-                size="small"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                helperText="Minimum 8 characters"
-                sx={{ flex: 1 }}
-              />
-              <Button
-                variant="contained"
-                disabled={passwordLoading || newPassword.length < 8}
-                onClick={async () => {
-                  if (!id) return;
-                  setPasswordLoading(true);
-                  try {
-                    await changePlayerPassword(id, newPassword);
-                    setNewPassword('');
-                    setSuccess('Password changed successfully');
-                  } catch (err) {
-                    setFormError(err instanceof Error ? err.message : 'Failed to change password');
-                  } finally {
-                    setPasswordLoading(false);
-                  }
-                }}
+              <GuidedForm
+                busy={passwordLoading}
+                actions={
+                  <>
+                    <Button
+                      variant="contained"
+                      disabled={passwordLoading || newPassword.length < 8}
+                      onClick={async () => {
+                        if (!id) return;
+                        setPasswordLoading(true);
+                        try {
+                          await changePlayerPassword(id, newPassword);
+                          setNewPassword('');
+                          setSuccess('Password changed successfully');
+                        } catch (err) {
+                          setFormError(
+                            err instanceof Error ? err.message : 'Failed to change password',
+                          );
+                        } finally {
+                          setPasswordLoading(false);
+                        }
+                      }}
+                    >
+                      Change
+                    </Button>
+                  </>
+                }
               >
-                Change
-              </Button>
+                <GuidedStep
+                  title="New password"
+                  validate={() =>
+                    newPassword.length < 8 ? 'Use at least 8 characters.' : undefined
+                  }
+                >
+                  <TextField
+                    label="New Password"
+                    type="password"
+                    size="small"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    helperText="Minimum 8 characters"
+                    sx={{ flex: 1 }}
+                  />
+                </GuidedStep>
+              </GuidedForm>
             </Box>
           </Box>
         )}

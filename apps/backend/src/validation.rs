@@ -30,10 +30,7 @@ pub fn trim_secret(value: &str) -> String {
 
 /// Collapse whitespace runs to underscores after trim.
 pub fn normalize_username(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("_")
+    value.split_whitespace().collect::<Vec<_>>().join("_")
 }
 
 fn username_has_invalid_chars(value: &str) -> bool {
@@ -68,15 +65,6 @@ const PLAYSTATION_DEVICE_TYPES: &[&str] = &["PS5", "PS4"];
 
 pub fn is_playstation_device_type(device_type: &str) -> bool {
     PLAYSTATION_DEVICE_TYPES.contains(&device_type)
-}
-
-pub fn require_playstation_device_type(value: Option<String>) -> Result<String, AppError> {
-    let normalized = require_device_type(value)?;
-    if is_playstation_device_type(&normalized) {
-        Ok(normalized)
-    } else {
-        Err(AppError::forbidden_code("DEVICE_TYPE_NOT_ALLOWED"))
-    }
 }
 
 pub fn require_device_type(value: Option<String>) -> Result<String, AppError> {
@@ -271,16 +259,10 @@ mod tests {
 
     #[test]
     fn online_ref_required_for_split_with_online_amount() {
-        assert!(
-            validate_online_payment_ref_last4("split_payment", Some(50.0), None).is_err()
-        );
+        assert!(validate_online_payment_ref_last4("split_payment", Some(50.0), None).is_err());
         assert_eq!(
-            validate_online_payment_ref_last4(
-                "split_payment",
-                Some(50.0),
-                Some(" 9876 ".into())
-            )
-            .unwrap(),
+            validate_online_payment_ref_last4("split_payment", Some(50.0), Some(" 9876 ".into()))
+                .unwrap(),
             Some("9876".into())
         );
     }

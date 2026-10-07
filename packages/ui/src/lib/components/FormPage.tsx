@@ -22,7 +22,7 @@ export function FormPage({
   backLabel,
   breadcrumbs,
   children,
-  maxWidth = false,
+  maxWidth = 1120,
 }: FormPageProps) {
   const theme = useTheme();
 
@@ -38,7 +38,7 @@ export function FormPage({
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 3, md: 4 },
+          p: { xs: 2, md: 3 },
           border: `1px solid ${theme.palette.divider}`,
           borderRadius: 1,
         }}

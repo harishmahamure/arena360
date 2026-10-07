@@ -18,29 +18,45 @@ pub async fn ws_upgrade(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let token = extract_ws_token(&headers)?;
     let claims = decode_token_for_ws(&state, &token)?;
+    if let Some(router) = &state.routing {
+        let tenant_id = uuid::Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Forbidden("Select a tenant".into()))?;
+        if let Some(address) = router.remote_address(tenant_id).await? {
+            if headers.contains_key(crate::routing::ROUTED_HEADER) {
+                return Err(crate::routing::routing_loop_error());
+            }
+            return crate::routing::proxy_websocket_upgrade(ws, headers, &address, "/realtime")
+                .await;
+        }
+    }
 
-    let pool = state.db.clone();
-    let connections = state.ws_connections.clone();
-    let outbox = state.outbox.clone();
+    let db = state.business_db(&claims).await?;
+    let claims = super::tenant_transport::current_claims(db.clone(), &claims).await?;
+    let registry = state.ws_connections.clone();
+    let metrics = state.metrics.clone();
 
     Ok(ws
-        .protocols(["bearer"])
-        .on_upgrade(move |socket| connection::run(socket, claims, pool, connections, outbox)))
+        .max_message_size(64 * 1024)
+        .protocols(["arena360.protobuf.v1"])
+        .on_upgrade(move |socket| connection::run(socket, claims, db, registry, metrics))
+        .into_response())
 }
 
 fn extract_ws_token(headers: &HeaderMap) -> Result<String, AppError> {
-    // Standard: Sec-WebSocket-Protocol: bearer, <token>
+    // Standard: Sec-WebSocket-Protocol: arena360.protobuf.v1, bearer, <token>
     let protocol_header = headers
         .get("sec-websocket-protocol")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
     let parts: Vec<&str> = protocol_header.split(',').map(str::trim).collect();
-    if parts.len() >= 2 && parts[0] == "bearer" {
-        return Ok(parts[1].to_string());
+    if let Some(index) = parts.iter().position(|part| *part == "bearer") {
+        if let Some(token) = parts.get(index + 1) {
+            return Ok((*token).to_string());
+        }
     }
 
     // Fallback: Authorization header (for non-browser clients)
@@ -54,7 +70,7 @@ fn extract_ws_token(headers: &HeaderMap) -> Result<String, AppError> {
     }
 
     Err(AppError::Unauthorized(
-        "Missing authentication token. Use Sec-WebSocket-Protocol: bearer, <token>".to_string(),
+        "Missing authentication token. Use Sec-WebSocket-Protocol: arena360.protobuf.v1, bearer, <token>".to_string(),
     ))
 }
 
@@ -66,6 +82,7 @@ fn decode_token_for_ws(
 
     let mut validation = Validation::default();
     validation.validate_exp = true;
+    validation.leeway = 0;
     validation.set_audience(&["gamezone"]);
     validation.set_issuer(&["gamezone"]);
 

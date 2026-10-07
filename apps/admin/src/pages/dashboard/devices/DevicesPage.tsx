@@ -1,11 +1,12 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type Action, type Column, ListPage } from '@gaming-cafe/ui';
 import { Computer, Edit, SportsEsports, Tv } from '@mui/icons-material';
-import { Box, Chip, debounce, Typography } from '@mui/material';
+import { Box, Chip, debounce, MenuItem, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
+import { getVenueLocations } from '../../../services/config';
 import { type DeviceResponse, getDevices } from '../../../services/devices/list';
 import { buildListUrl } from '../../../utils/buildListUrl';
 import { formatDisplayDate } from '../../../utils/date';
@@ -14,6 +15,7 @@ import {
   deviceStatusIcon,
   deviceStatusLabel,
 } from '../../../utils/deviceStatusDisplay';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 const getStatusColor = deviceStatusColor;
 const getStatusIcon = deviceStatusIcon;
@@ -37,6 +39,12 @@ export default function DevicesPage() {
   const page = Number(searchParams.get('page')) || 1;
   const statusFilter = searchParams.get('status') as DeviceStatusValue | null;
   const typeFilter = searchParams.get('type');
+  const locationId = searchParams.get('locationId') ?? '';
+  const organizationId = currentOrganizationId();
+  const locations = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
 
   const navigate = useNavigate();
   const { can } = usePermissions();
@@ -57,14 +65,20 @@ export default function DevicesPage() {
     [navigate],
   );
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['devices', debouncedSearch, page, statusFilter, typeFilter],
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
+    queryKey: ['devices', debouncedSearch, page, statusFilter, typeFilter, locationId],
     queryFn: () =>
       getDevices({
         name: debouncedSearch.length > 2 ? debouncedSearch : undefined,
         page: page,
         ...(statusFilter && { status: statusFilter }),
         ...(typeFilter && { deviceType: typeFilter }),
+        ...(locationId && { locationId }),
       }),
   });
 
@@ -139,7 +153,10 @@ export default function DevicesPage() {
       id: 'location',
       label: 'Location',
       minWidth: 180,
-      format: (value) => (value as string) || '—',
+      format: (_value, row) =>
+        locations.data?.find((location) => location.id === row?.locationId)?.name ??
+        row?.location ??
+        '—',
     },
     {
       id: 'registrationStatus',
@@ -188,30 +205,56 @@ export default function DevicesPage() {
   ];
 
   return (
-    <ListPage<DeviceResponse>
-      title="Devices"
-      description="Manage your game zone devices and stations here."
-      data={data?.data || []}
-      columns={columns}
-      actions={canWrite ? actions : []}
-      isLoading={isLoading}
-      showSearch
-      searchValue={inputValue}
-      onSearchChange={handleSearch}
-      onSearchClear={handleClearSearch}
-      onAddClick={canWrite ? handleAddNewDevice : undefined}
-      addButtonLabel="Add Device"
-      pagination={{
-        page,
-        totalPages: data?.totalPages,
-        onPageChange: (value) =>
-          navigate(
-            buildListUrl('/devices', value, {
-              status: statusFilter ?? undefined,
-              type: typeFilter ?? undefined,
-            }),
-          ),
-      }}
-    />
+    <>
+      <TextField
+        select
+        size="small"
+        label="Venue location"
+        value={locationId}
+        sx={{ minWidth: 220, mb: 2 }}
+        onChange={(event) => {
+          const next = new URLSearchParams(searchParams);
+          if (event.target.value) next.set('locationId', event.target.value);
+          else next.delete('locationId');
+          next.delete('page');
+          navigate(`/devices?${next.toString()}`);
+        }}
+      >
+        <MenuItem value="">All permitted locations</MenuItem>
+        {locations.data?.map((location) => (
+          <MenuItem key={location.id} value={location.id}>
+            {location.name}
+          </MenuItem>
+        ))}
+      </TextField>
+      <ListPage<DeviceResponse>
+        error={listError ? 'Could not load records. Please try again.' : null}
+        onRetry={() => void refetch()}
+        title="Devices"
+        description="Manage your game zone devices and stations here."
+        data={data?.data || []}
+        columns={columns}
+        actions={canWrite ? actions : []}
+        isLoading={isLoading}
+        showSearch
+        searchValue={inputValue}
+        onSearchChange={handleSearch}
+        onSearchClear={handleClearSearch}
+        onAddClick={canWrite ? handleAddNewDevice : undefined}
+        addButtonLabel="Add Device"
+        pagination={{
+          page,
+          totalPages: data?.totalPages,
+          onPageChange: (value) =>
+            navigate(
+              buildListUrl('/devices', value, {
+                status: statusFilter ?? undefined,
+                type: typeFilter ?? undefined,
+                locationId: locationId || undefined,
+              }),
+            ),
+        }}
+      />
+    </>
   );
 }

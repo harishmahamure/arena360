@@ -2,6 +2,7 @@ import { http } from '@gaming-cafe/utils';
 import type { ProductCategory } from './list';
 
 interface AddProductRequest {
+  locationIds?: string[];
   name: string;
   description: string;
   price: number;
@@ -15,6 +16,7 @@ interface AddProductRequest {
   sku: string;
   stockQuantity: number;
   isActive: boolean;
+  isRawMaterial?: boolean;
 }
 
 export const addProduct = async (product: AddProductRequest) => {

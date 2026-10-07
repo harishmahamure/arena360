@@ -1,18 +1,23 @@
+import { panelClaims } from '../lib/authSession';
 // store/rootReducer.ts
 import { type AuthAction, type AuthState, authInitialState, authReducer } from './auth/action';
 import { loadState } from './persistance';
 
-const persistedState = typeof window !== 'undefined' ? loadState() : undefined;
-
 export interface RootState {
   auth: AuthState;
 }
-
+const claims = panelClaims();
+const saved = loadState()?.auth;
 export const rootInitialState = {
-  auth: {
-    ...authInitialState,
-    ...(persistedState?.auth || {}),
-  },
+  auth: claims
+    ? {
+        ...authInitialState,
+        ...(saved?.id === claims.userId ? saved : {}),
+        id: claims.userId!,
+        role: claims.roles?.includes('admin') ? 'admin' : 'staff',
+        isActive: true,
+      }
+    : authInitialState,
 };
 
 export type RootAction = AuthAction;

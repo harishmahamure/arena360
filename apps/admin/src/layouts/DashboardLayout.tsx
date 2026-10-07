@@ -1,10 +1,8 @@
 import { DEFAULT_CAFE_TZ, Permission } from '@gaming-cafe/contracts';
-import { BRAND_LOGO_URL } from '@gaming-cafe/theme';
-import { DashboardLayout as BaseDashboardLayout } from '@gaming-cafe/ui';
 import { local, toastUtils } from '@gaming-cafe/utils';
-import Box from '@mui/material/Box';
+import { LinearProgress } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import NotificationBell from '../components/notifications/NotificationBell';
 import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
@@ -13,11 +11,13 @@ import { useDispatch, useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
 import { usePermissions } from '../hooks/usePermissions';
 import { clearAdminSession } from '../lib/authSession';
+import { getMyAccess } from '../services/access';
 import { getSessions } from '../services/sessions/list';
 import { getActiveShift } from '../services/shifts';
 import { formatDuration, now } from '../utils/date';
 import { filterNavItemsByPermission } from '../utils/filterNavItems';
 import { getRouteTitle } from '../utils/routeTitle';
+import { WorkspaceShell } from './WorkspaceShell';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -25,12 +25,19 @@ export default function DashboardLayout() {
   const location = useLocation();
   const outletKey = `${location.pathname}${location.search}`;
 
-  const { email, firstName, lastName, role } = useSelector((state) => state.auth);
-  const { can, isStaff, isAdmin } = usePermissions();
+  const { email, firstName, lastName, username, role, avatarUrl } = useSelector(
+    (state) => state.auth,
+  );
+  const { can, isStaff } = usePermissions();
   const [handoverOpen, setHandoverOpen] = useState(false);
 
   const accessToken = local.get('accessToken');
   const isAuthenticated = Boolean(accessToken && role);
+  const { data: myAccess } = useQuery({
+    queryKey: ['myAccess'],
+    queryFn: getMyAccess,
+    enabled: isAuthenticated,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['sessions'],
@@ -39,7 +46,7 @@ export default function DashboardLayout() {
         isActive: 1,
       }),
     refetchInterval: false,
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && can(Permission.SessionsRead),
   });
 
   const { data: activeShift } = useQuery({
@@ -94,7 +101,7 @@ export default function DashboardLayout() {
   };
 
   const handleLogout = () => {
-    if (isStaff) {
+    if (isStaff && activeShift) {
       setHandoverOpen(true);
     } else {
       handleAdminLogout();
@@ -104,8 +111,8 @@ export default function DashboardLayout() {
   const requireShiftForQuickAction = useCallback(
     (path: string) => {
       if (!activeShift) {
-        toastUtils.warning('Start a shift from the dashboard before using this action.');
-        navigate('/');
+        toastUtils.warning('Confirm or resume your shift before using counter actions.');
+        navigate('/shift/setup');
         return;
       }
       navigate(path);
@@ -140,7 +147,7 @@ export default function DashboardLayout() {
     return {
       active: false,
       label: 'No active shift',
-      onClick: () => navigate('/'),
+      onClick: () => navigate('/shift/setup'),
     };
   }, [activeShift, isStaff, navigate]);
 
@@ -150,27 +157,25 @@ export default function DashboardLayout() {
 
   return (
     <>
-      <BaseDashboardLayout
+      <WorkspaceShell
         navItems={filteredNavItems}
         pageTitle={pageTitle}
         shiftBadge={shiftBadge}
-        logo={
-          <Box
-            component="img"
-            src={BRAND_LOGO_URL}
-            alt="Arena360"
-            sx={{ height: 40, width: 'auto', display: 'block' }}
-          />
-        }
-        logoText="Arena360"
-        user={{ name: `${firstName} ${lastName}`, email, role }}
+        user={{
+          name: `${firstName} ${lastName}`.trim() || username,
+          email,
+          role: myAccess?.roles.join(', ') || 'Team member',
+          avatarUrl,
+        }}
         onLogout={handleLogout}
         appBarQuickActions={appBarQuickActions}
-        settingsPath={isAdmin && can(Permission.ConfigRead) ? '/settings' : undefined}
-        notificationSlot={isStaff ? <NotificationBell /> : undefined}
+        settingsPath={can(Permission.SettingsRead) ? '/settings' : undefined}
+        notificationSlot={can(Permission.NotificationsRead) ? <NotificationBell /> : undefined}
       >
-        <Outlet key={outletKey} />
-      </BaseDashboardLayout>
+        <Suspense key={location.pathname} fallback={<LinearProgress aria-label="Loading page" />}>
+          <Outlet />
+        </Suspense>
+      </WorkspaceShell>
       {isStaff && (
         <ShiftHandoverDialog open={handoverOpen} onClose={() => setHandoverOpen(false)} />
       )}

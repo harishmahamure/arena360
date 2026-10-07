@@ -74,8 +74,22 @@ impl StorageService {
         Self { config }
     }
 
+    /// True when `url` points at an object this service issued under `prefix/`.
+    pub fn owns_public_url(&self, url: &str, prefix: &str) -> bool {
+        self.config.as_ref().is_some_and(|config| {
+            url.strip_prefix(config.public_base_url.as_str())
+                .and_then(|rest| rest.strip_prefix('/'))
+                .is_some_and(|key| key.starts_with(&format!("{prefix}/")) && !key.contains(".."))
+        })
+    }
+
     /// Build an object key namespaced under `games/<uuid>/<sanitized-filename>`.
     pub fn game_asset_key(filename: &str) -> String {
+        Self::asset_key("games", filename)
+    }
+
+    /// Build an object key namespaced under `<prefix>/<uuid>/<sanitized-filename>`.
+    pub fn asset_key(prefix: &str, filename: &str) -> String {
         let safe: String = filename
             .chars()
             .map(|c| {
@@ -91,7 +105,7 @@ impl StorageService {
         } else {
             safe
         };
-        format!("games/{}/{}", Uuid::new_v4(), safe)
+        format!("{prefix}/{}/{safe}", Uuid::new_v4())
     }
 
     /// Issue a presigned PUT URL for the given object key. `content_type` is
@@ -259,6 +273,28 @@ mod tests {
             out.public_url,
             "http://localhost:9000/assets/games/abc/cover.png"
         );
+    }
+
+    #[test]
+    fn owns_public_url_checks_origin_and_prefix() {
+        let svc = StorageService::new(Some(StorageConfig {
+            endpoint: "http://localhost:9000".to_string(),
+            region: "us-east-1".to_string(),
+            bucket: "assets".to_string(),
+            access_key: "AKIA".to_string(),
+            secret_key: "secret".to_string(),
+            public_base_url: "http://localhost:9000/assets".to_string(),
+            presign_expiry_secs: 900,
+        }));
+        let own = "http://localhost:9000/assets/avatars/u1/x/me.webp";
+        assert!(svc.owns_public_url(own, "avatars/u1"));
+        assert!(!svc.owns_public_url(own, "avatars/u2"));
+        assert!(!svc.owns_public_url("https://evil.test/assets/avatars/u1/a.webp", "avatars/u1"));
+        assert!(!svc.owns_public_url(
+            "http://localhost:9000/assets/avatars/u1/../u2/a.webp",
+            "avatars/u1"
+        ));
+        assert!(!StorageService::new(None).owns_public_url(own, "avatars/u1"));
     }
 
     #[test]

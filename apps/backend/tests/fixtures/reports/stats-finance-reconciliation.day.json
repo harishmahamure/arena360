@@ -1,0 +1,27 @@
+{
+  "request": "/stats/finance/reconciliation?startDate=2026-10-02&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-10-01T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-10-01 - 2026-10-02",
+      "previousLabel": "2026-09-30 - 2026-10-01"
+    },
+    "metrics": {
+      "current": {
+        "openCount": 0,
+        "closedCount": 1,
+        "reconciledCount": 0,
+        "pendingReconcileCount": 1,
+        "totalDeposited": 0
+      },
+      "previous": {
+        "openCount": 0,
+        "closedCount": 1,
+        "reconciledCount": 0,
+        "pendingReconcileCount": 1,
+        "totalDeposited": 0
+      }
+    }
+  }
+}

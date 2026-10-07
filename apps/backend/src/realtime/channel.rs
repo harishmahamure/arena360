@@ -3,6 +3,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ChannelId {
     Public,
+    Configuration,
+    Kitchen,
     Admin,
     Staff,
     User(Uuid),
@@ -13,6 +15,8 @@ pub enum ChannelId {
 impl ChannelId {
     pub fn parse(raw: &str) -> Option<Self> {
         match raw {
+            "configuration" => Some(Self::Configuration),
+            "kitchen" => Some(Self::Kitchen),
             "public" => Some(Self::Public),
             "admin" => Some(Self::Admin),
             "staff" => Some(Self::Staff),
@@ -36,6 +40,8 @@ impl ChannelId {
 
     pub fn as_string(&self) -> String {
         match self {
+            Self::Configuration => "configuration".to_string(),
+            Self::Kitchen => "kitchen".to_string(),
             Self::Public => "public".to_string(),
             Self::Admin => "admin".to_string(),
             Self::Staff => "staff".to_string(),
@@ -90,6 +96,7 @@ mod tests {
     fn roundtrip() {
         let cases = vec![
             ChannelId::Public,
+            ChannelId::Configuration,
             ChannelId::Admin,
             ChannelId::Staff,
             ChannelId::User(Uuid::new_v4()),

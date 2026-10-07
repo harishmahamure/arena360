@@ -1,216 +1,106 @@
-//! Integration tests for session list Redis caching.
-//! Run with: `cargo test --test session_cache -- --ignored`
+//! Tenant reads are authoritative; mutations invalidate stale session views.
+mod support;
+use gaming_cafe_api::{
+    cache::{keys, CacheService},
+    models::SessionFilterDto,
+};
+use serde_json::json;
+use std::time::Duration;
+use support::SessionFixture;
 
-use gaming_cafe_api::app::build_state;
-use gaming_cafe_api::cache::keys;
-use gaming_cafe_api::config::load_dotenv;
-use gaming_cafe_api::models::SessionFilterDto;
-use std::sync::Arc;
-use uuid::Uuid;
-
-async fn setup() -> Option<Arc<gaming_cafe_api::app::AppState>> {
-    load_dotenv();
-    if std::env::var("DATABASE_URL").is_err() && std::env::var("DB_HOST").is_err() {
-        return None;
+async fn warm(f: &SessionFixture, id: uuid::Uuid) -> Vec<String> {
+    let keys = vec![
+        keys::sessions_list("active"),
+        keys::session_enriched(&id),
+        keys::session_device(&f.device),
+    ];
+    for key in &keys {
+        f.cache
+            .set_value(key, &json!({"stale":true}), Duration::from_secs(60))
+            .await
+            .unwrap();
     }
-    let state = build_state().await;
-    if !state.cache.is_available() {
-        eprintln!("skip: Redis unavailable (set REDIS_URL or start docker-compose Redis)");
-        return None;
-    }
-    Some(state)
+    keys
 }
-
-fn active_list_filters() -> SessionFilterDto {
-    SessionFilterDto {
+#[tokio::test]
+async fn list_active_ignores_stale_shared_cache_and_isolates_tenants() {
+    let f = SessionFixture::new().await;
+    let other = SessionFixture::new().await;
+    let session = f.start(None).await;
+    warm(&f, session.id).await;
+    let filters = || SessionFilterDto {
         is_active: Some(1),
         ..Default::default()
+    };
+    let rows = f
+        .sessions
+        .list_tenant(f.tenant.db.clone(), filters(), vec![f.venue], "UTC".into())
+        .await
+        .unwrap();
+    assert_eq!(rows.total, 1);
+    assert_eq!(rows.data[0].id, session.id);
+    assert_eq!(
+        f.sessions
+            .list_tenant(
+                other.tenant.db.clone(),
+                filters(),
+                vec![other.venue],
+                "UTC".into()
+            )
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    other.close().await;
+    f.close().await;
+}
+#[tokio::test]
+async fn session_heartbeat_invalidates_list_and_detail_cache() {
+    let f = SessionFixture::new().await;
+    let session = f
+        .start(Some(chrono::Utc::now() - chrono::Duration::minutes(2)))
+        .await;
+    let keys = warm(&f, session.id).await;
+    f.sessions
+        .heartbeat_for_player_tenant(f.tenant.db.clone(), session.id, f.player, f.device)
+        .await
+        .unwrap();
+    for key in keys {
+        assert!(f.cache.get_value(&key).await.unwrap().is_none());
     }
+    f.close().await;
 }
-
-#[derive(sqlx::FromRow)]
-struct OpenSessionRow {
-    session_id: Uuid,
-    balance_id: Uuid,
-    player_id: Uuid,
-}
-
-async fn find_open_session(db: &sqlx::PgPool) -> Option<OpenSessionRow> {
-    sqlx::query_as::<_, OpenSessionRow>(
-        r#"
-        SELECT s.id as session_id,
-               s."balanceId" as balance_id,
-               b."playerId" as player_id
-        FROM usage_sessions s
-        INNER JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
-        WHERE s."endTime" IS NULL
-          AND s."deletedAt" IS NULL
-          AND b."remainingMinutes" > 1
-        LIMIT 1
-        "#,
-    )
-    .fetch_optional(db)
-    .await
-    .ok()
-    .flatten()
-}
-
 #[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
-async fn list_active_populates_and_reuses_cache() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let filters = active_list_filters();
-    let cache_key = keys::sessions_list(&keys::filter_hash(&filters));
-
-    let first = state
-        .sessions
-        .list_active()
-        .await
-        .expect("list active sessions");
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some(),
-        "expected list result to be cached under {cache_key}"
-    );
-
-    let second = state
-        .sessions
-        .list_active()
-        .await
-        .expect("cached list active sessions");
-    assert_eq!(first.total, second.total);
-    assert_eq!(first.data.len(), second.data.len());
+async fn balance_mutation_invalidates_open_session_views() {
+    let f = SessionFixture::new().await;
+    let session = f.start(None).await;
+    let keys = warm(&f, session.id).await;
+    f.recharge().await;
+    for key in keys {
+        assert!(f.cache.get_value(&key).await.unwrap().is_none());
+    }
+    f.close().await;
 }
-
 #[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
-async fn session_heartbeat_invalidates_list_cache() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let Some(open) = find_open_session(&state.db).await else {
-        eprintln!("skip: no open session with balance in database");
-        return;
-    };
-
-    let filters = active_list_filters();
-    let cache_key = keys::sessions_list(&keys::filter_hash(&filters));
-
-    let _ = state.sessions.list_active().await.expect("warm list cache");
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
-
-    let session = state
+async fn heartbeat_detail_reads_committed_wallet_and_charge() {
+    let f = SessionFixture::new().await;
+    let session = f
+        .start(Some(chrono::Utc::now() - chrono::Duration::minutes(2)))
+        .await;
+    warm(&f, session.id).await;
+    f.sessions
+        .heartbeat_for_player_tenant(f.tenant.db.clone(), session.id, f.player, f.device)
+        .await
+        .unwrap();
+    let stored = f
         .sessions
-        .get_by_id(open.session_id)
+        .get_by_id_tenant(f.tenant.db.clone(), session.id, "UTC".into())
         .await
-        .expect("load session");
-
-    state
-        .sessions
-        .heartbeat_for_player(open.session_id, open.player_id, session.device_id)
-        .await
-        .expect("heartbeat session");
-
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_none(),
-        "expected sessions:list keys to be busted after heartbeat"
-    );
-}
-
-#[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
-async fn balance_mutation_invalidates_list_cache() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let Some(open) = find_open_session(&state.db).await else {
-        eprintln!("skip: no open session with balance in database");
-        return;
-    };
-
-    let filters = active_list_filters();
-    let cache_key = keys::sessions_list(&keys::filter_hash(&filters));
-
-    let _ = state.sessions.list_active().await.expect("warm list cache");
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_some()
-    );
-
-    state
-        .balances
-        .deduct_minutes(open.balance_id, 1, Some(open.session_id))
-        .await
-        .expect("deduct minutes");
-
-    assert!(
-        state
-            .cache
-            .get_value(&cache_key)
-            .await
-            .expect("redis read")
-            .is_none(),
-        "expected sessions:list keys to be busted after balance mutation"
-    );
-}
-
-#[tokio::test]
-#[ignore = "requires DATABASE_URL and REDIS_URL"]
-async fn heartbeat_write_through_session_enriched_cache() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let Some(open) = find_open_session(&state.db).await else {
-        eprintln!("skip: no open session with balance in database");
-        return;
-    };
-
-    let enriched_key = keys::session_enriched(&open.session_id);
-    let session = state
-        .sessions
-        .get_by_id(open.session_id)
-        .await
-        .expect("load session");
-
-    state
-        .sessions
-        .heartbeat_for_player(open.session_id, open.player_id, session.device_id)
-        .await
-        .expect("heartbeat session");
-
-    assert!(
-        state
-            .cache
-            .get_value(&enriched_key)
-            .await
-            .expect("redis read")
-            .is_some(),
-        "expected session:enriched write-through after heartbeat"
-    );
+        .unwrap();
+    let charged = stored.time_credits_consumed.unwrap();
+    assert!(charged >= 2);
+    assert_eq!(stored.balance.unwrap().remaining_minutes, 120 - charged);
+    assert_eq!(stored.wallet_minutes_at_start, Some(120));
+    f.close().await;
 }

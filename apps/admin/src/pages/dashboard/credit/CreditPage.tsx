@@ -37,6 +37,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import {
   PosOnlinePaymentRefField,
   requiresOnlinePaymentRef,
@@ -58,6 +59,7 @@ import {
   type OutstandingTxn,
   settleCredit,
 } from '../../../services/credit';
+import { getActiveShift } from '../../../services/shifts';
 import { formatDisplayDateTime } from '../../../utils/date';
 
 interface SettlementLine {
@@ -73,8 +75,14 @@ export default function CreditPage() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const page = Number(searchParams.get('page') || '1');
-  const { can } = usePermissions();
-  const canSettle = can(Permission.CreditWrite);
+  const { can, isStaff } = usePermissions();
+  const { data: activeShift, isLoading: shiftLoading } = useQuery({
+    queryKey: ['activeShift'],
+    queryFn: getActiveShift,
+    retry: false,
+    enabled: isStaff,
+  });
+  const canSettle = can(Permission.CreditWrite) && isStaff && Boolean(activeShift);
 
   const [settlePlayer, setSettlePlayer] = useState<CreditPlayerRow | null>(null);
   const [lines, setLines] = useState<SettlementLine[]>([]);
@@ -335,6 +343,12 @@ export default function CreditPage() {
         </Alert>
       )}
 
+      {isStaff && !shiftLoading && !activeShift ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Set up your shift and cash register before settling a running tab.
+        </Alert>
+      ) : null}
+
       {summaryLoading ? (
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {['sum-1', 'sum-2', 'sum-3', 'sum-4'].map((id) => (
@@ -464,7 +478,12 @@ export default function CreditPage() {
         </Box>
       )}
 
-      <Dialog open={!!settlePlayer} onClose={closeSettlement} maxWidth="md" fullWidth>
+      <Dialog
+        open={!!settlePlayer}
+        onClose={submitting || detailLoading ? undefined : closeSettlement}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>Settle credit — {settlePlayer?.username}</DialogTitle>
         <DialogContent>
           {detailLoading && (
@@ -488,128 +507,143 @@ export default function CreditPage() {
               {dialogError}
             </Alert>
           )}
-
-          {lines.length > 0 && (
-            <>
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-                <Button size="small" onClick={selectAll}>
-                  Select all (full remaining)
+          <GuidedForm
+            busy={submitting || detailLoading}
+            onCancel={closeSettlement}
+            actions={
+              <DialogActions>
+                <Button data-wizard-cancel onClick={closeSettlement}>
+                  Cancel
                 </Button>
-              </Box>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell padding="checkbox" />
-                    <TableCell>Type</TableCell>
-                    <TableCell align="right">Remaining</TableCell>
-                    <TableCell align="right">Pay now</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {lines.map((line) => (
-                    <TableRow key={line.transactionId}>
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={line.selected}
-                          onChange={(e) => toggleLine(line.transactionId, e.target.checked)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {line.transactionType.replace('_', ' ')}
-                        <Typography variant="caption" display="block" color="text.secondary">
-                          {line.transactionId.slice(0, 8)}…
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">{formatCurrency(line.remaining)}</TableCell>
-                      <TableCell align="right">
-                        <CurrencyField
-                          size="small"
-                          value={line.amount}
-                          disabled={!line.selected}
-                          onChange={(e) => updateLineAmount(line.transactionId, e.target.value)}
-                          sx={{ width: 100 }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </>
-          )}
-
-          {!detailLoading && lines.length === 0 && !detailError && (
-            <Alert severity="success">No outstanding transactions for this member.</Alert>
-          )}
-
-          <Box sx={{ mt: 3, display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr' }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Payment method</InputLabel>
-              <Select
-                value={paymentMethod}
-                label="Payment method"
-                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethodType)}
-              >
-                {paymentMethodOptions
-                  .filter((o) => o.value !== PaymentMethodValues.CREDIT)
-                  .map((o) => (
-                    <MenuItem key={o.value} value={o.value}>
-                      {o.label}
-                    </MenuItem>
-                  ))}
-              </Select>
-            </FormControl>
-            <TextField
-              size="small"
-              label="Notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              fullWidth
-            />
-            {paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (
-              <>
-                <CurrencyField
-                  size="small"
-                  label="Cash amount"
-                  value={cashAmount}
-                  onChange={(e) => setCashAmount(e.target.value)}
-                />
-                <CurrencyField
-                  size="small"
-                  label="Online amount"
-                  value={onlineAmount}
-                  onChange={(e) => setOnlineAmount(e.target.value)}
-                />
-              </>
-            )}
-          </Box>
-
-          {requiresOnlinePaymentRef(
-            paymentMethod,
-            paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? onlineAmount : selectedTotal,
-          ) && (
-            <Box sx={{ mt: 2 }}>
-              <PosOnlinePaymentRefField
-                value={onlinePaymentRefLast4}
-                onChange={setOnlinePaymentRefLast4}
-                disabled={submitting}
-              />
-            </Box>
-          )}
-
-          <Typography variant="body2" sx={{ mt: 2 }} fontWeight={600}>
-            Settlement total: {formatCurrency(selectedTotal)}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeSettlement}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleSettle}
-            disabled={submitting || selectedTotal <= 0 || !canSettle}
+                <Button
+                  variant="contained"
+                  onClick={handleSettle}
+                  disabled={submitting || selectedTotal <= 0 || !canSettle}
+                >
+                  {submitting ? 'Settling…' : 'Settle selected'}
+                </Button>
+              </DialogActions>
+            }
           >
-            {submitting ? 'Settling…' : 'Settle selected'}
-          </Button>
-        </DialogActions>
+            <GuidedStep
+              title="Transactions to settle"
+              validate={() =>
+                selectedTotal <= 0
+                  ? 'Select at least one transaction and enter a payment amount.'
+                  : undefined
+              }
+            >
+              {lines.length > 0 && (
+                <>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+                    <Button size="small" onClick={selectAll}>
+                      Select all (full remaining)
+                    </Button>
+                  </Box>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell padding="checkbox" />
+                        <TableCell>Type</TableCell>
+                        <TableCell align="right">Remaining</TableCell>
+                        <TableCell align="right">Pay now</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {lines.map((line) => (
+                        <TableRow key={line.transactionId}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={line.selected}
+                              onChange={(e) => toggleLine(line.transactionId, e.target.checked)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {line.transactionType.replace('_', ' ')}
+                            <Typography variant="caption" display="block" color="text.secondary">
+                              {line.transactionId.slice(0, 8)}…
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">{formatCurrency(line.remaining)}</TableCell>
+                          <TableCell align="right">
+                            <CurrencyField
+                              size="small"
+                              value={line.amount}
+                              disabled={!line.selected}
+                              onChange={(e) => updateLineAmount(line.transactionId, e.target.value)}
+                              sx={{ width: 100 }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </>
+              )}
+              {!detailLoading && lines.length === 0 && !detailError && (
+                <Alert severity="success">No outstanding transactions for this member.</Alert>
+              )}
+            </GuidedStep>
+            <GuidedStep title="Payment details">
+              <Box sx={{ mt: 3, display: 'grid', gap: 2, gridTemplateColumns: '1fr 1fr' }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Payment method</InputLabel>
+                  <Select
+                    value={paymentMethod}
+                    label="Payment method"
+                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethodType)}
+                  >
+                    {paymentMethodOptions
+                      .filter((o) => o.value !== PaymentMethodValues.CREDIT)
+                      .map((o) => (
+                        <MenuItem key={o.value} value={o.value}>
+                          {o.label}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  size="small"
+                  label="Notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  fullWidth
+                />
+                {paymentMethod === PaymentMethodValues.SPLIT_PAYMENT && (
+                  <>
+                    <CurrencyField
+                      size="small"
+                      label="Cash amount"
+                      value={cashAmount}
+                      onChange={(e) => setCashAmount(e.target.value)}
+                    />
+                    <CurrencyField
+                      size="small"
+                      label="Online amount"
+                      value={onlineAmount}
+                      onChange={(e) => setOnlineAmount(e.target.value)}
+                    />
+                  </>
+                )}
+              </Box>
+              {requiresOnlinePaymentRef(
+                paymentMethod,
+                paymentMethod === PaymentMethodValues.SPLIT_PAYMENT ? onlineAmount : selectedTotal,
+              ) && (
+                <Box sx={{ mt: 2 }}>
+                  <PosOnlinePaymentRefField
+                    value={onlinePaymentRefLast4}
+                    onChange={setOnlinePaymentRefLast4}
+                    disabled={submitting}
+                  />
+                </Box>
+              )}
+              <Typography variant="body2" sx={{ mt: 2 }} fontWeight={600}>
+                Settlement total: {formatCurrency(selectedTotal)}
+              </Typography>
+            </GuidedStep>
+          </GuidedForm>
+        </DialogContent>
       </Dialog>
     </Box>
   );

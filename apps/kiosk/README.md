@@ -1,201 +1,25 @@
-# @gaming-cafe/kiosk
+# Arena360 Windows kiosk
 
-Windows Tauri 2 + React 19 in-cafe kiosk. See [REQUIREMENTS-KIOSK.md](../../docs/REQUIREMENTS-KIOSK.md) and [PLANNER-KIOSK.md](../../docs/PLANNER-KIOSK.md).
+The kiosk is the locked-down Windows station client described in
+[the current system documentation](../../docs/SYSTEM.md). It handles device
+provisioning, player authentication and registration, timed sessions, the local
+software allow-list, process launch and cleanup, ordering, realtime updates,
+offline grace, and idle-only auto-update.
 
-**IT deployment runbook:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md) (fleet checklist, lockdown, auto-start, provisioning).
-
-## Environment
-
-Copy the example env file and point it at your backend (default Axum port is `3000` locally):
+## Develop and test
 
 ```bash
 cp apps/kiosk/.env.example apps/kiosk/.env
-# edit VITE_API_URL if needed
-```
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `VITE_API_URL` | REST API base URL (WebSocket uses `/realtime` on the same host) | `http://localhost:3000` |
-| `VITE_API_URL_WS` | Legacy WS hint (logged in CI; runtime derives WS from `VITE_API_URL`) | — |
-| `VITE_GALLERY_URL` | CDN-hosted `gallery.json` for Setup media picker | `https://cdn.arena360.cloud/kiosk/gallery.json` |
-| `VITE_LOGIN_BACKGROUND_VIDEO_URL` | Login screen background loop (CDN); falls back to bundled `public/launch.webm` | `https://cdn.arena360.cloud/launch.webm` |
-| `VITE_KIOSK_LOGO_URL` | Venue logo on login / nav | shared theme default |
-| `VITE_OFFLINE_GRACE_MINUTES` | Minutes a session keeps counting locally after the backend is unreachable before the station re-locks | `5` |
-
-CI and release builds (`kiosk-ci.yml`, `kiosk-release.yml`) bake these in at build time. Override per environment via GitHub repository **Settings → Secrets and variables → Actions → Variables** (`VITE_API_URL`, `VITE_GALLERY_URL`, etc.).
-
-## Dev
-
-From repo root:
-
-```bash
-pnpm install
-cp apps/kiosk/.env.example apps/kiosk/.env   # first time only
 pnpm kiosk:dev
-```
-
-Or:
-
-```bash
-pnpm --filter @gaming-cafe/kiosk tauri:dev
-```
-
-Rust tests:
-
-```bash
+pnpm --filter @gaming-cafe/kiosk test
 pnpm --filter @gaming-cafe/kiosk test:rust
 ```
 
-Frontend unit tests (Vitest + RTL):
-
-```bash
-pnpm --filter @gaming-cafe/kiosk test
-```
-
-End-to-end smoke (against a running, seeded backend):
-
-```bash
-API_URL=http://localhost:3000 \
-KIOSK_REG_CODE_A=... KIOSK_REG_CODE_B=... \
-KIOSK_PLAYER_USERNAME=... KIOSK_PLAYER_PASSWORD=... \
-pnpm --filter @gaming-cafe/kiosk test:e2e
-```
-
-## Windows packaging
-
-The kiosk ships as a Windows installer. Build on Windows (or the `kiosk-windows-ci`
-GitHub job):
+Build the Windows NSIS installer on Windows:
 
 ```bash
 pnpm --filter @gaming-cafe/kiosk tauri:build
 ```
 
-This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bundle/nsis/`:
-
-- **NSIS** (`nsis/*-setup.exe`) — per-machine install (`installMode: perMachine`). For SCCM/Intune, deploy silently (`/S`).
-
-**Post-install:** the NSIS installer does **not** run PowerShell. Default install path:
-`C:\Program Files\Arena360 Station Management\`. After install, IT runs
-[`configure-station.ps1`](scripts/windows/configure-station.ps1) from the repo to register the
-**Arena360 Kiosk** logon task (optional HKLM hardening and auto-logon). See
-[KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md).
-
-### WebView2 runtime (Windows 10)
-
-The app renders through the Microsoft **Edge WebView2** runtime.
-
-**At NSIS install time:** the installer uses `embedBootstrapper` in
-`src-tauri/tauri.conf.json`, so the WebView2 bootstrapper runs during setup when
-the runtime is missing (~1.8 MB embedded, requires internet during install).
-
-**At app launch (Windows):** if WebView2 is still not installed, the kiosk will:
-
-1. Check the registry for the Evergreen runtime
-2. Run a **bundled** `MicrosoftEdgeWebview2Setup.exe` from `WebView2/` next to the app (downloaded automatically during Windows builds via `build.rs`)
-3. If the bundled file is absent, **download** the Evergreen bootstrapper from Microsoft
-4. Install silently (`/silent /install`), **relaunch** the app once, then continue
-5. If install still fails: show a native error dialog with the log path (`%ProgramData%\Arena360\kiosk.log`) and manual install URL
-
-- Windows 11 ships WebView2 by default.
-- Windows 10 may not have it. Offline venues should either pre-install WebView2 on
-  the golden image, use NSIS `offlineInstaller` (~127 MB), or ensure the bundled
-  bootstrapper is present in the installed app.
-- Manual install: [Evergreen Standalone Installer](https://developer.microsoft.com/microsoft-edge/webview2/)
-
-Staff can query runtime status via the Tauri command `get_webview2_status` (also
-logged at boot in `kiosk.log`).
-
-### Runtime log file (`kiosk.log`)
-
-Arena360 writes a single local log file for boot, runtime, and failure diagnosis.
-Staff should check this file first when a station misbehaves.
-
-| OS | Path |
-|----|------|
-| Windows | `%ProgramData%\Arena360\kiosk.log` |
-| macOS | `~/Library/Logs/Arena360/kiosk.log` |
-| Linux | `/tmp/Arena360/kiosk.log` |
-
-What appears in the log:
-
-- Boot steps, WebView2 checks, and lockdown init
-- **Game launch** attempts (success with PID, or failure with stage such as `allow_list`, `spawn`, `cleanup_in_progress`)
-- **Auto-update** skips and relaunch failures
-- **WebSocket** disconnects, malformed frames, and reconnect attempts (rate-limited)
-- **Session** restore/reconcile/end-intent replay failures
-- **Rust panics** and **React/JS** unhandled errors (with stack traces when available)
-
-When `kiosk.log` exceeds 5 MiB it rotates to `kiosk.log.1` (one backup kept).
-
-### Lockdown / kiosk OS configuration
-
-App-level lockdown blocks the Windows keys, Alt+F4 and Ctrl+Shift+Esc, hides the taskbar and Start menu flyout while locked, and Alt+Tab uses native Windows switching.
-
-**Staff actions (login screen only):**
-
-| Control | Action |
-|---------|--------|
-| **Staff login** (footer link) | Open setup / admin login |
-| **Clear sign-in lock** (footer link, when locked) | Clear player login lockout (“too many attempts”) |
-
-Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user mode.
-For a hardened station, also apply at the OS level:
-
-- Assigned Access / kiosk account, or group policy `DisableLockWorkstation` and
-  `DisableTaskMgr` (optional — via `configure-station.ps1 -SkipAutostart` or GPO).
-- Auto-login and logon autostart: run [`configure-station.ps1`](scripts/windows/configure-station.ps1)
-  after install (not invoked by the installer). This registers the **Arena360 Kiosk**
-  ONLOGON task only — it does **not** replace `explorer.exe` as the shell.
-
-**Full roadmap:** [docs/KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)
-(Assigned Access, shell replacement, logon autostart, fleet rollout).
-**IT entry point:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md).
-
-### Code signing (release)
-
-Production installers should be Authenticode-signed to avoid SmartScreen prompts.
-Set the signing certificate via Tauri's Windows signing env vars in CI
-(`TAURI_SIGNING_*` / `signCommand`) — see the Tauri v2 Windows signing guide. Signing
-is intentionally left unconfigured in-repo so no certificate material is committed.
-
-### Auto-update (ADR-0028)
-
-The kiosk ships with the Tauri update manager (`tauri-plugin-updater` +
-`tauri-plugin-process`). It checks for a newer signed build **only while the
-station is idle** (`register`, `setup`, or `login` phase — no active player
-session) and, if found, downloads, installs, and relaunches.
-
-Updates are produced and published by the **Release Kiosk (Windows)** workflow
-(`.github/workflows/kiosk-release.yml`), triggered manually with a
-`patch`/`minor`/`major` bump. It fans the new version across `tauri.conf.json`,
-`src-tauri/Cargo.toml`, and `package.json` (`scripts/set-version.mjs`), tags
-`kiosk-vX.Y.Z`, builds a signed bundle, and publishes the installer, `.sig`, and
-`latest.json` to a GitHub Release. The deployed kiosks poll
-`https://github.com/<owner>/<repo>/releases/latest/download/latest.json`.
-
-The runtime updater config (public key + endpoint) is **not committed**; the
-release workflow injects it via a `--config` overlay so `kiosk-ci.yml` keeps
-building without keys and no key material lives in the repo. Base
-`tauri.conf.json` keeps `createUpdaterArtifacts: false`.
-
-#### One-time setup before the first release
-
-1. Generate a signing keypair:
-
-   ```bash
-   pnpm --filter @gaming-cafe/kiosk exec tauri signer generate -w kiosk.key
-   ```
-
-2. In **Settings → Secrets and variables → Actions**:
-   - Secret `TAURI_UPDATER_PUBKEY` = the printed **public** key.
-   - Secret `TAURI_SIGNING_PRIVATE_KEY` = contents of `kiosk.key` (private).
-   - Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = the key password (if set).
-3. Keep a sealed backup of the private key **outside CI**. Losing it means
-   shipped kiosks can no longer verify updates and must be re-imaged.
-
-> Note: installs are `perMachine` (NSIS), so applying an update requires
-> elevation (a UAC prompt). Run the kiosk with rights to self-update, or revisit
-> a `perUser` install / elevated update path (ADR-0028 risks).
-
-Authenticode signing of the installer (to avoid SmartScreen) remains optional
-via the `signCommand` hooks above and is independent of the updater key.
+Configuration, release behavior, diagnostics, and security boundaries are in
+[deployment and operations](../../docs/DEPLOYMENT.md).

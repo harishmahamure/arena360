@@ -29,13 +29,7 @@ impl OtpRateLimiter {
             ));
         }
 
-        cache::set_json(
-            &*self.cache,
-            &key,
-            &attempts,
-            keys::ttl::OTP_RATE_LIMIT,
-        )
-        .await?;
+        cache::set_json(&*self.cache, &key, &attempts, keys::ttl::OTP_RATE_LIMIT).await?;
         Ok(())
     }
 }

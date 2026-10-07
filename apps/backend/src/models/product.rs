@@ -22,6 +22,9 @@ pub struct Product {
     pub sku: Option<String>,
     pub stock_quantity: i32,
     pub is_active: bool,
+    /// Ingredients are stocked and used in recipes but never sold directly.
+    #[serde(default)]
+    pub is_raw_material: bool,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -46,6 +49,7 @@ pub struct CreateProductDto {
     pub sku: Option<String>,
     pub stock_quantity: Option<i32>,
     pub is_active: Option<bool>,
+    pub is_raw_material: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -65,17 +69,21 @@ pub struct UpdateProductDto {
     pub sku: Option<String>,
     pub stock_quantity: Option<i32>,
     pub is_active: Option<bool>,
+    pub is_raw_material: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductFilterDto {
+    #[serde(skip_deserializing)]
+    pub allowed_location_ids: Option<Vec<Uuid>>,
     pub name: Option<String>,
     pub category: Option<String>,
     pub disabled: Option<i32>,
     pub min_price: Option<f64>,
     pub max_price: Option<f64>,
     pub location_id: Option<Uuid>,
+    /// `true` lists sellable products only; `false` lists raw materials only.
     pub for_sale: Option<bool>,
     pub page: Option<i64>,
     pub limit: Option<i64>,

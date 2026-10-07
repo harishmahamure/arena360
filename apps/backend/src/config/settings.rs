@@ -1,7 +1,16 @@
+use super::Roles;
+
 /// Application settings loaded from environment variables.
 pub struct Settings {
-    pub database_url: String,
+    pub roles: Roles,
+    pub cell_id: Option<uuid::Uuid>,
+    pub tenant_data_dir: std::path::PathBuf,
+    pub control_database_url: Option<String>,
+    pub database_min_connections: u32,
     pub database_max_connections: u32,
+    pub database_acquire_timeout_seconds: u64,
+    pub database_idle_timeout_seconds: u64,
+    pub database_max_lifetime_seconds: u64,
     pub redis_url: Option<String>,
     pub jwt_secret: String,
     pub jwt_access_expiration: String,
@@ -11,6 +20,9 @@ pub struct Settings {
     pub port: u16,
     pub cafe_timezone: String,
     pub zeptomail_token: Option<String>,
+    pub legacy_rest_enabled: bool,
+    pub trusted_proxy_cidrs: Vec<ipnet::IpNet>,
+    pub max_concurrent_requests: usize,
 }
 
 impl Settings {
@@ -23,11 +35,33 @@ impl Settings {
         }
 
         Self {
-            database_url: resolve_database_url(),
+            roles: std::env::var("ARENA_ROLES")
+                .map(|value| {
+                    Roles::parse(&value).unwrap_or_else(|err| panic!("invalid ARENA_ROLES: {err}"))
+                })
+                .unwrap_or_default(),
+            cell_id: std::env::var("ARENA_CELL_ID")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .map(|value| {
+                    value
+                        .parse()
+                        .unwrap_or_else(|_| panic!("ARENA_CELL_ID must be a UUID"))
+                }),
+            tenant_data_dir: std::env::var("TENANT_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::path::PathBuf::from("data/tenants")),
+            control_database_url: std::env::var("CONTROL_DATABASE_URL")
+                .ok()
+                .filter(|value| !value.is_empty()),
+            database_min_connections: env_parse("DATABASE_MIN_CONNECTIONS", 2),
             database_max_connections: std::env::var("DATABASE_MAX_CONNECTIONS")
                 .unwrap_or_else(|_| "10".to_string())
                 .parse()
                 .expect("DATABASE_MAX_CONNECTIONS must be a number"),
+            database_acquire_timeout_seconds: env_parse("DATABASE_ACQUIRE_TIMEOUT_SECONDS", 2),
+            database_idle_timeout_seconds: env_parse("DATABASE_IDLE_TIMEOUT_SECONDS", 600),
+            database_max_lifetime_seconds: env_parse("DATABASE_MAX_LIFETIME_SECONDS", 1800),
             redis_url: std::env::var("REDIS_URL").ok().filter(|v| !v.is_empty()),
             jwt_secret,
             jwt_access_expiration: std::env::var("JWT_ACCESS_EXPIRATION")
@@ -46,6 +80,20 @@ impl Settings {
                 .expect("PORT must be a number"),
             cafe_timezone: std::env::var("CAFE_TZ").unwrap_or_else(|_| "Asia/Kolkata".to_string()),
             zeptomail_token: std::env::var("ZEPTOMAIL_TOKEN").ok(),
+            legacy_rest_enabled: env_bool("LEGACY_REST_ENABLED", false),
+            trusted_proxy_cidrs: std::env::var("TRUSTED_PROXY_CIDRS")
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|value| {
+                    let value = value.trim();
+                    (!value.is_empty()).then(|| {
+                        value.parse().unwrap_or_else(|_| {
+                            panic!("invalid CIDR in TRUSTED_PROXY_CIDRS: {value}")
+                        })
+                    })
+                })
+                .collect(),
+            max_concurrent_requests: env_parse("MAX_CONCURRENT_REQUESTS", 256),
         }
     }
 
@@ -54,24 +102,33 @@ impl Settings {
     }
 }
 
+fn env_parse<T>(name: &str, default: T) -> T
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Debug,
+{
+    std::env::var(name)
+        .map(|value| {
+            value
+                .parse()
+                .unwrap_or_else(|_| panic!("{name} must be a number"))
+        })
+        .unwrap_or(default)
+}
+
+fn env_bool(name: &str, default: bool) -> bool {
+    std::env::var(name)
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(default)
+}
+
 pub fn is_production_env() -> bool {
     ["NODE_ENV", "RUST_ENV", "ENVIRONMENT"]
         .into_iter()
         .any(|key| std::env::var(key).is_ok_and(|v| v == "production"))
-}
-
-fn resolve_database_url() -> String {
-    if let Ok(url) = std::env::var("DATABASE_URL") {
-        if !url.is_empty() {
-            return url;
-        }
-    }
-
-    let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-    let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-    let username = std::env::var("DB_USERNAME").unwrap_or_else(|_| "postgres".to_string());
-    let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "postgres".to_string());
-    let database = std::env::var("DB_DATABASE").unwrap_or_else(|_| "gamezone_dev".to_string());
-
-    format!("postgres://{username}:{password}@{host}:{port}/{database}")
 }

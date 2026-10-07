@@ -12,6 +12,7 @@ import {
   ListItemText,
   Typography,
 } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -22,8 +23,10 @@ import {
   deviceSubTypeOptions,
   deviceTypeOptions,
 } from '../../../../src/containers/devices/schemas/device-schema';
+import { getVenueLocations } from '../../../services/config';
 import { addDevice } from '../../../services/devices/add';
 import { type DeviceResponse, DeviceStatus } from '../../../services/devices/list';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 export const deviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
   {
@@ -72,8 +75,16 @@ export const deviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
     helperText: 'Optional IP address for network management',
   },
   {
+    name: 'locationId',
+    label: 'Venue location',
+    type: 'select',
+    required: true,
+    gridCols: 6,
+    options: [],
+  },
+  {
     name: 'location',
-    label: 'Location',
+    label: 'Position within venue',
     type: 'text',
     placeholder: 'e.g., Main Gaming Floor - Station A',
     gridCols: 12,
@@ -96,6 +107,11 @@ const NEXT_STEPS = [
 ];
 
 export default function AddNewDevicePage() {
+  const organizationId = currentOrganizationId();
+  const locations = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
   const navigate = useNavigate();
   const { loading, succeeded, failed, errorMessage, run } = useAsyncAction({
     throttleMs: 1000,
@@ -120,6 +136,7 @@ export default function AddNewDevicePage() {
         serialNumber: data.serialNumber || undefined,
         localIpAddress: data.localIpAddress || undefined,
         location: data.location || undefined,
+        locationId: data.locationId,
         status: (data.status as DeviceStatusValue) || DeviceStatus.OPERATIONAL,
       });
 
@@ -149,7 +166,25 @@ export default function AddNewDevicePage() {
       breadcrumbs={[{ label: 'Devices', to: '/devices' }, { label: 'New device' }]}
     >
       <FormBuilder<CreateDeviceFormData>
-        fields={deviceFormFields}
+        wizard
+        wizardSteps={[
+          { title: 'Station identity', fields: ['name', 'deviceType', 'deviceSubType'] },
+          {
+            title: 'Location & connection',
+            fields: ['serialNumber', 'localIpAddress', 'locationId', 'location', 'status'],
+          },
+        ]}
+        fields={deviceFormFields.map((field) =>
+          field.name === 'locationId'
+            ? {
+                ...field,
+                options: (locations.data ?? []).map((location) => ({
+                  label: location.name,
+                  value: location.id,
+                })),
+              }
+            : field,
+        )}
         schema={createDeviceSchema}
         defaultValues={createDeviceDefaultValues}
         mode="add"

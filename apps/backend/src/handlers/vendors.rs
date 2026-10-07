@@ -10,6 +10,7 @@ use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::middleware::AdminUser;
 use crate::models::{CreateVendorDto, UpdateVendorDto, Vendor, VendorFilterDto};
 use crate::openapi::responses::{ErrorEnvelope, VendorEnvelope, VendorPaginationEnvelope};
+use crate::repositories::TenantVendorRepository;
 
 #[utoipa::path(
     get,
@@ -24,11 +25,13 @@ use crate::openapi::responses::{ErrorEnvelope, VendorEnvelope, VendorPaginationE
     tag = "vendors"
 )]
 pub async fn list_vendors(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<VendorFilterDto>,
 ) -> ApiResult<PaginationResult<Vendor>> {
-    let result = state.vendors.list(filters).await?;
+    let result = TenantVendorRepository::new(state.business_db(&claims).await?)
+        .list(&filters)
+        .await?;
     ok(result)
 }
 
@@ -48,11 +51,14 @@ pub async fn list_vendors(
     tag = "vendors"
 )]
 pub async fn get_vendor(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Vendor> {
-    let vendor = state.vendors.get_by_id(id).await?;
+    let vendor = TenantVendorRepository::new(state.business_db(&claims).await?)
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Vendor not found".into()))?;
     ok(vendor)
 }
 
@@ -77,7 +83,9 @@ pub async fn create_vendor(
     Json(dto): Json<CreateVendorDto>,
 ) -> ApiResult<Vendor> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let vendor = state.vendors.create(dto, user_id).await?;
+    let vendor = TenantVendorRepository::new(state.business_db(&claims).await?)
+        .create(&dto, user_id)
+        .await?;
     created(vendor)
 }
 
@@ -107,7 +115,9 @@ pub async fn update_vendor(
     Json(dto): Json<UpdateVendorDto>,
 ) -> ApiResult<Vendor> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let vendor = state.vendors.update(id, dto, user_id).await?;
+    let vendor = TenantVendorRepository::new(state.business_db(&claims).await?)
+        .update(id, &dto, user_id)
+        .await?;
     ok(vendor)
 }
 
@@ -128,10 +138,12 @@ pub async fn update_vendor(
     tag = "vendors"
 )]
 pub async fn delete_vendor(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<serde_json::Value> {
-    state.vendors.delete(id).await?;
+    TenantVendorRepository::new(state.business_db(&claims).await?)
+        .delete(id)
+        .await?;
     ok(serde_json::json!({"deleted": true}))
 }

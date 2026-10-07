@@ -1,11 +1,10 @@
 import type { DeviceStatusValue } from '@gaming-cafe/contracts';
 import { type FieldConfig, FormBuilder, FormSkeleton } from '@gaming-cafe/ui';
 import { Build, CheckCircle, Error as ErrorIcon, Schedule } from '@mui/icons-material';
-import { Box, Chip, Paper, Typography } from '@mui/material';
+import { Alert, Box, Chip, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ConsoleTvProvisioningCard } from '../../../components/ConsoleTvProvisioningCard';
 import { KioskFingerprintCard } from '../../../components/KioskFingerprintCard';
 import { KioskProvisioningCard } from '../../../components/KioskProvisioningCard';
 import {
@@ -16,9 +15,11 @@ import {
   deviceTypeOptions,
 } from '../../../containers/devices/schemas/device-schema';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
+import { getVenueLocations } from '../../../services/config';
 import { getDeviceById } from '../../../services/devices/getById';
 import { DeviceStatus } from '../../../services/devices/list';
 import { updateDevice } from '../../../services/devices/update';
+import { currentOrganizationId } from '../access/LocationsPanel';
 
 const editDeviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
   {
@@ -67,8 +68,16 @@ const editDeviceFormFields: FieldConfig<CreateDeviceFormData>[] = [
     helperText: 'Optional IP address for network management',
   },
   {
+    name: 'locationId',
+    label: 'Venue location',
+    type: 'select',
+    required: true,
+    gridCols: 6,
+    options: [],
+  },
+  {
     name: 'location',
-    label: 'Location',
+    label: 'Position within venue',
     type: 'text',
     placeholder: 'e.g., Main Gaming Floor - Station A',
     gridCols: 12,
@@ -136,6 +145,11 @@ const getStatusLabel = (status: DeviceStatusValue) => {
 };
 
 export default function EditDevicePage() {
+  const organizationId = currentOrganizationId();
+  const locations = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+  });
   const navigate = useNavigate();
   const { id } = useParams();
   const { can } = usePermissions();
@@ -172,6 +186,7 @@ export default function EditDevicePage() {
         serialNumber: data.serialNumber || undefined,
         localIpAddress: data.localIpAddress || undefined,
         location: data.location || undefined,
+        locationId: data.locationId,
         status: data.status as DeviceStatusValue,
       });
 
@@ -236,10 +251,10 @@ export default function EditDevicePage() {
 
       {deviceData &&
         (deviceData.deviceType === 'PS5' || deviceData.deviceType === 'PS4' ? (
-          <ConsoleTvProvisioningCard
-            deviceName={deviceData.name}
-            registrationStatus={deviceData.registrationStatus}
-          />
+          <Alert severity="info" sx={{ mb: 3 }}>
+            PlayStation stations are managed manually. No Android TV station app or automatic TV
+            input control is configured.
+          </Alert>
         ) : (
           <KioskProvisioningCard
             deviceName={deviceData.name}
@@ -247,7 +262,7 @@ export default function EditDevicePage() {
           />
         ))}
 
-      {deviceData && (
+      {deviceData && deviceData.deviceType !== 'PS5' && deviceData.deviceType !== 'PS4' && (
         <KioskFingerprintCard
           registeredKiosk={deviceData.registeredKiosk}
           registrationStatus={deviceData.registrationStatus}
@@ -255,7 +270,25 @@ export default function EditDevicePage() {
       )}
 
       <FormBuilder<CreateDeviceFormData>
-        fields={editDeviceFormFields}
+        wizard
+        wizardSteps={[
+          { title: 'Station identity', fields: ['name', 'deviceType', 'deviceSubType'] },
+          {
+            title: 'Location & connection',
+            fields: ['serialNumber', 'localIpAddress', 'locationId', 'location', 'status'],
+          },
+        ]}
+        fields={editDeviceFormFields.map((field) =>
+          field.name === 'locationId'
+            ? {
+                ...field,
+                options: (locations.data ?? []).map((location) => ({
+                  label: location.name,
+                  value: location.id,
+                })),
+              }
+            : field,
+        )}
         schema={createDeviceSchema}
         defaultValues={{
           name: deviceData?.name || '',
@@ -264,6 +297,7 @@ export default function EditDevicePage() {
           serialNumber: deviceData?.serialNumber || '',
           localIpAddress: deviceData?.localIpAddress || '',
           location: deviceData?.location || '',
+          locationId: deviceData?.locationId || '',
           status: deviceData?.status || DeviceStatus.OPERATIONAL,
         }}
         mode={canWrite ? 'edit' : 'view'}

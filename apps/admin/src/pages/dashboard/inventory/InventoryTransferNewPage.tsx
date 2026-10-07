@@ -15,6 +15,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { createTransferRequest, getInventoryLocations } from '../../../services/inventory';
 import { getProducts, type ProductResponse } from '../../../services/product/list';
 import { formatTransferQuantity, piecesFromQuantityInput } from './transferQuantity';
@@ -129,93 +130,114 @@ export default function InventoryTransferNewPage() {
       backLabel="Back to transfers"
       breadcrumbs={[{ label: 'Inventory', to: '/inventory/transfers' }, { label: 'New transfer' }]}
     >
-      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3, alignItems: 'flex-start' }}>
-        <Autocomplete
-          sx={{ flex: 1, minWidth: 240 }}
-          options={productOptions}
-          getOptionLabel={(p) => p.name}
-          inputValue={productInput}
-          onInputChange={(_, v) => setProductInput(v)}
-          onChange={(_, p) => p && addLine(p)}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Add product"
-              placeholder="Search product..."
-              helperText="Search and select a product to add to the transfer request"
-            />
-          )}
-        />
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={quantityMode}
-          onChange={(_, value: QuantityMode | null) => value && setQuantityMode(value)}
-          sx={{ alignSelf: 'center' }}
-        >
-          <ToggleButton value="boxes">Boxes</ToggleButton>
-          <ToggleButton value="pieces">Pieces</ToggleButton>
-        </ToggleButtonGroup>
-        <IntegerField
-          label={quantityMode === 'boxes' ? 'Boxes' : 'Pieces'}
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          inputProps={{ min: 1 }}
-          sx={{ width: 120 }}
-          helperText="Qty per add"
-        />
-      </Box>
-
-      {lines.length === 0 ? (
-        <Typography color="text.secondary">
-          No items added yet. Search for products above to build the request.
-        </Typography>
-      ) : (
-        lines.map((line) => (
-          <Box key={line.productId} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-            <Box sx={{ flex: 1 }}>
-              <Typography>{line.productName}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {formatTransferQuantity(line.quantityPieces, line.unitsPerBox)}
-              </Typography>
+      <GuidedForm
+        busy={createMut.isPending}
+        onCancel={() => navigate('/inventory/transfers')}
+        actions={
+          <>
+            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+              <Button
+                data-wizard-cancel
+                variant="outlined"
+                onClick={() => navigate('/inventory/transfers')}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                disabled={lines.length === 0 || createMut.isPending}
+                onClick={() => createMut.mutate()}
+              >
+                Submit request
+              </Button>
             </Box>
-            <IntegerField
-              size="small"
-              label="Pieces"
-              value={line.quantityPieces}
-              onChange={(e) => {
-                const v = Math.max(1, Number(e.target.value) || 1);
-                setLines((prev) =>
-                  prev.map((l) =>
-                    l.productId === line.productId ? { ...l, quantityPieces: v } : l,
-                  ),
-                );
-              }}
-              inputProps={{ min: 1 }}
-              sx={{ width: 100 }}
-            />
-            <IconButton
-              color="error"
-              onClick={() => setLines((prev) => prev.filter((l) => l.productId !== line.productId))}
-            >
-              <Delete />
-            </IconButton>
-          </Box>
-        ))
-      )}
-
-      <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-        <Button variant="outlined" onClick={() => navigate('/inventory/transfers')}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          disabled={lines.length === 0 || createMut.isPending}
-          onClick={() => createMut.mutate()}
+          </>
+        }
+      >
+        <GuidedStep
+          title="Products & quantities"
+          validate={() => (!lines.length ? 'Add at least one product to the request.' : undefined)}
         >
-          Submit request
-        </Button>
-      </Box>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3, alignItems: 'flex-start' }}>
+            <Autocomplete
+              sx={{ flex: 1, minWidth: 240 }}
+              options={productOptions}
+              getOptionLabel={(p) => p.name}
+              inputValue={productInput}
+              onInputChange={(_, v) => setProductInput(v)}
+              onChange={(_, p) => p && addLine(p)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Add product"
+                  placeholder="Search product..."
+                  helperText="Search and select a product to add to the transfer request"
+                />
+              )}
+            />
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={quantityMode}
+              onChange={(_, value: QuantityMode | null) => value && setQuantityMode(value)}
+              sx={{ alignSelf: 'center' }}
+            >
+              <ToggleButton value="boxes">Boxes</ToggleButton>
+              <ToggleButton value="pieces">Pieces</ToggleButton>
+            </ToggleButtonGroup>
+            <IntegerField
+              label={quantityMode === 'boxes' ? 'Boxes' : 'Pieces'}
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              inputProps={{ min: 1 }}
+              sx={{ width: 120 }}
+              helperText="Qty per add"
+            />
+          </Box>
+          {lines.length === 0 ? (
+            <Typography color="text.secondary">
+              No items added yet. Search for products above to build the request.
+            </Typography>
+          ) : (
+            lines.map((line) => (
+              <Box
+                key={line.productId}
+                sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}
+              >
+                <Box sx={{ flex: 1 }}>
+                  <Typography>{line.productName}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatTransferQuantity(line.quantityPieces, line.unitsPerBox)}
+                  </Typography>
+                </Box>
+                <IntegerField
+                  size="small"
+                  label="Pieces"
+                  value={line.quantityPieces}
+                  onChange={(e) => {
+                    const v = Math.max(1, Number(e.target.value) || 1);
+                    setLines((prev) =>
+                      prev.map((l) =>
+                        l.productId === line.productId ? { ...l, quantityPieces: v } : l,
+                      ),
+                    );
+                  }}
+                  inputProps={{ min: 1 }}
+                  sx={{ width: 100 }}
+                />
+                <IconButton
+                  color="error"
+                  onClick={() =>
+                    setLines((prev) => prev.filter((l) => l.productId !== line.productId))
+                  }
+                >
+                  <Delete />
+                </IconButton>
+              </Box>
+            ))
+          )}
+        </GuidedStep>
+      </GuidedForm>
     </FormPage>
   );
 }

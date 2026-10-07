@@ -16,6 +16,7 @@ fn admin_claims() -> gaming_cafe_api::dto::JwtUserClaims {
         appId: "test".to_string(),
         orgIds: vec![],
         deviceId: None,
+        locationId: None,
     }
 }
 

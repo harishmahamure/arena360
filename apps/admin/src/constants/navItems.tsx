@@ -1,6 +1,7 @@
 import { Permission } from '@gaming-cafe/contracts';
 import {
   AccountBalanceWallet,
+  Assessment,
   Balance,
   CardMembership,
   CreditCard,
@@ -15,6 +16,7 @@ import {
   PlayCircle,
   PointOfSale,
   Receipt,
+  Restaurant,
   Sell,
   Settings,
   SportsEsports,
@@ -22,20 +24,51 @@ import {
   WorkHistory,
 } from '@mui/icons-material';
 import type { AdminNavItem } from '../utils/filterNavItems';
+import { analyticsDashboards } from './analyticsDashboards';
 
-export const adminNavItems: AdminNavItem[] = [
+/**
+ * Canonical panel module registry. Navigation, permission filtering, route titles,
+ * breadcrumbs, and command-search metadata are all derived from this structure.
+ */
+export const moduleRegistry: AdminNavItem[] = [
   {
-    title: 'Dashboard',
+    title: 'Access management',
+    path: '/access',
+    icon: <People />,
+    section: 'Administration',
+    requiredPermission: Permission.AccessRead,
+  },
+  {
+    title: 'Locations',
+    path: '/locations',
+    icon: <Store />,
+    section: 'Administration',
+    requiredPermission: Permission.LocationsRead,
+  },
+  {
+    title: 'Overview',
     path: '/',
     icon: <Dashboard />,
-    section: 'Operations',
+    section: 'Workspace',
     requiredPermission: Permission.StatsRead,
+  },
+  {
+    title: 'Business dashboard',
+    path: '/analytics',
+    icon: <Assessment />,
+    section: 'Workspace',
+    requiredPermission: Permission.FinanceRead,
+    searchKeywords: ['reports', 'retention', 'forecast', 'capacity', 'pricing', 'membership'],
+    children: analyticsDashboards.map((dashboard) => ({
+      title: dashboard.title,
+      path: `/analytics/${dashboard.id}`,
+    })),
   },
   {
     title: 'Sessions',
     path: '/sessions',
     icon: <PlayCircle />,
-    section: 'Operations',
+    section: 'Floor Operations',
     requiredPermission: Permission.SessionsRead,
     children: [
       { title: 'All Sessions', path: '/sessions' },
@@ -52,14 +85,21 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Stations',
     path: '/stations',
     icon: <GridView />,
-    section: 'Operations',
+    section: 'Floor Operations',
     requiredPermission: Permission.DevicesRead,
+  },
+  {
+    title: 'Kitchen',
+    path: '/kitchen',
+    icon: <Restaurant />,
+    section: 'Floor Operations',
+    requiredPermission: Permission.KitchenRead,
   },
   {
     title: 'Plan sales',
     path: '/plan-transactions',
     icon: <Receipt />,
-    section: 'Operations',
+    section: 'Sales',
     requiredPermission: Permission.PlayerPlansRead,
     children: [
       { title: 'All Transactions', path: '/plan-transactions' },
@@ -77,7 +117,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'POS sales',
     path: '/product-transactions',
     icon: <Sell />,
-    section: 'Operations',
+    section: 'Sales',
     requiredPermission: Permission.TransactionsRead,
     children: [
       { title: 'All Sold Items', path: '/product-transactions' },
@@ -105,7 +145,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Running tab',
     path: '/credit',
     icon: <CreditCard />,
-    section: 'Operations',
+    section: 'Sales',
     requiredPermission: Permission.CreditRead,
     children: [
       { title: 'Outstanding', path: '/credit' },
@@ -116,7 +156,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Players',
     path: '/players',
     icon: <People />,
-    section: 'Catalog',
+    section: 'People & catalog',
     requiredPermission: Permission.PlayersRead,
     children: [
       { title: 'All Players', path: '/players' },
@@ -125,8 +165,6 @@ export const adminNavItems: AdminNavItem[] = [
         path: '/players/new',
         requiredPermission: Permission.PlayersWrite,
       },
-      { title: 'Staff', path: '/players?role=staff' },
-      { title: 'Admins', path: '/players?role=admin' },
       { title: 'Inactive', path: '/players?active=false' },
     ],
   },
@@ -134,7 +172,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Products',
     path: '/products',
     icon: <Inventory />,
-    section: 'Catalog',
+    section: 'People & catalog',
     requiredPermission: Permission.ProductsRead,
     children: [
       { title: 'All Products', path: '/products' },
@@ -149,18 +187,34 @@ export const adminNavItems: AdminNavItem[] = [
   },
   {
     title: 'Inventory',
-    path: '/inventory/stock',
+    path: '/inventory',
     icon: <Inventory2 />,
-    section: 'Catalog',
+    section: 'Inventory & supply',
     requiredPermission: Permission.InventoryRead,
     children: [
+      { title: 'Control center', path: '/inventory' },
       {
         title: 'Locations',
         path: '/inventory/locations',
         requiredPermission: Permission.InventoryManage,
       },
       { title: 'Stock overview', path: '/inventory/stock' },
-      { title: 'Warehouse stock', path: '/inventory/warehouse' },
+      { title: 'Movement ledger', path: '/inventory/movements' },
+      {
+        title: 'Purchase orders',
+        path: '/inventory/purchase-orders',
+        requiredPermission: Permission.ProcurementRead,
+      },
+      {
+        title: 'Reorder controls',
+        path: '/inventory/reorder',
+        requiredPermission: Permission.ProcurementRead,
+      },
+      {
+        title: 'Exceptional intake',
+        path: '/inventory/warehouse',
+        requiredPermission: Permission.InventoryManage,
+      },
       { title: 'Transfer requests', path: '/inventory/transfers' },
       {
         title: 'New transfer request',
@@ -181,7 +235,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Games',
     path: '/games',
     icon: <SportsEsports />,
-    section: 'Catalog',
+    section: 'People & catalog',
     requiredPermission: Permission.GamesRead,
     children: [
       { title: 'All Games', path: '/games' },
@@ -196,7 +250,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Plans',
     path: '/plans',
     icon: <CardMembership />,
-    section: 'Catalog',
+    section: 'People & catalog',
     requiredPermission: Permission.PlansRead,
     children: [
       { title: 'All Plans', path: '/plans' },
@@ -219,7 +273,7 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Devices',
     path: '/devices',
     icon: <Devices />,
-    section: 'Catalog',
+    section: 'People & catalog',
     requiredPermission: Permission.DevicesRead,
     children: [
       { title: 'All Devices', path: '/devices' },
@@ -234,6 +288,13 @@ export const adminNavItems: AdminNavItem[] = [
     ],
   },
   {
+    title: 'Financial reports',
+    path: '/finance/reports',
+    icon: <Assessment />,
+    section: 'Finance',
+    requiredPermission: Permission.FinanceRead,
+  },
+  {
     title: 'Shifts',
     path: '/shifts',
     icon: <WorkHistory />,
@@ -245,21 +306,21 @@ export const adminNavItems: AdminNavItem[] = [
     path: '/finance/reconciliation',
     icon: <PointOfSale />,
     section: 'Finance',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.FinanceRead,
   },
   {
     title: 'Deposit dashboard',
     path: '/finance/deposits',
     icon: <AccountBalanceWallet />,
     section: 'Finance',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.FinanceRead,
   },
   {
     title: 'Variance',
     path: '/finance/variance',
     icon: <Balance />,
     section: 'Finance',
-    requiredPermission: Permission.StatsRead,
+    requiredPermission: Permission.FinanceRead,
   },
   {
     title: 'Cash Registers',
@@ -301,21 +362,36 @@ export const adminNavItems: AdminNavItem[] = [
     title: 'Vendors',
     path: '/vendors',
     icon: <Store />,
-    section: 'Finance',
+    section: 'Inventory & supply',
     requiredPermission: Permission.VendorsRead,
   },
   {
     title: 'Activity log',
     path: '/activity-log',
     icon: <History />,
-    section: 'System',
-    requiredPermission: Permission.StatsRead,
+    section: 'Administration',
+    requiredPermission: Permission.ActivityRead,
   },
   {
-    title: 'Settings',
+    title: 'Configuration',
     path: '/settings',
     icon: <Settings />,
-    section: 'System',
-    requiredPermission: Permission.ConfigRead,
+    section: 'Administration',
+    requiredPermission: Permission.SettingsRead,
   },
 ];
+
+const WORKSPACE_ORDER = [
+  'Workspace',
+  'Floor Operations',
+  'Sales',
+  'People & catalog',
+  'Inventory & supply',
+  'Finance',
+  'Administration',
+];
+
+export const adminNavItems = [...moduleRegistry].sort(
+  (left, right) =>
+    WORKSPACE_ORDER.indexOf(left.section ?? '') - WORKSPACE_ORDER.indexOf(right.section ?? ''),
+);

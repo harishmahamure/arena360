@@ -1,21 +1,25 @@
-FROM rust:1-slim AS builder
+FROM rust:1-bookworm AS builder
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY Cargo.toml Cargo.lock* ./
-RUN mkdir -p src/bin && echo "fn main() {}" > src/main.rs && echo "fn main() {}" > src/bin/openapi_gen.rs
+COPY Cargo.toml Cargo.lock* build.rs ./
+COPY proto ./proto
+RUN mkdir -p src/bin && echo "pub fn placeholder() {}" > src/lib.rs && echo "fn main() {}" > src/main.rs && echo "fn main() {}" > src/bin/openapi_gen.rs
 RUN cargo build --release && rm -rf src
 
 COPY src ./src
-RUN touch src/main.rs && cargo build --release
+COPY migrations ./migrations
+COPY proto ./proto
+COPY build.rs ./build.rs
+RUN touch src/main.rs src/lib.rs src/bin/*.rs && cargo build --release --bins
 
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/gaming-cafe-api /usr/local/bin/
+COPY --from=builder /app/target/release/gaming-cafe-api /app/target/release/demo_seed /usr/local/bin/
 
 EXPOSE 3000
 

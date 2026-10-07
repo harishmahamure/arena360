@@ -26,6 +26,7 @@ export interface ProductResponse {
   sku: null | string;
   stockQuantity: number;
   isActive: boolean;
+  isRawMaterial?: boolean;
 }
 export enum ProductCategory {
   BEVERAGE = 'beverage',

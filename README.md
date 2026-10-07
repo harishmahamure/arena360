@@ -1,11 +1,98 @@
-# gaming-cafe
+# Arena360
 
-Monorepo for the Arena360 gaming-cafe platform.
+Arena360 is an operations platform for a gaming cafe. It manages players, staff,
+stations, timed play, plans, point-of-sale activity, inventory, cash controls,
+and the station client used on gaming PCs.
 
-> Phase 8 will replace this with a full quickstart. For now see `docs/`.
+This repository is a monorepo containing three runnable surfaces:
 
-- Requirements: [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)
-- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Contributing: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
-- ADRs: [docs/adr/](docs/adr/)
-- Migration log: [docs/MIGRATION.md](docs/MIGRATION.md)
+| Surface | Technology | Purpose |
+|---|---|---|
+| `apps/backend` | Rust, Axum, SQLx | REST API, authentication, business rules, realtime events, and persistence |
+| `apps/admin` | React, Vite, MUI | Staff and administrator operations console |
+| `apps/kiosk` | Tauri 2, React, Rust | Locked-down Windows station client and game launcher |
+
+PostgreSQL is the system of record. Redis is an optional cache and invalidation
+layer; the backend continues with a no-op cache if Redis is unavailable.
+
+## Documentation
+
+- [Current system and capabilities](docs/SYSTEM.md)
+- [Product vision](docs/PRODUCT_VISION.md)
+- [Product planning and milestones](docs/planning/README.md)
+- [Local development](docs/DEVELOPMENT.md)
+- [Deployment and operations](docs/DEPLOYMENT.md)
+- [JetStream and ClickHouse reporting](docs/architecture/analytics.md)
+
+The documentation describes implemented behavior only. The generated OpenAPI
+spec and the source code remain authoritative for endpoint-level details.
+
+## Quick start
+
+Prerequisites: Node 20, pnpm 9, a stable Rust toolchain, Docker, and
+`sqlx-cli`.
+
+```bash
+corepack enable
+pnpm install
+docker compose up -d
+cp apps/backend/.env.example apps/backend/.env
+```
+
+Set this local database URL in `apps/backend/.env`:
+
+```dotenv
+DATABASE_URL=postgres://arena360:arena360@localhost:5432/arena360
+```
+
+Then initialize the database and start the API and staff console in separate
+terminals:
+
+```bash
+pnpm migration run
+pnpm backend:dev
+```
+
+```bash
+pnpm admin:dev
+```
+
+The backend uses per-tenant SQLite for operations and PostgreSQL for the control plane.
+Reports return `503 ANALYTICS_UNAVAILABLE` until M7; the old PostgreSQL/ClickHouse writer
+is retired. See the [storage-cell development guide](docs/architecture/storage-cell-development.md).
+
+Provision a demo tenant with 60 days of synthetic sales and activity. Configure
+`CONTROL_DATABASE_URL`, `ARENA_CELL_ID`, and `TENANT_DATA_DIR` for a registered cell:
+
+```bash
+pnpm demo:seed
+```
+
+The demo writes through tenant SQLite services and produces canonical outbox events.
+Repeated completed runs return the original summary. See the
+[demo setup guide](docs/architecture/analytics.md#demo-data) for operator and player login options.
+
+The API listens on `http://localhost:3000`. In non-production environments,
+Swagger UI is available at `http://localhost:3000/api/docs`.
+
+## Common checks
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm backend:test
+pnpm backend:test:integration
+pnpm backend:clippy
+```
+
+`backend:test:integration` runs the SQLite suite and all control-plane integration tests.
+It creates and removes a disposable control database and a temporary directory for tenant files. By default it starts a temporary
+local PostgreSQL server (`initdb`/`pg_ctl` discovered via `pg_config`, or `PG_BINDIR`).
+Alternatively, set `CONTROL_TEST_ADMIN_DATABASE_URL` to a server with database-creation
+permission. Application database settings are not used as test targets. Use
+`--control-only` for the gated control/ownership/staff/demo checks. External reporting
+and Redis tests keep their separate infrastructure requirements until M6/M7.
+
+See [local development](docs/DEVELOPMENT.md) for the complete command matrix,
+database workflow, and client-specific setup.

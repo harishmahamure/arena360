@@ -1,10 +1,12 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::access::scope::{requested_location, require_tenant_admin, LocationScope};
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::middleware::{AdminOrStaff, AdminUser};
@@ -15,6 +17,8 @@ use crate::models::{
 use crate::openapi::responses::{
     ErrorEnvelope, ExpenseEnvelope, ExpensePaginationEnvelope, ExpenseSummaryListEnvelope,
 };
+use crate::repositories::TenantExpenseRepository;
+use crate::{dto::JwtUserClaims, error::AppError, tenancy::TenantDb};
 
 #[utoipa::path(
     get,
@@ -29,11 +33,22 @@ use crate::openapi::responses::{
     tag = "expenses"
 )]
 pub async fn list_expenses(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(filters): Query<ExpenseFilterDto>,
 ) -> ApiResult<PaginationResult<Expense>> {
-    let result = state.expenses.list(filters).await?;
+    let db = state.business_db(&claims).await?;
+    let selected = requested_location(&headers)?;
+    let scope =
+        LocationScope::resolve_tenant(db.clone(), &claims, "expenses:read", selected).await?;
+    let result = TenantExpenseRepository::new(db)
+        .list_scoped(
+            &filters,
+            &scope.locations,
+            scope.organization_admin && selected.is_none(),
+        )
+        .await?;
     ok(result)
 }
 
@@ -53,11 +68,16 @@ pub async fn list_expenses(
     tag = "expenses"
 )]
 pub async fn get_expense(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Expense> {
-    let expense = state.expenses.get_by_id(id).await?;
+    let db = state.business_db(&claims).await?;
+    let expected_venue = authorize_expense(db.clone(), &claims, id, "expenses:read").await?;
+    let expense = TenantExpenseRepository::new(db.clone())
+        .find_by_id_if_location(id, expected_venue)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Expense not found".into()))?;
     ok(expense)
 }
 
@@ -78,10 +98,42 @@ pub async fn get_expense(
 pub async fn create_expense(
     AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(dto): Json<CreateExpenseDto>,
 ) -> ApiResult<Expense> {
+    let db = state.business_db(&claims).await?;
+    let selected = requested_location(&headers)?;
+    let shift_venue = match dto.shift_id {
+        Some(id) => Some(
+            crate::repositories::TenantShiftRepository::new(db.clone())
+                .location_id(id)
+                .await?,
+        ),
+        None => None,
+    };
+    if selected.is_some() && shift_venue.is_some() && selected != shift_venue {
+        return Err(AppError::BadRequest(
+            "Expense venue must match its shift".into(),
+        ));
+    }
+    let scope = LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "expenses:write",
+        selected.or(shift_venue),
+    )
+    .await?;
+    let venue = if selected.or(shift_venue).is_some() || scope.locations.len() == 1 {
+        Some(scope.first()?)
+    } else if scope.organization_admin {
+        None
+    } else {
+        return Err(AppError::bad_request_code("LOCATION_REQUIRED", None));
+    };
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let expense = state.expenses.create(dto, user_id).await?;
+    let expense = TenantExpenseRepository::new(db.clone())
+        .create_at(&dto, user_id, venue)
+        .await?;
     created(expense)
 }
 
@@ -109,8 +161,18 @@ pub async fn update_expense(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateExpenseDto>,
 ) -> ApiResult<Expense> {
+    let db = state.business_db(&claims).await?;
+    let expected_venue = authorize_expense(db.clone(), &claims, id, "expenses:write").await?;
+    if let Some(shift) = dto.shift_id {
+        let venue = crate::repositories::TenantShiftRepository::new(db.clone())
+            .location_id(shift)
+            .await?;
+        LocationScope::resolve_tenant(db.clone(), &claims, "expenses:write", Some(venue)).await?;
+    }
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let expense = state.expenses.update(id, dto, user_id).await?;
+    let expense = TenantExpenseRepository::new(db.clone())
+        .update_if_location(id, &dto, user_id, expected_venue)
+        .await?;
     ok(expense)
 }
 
@@ -138,9 +200,13 @@ pub async fn approve_expense(
     Path(id): Path<Uuid>,
     Json(_dto): Json<ApproveExpenseDto>,
 ) -> ApiResult<Expense> {
+    let db = state.business_db(&claims).await?;
+    let expected_venue = authorize_expense(db.clone(), &claims, id, "expenses:approve").await?;
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let expense = state.expenses.approve(id, user_id).await?;
+    let expense = TenantExpenseRepository::new(db.clone())
+        .approve_if_location(id, user_id, expected_venue)
+        .await?;
     ok(expense)
 }
 
@@ -168,11 +234,12 @@ pub async fn reject_expense(
     Path(id): Path<Uuid>,
     Json(dto): Json<RejectExpenseDto>,
 ) -> ApiResult<Expense> {
+    let db = state.business_db(&claims).await?;
+    let expected_venue = authorize_expense(db.clone(), &claims, id, "expenses:approve").await?;
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let expense = state
-        .expenses
-        .reject(id, &dto.rejection_reason, user_id)
+    let expense = TenantExpenseRepository::new(db.clone())
+        .reject_if_location(id, &dto.rejection_reason, user_id, expected_venue)
         .await?;
     ok(expense)
 }
@@ -190,10 +257,21 @@ pub async fn reject_expense(
     tag = "expenses"
 )]
 pub async fn expense_summary(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> ApiResult<Vec<ExpenseSummaryDto>> {
-    let summary = state.expenses.get_summary().await?;
+    let db = state.business_db(&claims).await?;
+    LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "expenses:read",
+        requested_location(&headers)?,
+    )
+    .await?;
+    let summary = TenantExpenseRepository::new(db.clone())
+        .get_summary()
+        .await?;
     ok(summary)
 }
 
@@ -214,10 +292,30 @@ pub async fn expense_summary(
     tag = "expenses"
 )]
 pub async fn delete_expense(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Expense> {
-    let expense = state.expenses.delete(id).await?;
+    let db = state.business_db(&claims).await?;
+    let expected_venue = authorize_expense(db.clone(), &claims, id, "expenses:write").await?;
+    let expense = TenantExpenseRepository::new(db.clone())
+        .soft_delete_if_location(id, expected_venue)
+        .await?;
     ok(expense)
+}
+
+async fn authorize_expense(
+    db: Arc<TenantDb>,
+    claims: &JwtUserClaims,
+    id: Uuid,
+    permission: &str,
+) -> Result<Option<Uuid>, AppError> {
+    let venue = TenantExpenseRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    let scope = LocationScope::resolve_tenant(db.clone(), claims, permission, venue).await?;
+    if venue.is_none() {
+        require_tenant_admin(db, scope.organization_id, scope.user_id).await?;
+    }
+    Ok(venue)
 }

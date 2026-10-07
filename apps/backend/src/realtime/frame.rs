@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
+use prost::Message;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::proto::arena360::v1 as pb;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
@@ -54,6 +57,70 @@ impl ServerFrame {
             code: code.into(),
             message: message.into(),
         }
+    }
+
+    pub fn encode_binary(&self) -> Vec<u8> {
+        let frame = match self {
+            Self::Welcome { user_id, roles } => pb::server_frame::Frame::Welcome(pb::Welcome {
+                user_id: user_id.to_string(),
+                roles: roles.clone(),
+            }),
+            Self::Subscribed { channels } => pb::server_frame::Frame::Subscribed(pb::Subscribed {
+                channels: channels.clone(),
+            }),
+            Self::Unsubscribed { channels } => {
+                pb::server_frame::Frame::Unsubscribed(pb::Unsubscribed {
+                    channels: channels.clone(),
+                })
+            }
+            Self::Event {
+                msg_id,
+                channel,
+                event_type,
+                payload,
+                ts,
+            } => pb::server_frame::Frame::Event(pb::Event {
+                msg_id: *msg_id,
+                channel: channel.clone(),
+                event_type: event_type.clone(),
+                payload_json: serde_json::to_vec(payload).unwrap_or_default(),
+                timestamp_ms: ts.timestamp_millis(),
+            }),
+            Self::Error { code, message } => pb::server_frame::Frame::Error(pb::Error {
+                code: code.clone(),
+                message: message.clone(),
+            }),
+            Self::Pong => pb::server_frame::Frame::Pong(pb::Pong {}),
+        };
+        pb::ServerFrame { frame: Some(frame) }.encode_to_vec()
+    }
+}
+
+impl ClientFrame {
+    pub fn decode_binary(bytes: &[u8]) -> Result<Self, String> {
+        let frame = pb::ClientFrame::decode(bytes).map_err(|error| error.to_string())?;
+        Ok(
+            match frame
+                .frame
+                .ok_or_else(|| "missing client frame".to_string())?
+            {
+                pb::client_frame::Frame::Subscribe(value) => Self::Subscribe {
+                    channels: value.channels,
+                },
+                pb::client_frame::Frame::Unsubscribe(value) => Self::Unsubscribe {
+                    channels: value.channels,
+                },
+                pb::client_frame::Frame::Ack(value) => Self::Ack {
+                    msg_id: value.msg_id,
+                },
+                pb::client_frame::Frame::Publish(value) => Self::Publish {
+                    channel: value.channel,
+                    payload: serde_json::from_slice(&value.payload_json)
+                        .map_err(|error| error.to_string())?,
+                },
+                pb::client_frame::Frame::Ping(_) => Self::Ping,
+            },
+        )
     }
 }
 
@@ -132,5 +199,19 @@ mod tests {
         let frame = ServerFrame::error("FORBIDDEN_CHANNEL", "nope");
         let json = serde_json::to_string(&frame).unwrap();
         assert!(json.contains("FORBIDDEN_CHANNEL"));
+    }
+
+    #[test]
+    fn protobuf_client_frame_decodes() {
+        let bytes = pb::ClientFrame {
+            frame: Some(pb::client_frame::Frame::Subscribe(pb::Subscribe {
+                channels: vec!["admin".to_string()],
+            })),
+        }
+        .encode_to_vec();
+        assert!(matches!(
+            ClientFrame::decode_binary(&bytes).unwrap(),
+            ClientFrame::Subscribe { .. }
+        ));
     }
 }

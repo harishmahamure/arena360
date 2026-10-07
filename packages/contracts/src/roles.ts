@@ -11,6 +11,19 @@ export enum UserStatus {
 }
 
 export enum Permission {
+  AccessRead = 'access:read',
+  AccessManage = 'access:manage',
+  TeamRead = 'team:read',
+  TeamWrite = 'team:write',
+  KitchenRead = 'kitchen:read',
+  KitchenWrite = 'kitchen:write',
+  KitchenManage = 'kitchen:manage',
+  FinanceRead = 'finance:read',
+  ActivityRead = 'activity:read',
+  EventsAdmin = 'events:admin',
+  EventsStaff = 'events:staff',
+  NotificationsRead = 'notifications:read',
+
   DevicesRead = 'devices:read',
   DevicesWrite = 'devices:write',
   PlansRead = 'plans:read',
@@ -50,6 +63,13 @@ export enum Permission {
   VendorsWrite = 'vendors:write',
   ConfigRead = 'config:read',
   ConfigWrite = 'config:write',
+  SettingsRead = 'settings:read',
+  SettingsWrite = 'settings:write',
+  LocationsRead = 'locations:read',
+  LocationsManage = 'locations:manage',
+  RulesRead = 'rules:read',
+  RulesEdit = 'rules:edit',
+  RulesPublish = 'rules:publish',
   GamesRead = 'games:read',
   GamesWrite = 'games:write',
   InventoryRead = 'inventory:read',
@@ -58,6 +78,11 @@ export enum Permission {
   InventoryTransferFulfill = 'inventory:transfer_fulfill',
   InventoryWasteRecord = 'inventory:waste_record',
   InventoryWasteApprove = 'inventory:waste_approve',
+  ProcurementRead = 'procurement:read',
+  ProcurementWrite = 'procurement:write',
+  ProcurementApprove = 'procurement:approve',
+  ProcurementReceive = 'procurement:receive',
+  InventoryReorderManage = 'inventory:reorder_manage',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -92,6 +117,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.InventoryRead,
     Permission.InventoryTransferRequest,
     Permission.InventoryWasteRecord,
+    Permission.ProcurementRead,
+    Permission.ProcurementWrite,
+    Permission.ProcurementReceive,
+    Permission.SettingsRead,
+    Permission.LocationsRead,
+    Permission.RulesRead,
   ],
   player: [
     Permission.GamesRead,

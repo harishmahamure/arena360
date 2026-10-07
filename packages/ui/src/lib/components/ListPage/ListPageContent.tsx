@@ -58,6 +58,8 @@ export function ListPageContent<T extends { id: string | number }>({
             justifyContent: 'space-between',
             alignItems: 'center',
             mb: 2,
+            gap: 1.5,
+            flexWrap: 'wrap',
           }}
         >
           {showSearch ? (
@@ -77,7 +79,12 @@ export function ListPageContent<T extends { id: string | number }>({
                   ),
                   endAdornment: searchValue ? (
                     <InputAdornment position="end">
-                      <IconButton size="small" onClick={onSearchClear} edge="end">
+                      <IconButton
+                        aria-label="Clear search"
+                        size="small"
+                        onClick={onSearchClear}
+                        edge="end"
+                      >
                         <Clear fontSize="small" />
                       </IconButton>
                     </InputAdornment>
@@ -89,8 +96,7 @@ export function ListPageContent<T extends { id: string | number }>({
             <Box />
           )}
           {onAddClick && (
-            <Button variant="contained" color="primary" onClick={onAddClick}>
-              <Add />
+            <Button variant="contained" color="primary" startIcon={<Add />} onClick={onAddClick}>
               {addButtonLabel}
             </Button>
           )}
@@ -101,10 +107,14 @@ export function ListPageContent<T extends { id: string | number }>({
         <GridSkeleton />
       ) : data.length === 0 ? (
         <EmptyState
-          title={emptyMessage}
-          description={emptyDescription}
-          actionLabel={resolvedActionLabel}
-          onAction={resolvedOnAction}
+          title={searchValue ? 'No matching results' : emptyMessage}
+          description={
+            searchValue
+              ? 'Try another search or clear the filters to see more results.'
+              : emptyDescription
+          }
+          actionLabel={searchValue && onSearchClear ? 'Clear search' : resolvedActionLabel}
+          onAction={searchValue && onSearchClear ? onSearchClear : resolvedOnAction}
         />
       ) : (
         <DataGrid<T>

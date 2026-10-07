@@ -66,8 +66,9 @@ export function formatNotificationSummary(text: string): string {
     return word.toLowerCase();
   });
 
-  if (words.length === 0) return text;
-  words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
+  const firstWord = words[0];
+  if (!firstWord) return text;
+  words[0] = firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
   return words.join(' ');
 }
 

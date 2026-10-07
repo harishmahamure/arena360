@@ -7,6 +7,7 @@ export interface LineItemPayload {
   productId: string;
   quantity: number;
   unitPrice: number;
+  optionIds?: string[];
 }
 
 export interface CreateProductTransactionPayload {
@@ -22,6 +23,7 @@ export interface CreateProductTransactionPayload {
   onlinePaymentRefLast4?: string;
   lineItems?: LineItemPayload[];
   saleLocationId?: string;
+  venueLocationId?: string;
   kioskOrderId?: string;
 }
 

@@ -217,6 +217,11 @@ export default function NewSessionPage() {
         backLabel="Back to sessions"
       >
         <FormBuilder<StartSessionFormData>
+          wizard
+          wizardSteps={[
+            { title: 'Player & balance', fields: ['playerId', 'balanceId'] },
+            { title: 'Station & start time', fields: ['deviceId', 'startTime'] },
+          ]}
           key={preselectedPlayerId ?? 'new-session'}
           fields={fields}
           schema={startSessionSchema}

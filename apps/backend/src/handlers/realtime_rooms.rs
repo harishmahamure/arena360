@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::{AdminUser, AuthUser};
-use crate::realtime::rooms::{AddMemberDto, CreateRoomDto, Room};
+use crate::realtime::rooms::{AddMemberDto, CreateRoomDto, Room, TenantRoomService};
 
 #[utoipa::path(
     get,
@@ -27,7 +27,9 @@ pub async fn list_rooms(
     let user_id = claims
         .user_id_uuid()
         .ok_or_else(|| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let rooms = state.rooms.list_for_user(user_id).await?;
+    let rooms = TenantRoomService::new(state.business_db(&claims).await?)
+        .list_for_user(user_id)
+        .await?;
     ok(rooms)
 }
 
@@ -52,7 +54,9 @@ pub async fn create_room(
     let admin_id = claims
         .user_id_uuid()
         .ok_or_else(|| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let room = state.rooms.create(dto, admin_id).await?;
+    let room = TenantRoomService::new(state.business_db(&claims).await?)
+        .create(dto, admin_id)
+        .await?;
     created(room)
 }
 
@@ -73,17 +77,14 @@ pub async fn create_room(
     tag = "realtime"
 )]
 pub async fn add_member(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(room_id): Path<Uuid>,
     Json(dto): Json<AddMemberDto>,
 ) -> ApiResult<serde_json::Value> {
-    if !state.rooms.room_exists(room_id).await? {
-        return Err(crate::error::AppError::NotFound(
-            "Room not found".to_string(),
-        ));
-    }
-    state.rooms.add_member(room_id, dto.user_id).await?;
+    TenantRoomService::new(state.business_db(&claims).await?)
+        .add_member(room_id, dto.user_id)
+        .await?;
     ok(serde_json::json!({ "message": "Member added" }))
 }
 
@@ -104,10 +105,12 @@ pub async fn add_member(
     tag = "realtime"
 )]
 pub async fn remove_member(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path((room_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<serde_json::Value> {
-    state.rooms.remove_member(room_id, user_id).await?;
+    TenantRoomService::new(state.business_db(&claims).await?)
+        .remove_member(room_id, user_id)
+        .await?;
     ok(serde_json::json!({ "message": "Member removed" }))
 }

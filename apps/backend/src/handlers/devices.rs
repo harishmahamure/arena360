@@ -7,17 +7,27 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
-use crate::error::AppError;
 use crate::dto::{
     created, ok, ApiResult, DeviceRegisterResponseDto, ProvisionDeviceDto, RegisteredDeviceDto,
 };
-use crate::middleware::{AdminOrStaff, AdminUser};
-use crate::validation::{is_playstation_device_type, require_playstation_device_type};
+use crate::error::AppError;
+use crate::middleware::{AdminOrStaff, AdminUser, AuthUser};
 use crate::models::{
     normalize_device_type, CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto,
     UpdateDeviceStatusDto,
 };
 use crate::openapi::responses::{DeviceEnvelope, DevicePaginationEnvelope, ErrorEnvelope};
+use crate::validation::is_playstation_device_type;
+
+fn organization_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
+    Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| AppError::Forbidden("Select an organization".into()))
+}
+fn actor_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
+    claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))
+}
 
 #[utoipa::path(
     get,
@@ -32,10 +42,26 @@ use crate::openapi::responses::{DeviceEnvelope, DevicePaginationEnvelope, ErrorE
     tag = "devices"
 )]
 pub async fn list_devices(
+    AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<DeviceFilterDto>,
+    Query(mut filters): Query<DeviceFilterDto>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<crate::dto::PaginationResult<Device>> {
-    let result = state.devices.list(filters).await?;
+    filters.location_id = filters
+        .location_id
+        .or(crate::access::scope::requested_location(&headers)?);
+    let db = state.business_db(&claims).await?;
+    let scope = crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "devices:read",
+        filters.location_id,
+    )
+    .await?;
+    let result = state
+        .devices
+        .list_tenant(db, filters, scope.locations)
+        .await?;
     ok(result)
 }
 
@@ -55,10 +81,25 @@ pub async fn list_devices(
     tag = "devices"
 )]
 pub async fn get_device(
+    AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Device> {
-    let device = state.devices.get_by_id(id).await?;
+    let device = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
+    if device.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(
+            device.organization_id,
+            device.location_id,
+            actor_id(&claims)?,
+            "devices:read",
+        )
+        .await?;
     ok(device)
 }
 
@@ -81,7 +122,23 @@ pub async fn create_device(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateDeviceDto>,
 ) -> ApiResult<Device> {
-    let device = state.devices.create(dto, claims.user_id_uuid()).await?;
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(
+            organization_id(&claims)?,
+            dto.location_id
+                .ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
+    let device = state
+        .devices
+        .create_tenant(
+            state.business_db(&claims).await?,
+            dto,
+            claims.user_id_uuid(),
+        )
+        .await?;
     created(device)
 }
 
@@ -103,11 +160,18 @@ pub async fn create_device(
 pub async fn provision_device(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
-    Json(mut dto): Json<ProvisionDeviceDto>,
+    Json(dto): Json<ProvisionDeviceDto>,
 ) -> ApiResult<DeviceRegisterResponseDto> {
-    if dto.provisionClient.as_deref() == Some("console-tv") {
-        dto.deviceType = Some(require_playstation_device_type(dto.deviceType)?);
-    } else if let Some(ref device_type) = dto.deviceType {
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(
+            organization_id(&claims)?,
+            dto.locationId
+                .ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
+    if let Some(ref device_type) = dto.deviceType {
         if normalize_device_type(device_type)
             .is_some_and(|normalized| is_playstation_device_type(&normalized))
         {
@@ -115,8 +179,19 @@ pub async fn provision_device(
         }
     }
 
-    let device = state.devices.provision(dto, claims.user_id_uuid()).await?;
-    let token = state.auth.generate_device_token(device.id)?;
+    let device = state
+        .devices
+        .provision_tenant(
+            state.business_db(&claims).await?,
+            dto,
+            claims.user_id_uuid(),
+        )
+        .await?;
+    let token = state.auth.generate_device_token_for(
+        device.id,
+        device.organization_id,
+        device.location_id,
+    )?;
     ok(DeviceRegisterResponseDto {
         accessToken: token,
         device: RegisteredDeviceDto::from(device),
@@ -147,7 +222,40 @@ pub async fn update_device(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateDeviceDto>,
 ) -> ApiResult<Device> {
-    let device = state.devices.update(id, dto, claims.user_id_uuid()).await?;
+    let existing = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
+    if existing.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(
+            existing.organization_id,
+            existing.location_id,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
+    if let Some(location_id) = dto.location_id {
+        crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .ensure_location_permission(
+                existing.organization_id,
+                location_id,
+                actor_id(&claims)?,
+                "devices:write",
+            )
+            .await?;
+    }
+    let device = state
+        .devices
+        .update_tenant(
+            state.business_db(&claims).await?,
+            id,
+            dto,
+            claims.user_id_uuid(),
+        )
+        .await?;
     ok(device)
 }
 
@@ -170,12 +278,30 @@ pub async fn update_device(
     tag = "devices"
 )]
 pub async fn update_device_status(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateDeviceStatusDto>,
 ) -> ApiResult<Device> {
-    let device = state.devices.update_status(id, dto).await?;
+    let existing = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
+    if existing.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(
+            existing.organization_id,
+            existing.location_id,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
+    let device = state
+        .devices
+        .update_status_tenant(state.business_db(&claims).await?, id, dto)
+        .await?;
     ok(device)
 }
 
@@ -196,10 +322,28 @@ pub async fn update_device_status(
     tag = "devices"
 )]
 pub async fn delete_device(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, crate::error::AppError> {
-    state.devices.delete(id).await?;
+    let existing = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
+    if existing.organization_id != organization_id(&claims)? {
+        return Err(AppError::NotFound("Device not found".into()));
+    }
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(
+            existing.organization_id,
+            existing.location_id,
+            actor_id(&claims)?,
+            "devices:write",
+        )
+        .await?;
+    state
+        .devices
+        .delete_tenant(state.business_db(&claims).await?, id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }

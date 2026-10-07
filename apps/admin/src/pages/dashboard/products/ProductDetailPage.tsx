@@ -3,6 +3,8 @@ import { Box, Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import CatalogLocationPanel from '../../../components/CatalogLocationPanel';
+import ProductRecipeEditor from '../../../containers/products/ProductRecipeEditor';
 import {
   type CreateProductFormData,
   createProductSchema,
@@ -17,6 +19,7 @@ export default function EditProductPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { can } = usePermissions();
+  const [canEditFields, setCanEditFields] = useState(false);
   const canWrite = can(Permission.ProductsWrite);
   const [error, setError] = useState<string | undefined>();
   const [success, setSuccess] = useState<string | undefined>();
@@ -38,7 +41,7 @@ export default function EditProductPage() {
         ...data,
         price: data.price,
         dayPrice: data.price,
-        nightPrice: data.nightPrice ?? data.price,
+        nightPrice: data.price,
       });
       setSuccess('Product updated successfully!');
       navigate('/products');
@@ -70,14 +73,39 @@ export default function EditProductPage() {
         </Typography>
       </Box>
 
+      {id && (
+        <CatalogLocationPanel
+          kind="products"
+          id={id}
+          canWrite={canWrite}
+          onCanEditChange={setCanEditFields}
+        />
+      )}
       <FormBuilder<CreateProductFormData>
+        wizard
+        wizardSteps={[
+          { title: 'Product details', fields: ['name', 'sku', 'description', 'category'] },
+          {
+            title: 'Pricing & units',
+            fields: [
+              'price',
+              'purchasePricePerBox',
+              'unitsPerPurchaseUnit',
+              'unitId',
+              'purchaseUnitId',
+            ],
+          },
+          {
+            title: 'Stock & availability',
+            fields: ['stockQuantity', 'isActive', 'isRawMaterial'],
+          },
+        ]}
         fields={productFormFields}
         schema={createProductSchema}
         defaultValues={{
           category: product?.category as unknown as ProductCategory,
           name: product?.name,
           price: dayPrice,
-          nightPrice: product?.nightPrice ?? dayPrice,
           purchasePricePerBox: product?.purchasePricePerBox ?? undefined,
           unitsPerPurchaseUnit: product?.unitsPerPurchaseUnit ?? 1,
           unitId: product?.unitId ?? undefined,
@@ -86,8 +114,9 @@ export default function EditProductPage() {
           description: product?.description,
           stockQuantity: product?.stockQuantity,
           isActive: product?.isActive,
+          isRawMaterial: product?.isRawMaterial ?? false,
         }}
-        mode={canWrite ? 'edit' : 'view'}
+        mode={canEditFields ? 'edit' : 'view'}
         onSubmit={handleSubmit}
         onCancel={() => navigate('/products')}
         loading={isSubmitting}
@@ -100,6 +129,13 @@ export default function EditProductPage() {
         buttonAlign="right"
         spacing={3}
       />
+      {id && (
+        <ProductRecipeEditor
+          productId={id}
+          isRawMaterial={product?.isRawMaterial ?? false}
+          canWrite={canEditFields}
+        />
+      )}
     </Paper>
   );
 }

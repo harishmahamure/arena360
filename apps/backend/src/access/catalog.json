@@ -1,0 +1,574 @@
+[
+  {
+    "key": "notifications",
+    "name": "Notifications",
+    "required": false,
+    "permissions": [
+      {
+        "key": "notifications:read",
+        "label": "Notifications Read",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "access",
+    "name": "Access administration",
+    "required": true,
+    "permissions": [
+      {
+        "key": "access:read",
+        "label": "Access Read",
+        "description": ""
+      },
+      {
+        "key": "access:manage",
+        "label": "Access Manage",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "team",
+    "name": "Team",
+    "required": false,
+    "permissions": [
+      {
+        "key": "team:read",
+        "label": "Team Read",
+        "description": ""
+      },
+      {
+        "key": "team:write",
+        "label": "Team Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "kitchen",
+    "name": "Kitchen",
+    "required": false,
+    "permissions": [
+      {
+        "key": "kitchen:read",
+        "label": "Kitchen Read",
+        "description": ""
+      },
+      {
+        "key": "kitchen:write",
+        "label": "Kitchen Write",
+        "description": ""
+      },
+      {
+        "key": "kitchen:manage",
+        "label": "Kitchen Manage",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "finance",
+    "name": "Financial reporting",
+    "required": false,
+    "permissions": [
+      {
+        "key": "finance:read",
+        "label": "Finance Read",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "activity",
+    "name": "Audit activity",
+    "required": false,
+    "permissions": [
+      {
+        "key": "activity:read",
+        "label": "Activity Read",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "events",
+    "name": "Broad operational events",
+    "required": false,
+    "permissions": [
+      {
+        "key": "events:admin",
+        "label": "Events Admin",
+        "description": "Contains events from across the venue. Grant only to trusted operators."
+      },
+      {
+        "key": "events:staff",
+        "label": "Events Staff",
+        "description": "Contains events from across the venue. Grant only to trusted operators."
+      }
+    ]
+  },
+  {
+    "key": "devices",
+    "name": "Stations & devices",
+    "required": false,
+    "permissions": [
+      {
+        "key": "devices:read",
+        "label": "Devices Read",
+        "description": ""
+      },
+      {
+        "key": "devices:write",
+        "label": "Devices Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "plans",
+    "name": "Plans",
+    "required": false,
+    "permissions": [
+      {
+        "key": "plans:read",
+        "label": "Plans Read",
+        "description": ""
+      },
+      {
+        "key": "plans:write",
+        "label": "Plans Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "products",
+    "name": "Products",
+    "required": false,
+    "permissions": [
+      {
+        "key": "products:read",
+        "label": "Products Read",
+        "description": ""
+      },
+      {
+        "key": "products:write",
+        "label": "Products Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "sessions",
+    "name": "Sessions",
+    "required": false,
+    "permissions": [
+      {
+        "key": "sessions:read",
+        "label": "Sessions Read",
+        "description": ""
+      },
+      {
+        "key": "sessions:write",
+        "label": "Sessions Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "stats",
+    "name": "Dashboard",
+    "required": false,
+    "permissions": [
+      {
+        "key": "stats:read",
+        "label": "Stats Read",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "transactions",
+    "name": "Point of sale",
+    "required": false,
+    "permissions": [
+      {
+        "key": "transactions:read",
+        "label": "Transactions Read",
+        "description": ""
+      },
+      {
+        "key": "transactions:write",
+        "label": "Transactions Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "player-plans",
+    "name": "Plan sales",
+    "required": false,
+    "permissions": [
+      {
+        "key": "player-plans:read",
+        "label": "Player Plans Read",
+        "description": ""
+      },
+      {
+        "key": "player-plans:write",
+        "label": "Player Plans Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "players",
+    "name": "Players",
+    "required": false,
+    "permissions": [
+      {
+        "key": "players:read",
+        "label": "Players Read",
+        "description": ""
+      },
+      {
+        "key": "players:write",
+        "label": "Players Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "units",
+    "name": "Units",
+    "required": false,
+    "permissions": [
+      {
+        "key": "units:read",
+        "label": "Units Read",
+        "description": ""
+      },
+      {
+        "key": "units:write",
+        "label": "Units Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "shifts",
+    "name": "Shifts",
+    "required": false,
+    "permissions": [
+      {
+        "key": "shifts:read",
+        "label": "Shifts Read",
+        "description": ""
+      },
+      {
+        "key": "shifts:write",
+        "label": "Shifts Write",
+        "description": ""
+      },
+      {
+        "key": "shifts:force_close",
+        "label": "Shifts Force Close",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "cash-registers",
+    "name": "Cash registers",
+    "required": false,
+    "permissions": [
+      {
+        "key": "cash-registers:read",
+        "label": "Cash Registers Read",
+        "description": ""
+      },
+      {
+        "key": "cash-registers:write",
+        "label": "Cash Registers Write",
+        "description": ""
+      },
+      {
+        "key": "cash-registers:reconcile",
+        "label": "Cash Registers Reconcile",
+        "description": ""
+      },
+      {
+        "key": "cash-registers:adjust_opening",
+        "label": "Cash Registers Adjust Opening",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "cash-deposits",
+    "name": "Cash deposits",
+    "required": false,
+    "permissions": [
+      {
+        "key": "cash-deposits:read",
+        "label": "Cash Deposits Read",
+        "description": ""
+      },
+      {
+        "key": "cash-deposits:write",
+        "label": "Cash Deposits Write",
+        "description": ""
+      },
+      {
+        "key": "cash-deposits:approve",
+        "label": "Cash Deposits Approve",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "credit",
+    "name": "Credit accounts",
+    "required": false,
+    "permissions": [
+      {
+        "key": "credit:read",
+        "label": "Credit Read",
+        "description": ""
+      },
+      {
+        "key": "credit:write",
+        "label": "Credit Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "credit-limit",
+    "name": "Credit limits",
+    "required": false,
+    "permissions": [
+      {
+        "key": "credit-limit:write",
+        "label": "Credit Limit Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "staff-gaming-allowance",
+    "name": "Staff allowances",
+    "required": false,
+    "permissions": [
+      {
+        "key": "staff-gaming-allowance:read",
+        "label": "Staff Gaming Allowance Read",
+        "description": ""
+      },
+      {
+        "key": "staff-gaming-allowance:write",
+        "label": "Staff Gaming Allowance Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "expenses",
+    "name": "Expenses",
+    "required": false,
+    "permissions": [
+      {
+        "key": "expenses:read",
+        "label": "Expenses Read",
+        "description": ""
+      },
+      {
+        "key": "expenses:write",
+        "label": "Expenses Write",
+        "description": ""
+      },
+      {
+        "key": "expenses:approve",
+        "label": "Expenses Approve",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "vendors",
+    "name": "Suppliers",
+    "required": false,
+    "permissions": [
+      {
+        "key": "vendors:read",
+        "label": "Vendors Read",
+        "description": ""
+      },
+      {
+        "key": "vendors:write",
+        "label": "Vendors Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "config",
+    "name": "Legacy configuration",
+    "required": false,
+    "permissions": [
+      {
+        "key": "config:read",
+        "label": "Config Read",
+        "description": ""
+      },
+      {
+        "key": "config:write",
+        "label": "Config Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "settings",
+    "name": "Configuration",
+    "required": false,
+    "permissions": [
+      {
+        "key": "settings:read",
+        "label": "Settings Read",
+        "description": ""
+      },
+      {
+        "key": "settings:write",
+        "label": "Settings Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "rules",
+    "name": "Pricing rules",
+    "required": false,
+    "permissions": [
+      {
+        "key": "rules:read",
+        "label": "Rules Read",
+        "description": ""
+      },
+      {
+        "key": "rules:edit",
+        "label": "Rules Edit",
+        "description": ""
+      },
+      {
+        "key": "rules:publish",
+        "label": "Rules Publish",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "games",
+    "name": "Games",
+    "required": false,
+    "permissions": [
+      {
+        "key": "games:read",
+        "label": "Games Read",
+        "description": ""
+      },
+      {
+        "key": "games:write",
+        "label": "Games Write",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "inventory",
+    "name": "Inventory",
+    "required": false,
+    "permissions": [
+      {
+        "key": "inventory:read",
+        "label": "Inventory Read",
+        "description": ""
+      },
+      {
+        "key": "inventory:manage",
+        "label": "Inventory Manage",
+        "description": ""
+      },
+      {
+        "key": "inventory:transfer_request",
+        "label": "Inventory Transfer Request",
+        "description": ""
+      },
+      {
+        "key": "inventory:transfer_fulfill",
+        "label": "Inventory Transfer Fulfill",
+        "description": ""
+      },
+      {
+        "key": "inventory:waste_record",
+        "label": "Inventory Waste Record",
+        "description": ""
+      },
+      {
+        "key": "inventory:waste_approve",
+        "label": "Inventory Waste Approve",
+        "description": ""
+      },
+      {
+        "key": "inventory:reorder_manage",
+        "label": "Inventory Reorder Manage",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "key": "locations",
+    "name": "Venue locations",
+    "required": false,
+    "permissions": [
+      {
+        "key": "locations:read",
+        "label": "View locations",
+        "description": "View assigned venue locations"
+      },
+      {
+        "key": "locations:manage",
+        "label": "Manage locations",
+        "description": "Create and edit venue locations"
+      }
+    ]
+  },
+  {
+    "key": "procurement",
+    "name": "Procurement",
+    "required": false,
+    "permissions": [
+      {
+        "key": "procurement:read",
+        "label": "Procurement Read",
+        "description": ""
+      },
+      {
+        "key": "procurement:write",
+        "label": "Procurement Write",
+        "description": ""
+      },
+      {
+        "key": "procurement:approve",
+        "label": "Procurement Approve",
+        "description": ""
+      },
+      {
+        "key": "procurement:receive",
+        "label": "Procurement Receive",
+        "description": ""
+      }
+    ]
+  }
+]

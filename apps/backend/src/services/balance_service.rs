@@ -1,44 +1,23 @@
-use chrono::{DateTime, Datelike, Duration, Utc};
-use sqlx::PgPool;
+use chrono::{DateTime, Datelike, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::cache::{self, get_or_set, keys, set_json, CacheService};
+use crate::cache::{self, keys, set_json, CacheService};
 use crate::error::AppError;
 use crate::models::{
-    balance_status, ledger_reason, plan_kind, BalanceFilterDto, BalanceValidationResult, Device,
-    Plan, PlayerPlanBalance, PlayerPlanBalanceResponse, PurchaseBalanceDto,
+    balance_status, plan_kind, BalanceFilterDto, BalanceValidationResult, Device,
+    PlayerPlanBalance, PlayerPlanBalanceResponse, PurchaseBalanceDto,
 };
-use crate::repositories::{BalanceRepository, LedgerRepository, PlanRepository};
+use crate::repositories::TenantBalanceRepository;
+use crate::tenancy::TenantDb;
 
 pub struct BalanceService {
-    repo: BalanceRepository,
-    ledger: LedgerRepository,
-    plan_repo: PlanRepository,
     cache: Arc<dyn CacheService>,
 }
 
-fn plan_kind_from_plan(plan: &Plan) -> &'static str {
-    if plan.plan_type == "weekend_special" {
-        plan_kind::HAPPY_HOURS
-    } else {
-        plan_kind::TIME
-    }
-}
-
-/// Whether an existing balance still has usable time that should stack on recharge.
-fn should_carry_forward_minutes(balance: &PlayerPlanBalance, now: DateTime<Utc>) -> bool {
-    balance.status == balance_status::ACTIVE && balance.expiry_date > now
-}
-
 impl BalanceService {
-    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
-        Self {
-            repo: BalanceRepository::new(pool.clone()),
-            ledger: LedgerRepository::new(pool.clone()),
-            plan_repo: PlanRepository::new(pool),
-            cache,
-        }
+    pub fn new(cache: Arc<dyn CacheService>) -> Self {
+        Self { cache }
     }
 
     async fn invalidate_balance(&self, balance: &PlayerPlanBalance) -> Result<(), AppError> {
@@ -64,33 +43,27 @@ impl BalanceService {
         set_json(&*self.cache, &cache_key, balance, keys::ttl::SESSION).await
     }
 
-    async fn invalidate_open_session_caches_for_player(
+    pub async fn sync_tenant_balance_cache_after_mutation(
         &self,
-        player_id: Uuid,
-    ) -> Result<(), AppError> {
-        let Some((session_id, device_id)) = self.repo.find_open_session_ids(player_id).await?
-        else {
-            return Ok(());
-        };
-        cache::invalidate(
-            &*self.cache,
-            &[
-                keys::session_enriched(&session_id),
-                keys::session_device(&device_id),
-            ],
-        )
-        .await
-    }
-
-    pub async fn sync_balance_cache_after_mutation(
-        &self,
+        db: Arc<TenantDb>,
         balance: &PlayerPlanBalance,
     ) -> Result<(), AppError> {
         self.invalidate_balance(balance).await?;
         self.invalidate_balance_raw(balance.id).await?;
         self.write_through_balance_raw(balance).await?;
-        self.invalidate_open_session_caches_for_player(balance.player_id)
+        if let Some((session_id, device_id)) = TenantBalanceRepository::new(db)
+            .find_open_session_ids(balance.player_id)
+            .await?
+        {
+            cache::invalidate(
+                &*self.cache,
+                &[
+                    keys::session_enriched(&session_id),
+                    keys::session_device(&device_id),
+                ],
+            )
             .await?;
+        }
         let _ = self
             .cache
             .invalidate_prefix(keys::SESSIONS_LIST_PREFIX)
@@ -98,169 +71,101 @@ impl BalanceService {
         Ok(())
     }
 
-    pub async fn get_raw(&self, id: Uuid) -> Result<PlayerPlanBalance, AppError> {
-        let cache_key = keys::balance_raw(&id);
-        get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION, || async {
-            self.repo
-                .find_by_id(id)
-                .await?
-                .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))
-        })
-        .await
-    }
-
-    pub async fn list(
+    pub async fn get_raw_tenant(
         &self,
-        filters: BalanceFilterDto,
-    ) -> Result<crate::dto::PaginationResult<PlayerPlanBalanceResponse>, AppError> {
-        let mut result = self.repo.list(&filters).await?;
-        self.expire_stale_in_results(&mut result.data).await?;
-        Ok(result)
-    }
-
-    pub async fn get_by_id(&self, id: Uuid) -> Result<PlayerPlanBalanceResponse, AppError> {
-        self.repo
-            .find_enriched_by_id(id)
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        TenantBalanceRepository::new(db)
+            .find_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))
     }
 
-    pub async fn purchase_or_recharge(
+    pub async fn list_tenant(
         &self,
-        dto: PurchaseBalanceDto,
-        actor_id: Option<Uuid>,
-    ) -> Result<PlayerPlanBalance, AppError> {
-
-        let plan = self
-            .plan_repo
-            .find_by_id(dto.plan_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Plan with ID {} not found", dto.plan_id)))?;
-
-        if !plan.is_active {
-            return Err(AppError::BadRequest(
-                "Cannot purchase an inactive plan".to_string(),
-            ));
-        }
-
-        let kind = plan_kind_from_plan(&plan);
-        let now = Utc::now();
-        let fresh_expiry = now + Duration::days(plan.validity_days as i64);
-        let deduction_snapshot = if plan.dynamic_deduction_enabled {
-            plan.deduction_profile.as_ref()
-        } else {
-            None
-        };
-
-        let existing = self
-            .repo
-            .find_existing_for_scope(
-                dto.player_id,
-                plan.device_type.as_deref(),
-                plan.device_sub_type.as_deref(),
-                kind,
-            )
+        db: Arc<TenantDb>,
+        filters: BalanceFilterDto,
+    ) -> Result<crate::dto::PaginationResult<PlayerPlanBalanceResponse>, AppError> {
+        let mut result = TenantBalanceRepository::new(db.clone())
+            .list(&filters)
             .await?;
-
-        match existing {
-            Some(balance) => {
-                let new_expiry = if kind == plan_kind::HAPPY_HOURS
-                    && balance.status == balance_status::ACTIVE
-                    && balance.expiry_date > now
-                {
-                    balance.expiry_date
-                } else {
-                    fresh_expiry
-                };
-
-                let carry_forward = should_carry_forward_minutes(&balance, now);
-
-                self.invalidate_balance_raw(balance.id).await?;
-
-                let updated = self
-                    .repo
-                    .recharge(
-                        balance.id,
-                        plan.time_credits,
-                        new_expiry,
-                        plan.id,
-                        deduction_snapshot,
-                        actor_id,
-                        carry_forward,
-                    )
+        let now = Utc::now();
+        for balance in &mut result.data {
+            if balance.status == balance_status::ACTIVE && balance.expiry_date < now {
+                TenantBalanceRepository::new(db.clone())
+                    .set_status(balance.id, balance_status::EXPIRED)
                     .await?;
-
-                self.ledger
-                    .append(
-                        updated.id,
-                        dto.player_id,
-                        plan.time_credits,
-                        if carry_forward {
-                            ledger_reason::RECHARGE
-                        } else {
-                            ledger_reason::PURCHASE
-                        },
-                        dto.transaction_id,
-                        None,
-                        updated.remaining_minutes,
-                        updated.expiry_date,
-                        actor_id,
-                    )
-                    .await?;
-
-                self.sync_balance_cache_after_mutation(&updated).await?;
-                let _ = cache::invalidate_stats(&*self.cache).await;
-                Ok(updated)
-            }
-            None => {
-                let balance = self
-                    .repo
-                    .create(
-                        dto.player_id,
-                        plan.device_type.as_deref(),
-                        plan.device_sub_type.as_deref(),
-                        kind,
-                        plan.time_credits,
-                        fresh_expiry,
-                        plan.time_window_start,
-                        plan.time_window_end,
-                        plan.id,
-                        plan.allowed_days.as_ref(),
-                        plan.allowed_months.as_ref(),
-                        deduction_snapshot,
-                        actor_id,
-                    )
-                    .await?;
-
-                self.ledger
-                    .append(
-                        balance.id,
-                        dto.player_id,
-                        plan.time_credits,
-                        ledger_reason::PURCHASE,
-                        dto.transaction_id,
-                        None,
-                        balance.remaining_minutes,
-                        balance.expiry_date,
-                        actor_id,
-                    )
-                    .await?;
-
-                self.sync_balance_cache_after_mutation(&balance).await?;
-                let _ = cache::invalidate_stats(&*self.cache).await;
-                Ok(balance)
+                balance.status = balance_status::EXPIRED.into();
             }
         }
+        Ok(result)
     }
 
-    pub async fn validate_access(
+    pub async fn get_by_id_tenant(
         &self,
-        balance_id: Uuid,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<PlayerPlanBalanceResponse, AppError> {
+        Ok(self.get_raw_tenant(db, id).await?.into())
+    }
+
+    pub async fn purchase_or_recharge_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        dto: PurchaseBalanceDto,
+        actor: Option<Uuid>,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let balance = TenantBalanceRepository::new(db.clone())
+            .purchase_or_recharge(&dto, actor)
+            .await?;
+        if let Err(error) = self
+            .sync_tenant_balance_cache_after_mutation(db, &balance)
+            .await
+        {
+            tracing::warn!(%error, balance_id = %balance.id, "Committed tenant recharge cache refresh failed");
+        }
+        let _ = cache::invalidate_stats(&*self.cache).await;
+        Ok(balance)
+    }
+
+    pub async fn get_best_balance_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let result = self
+            .list_tenant(
+                db.clone(),
+                BalanceFilterDto {
+                    player_id: Some(player_id),
+                    status: Some(balance_status::ACTIVE.into()),
+                    usable_only: Some(true),
+                    limit: Some(100),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let id = result
+            .data
+            .into_iter()
+            .max_by_key(|balance| balance.remaining_minutes)
+            .map(|balance| balance.id)
+            .ok_or_else(|| {
+                AppError::NotFound(format!("No active balances found for player {player_id}"))
+            })?;
+        self.get_raw_tenant(db, id).await
+    }
+
+    pub async fn validate_access_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
         device: Option<&Device>,
-        current_time: Option<DateTime<Utc>>,
+        at: Option<DateTime<Utc>>,
     ) -> Result<BalanceValidationResult, AppError> {
-        let balance = self.get_raw(balance_id).await?;
-        Ok(Self::validate_balance(&balance, device, current_time))
+        let balance = self.get_raw_tenant(db, id).await?;
+        Ok(Self::validate_balance(&balance, device, at))
     }
 
     /// Whether balance purchase scope matches this kiosk device (exact type/subtype; NULL scope does not match except staff_allowance).
@@ -342,141 +247,7 @@ impl BalanceService {
         balance: &PlayerPlanBalance,
         result: BalanceValidationResult,
     ) -> AppError {
-        AppError::forbidden_code(Self::validation_failure_code_for_balance(
-            balance,
-            &result,
-        ))
-    }
-
-    pub async fn require_staff_allowance_for_device(
-        &self,
-        staff_id: Uuid,
-        device: &Device,
-    ) -> Result<PlayerPlanBalance, AppError> {
-        let balance = self
-            .repo
-            .find_active_staff_allowance(staff_id)
-            .await?
-            .ok_or_else(|| AppError::forbidden_code("STAFF_ALLOWANCE_NONE"))?;
-
-        let validation = Self::validate_balance(&balance, Some(device), None);
-        if validation.valid {
-            return Ok(balance);
-        }
-
-        Err(Self::validation_to_app_error_for_balance(
-            &balance,
-            validation,
-        ))
-    }
-
-    pub async fn find_usable_for_device(
-        &self,
-        player_id: Uuid,
-        device: &Device,
-    ) -> Result<PlayerPlanBalance, AppError> {
-        self.require_usable_for_device(player_id, device).await
-    }
-
-    pub async fn require_usable_for_device(
-        &self,
-        player_id: Uuid,
-        device: &Device,
-    ) -> Result<PlayerPlanBalance, AppError> {
-        let result = self
-            .list(BalanceFilterDto {
-                player_id: Some(player_id),
-                status: Some(balance_status::ACTIVE.to_string()),
-                usable_only: Some(true),
-                limit: Some(100),
-                ..Default::default()
-            })
-            .await?;
-
-        let mut best: Option<(PlayerPlanBalance, i32)> = None;
-        let mut last_failure: Option<(String, BalanceValidationResult)> = None;
-        let mut had_scope_match = false;
-
-        for row in result.data {
-            let balance = self.get_raw(row.id).await?;
-            if !Self::device_scope_matches(&balance, device) {
-                continue;
-            }
-            had_scope_match = true;
-            let validation = Self::validate_balance(&balance, Some(device), None);
-            if validation.valid {
-                let minutes = balance.remaining_minutes;
-                if best.as_ref().is_none_or(|(_, m)| minutes > *m) {
-                    best = Some((balance, minutes));
-                }
-            } else {
-                last_failure = Some((balance.kind.clone(), validation));
-            }
-        }
-
-        if let Some((balance, _)) = best {
-            return Ok(balance);
-        }
-
-        if !had_scope_match {
-            return Err(AppError::forbidden_code("DEVICE_TYPE_NOT_ALLOWED"));
-        }
-
-        if let Some((kind, failure)) = last_failure {
-            let code = Self::validation_failure_code_for_kind(Some(kind.as_str()), &failure);
-            return Err(AppError::forbidden_code(code));
-        }
-
-        Err(AppError::forbidden_code("PLAN_NOT_ACTIVATED"))
-    }
-
-    pub async fn deduct_minutes(
-        &self,
-        balance_id: Uuid,
-        minutes: i32,
-        session_id: Option<Uuid>,
-    ) -> Result<PlayerPlanBalance, AppError> {
-        let updated = self.repo.deduct_minutes(balance_id, minutes).await?;
-
-        self.sync_balance_cache_after_mutation(&updated).await?;
-
-        self.ledger
-            .append(
-                updated.id,
-                updated.player_id,
-                -minutes,
-                ledger_reason::SESSION_USAGE,
-                None,
-                session_id,
-                updated.remaining_minutes,
-                updated.expiry_date,
-                None,
-            )
-            .await?;
-
-        Ok(updated)
-    }
-
-    pub async fn get_best_balance(&self, player_id: Uuid) -> Result<PlayerPlanBalance, AppError> {
-        let result = self
-            .list(BalanceFilterDto {
-                player_id: Some(player_id),
-                status: Some(balance_status::ACTIVE.to_string()),
-                ..Default::default()
-            })
-            .await?;
-
-        if result.data.is_empty() {
-            return Err(AppError::NotFound(format!(
-                "No active balances found for player {player_id}"
-            )));
-        }
-
-        let mut sorted = result.data;
-        sorted.sort_by(|a, b| b.remaining_minutes.cmp(&a.remaining_minutes));
-
-        let best = &sorted[0];
-        self.get_raw(best.id).await
+        AppError::forbidden_code(Self::validation_failure_code_for_balance(balance, &result))
     }
 
     pub fn enforce_player_scope(
@@ -619,25 +390,5 @@ impl BalanceService {
             valid: true,
             reason: None,
         }
-    }
-
-    async fn expire_stale_in_results(
-        &self,
-        balances: &mut [PlayerPlanBalanceResponse],
-    ) -> Result<(), AppError> {
-        let now = Utc::now();
-        for balance in balances.iter_mut() {
-            if balance.status == balance_status::ACTIVE && balance.expiry_date < now {
-                let _ = self
-                    .repo
-                    .set_status(balance.id, balance_status::EXPIRED)
-                    .await;
-                balance.status = balance_status::EXPIRED.to_string();
-                if let Ok(Some(expired)) = self.repo.find_by_id(balance.id).await {
-                    let _ = self.sync_balance_cache_after_mutation(&expired).await;
-                }
-            }
-        }
-        Ok(())
     }
 }

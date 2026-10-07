@@ -4,10 +4,25 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { handleAuthExpired } from './lib/authSession';
+import { selectedLocationId } from './lib/locationSelection';
 import '@gaming-cafe/theme/tokens.css';
 import './globals.css';
 
 configureDefaultHttpClient({
+  getRequestHeaders: (): Record<string, string> => {
+    const id = selectedLocationId();
+    return id ? { 'x-location-id': id } : {};
+  },
+  onMutationSuccess: ({ url }) => {
+    if (url.startsWith('/auth/login') || url === '/auth/refresh' || url === '/uploads/presign')
+      return;
+    window.dispatchEvent(new Event('arena:data-change'));
+    try {
+      localStorage.setItem('arena:data-revision', String(Date.now()));
+    } catch {
+      /* Optional cross-tab refresh. */
+    }
+  },
   onUnauthorized: (context) => {
     void handleAuthExpired(context);
   },

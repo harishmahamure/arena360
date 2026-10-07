@@ -1,99 +1,34 @@
-//! Integration tests for usage_sessions balanceId integrity.
-//! Run with: `cargo test --test session_balance_fk -- --ignored`
+//! Tenant SQLite rejects null or missing wallets atomically.
+mod support;
+use support::SessionFixture;
 
-use gaming_cafe_api::app::build_state;
-use gaming_cafe_api::config::load_dotenv;
-use std::sync::Arc;
-
-async fn setup() -> Option<Arc<gaming_cafe_api::app::AppState>> {
-    load_dotenv();
-    if std::env::var("DATABASE_URL").is_err() && std::env::var("DB_HOST").is_err() {
-        return None;
-    }
-    Some(build_state().await)
-}
-
-#[tokio::test]
-#[ignore = "requires DATABASE_URL"]
-async fn active_sessions_have_non_null_balance_id() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let null_count: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*)
-        FROM usage_sessions
-        WHERE "deletedAt" IS NULL
-          AND "endTime" IS NULL
-          AND "balanceId" IS NULL
-        "#,
-    )
-    .fetch_one(&state.db)
-    .await
-    .expect("count null balanceId");
-
+async fn rejects_balance(balance: Option<String>) {
+    let f = SessionFixture::new().await;
+    let player = f.player.to_string();
+    let device = f.device.to_string();
+    let venue = f.venue.to_string();
+    let result = f.tenant.db.with_immediate_writer(move |c| Box::pin(async move {
+        let at = gaming_cafe_api::time::format_sqlite_timestamp(&chrono::Utc::now()).unwrap();
+        sqlx::query("INSERT INTO usage_sessions(id,player_id,balance_id,device_id,location_id,start_time,wallet_minutes_at_start,created_at,updated_at) VALUES(?,?,?,?,?,?,120,?,?)")
+            .bind(uuid::Uuid::now_v7().to_string()).bind(player).bind(balance).bind(device).bind(venue).bind(&at).bind(&at).bind(&at).execute(c).await?; Ok(())
+    })).await;
+    assert!(result.is_err());
     assert_eq!(
-        null_count.0, 0,
-        "open sessions must have balanceId set (run repair migration)"
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM usage_sessions")
+            .fetch_one(&f.tenant.db.read_pool().unwrap())
+            .await
+            .unwrap(),
+        0
     );
+    // A failed insertion cannot leave the writer poisoned or block a valid start.
+    assert_eq!(f.start(None).await.balance_id, f.balance);
+    f.close().await;
 }
-
 #[tokio::test]
-#[ignore = "requires DATABASE_URL"]
-async fn enriched_session_omits_balance_when_wallet_missing() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let orphan_id = uuid::Uuid::new_v4();
-    let device_id: Option<(uuid::Uuid,)> = sqlx::query_as(
-        r#"SELECT id FROM devices WHERE "deletedAt" IS NULL LIMIT 1"#,
-    )
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
-    let Some((device_id,)) = device_id else {
-        eprintln!("skip: no device fixture");
-        return;
-    };
-
-    // Insert a row with a non-existent balanceId (simulates broken FK before repair).
-    // This test is only valid when balanceId is still nullable in the test DB schema.
-    let inserted = sqlx::query(
-        r#"
-        INSERT INTO usage_sessions (
-            id, "balanceId", "deviceId", "startTime", "endTime", "createdAt", "updatedAt"
-        )
-        VALUES ($1, $2, $3, NOW() - INTERVAL '1 hour', NOW(), NOW(), NOW())
-        "#,
-    )
-    .bind(orphan_id)
-    .bind(uuid::Uuid::new_v4())
-    .bind(device_id)
-    .execute(&state.db)
-    .await;
-
-    if inserted.is_err() {
-        eprintln!("skip: balanceId NOT NULL already enforced");
-        return;
-    }
-
-    let enriched = state
-        .sessions
-        .get_by_id(orphan_id)
-        .await
-        .expect("load enriched session");
-
-    assert!(
-        enriched.balance.is_none(),
-        "broken balanceId must not fabricate a balance summary"
-    );
-
-    let _ = sqlx::query(r#"DELETE FROM usage_sessions WHERE id = $1"#)
-        .bind(orphan_id)
-        .execute(&state.db)
-        .await;
+async fn active_sessions_require_non_null_balance_id() {
+    rejects_balance(None).await;
+}
+#[tokio::test]
+async fn missing_wallet_is_rejected_by_foreign_key() {
+    rejects_balance(Some(uuid::Uuid::now_v7().to_string())).await;
 }

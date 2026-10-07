@@ -1,247 +1,91 @@
-use sqlx::PgPool;
+use crate::error::AppError;
+use crate::models::{
+    CreditAccountFilterDto, CreditPlayerRow, CreditPortfolioSummary, CreditSettlement,
+    CreditSettlementDetail, CreditSettlementFilterDto, CreditSettlementListRow, CreditSummary,
+    PlayerCreditDetail, SetCreditLimitDto, SettleCreditDto,
+};
+use crate::repositories::TenantCreditRepository;
+use crate::tenancy::TenantDb;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::cache::{self, get_or_set, keys, CacheService};
-use crate::error::AppError;
-use crate::models::{
-    compute_available, validate_settlement_items, CreditAccountFilterDto, CreditPlayerRow,
-    CreditPortfolioSummary, CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto,
-    CreditSettlementListRow, CreditSummary, PlayerCreditDetail, SetCreditLimitDto, SettleCreditDto,
-};
-use crate::repositories::CreditRepository;
-use crate::services::CashRegisterService;
-use crate::services::{NotificationService, RecordNotification, Recipients};
-use crate::models::activity_kind;
-use crate::validation::validate_online_payment_ref_last4;
-
-pub struct CreditService {
-    repo: CreditRepository,
-    cache: Arc<dyn CacheService>,
-    notifications: Option<NotificationService>,
-}
-
+#[derive(Default)]
+pub struct CreditService;
 impl CreditService {
-    pub fn new(pool: PgPool, cache: Arc<dyn CacheService>) -> Self {
-        Self {
-            repo: CreditRepository::new(pool),
-            cache,
-            notifications: None,
-        }
+    pub fn new() -> Self {
+        Self
     }
-
-    pub fn with_notifications(mut self, notifications: NotificationService) -> Self {
-        self.notifications = Some(notifications);
-        self
-    }
-
-    async fn invalidate_credit(&self, player_id: Uuid) -> Result<(), AppError> {
-        cache::invalidate(
-            &*self.cache,
-            &[keys::credit_outstanding(&player_id)],
-        )
-        .await
-    }
-
-    async fn sum_outstanding_cached(&self, player_id: Uuid) -> Result<f64, AppError> {
-        let cache_key = keys::credit_outstanding(&player_id);
-        get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
-            self.repo.sum_outstanding(player_id).await
-        })
-        .await
-    }
-
-    pub async fn validate_eligibility(
+    pub async fn summary_tenant(
         &self,
+        db: Arc<TenantDb>,
         player_id: Uuid,
-        amount: f64,
     ) -> Result<CreditSummary, AppError> {
-        let (credit_enabled, credit_limit) = self.repo.is_eligible_player(player_id).await?;
-
-        if !credit_enabled {
-            return Err(AppError::Conflict(
-                "credit not enabled for this player".to_string(),
-            ));
-        }
-
-        let outstanding = self.sum_outstanding_cached(player_id).await?;
-        let available = compute_available(credit_limit, outstanding);
-
-        if amount > available + 0.001 {
-            return Err(AppError::Conflict(format!(
-                "credit limit exceeded: available {available:.2}"
-            )));
-        }
-
-        Ok(CreditSummary {
-            player_id,
-            credit_limit,
-            outstanding,
-            available,
-            credit_enabled: true,
-        })
+        TenantCreditRepository::new(db).summary(player_id).await
     }
 
-    pub async fn summary(&self, player_id: Uuid) -> Result<CreditSummary, AppError> {
-        let (credit_enabled, credit_limit) = self.repo.is_eligible_player(player_id).await?;
-        let outstanding = self.sum_outstanding_cached(player_id).await?;
-        let available = compute_available(credit_limit, outstanding);
-
-        Ok(CreditSummary {
-            player_id,
-            credit_limit,
-            outstanding,
-            available,
-            credit_enabled,
-        })
-    }
-
-    pub async fn list_credit_players(
+    pub async fn get_player_credit_tenant(
         &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+    ) -> Result<PlayerCreditDetail, AppError> {
+        TenantCreditRepository::new(db)
+            .player_detail(player_id)
+            .await
+    }
+
+    pub async fn list_credit_players_tenant(
+        &self,
+        db: Arc<TenantDb>,
         filters: CreditAccountFilterDto,
     ) -> Result<crate::dto::PaginationResult<CreditPlayerRow>, AppError> {
-        self.repo.list_credit_players(&filters).await
+        TenantCreditRepository::new(db).list_players(&filters).await
     }
 
     pub async fn portfolio_summary(&self) -> Result<CreditPortfolioSummary, AppError> {
-        self.repo.get_portfolio_summary().await
+        crate::analytics::ClickHouse::from_env()
+            .get_portfolio_summary()
+            .await
     }
 
-    pub async fn get_player_credit(&self, player_id: Uuid) -> Result<PlayerCreditDetail, AppError> {
-        let summary = self.summary(player_id).await?;
-        let transactions = self.repo.list_outstanding_txns(player_id).await?;
-        Ok(PlayerCreditDetail {
-            summary,
-            transactions,
-        })
-    }
-
-    pub async fn list_settlements(
+    pub async fn list_settlements_tenant(
         &self,
+        db: Arc<TenantDb>,
         filters: CreditSettlementFilterDto,
     ) -> Result<crate::dto::PaginationResult<CreditSettlementListRow>, AppError> {
-        self.repo.list_settlements(&filters).await
+        TenantCreditRepository::new(db)
+            .list_settlements(&filters)
+            .await
     }
 
-    pub async fn get_settlement(&self, id: Uuid) -> Result<CreditSettlementDetail, AppError> {
-        self.repo.get_settlement_by_id(id).await
-    }
-
-    pub async fn settle(
+    pub async fn get_settlement_tenant(
         &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<CreditSettlementDetail, AppError> {
+        TenantCreditRepository::new(db).settlement_detail(id).await
+    }
+
+    pub async fn settle_tenant(
+        &self,
+        db: Arc<TenantDb>,
         dto: SettleCreditDto,
         shift_id: Uuid,
         actor_id: Uuid,
-        cash_registers: &CashRegisterService,
     ) -> Result<CreditSettlement, AppError> {
-        let total = validate_settlement_items(
-            &dto.items,
-            &dto.payment_method,
-            dto.cash_amount,
-            dto.online_amount,
-        )
-        .map_err(AppError::BadRequest)?;
-
-        let online_ref = validate_online_payment_ref_last4(
-            &dto.payment_method,
-            dto.online_amount.or_else(|| {
-                if dto.payment_method == "online" {
-                    Some(total)
-                } else {
-                    None
-                }
-            }),
-            dto.online_payment_ref_last4,
-        )?;
-
-        let settlement = self
-            .repo
-            .create_settlement(
-                dto.player_id,
-                shift_id,
-                actor_id,
-                total,
-                &dto.payment_method,
-                dto.cash_amount,
-                dto.online_amount,
-                dto.notes.as_deref(),
-                online_ref.as_deref(),
-                &dto.items,
-            )
-            .await?;
-
-        self.invalidate_credit(dto.player_id).await?;
-
-        let cash_portion = match dto.payment_method.as_str() {
-            "cash" => dto.cash_amount.unwrap_or(total),
-            "split_payment" => dto.cash_amount.unwrap_or(0.0),
-            _ => 0.0,
-        };
-
-        if cash_portion > 0.0 {
-            let register = cash_registers.get_by_shift(shift_id).await?;
-            cash_registers
-                .add_entry(
-                    register.register.id,
-                    crate::models::CreateCashRegisterEntryDto {
-                        entry_type: "cash_in".to_string(),
-                        amount: cash_portion,
-                        reason: Some(format!("Credit settlement {}", settlement.id)),
-                        reference_type: Some("credit_settlement".to_string()),
-                        reference_id: Some(settlement.id),
-                    },
-                    actor_id,
-                )
-                .await?;
-        }
-
-        let _ = cache::invalidate_stats(&*self.cache).await;
-
-        if let Some(ref notifications) = self.notifications {
-            let payload = serde_json::json!({
-                "settlementId": settlement.id.to_string(),
-                "playerId": dto.player_id.to_string(),
-                "amount": total,
-                "paymentMethod": dto.payment_method,
-            });
-            let _ = notifications
-                .record_activity(RecordNotification {
-                    kind: activity_kind::CREDIT_SETTLEMENT.to_string(),
-                    title: format!("Credit settlement: ₹{total:.2}"),
-                    summary: dto.notes.clone(),
-                    payload,
-                    actor_user_id: Some(actor_id),
-                    entity_type: Some("credit_settlement".to_string()),
-                    entity_id: Some(settlement.id),
-                    recipients: Recipients::AdminAndUsers(vec![actor_id]),
-                })
-                .await;
-        }
-
-        Ok(settlement)
+        TenantCreditRepository::new(db)
+            .settle(dto, shift_id, actor_id)
+            .await
     }
 
-    pub async fn set_limit(
+    pub async fn set_limit_tenant(
         &self,
+        db: Arc<TenantDb>,
         player_id: Uuid,
         dto: SetCreditLimitDto,
         actor_id: Option<Uuid>,
     ) -> Result<CreditSummary, AppError> {
-        if dto.credit_limit < 0.0 {
-            return Err(AppError::BadRequest(
-                "creditLimit must be greater than or equal to 0".to_string(),
-            ));
-        }
-
-        self.repo
-            .set_credit_limit(player_id, dto.credit_limit, actor_id)
-            .await?;
-
-        self.invalidate_credit(player_id).await?;
-        self.summary(player_id).await
-    }
-
-    pub async fn invalidate_player_credit(&self, player_id: Uuid) -> Result<(), AppError> {
-        self.invalidate_credit(player_id).await
+        TenantCreditRepository::new(db)
+            .set_limit(player_id, &dto, actor_id)
+            .await
     }
 }

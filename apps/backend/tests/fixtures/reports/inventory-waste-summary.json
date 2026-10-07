@@ -1,0 +1,50 @@
+{
+  "request": "/inventory/waste/summary?from=2026-08-04T00%3A00%3A00Z&to=2026-10-03T00%3A00%3A00Z",
+  "data": [
+    {
+      "reasonCode": "expired",
+      "productId": "9d475123-3043-4751-a46f-d2a8fbdc008e",
+      "productName": "DEMO Water",
+      "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+      "locationName": "DEMO Cafe Counter",
+      "totalPieces": 6,
+      "estimatedCost": 72
+    },
+    {
+      "reasonCode": "expired",
+      "productId": "8a0eeaf6-6695-4839-a197-9cfaef1bcf86",
+      "productName": "DEMO Sandwich",
+      "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+      "locationName": "DEMO Cafe Counter",
+      "totalPieces": 5,
+      "estimatedCost": 325
+    },
+    {
+      "reasonCode": "expired",
+      "productId": "3e092958-94d4-4f70-ac6e-17468cc1cb60",
+      "productName": "DEMO Chips",
+      "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+      "locationName": "DEMO Cafe Counter",
+      "totalPieces": 4,
+      "estimatedCost": 100
+    },
+    {
+      "reasonCode": "expired",
+      "productId": "13a76696-e580-4fd6-a2df-d7d373ddde4a",
+      "productName": "DEMO Energy Drink",
+      "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+      "locationName": "DEMO Cafe Counter",
+      "totalPieces": 3,
+      "estimatedCost": 240
+    },
+    {
+      "reasonCode": "expired",
+      "productId": "984c0f5b-7b6b-4701-a928-b79a3e40db24",
+      "productName": "DEMO Cola",
+      "locationId": "0bd0a1f2-ad30-48ed-ab07-bcd4fc0fcbc3",
+      "locationName": "DEMO Cafe Counter",
+      "totalPieces": 2,
+      "estimatedCost": 60
+    }
+  ]
+}

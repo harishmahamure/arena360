@@ -5,208 +5,282 @@ use axum::{
 };
 use sqlx::PgPool;
 use std::sync::Arc;
-use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+use tower::limit::ConcurrencyLimitLayer;
+use tower_http::{
+    compression::CompressionLayer, cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer,
+};
+use uuid::Uuid;
 
-use crate::config::{create_pool, load_dotenv, Settings};
 use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
+use crate::config::{create_pool_for, load_dotenv, Settings};
 use crate::handlers;
-use crate::middleware::auth_middleware;
+use crate::middleware::{auth_middleware, global_rate_limit, request_context, request_deadline};
 use crate::openapi::ApiDoc;
-use crate::realtime::{Dispatcher, OutboxService, RoomService};
+use crate::realtime::{Dispatcher, RealtimeHub};
 use crate::services::{
-    AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
-    CreditService, DeviceService, EventService,     ExpenseCategoryService, ExpenseService,
-    GameService, InventoryService, KioskOrderService, NotificationService, PlanService, PlayerPlanService, ProductService, SessionService,
-    ShiftService, StaffGamingAllowanceService, StatsService, StorageConfig, StorageService, TransactionService, UnitService,
-    UserService, VendorService,
+    AuthService, BalanceService, ConfigService, CreditService, DeviceService, EventService,
+    GameService, KioskOrderService, PlanService, PlayerPlanService, PricingPolicyService,
+    ProductRecipeService, ProductService, SessionService, StaffGamingAllowanceService,
+    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 pub struct AppState {
-    pub db: PgPool,
+    pub control_db: Option<PgPool>,
+    pub leases: Option<Arc<crate::control::LeaseClient>>,
+    pub tenant_dbs: Option<Arc<crate::tenancy::TenantDbManager>>,
+    pub tenant_provisioner: Option<Arc<crate::tenancy::TenantProvisioner>>,
+    pub routing: Option<Arc<crate::routing::TenantRouter>>,
     pub cache: Arc<dyn CacheService>,
     pub settings: Arc<Settings>,
+    pub metrics: Arc<crate::metrics::Metrics>,
     pub auth: AuthService,
-    pub config: ConfigService,
+    pub config: Arc<ConfigService>,
     pub users: Arc<UserService>,
     pub devices: DeviceService,
     pub plans: PlanService,
+    pub pricing_rules: PricingPolicyService,
     pub player_plans: Arc<PlayerPlanService>,
     pub balances: Arc<BalanceService>,
     pub units: UnitService,
     pub sessions: SessionService,
-    pub shifts: ShiftService,
-    pub cash_registers: Arc<CashRegisterService>,
-    pub cash_deposits: CashDepositService,
     pub transactions: TransactionService,
     pub products: ProductService,
+    pub product_recipes: ProductRecipeService,
     pub games: GameService,
     pub storage: StorageService,
-    pub expense_categories: ExpenseCategoryService,
-    pub vendors: VendorService,
-    pub expenses: ExpenseService,
-    pub inventory: InventoryService,
     pub stats: StatsService,
     pub credit: Arc<CreditService>,
     pub staff_gaming_allowances: StaffGamingAllowanceService,
-    pub events: EventService,
-    pub notifications: NotificationService,
     pub kiosk_orders: KioskOrderService,
-    pub outbox: OutboxService,
-    pub rooms: RoomService,
-    pub ws_connections: Arc<
-        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
-    >,
+    pub ws_connections: Arc<crate::realtime::registry::ConnectionRegistry>,
+}
+
+impl AppState {
+    /// Business handlers must use the authenticated tenant's locally owned database.
+    /// Missing cell configuration is an error, never a PostgreSQL fallback.
+    pub async fn business_db(
+        &self,
+        claims: &crate::dto::JwtUserClaims,
+    ) -> Result<Arc<crate::tenancy::TenantDb>, crate::error::AppError> {
+        let tenant = Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| crate::error::AppError::Unauthorized("Invalid tenant identity".into()))?;
+        self.tenant_db(tenant).await?.ok_or_else(||
+            crate::error::AppError::Api { code: "TENANT_STORAGE_UNAVAILABLE".into(), status: axum::http::StatusCode::SERVICE_UNAVAILABLE, details: None })
+    }
+
+    pub async fn tenant_db(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<Option<Arc<crate::tenancy::TenantDb>>, crate::error::AppError> {
+        let Some(manager) = &self.tenant_dbs else {
+            return Ok(None);
+        };
+        // Request handling must never acquire ownership. A forbidden open means this
+        // cell is not the current writer (or has fenced itself); only provisioning
+        // and ownership orchestration may acquire a lease.
+        let db = manager.open(tenant_id).await?;
+        // A tenant may have been idle when its scheduled policy became due.
+        crate::repositories::TenantPricingPolicyRepository::new(db.clone()).activate_due().await?;
+        Ok(Some(db))
+    }
 }
 
 pub async fn build_state() -> Arc<AppState> {
     load_dotenv();
-    let settings = Arc::new(Settings::from_env());
-    let pool = create_pool(settings.as_ref()).await;
+    build_state_with_settings(Arc::new(Settings::from_env())).await
+}
+
+/// Construct one process using explicit configuration; operational storage is tenant SQLite.
+pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState> {
+    let realtime_hub = RealtimeHub::new(1024);
+    let control_db = if let Some(url) = settings.control_database_url.as_deref() {
+        let control_pool = create_pool_for(url, settings.as_ref()).await;
+        crate::control::migrate(&control_pool)
+            .await
+            .expect("control-plane migrations failed");
+        Some(control_pool)
+    } else {
+        None
+    };
+    let leases = if settings.roles.cell {
+        settings
+            .cell_id
+            .zip(control_db.clone())
+            .map(|(cell_id, pool)| {
+                Arc::new(
+                    crate::control::LeaseClient::new(
+                        pool,
+                        cell_id,
+                        crate::control::LeaseConfig::default(),
+                    )
+                    .expect("invalid ownership lease configuration"),
+                )
+            })
+    } else {
+        None
+    };
+    if let Some(client) = &leases {
+        client.clone().spawn_renewal();
+    }
+    let tenant_dbs = leases.as_ref().map(|leases| {
+        let manager = Arc::new(
+            crate::tenancy::TenantDbManager::new(
+                crate::tenancy::TenantDbConfig {
+                    root: settings.tenant_data_dir.clone(),
+                    ..crate::tenancy::TenantDbConfig::default()
+                },
+                leases.clone(),
+            )
+            .expect("invalid tenant database configuration")
+            .with_commit_notifier(Arc::new(realtime_hub.clone())),
+        );
+        manager.clone().spawn_reaper();
+        manager
+    });
+    if let (Some(control), Some(client), Some(manager)) = (control_db.as_ref(), leases.as_ref(), tenant_dbs.as_ref()) {
+        let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");
+        tracing::info!(recovered, "Recovered assigned tenant databases");
+    }
+    if let (Some(control), Some(manager)) = (control_db.clone(), tenant_dbs.clone()) {
+        crate::control::staff_projection::spawn(control, manager);
+    }
+    let tenant_provisioner = match (control_db.clone(), leases.clone()) {
+        (Some(control_pool), Some(leases)) => {
+            let control = Arc::new(crate::tenancy::PostgresProvisioningControl::new(
+                crate::control::Repository::new(control_pool),
+                leases,
+            ));
+            Some(Arc::new(crate::tenancy::TenantProvisioner::new(
+                settings.tenant_data_dir.clone(),
+                control,
+            )))
+        }
+        _ => None,
+    };
+    let routing = if settings.roles.router {
+        match (control_db.clone(), settings.control_database_url.clone()) {
+            (Some(control_pool), Some(control_url)) => {
+                let cache = Arc::new(crate::routing::RoutingCache::new(control_pool));
+                cache
+                    .refresh_all()
+                    .await
+                    .expect("initial routing cache refresh failed");
+                cache
+                    .clone()
+                    .spawn_refresh(std::time::Duration::from_secs(30));
+                cache.clone().spawn_invalidation_listener(control_url);
+                Some(Arc::new(
+                    crate::routing::TenantRouter::new(cache, settings.cell_id)
+                        .expect("routing proxy initialization failed"),
+                ))
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
     let cache = create_cache(settings.redis_url.as_deref()).await;
+    let metrics = Arc::new(crate::metrics::Metrics::default());
     spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);
 
-    let outbox = OutboxService::new(pool.clone());
-    let notifications = NotificationService::new(pool.clone(), outbox.clone(), cache.clone());
-    let rooms = RoomService::new(pool.clone());
-    let ws_connections: Arc<
-        tokio::sync::RwLock<Vec<Arc<tokio::sync::RwLock<crate::realtime::connection::Connection>>>>,
-    > = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    let config_service = Arc::new(ConfigService::new(cache.clone(), settings.cafe_timezone.clone()));
+    let pricing_rules = PricingPolicyService::new();
+    let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
 
-    let devices = DeviceService::new(
-        pool.clone(),
-        events.clone(),
-        outbox.clone(),
-        notifications.clone(),
-        cache.clone(),
-    );
-    let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
-    let balances = Arc::new(BalanceService::new(pool.clone(), cache.clone()));
-    let balances_for_auth = balances.clone();
+    let devices = DeviceService::new(events.clone(), cache.clone());
+    let player_plans = Arc::new(PlayerPlanService::new());
+    let balances = Arc::new(BalanceService::new(cache.clone()));
 
-    let cash_registers = Arc::new(
-        CashRegisterService::new(pool.clone(), cache.clone())
-            .with_notifications(notifications.clone()),
-    );
-
-    let credit = Arc::new(
-        CreditService::new(pool.clone(), cache.clone()).with_notifications(notifications.clone()),
-    );
+    let credit = Arc::new(CreditService::new());
 
     // Spawn the realtime dispatcher
-    let dispatcher = Dispatcher::new(pool.clone(), ws_connections.clone());
+    let dispatcher = Dispatcher::new(
+        ws_connections.clone(),
+        realtime_hub,
+        tenant_dbs.clone(),
+        metrics.clone(),
+    );
     tokio::spawn(dispatcher.run());
 
-    let notifications_for_cleanup = notifications.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
-        loop {
+    if let Some(manager) = tenant_dbs.clone() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
             interval.tick().await;
-            match notifications_for_cleanup.cleanup(7).await {
-                Ok(count) if count > 0 => {
-                    tracing::info!("Notification retention cleanup: removed {count} rows");
+            loop {
+                interval.tick().await;
+                for db in manager.open_handles().await {
+                    if let Err(error) = crate::repositories::TenantPricingPolicyRepository::new(db)
+                        .activate_due()
+                        .await
+                    {
+                        tracing::warn!(%error, "Tenant scheduled pricing activation failed");
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("Notification retention cleanup failed: {e}");
-                }
-                _ => {}
             }
-        }
-    });
+        });
+    }
 
-    let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
+    if let Some(manager) = tenant_dbs.clone() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                for db in manager.open_handles().await {
+                    match crate::repositories::TenantNotificationRepository::new(db).cleanup_notifications(7).await {
+                        Ok(count) if count > 0 => tracing::info!(count, "Tenant notification retention cleanup"),
+                        Err(error) => tracing::warn!(%error, "Tenant notification retention cleanup failed"),
+                        _ => {}
+                    }
+                }
+            }
+        });
+    }
 
-    let mut shifts = ShiftService::new(pool.clone());
-    shifts.set_cash_registers(cash_registers.clone());
-    shifts.set_notifications(notifications.clone());
+    let users = Arc::new(UserService::new());
 
     Arc::new(AppState {
-        auth: AuthService::new(
-            pool.clone(),
-            settings.clone(),
-            balances_for_auth,
-            users.clone(),
-        ),
-        config: ConfigService::new(pool.clone(), cache.clone()),
+        auth: AuthService::new(settings.clone()).with_control_pool(control_db.clone()),
+        config: config_service.clone(),
         users: users.clone(),
         devices: devices.clone(),
-        plans: PlanService::new(pool.clone(), cache.clone()),
+        plans: PlanService::new(config_service.clone()),
+        pricing_rules,
         player_plans: player_plans.clone(),
         balances: balances.clone(),
-        units: UnitService::new(pool.clone(), cache.clone()),
+        units: UnitService::new(),
         sessions: SessionService::new(
-            pool.clone(),
             devices,
             balances.clone(),
             events.clone(),
-            outbox.clone(),
-            notifications.clone(),
-            settings.cafe_timezone.clone(),
+            config_service.clone(),
+            PricingPolicyService::new(),
             cache.clone(),
         ),
-        shifts,
-        cash_registers: cash_registers.clone(),
-        cash_deposits: CashDepositService::new(
-            pool.clone(),
-            outbox.clone(),
-            notifications.clone(),
-            cash_registers.clone(),
-        ),
-        transactions: TransactionService::new(
-            pool.clone(),
-            balances.clone(),
-            credit.clone(),
-            events.clone(),
-            outbox.clone(),
-            notifications.clone(),
-            settings.cafe_timezone.clone(),
-            cache.clone(),
-        ),
+        transactions: TransactionService::new(),
         credit,
         staff_gaming_allowances: StaffGamingAllowanceService::new(
-            pool.clone(),
-            users.clone(),
-            balances.clone(),
-            cache.clone(),
+            balances.clone(), config_service.clone(),
         ),
-        products: ProductService::new(pool.clone(), cache.clone()),
-        games: GameService::new(pool.clone(), cache.clone()),
+        products: ProductService::new(),
+        product_recipes: ProductRecipeService::new(),
+        games: GameService::new(),
         storage: StorageService::new(StorageConfig::from_env()),
-        expense_categories: ExpenseCategoryService::new(pool.clone(), cache.clone()),
-        vendors: VendorService::new(pool.clone()),
-        expenses: ExpenseService::new(
-            pool.clone(),
-            CashRegisterService::new(pool.clone(), cache.clone()),
-            ShiftService::new(pool.clone()),
-            outbox.clone(),
-            notifications.clone(),
-        ),
-        inventory: InventoryService::new(
-            pool.clone(),
-            settings.cafe_timezone.clone(),
-            outbox.clone(),
-            notifications.clone(),
-            cache.clone(),
-        ),
-        stats: StatsService::new(pool.clone(), cache.clone()),
-        kiosk_orders: KioskOrderService::new(
-            pool.clone(),
-            notifications.clone(),
-            outbox.clone(),
-            settings.cafe_timezone.clone(),
-        ),
-        notifications,
-        outbox,
-        rooms,
+        stats: StatsService::new(crate::analytics::ClickHouse::from_env(), cache.clone()),
+        kiosk_orders: KioskOrderService::new(config_service.clone()),
         ws_connections,
-        db: pool,
+        control_db,
+        leases,
+        tenant_dbs,
+        tenant_provisioner,
+        routing,
         cache,
         settings,
-        events,
+        metrics,
     })
 }
 
@@ -218,13 +292,43 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/ready", get(handlers::health::ready_check))
         .route("/auth/login/admin", post(handlers::auth::login_admin))
         .route("/auth/login/staff", post(handlers::auth::login_staff))
+        .route("/auth/me", get(handlers::auth::current_panel_user))
+        .route("/auth/refresh", post(handlers::auth::refresh_panel_session))
+        .route("/auth/staff-shift", post(handlers::auth::resume_staff_shift))
+        .route(
+            "/auth/admin-shift-close",
+            post(handlers::auth::complete_admin_login),
+        )
+        .route("/access", get(handlers::access::snapshot))
+        .route("/access/self", get(handlers::access::self_access))
+        .route("/access/roles", post(handlers::access::create_role))
+        .route(
+            "/access/roles/{id}/delete",
+            post(handlers::access::delete_role),
+        )
+        .route(
+            "/access/roles/{id}",
+            put(handlers::access::update_role).delete(handlers::access::delete_role),
+        )
+        .route("/access/members", post(handlers::access::create_member))
+        .route("/access/members/{id}", put(handlers::access::save_member))
+        .route(
+            "/access/modules/{module}",
+            put(handlers::access::save_module),
+        )
+        .route("/auth/login/panel", post(handlers::auth::login_panel))
+        .route(
+            "/auth/login/panel/mfa",
+            post(handlers::auth::verify_panel_mfa),
+        )
         .route("/auth/login/player", post(handlers::auth::login_player))
-        .route("/auth/register/player", post(handlers::auth::register_player))
+        .route(
+            "/auth/register/player",
+            post(handlers::auth::register_player),
+        )
         .route("/auth/register", post(handlers::auth::register))
-        .route("/auth/sso/tokens", post(handlers::auth::create_sso_token))
-        .route("/auth/sso/redeem", post(handlers::auth::redeem_sso_token))
-        .route("/auth/device-pairing", post(handlers::auth::device_pairing))
         .route("/stats/dashboard", get(handlers::stats::dashboard_stats))
+        .route("/stats/business", get(handlers::stats::business_stats))
         .route(
             "/stats/staff-dashboard",
             get(handlers::stats::staff_dashboard_stats),
@@ -247,6 +351,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::stats::finance_variance_stats),
         )
         .route("/users", get(handlers::users::list_users))
+        .route("/users/me/avatar", put(handlers::users::update_own_avatar))
         .route(
             "/users/{id}",
             get(handlers::users::get_user).put(handlers::users::update_user),
@@ -272,6 +377,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/devices/provision",
             post(handlers::devices::provision_device),
+        )
+        .route(
+            "/products/{id}/location-scope",
+            get(handlers::catalog_scope::get_product).put(handlers::catalog_scope::save_product),
+        )
+        .route(
+            "/plans/{id}/location-scope",
+            get(handlers::catalog_scope::get_plan).put(handlers::catalog_scope::save_plan),
         )
         .route("/plans/active", get(handlers::plans::get_active_plans))
         .route(
@@ -346,6 +459,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/shifts/handover", post(handlers::shifts::handover_shift))
         .route("/shifts/close", post(handlers::shifts::close_shift))
         .route("/shifts/clock-in", post(handlers::shifts::clock_in))
+        .route(
+            "/shifts/start-context",
+            get(handlers::shifts::start_context),
+        )
+        .route("/shifts/start", post(handlers::shifts::start_shift))
         .route("/shifts/clock-out", patch(handlers::shifts::clock_out))
         .route("/shifts/active", get(handlers::shifts::get_active_shift))
         .route("/shifts", get(handlers::shifts::list_shifts))
@@ -387,25 +505,30 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::kiosk_orders::current_order),
         )
         .route(
-            "/kiosk-orders",
-            get(handlers::kiosk_orders::list_orders),
+            "/kiosk-orders/kitchen/tickets",
+            get(handlers::kitchen::list),
         )
         .route(
+            "/kiosk-orders/kitchen/tickets/{id}",
+            patch(handlers::kitchen::advance),
+        )
+        .route("/kiosk-orders/kitchen/menu", get(handlers::kitchen::menu))
+        .route(
+            "/kiosk-orders/kitchen/menu/{id}",
+            put(handlers::kitchen::save_menu),
+        )
+        .route(
+            "/stats/finance/report",
+            get(handlers::finance_report::report),
+        )
+        .route("/kiosk-orders", get(handlers::kiosk_orders::list_orders))
+        .route(
             "/kiosk-orders/{id}",
-            get(handlers::kiosk_orders::get_order)
-                .patch(handlers::kiosk_orders::update_order),
+            get(handlers::kiosk_orders::get_order).patch(handlers::kiosk_orders::update_order),
         )
         .route(
             "/kiosk-orders/{id}/convert",
             post(handlers::kiosk_orders::convert_order),
-        )
-        .route(
-            "/tv/sessions/current",
-            get(handlers::console_tv::current_session),
-        )
-        .route(
-            "/tv/sessions/{id}/end",
-            patch(handlers::console_tv::end_session),
         )
         .route(
             "/transactions",
@@ -422,10 +545,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::products::list_products).post(handlers::products::create_product),
         )
         .route(
+            "/products/current-prices",
+            get(handlers::products::current_prices),
+        )
+        .route(
             "/products/{id}",
             get(handlers::products::get_product)
                 .patch(handlers::products::update_product)
                 .delete(handlers::products::delete_product),
+        )
+        .route(
+            "/products/{id}/recipe",
+            get(handlers::products::get_recipe).put(handlers::products::save_recipe),
         )
         .route(
             "/games",
@@ -513,10 +644,55 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             patch(handlers::inventory::update_location),
         )
         .route("/inventory/stock", get(handlers::inventory::list_stock))
+        .route("/inventory/overview", get(handlers::procurement::overview))
+        .route(
+            "/inventory/movements",
+            get(handlers::procurement::list_movements),
+        )
+        .route(
+            "/inventory/reorder-rules",
+            get(handlers::procurement::list_reorder_rules)
+                .post(handlers::procurement::upsert_reorder_rule),
+        )
+        .route(
+            "/inventory/reorder-suggestions",
+            get(handlers::procurement::reorder_suggestions),
+        )
+        .route(
+            "/inventory/purchase-orders",
+            get(handlers::procurement::list_orders).post(handlers::procurement::create_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}",
+            get(handlers::procurement::get_order).patch(handlers::procurement::update_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/submit",
+            post(handlers::procurement::submit_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/approve",
+            post(handlers::procurement::approve_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/reject",
+            post(handlers::procurement::reject_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/mark-ordered",
+            post(handlers::procurement::mark_ordered),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/cancel",
+            post(handlers::procurement::cancel_order),
+        )
+        .route(
+            "/inventory/purchase-orders/{id}/receipts",
+            post(handlers::procurement::receive_order),
+        )
         .route(
             "/inventory/adjustments",
-            get(handlers::inventory::list_adjustments)
-                .post(handlers::inventory::create_adjustment),
+            get(handlers::inventory::list_adjustments).post(handlers::inventory::create_adjustment),
         )
         .route(
             "/inventory/adjustments/{id}",
@@ -585,10 +761,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/credit/accounts",
             get(handlers::credit::list_credit_accounts),
         )
-        .route(
-            "/credit/summary",
-            get(handlers::credit::credit_summary),
-        )
+        .route("/credit/summary", get(handlers::credit::credit_summary))
         .route(
             "/credit/players/{id}",
             get(handlers::credit::get_player_credit),
@@ -601,7 +774,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/credit/settlements/{id}",
             get(handlers::credit::get_settlement),
         )
-        .route("/notifications", get(handlers::notifications::list_notifications))
+        .route(
+            "/notifications",
+            get(handlers::notifications::list_notifications),
+        )
         .route(
             "/notifications/unread-count",
             get(handlers::notifications::unread_count),
@@ -614,8 +790,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/notifications/{id}/read",
             patch(handlers::notifications::mark_read),
         )
-        .route("/activity-log", get(handlers::notifications::list_activity_log))
+        .route(
+            "/activity-log",
+            get(handlers::notifications::list_activity_log),
+        )
         .route("/realtime", get(crate::realtime::handler::ws_upgrade))
+        .route("/metrics", get(crate::metrics::prometheus))
         .route(
             "/realtime/rooms",
             get(handlers::realtime_rooms::list_rooms).post(handlers::realtime_rooms::create_room),
@@ -628,20 +808,98 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/realtime/rooms/{id}/members/{user_id}",
             delete(handlers::realtime_rooms::remove_member),
         )
+        .route("/branding", get(handlers::config::branding))
         .route("/config", get(handlers::config::list_config))
         .route(
             "/config/{key}",
             get(handlers::config::get_config).put(handlers::config::upsert_config),
         )
+        .route(
+            "/organizations/{org_id}/settings/catalog",
+            get(handlers::config::settings_catalog),
+        )
+        .route(
+            "/organizations/{org_id}/locations",
+            get(handlers::config::venue_locations).post(handlers::config::create_venue_location),
+        )
+        .route(
+            "/organizations/{org_id}/locations/{location_id}",
+            put(handlers::config::update_venue_location),
+        )
+        .route(
+            "/organizations/{org_id}/settings/effective",
+            get(handlers::config::effective_settings),
+        )
+        .route(
+            "/organizations/{org_id}/settings/history",
+            get(handlers::config::setting_history),
+        )
+        .route(
+            "/organizations/{org_id}/settings/overrides/{key}",
+            put(handlers::config::upsert_setting_override)
+                .delete(handlers::config::delete_setting_override),
+        )
+        .route(
+            "/organizations/{org_id}/configuration-snapshot",
+            get(handlers::config::configuration_snapshot),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets",
+            get(handlers::pricing_rules::list_rule_sets)
+                .post(handlers::pricing_rules::create_rule_set),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions",
+            get(handlers::pricing_rules::list_versions)
+                .post(handlers::pricing_rules::create_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/validate",
+            post(handlers::pricing_rules::validate_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/simulate",
+            post(handlers::pricing_rules::simulate_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/publish",
+            post(handlers::pricing_rules::publish_version),
+        )
+        .route(
+            "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/rollback",
+            post(handlers::pricing_rules::rollback_version),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::auth::authorize_tenant_request,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::routing::route_tenant_request,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
         ))
         .with_state(state.clone());
 
-    let mut router = Router::new().merge(api);
+    let rpc = crate::rpc::router(api.clone(), state.metrics.clone());
+    let mut router = if state.settings.legacy_rest_enabled {
+        tracing::warn!("LEGACY_REST_ENABLED is active; business REST endpoints are public");
+        Router::new().merge(api).merge(rpc)
+    } else {
+        Router::new()
+            .route("/", get(|| async { "Game Zone API" }))
+            .route("/health", get(handlers::health::health_check_legacy))
+            .route("/health/live", get(handlers::health::live_check))
+            .route("/health/ready", get(handlers::health::ready_check))
+            .route("/realtime", get(crate::realtime::handler::ws_upgrade))
+            .route("/metrics", get(crate::metrics::prometheus))
+            .with_state(state.clone())
+            .merge(rpc)
+    };
 
-    if !state.settings.is_production() {
+    if state.settings.legacy_rest_enabled && !state.settings.is_production() {
         router = router
             .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()));
     }
@@ -650,7 +908,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .merge(router)
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
+        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
+        .layer(middleware::from_fn(request_deadline))
+        .layer(ConcurrencyLimitLayer::new(
+            state.settings.max_concurrent_requests,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            global_rate_limit,
+        ))
         .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn(request_context))
 }
 
 pub async fn create_app() -> Router {

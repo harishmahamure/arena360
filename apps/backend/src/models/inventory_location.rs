@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct InventoryLocation {
     pub id: Uuid,
+    pub venue_location_id: Uuid,
     pub name: String,
     pub kind: String,
     pub is_active: bool,
@@ -18,25 +19,28 @@ pub struct InventoryLocation {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateInventoryLocationDto {
     pub name: String,
+    pub venue_location_id: Option<Uuid>,
     pub kind: String,
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInventoryLocationDto {
     pub name: Option<String>,
+    pub venue_location_id: Option<Uuid>,
     pub kind: Option<String>,
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryLocationFilterDto {
+    pub venue_location_id: Option<Uuid>,
     pub kind: Option<String>,
     pub is_active: Option<bool>,
     pub page: Option<i64>,

@@ -171,7 +171,12 @@ export default function PlanTransactionsPage() {
     [navigate],
   );
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['plan-transactions', page, statusFilter],
     queryFn: () =>
       getTransactions({
@@ -194,6 +199,8 @@ export default function PlanTransactionsPage() {
 
   return (
     <ListPage<TransactionResponse>
+      error={listError ? 'Could not load records. Please try again.' : null}
+      onRetry={() => void refetch()}
       title="Plan sales"
       description="Plan purchases and assignments for players."
       data={enrichedTransactions}

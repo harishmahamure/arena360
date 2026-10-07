@@ -1,9 +1,17 @@
-import { subDays } from 'date-fns';
+import { isValid, parseISO, subDays } from 'date-fns';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { endOfTodayIST, now, startOfTodayIST } from '../utils/date';
 
-export type StatsDatePreset = 'today' | 'last7' | 'mtd';
+export type StatsDatePreset = 'today' | 'last7' | 'last30' | 'mtd';
+
+export function isStatsDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && isValid(parseISO(value));
+}
+
+export function isStatsRange(start: string, end: string): boolean {
+  return isStatsDate(start) && isStatsDate(end) && start <= end;
+}
 
 function calendarDateInIST(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -38,6 +46,8 @@ function presetRange(preset: StatsDatePreset): { start: string; end: string } {
       return { start: defaultStart(), end };
     case 'last7':
       return { start: calendarDateInIST(subDays(current, 6)), end };
+    case 'last30':
+      return { start: calendarDateInIST(subDays(current, 29)), end };
     case 'mtd':
       return { start: `${end.slice(0, 8)}01`, end };
   }
@@ -47,11 +57,14 @@ function presetRange(preset: StatsDatePreset): { start: string; end: string } {
  * URL-persisted stats date range with draft edits and Apply.
  * Draft changes do not hit the API until `apply()` commits them to the URL.
  */
-export function useStatsDateRange() {
+export function useStatsDateRange(defaultPreset: StatsDatePreset = 'today') {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const appliedStart = searchParams.get('startDate') || defaultStart();
-  const appliedEnd = searchParams.get('endDate') || defaultEnd();
+  const fallback = presetRange(defaultPreset);
+  const urlStart = searchParams.get('startDate') || fallback.start;
+  const urlEnd = searchParams.get('endDate') || fallback.end;
+  const appliedStart = isStatsRange(urlStart, urlEnd) ? urlStart : fallback.start;
+  const appliedEnd = isStatsRange(urlStart, urlEnd) ? urlEnd : fallback.end;
   const appliedCompare = searchParams.get('compare') !== 'false';
 
   const [draftStart, setDraftStart] = useState(appliedStart);
@@ -93,6 +106,7 @@ export function useStatsDateRange() {
   }, []);
 
   const apply = useCallback(() => {
+    if (!isStatsRange(draftStart, draftEnd)) return;
     const next = new URLSearchParams(searchParams);
     next.set('startDate', draftStart);
     next.set('endDate', draftEnd);

@@ -1,4 +1,6 @@
+import { type ClientRealtimeFrame, decodeServerFrame, encodeClientFrame } from '@gaming-cafe/proto';
 import { local } from '@gaming-cafe/utils';
+import { handleAuthExpired } from '../authSession';
 
 export interface ServerFrame {
   type: string;
@@ -29,69 +31,109 @@ export class RealtimeClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private disposed = false;
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private lastReceived = 0;
+  private connectionTimer: ReturnType<typeof setTimeout> | undefined;
+  private statusHandler: (status: 'connecting' | 'connected' | 'offline') => void;
 
-  constructor(url: string) {
+  constructor(
+    url: string,
+    onStatus: (status: 'connecting' | 'connected' | 'offline') => void = () => {},
+  ) {
     this.url = url;
+    this.statusHandler = onStatus;
   }
 
   connect(): void {
-    if (this.disposed) return;
+    if (this.disposed || this.ws) return;
 
     const token = local.get<string>('accessToken');
     if (!token) return;
 
+    this.statusHandler('connecting');
     try {
-      this.ws = new WebSocket(this.url, ['bearer', token]);
+      this.ws = new WebSocket(this.url, ['arena360.protobuf.v1', 'bearer', token]);
+      this.ws.binaryType = 'arraybuffer';
     } catch {
       this.scheduleReconnect();
       return;
     }
 
-    this.ws.onopen = () => {
+    const socket = this.ws;
+    this.connectionTimer = setTimeout(() => socket.close(), 10_000);
+    socket.onopen = () => {
+      if (this.disposed || this.ws !== socket) return;
+      clearTimeout(this.connectionTimer);
+      this.lastReceived = Date.now();
+      this.statusHandler('connected');
+      this.heartbeat = setInterval(() => {
+        if (Date.now() - this.lastReceived > 60_000) socket.close();
+        else this.send({ type: 'Ping' });
+      }, 25_000);
       this.reconnectAttempts = 0;
       if (this.subscriptions.size > 0) {
         this.send({ type: 'Subscribe', channels: [...this.subscriptions] });
       }
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.disposed || this.ws !== socket) return;
+      this.lastReceived = Date.now();
       let frame: ServerFrame;
       try {
-        frame = JSON.parse(event.data as string);
+        frame = decodeServerFrame(new Uint8Array(event.data as ArrayBuffer));
       } catch {
         return;
       }
 
-      if (frame.type === 'Event' && frame.msg_id != null) {
-        this.send({ type: 'Ack', msg_id: frame.msg_id });
-        local.set(LAST_ACK_KEY, frame.msg_id);
-      }
-
       if (frame.type === 'Pong') return;
 
+      let delivered = true;
       for (const handler of this.globalHandlers) {
-        handler(frame);
+        try {
+          handler(frame);
+        } catch {
+          delivered = false;
+        }
       }
 
       if (frame.event_type) {
         const eventHandlers = this.handlers.get(frame.event_type);
         if (eventHandlers) {
           for (const handler of eventHandlers) {
-            handler(frame);
+            try {
+              handler(frame);
+            } catch {
+              delivered = false;
+            }
           }
         }
       }
+      if (delivered && frame.type === 'Event' && frame.msg_id != null) {
+        this.send({ type: 'Ack', msg_id: frame.msg_id });
+        local.set(LAST_ACK_KEY, frame.msg_id);
+      }
     };
 
-    this.ws.onclose = () => {
+    socket.onclose = (event) => {
+      if (this.ws !== socket) return;
+      clearTimeout(this.connectionTimer);
+      if (this.heartbeat) clearInterval(this.heartbeat);
+      this.heartbeat = null;
       this.ws = null;
+      this.statusHandler('offline');
+      if (event?.code === 4001) {
+        this.disposed = true;
+        void handleAuthExpired({ url: '/realtime', authHeader: token });
+        return;
+      }
       if (!this.disposed) {
         this.scheduleReconnect();
       }
     };
 
-    this.ws.onerror = () => {
-      this.ws?.close();
+    socket.onerror = () => {
+      socket.close();
     };
   }
 
@@ -134,6 +176,10 @@ export class RealtimeClient {
 
   disconnect(): void {
     this.disposed = true;
+    clearTimeout(this.connectionTimer);
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = null;
+    this.statusHandler('offline');
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -146,9 +192,9 @@ export class RealtimeClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  private send(data: Record<string, unknown>): void {
+  private send(data: ClientRealtimeFrame): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
+      this.ws.send(encodeClientFrame(data));
     }
   }
 

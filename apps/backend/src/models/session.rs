@@ -20,6 +20,8 @@ pub struct UsageSession {
     pub time_credits_consumed: Option<i32>,
     pub wallet_minutes_at_start: Option<i32>,
     pub source_plan_id_at_start: Option<Uuid>,
+    #[serde(default)]
+    pub deduction_profile_snapshot: Option<Value>,
     pub created_by: Option<Uuid>,
     pub updated_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -258,15 +260,18 @@ impl UsageSessionRow {
                 .unwrap_or_else(|| "available".to_string()),
         });
 
-        let plan_at_start = self.plan_start_name.as_ref().map(|name| SessionPlanSummary {
-            id: self.source_plan_id_at_start.unwrap_or_default(),
-            name: name.clone(),
-            plan_type: self
-                .plan_start_type
-                .clone()
-                .unwrap_or_else(|| "time_based".to_string()),
-            time_credits: self.plan_start_time_credits.unwrap_or(0),
-        });
+        let plan_at_start = self
+            .plan_start_name
+            .as_ref()
+            .map(|name| SessionPlanSummary {
+                id: self.source_plan_id_at_start.unwrap_or_default(),
+                name: name.clone(),
+                plan_type: self
+                    .plan_start_type
+                    .clone()
+                    .unwrap_or_else(|| "time_based".to_string()),
+                time_credits: self.plan_start_time_credits.unwrap_or(0),
+            });
 
         UsageSessionResponse {
             id: self.id,
@@ -408,6 +413,9 @@ mod tests {
 
         let response = row.into_response();
         assert_eq!(response.balance_id, balance_id);
-        assert!(response.balance.is_none(), "orphan balanceId must not fabricate balance");
+        assert!(
+            response.balance.is_none(),
+            "orphan balanceId must not fabricate balance"
+        );
     }
 }

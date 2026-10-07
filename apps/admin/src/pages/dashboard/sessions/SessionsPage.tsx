@@ -59,7 +59,12 @@ export default function SessionsPage() {
   const sessionFilter: SessionFilter =
     activeParam === 'true' ? 'active' : activeParam === 'false' ? 'completed' : 'all';
 
-  const { data, isLoading, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['sessions', page, activeParam],
     queryFn: () =>
       getSessions({
@@ -286,6 +291,8 @@ export default function SessionsPage() {
   return (
     <>
       <ListPage<SessionResponse>
+        error={listError ? 'Could not load records. Please try again.' : null}
+        onRetry={() => void refetch()}
         title="Sessions"
         description="Manage player gaming sessions and usage tracking."
         data={sessions}

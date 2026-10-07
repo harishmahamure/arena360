@@ -313,6 +313,7 @@ export default function ViewPlanTransactionPage() {
             </Typography>
             <Divider sx={{ mb: 3 }} />
             <FormBuilder<UpdatePlanTransactionStatusFormData>
+              wizard
               fields={updateStatusFormFields}
               schema={updatePlanTransactionStatusSchema}
               defaultValues={{

@@ -1,0 +1,75 @@
+schema_version: 1
+status: draft
+last_reviewed: 2026-09-24
+source: docs/PRODUCT_VISION.md
+
+states:
+  - proposed
+  - discovery
+  - ready
+  - active
+  - validating
+  - done
+  - paused
+
+milestones:
+  - id: M00
+    name: System definition and replacement boundaries
+    state: proposed
+    depends_on: []
+    plan: docs/planning/milestones/M00_SYSTEM_DEFINITION.md
+  - id: M01
+    name: Tenant and policy foundation
+    state: proposed
+    depends_on: [M00]
+    plan: docs/planning/milestones/M01_TENANT_POLICY_FOUNDATION.md
+  - id: M02
+    name: Shared UX system and Arena360 Admin
+    state: proposed
+    depends_on: [M00, M01]
+    plan: docs/planning/milestones/M02_ADMIN_AND_UX_FOUNDATION.md
+  - id: M03
+    name: Arena360 Staff and core venue operations
+    state: proposed
+    depends_on: [M02]
+    plan: docs/planning/milestones/M03_CORE_VENUE_OPERATIONS.md
+  - id: M04
+    name: Commercial operations
+    state: proposed
+    depends_on: [M03]
+    plan: docs/planning/milestones/M04_COMMERCIAL_OPERATIONS.md
+  - id: M05
+    name: Arena360 Owner
+    state: proposed
+    depends_on: [M03, M04]
+    plan: docs/planning/milestones/M05_OWNER_CONTROL_PLANE.md
+  - id: M06
+    name: Arena360 Player self-service
+    state: proposed
+    depends_on: [M01, M03, M04]
+    plan: docs/planning/milestones/M06_PLAYER_SELF_SERVICE.md
+  - id: M07
+    name: Edge and offline continuity
+    state: proposed
+    depends_on: [M01, M03]
+    plan: docs/planning/milestones/M07_EDGE_OFFLINE.md
+  - id: M08
+    name: Hub and venue automation
+    state: proposed
+    depends_on: [M07]
+    plan: docs/planning/milestones/M08_HUB_AUTOMATION.md
+  - id: M09
+    name: SaaS, local licensing, and abuse controls
+    state: proposed
+    depends_on: [M01, M05, M07]
+    plan: docs/planning/milestones/M09_COMMERCIAL_PLATFORM.md
+  - id: M10
+    name: Intelligence and ecosystem foundations
+    state: proposed
+    depends_on: [M05, M09]
+    plan: docs/planning/milestones/M10_INTELLIGENCE_ECOSYSTEM.md
+  - id: M11
+    name: Arena360 marketing website
+    state: proposed
+    depends_on: [M00, M09]
+    plan: docs/planning/milestones/M11_MARKETING_WEBSITE.md

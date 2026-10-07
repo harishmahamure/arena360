@@ -1,27 +1,17 @@
 import { TrendingDown, TrendingUp } from '@mui/icons-material';
-import { Box, Card, CardContent, Chip, Typography } from '@mui/material';
+import { Box, Card, Chip, Typography } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import type { ReactNode } from 'react';
-
 export type StatTone = 'success' | 'info' | 'warning' | 'error' | 'primary';
-
 interface StatCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
-  change?: {
-    value: string | number;
-    positive: boolean;
-  };
+  change?: { value: string | number; positive: boolean };
   icon: ReactNode;
   tone: StatTone;
-  /** Palette shade for icon tint; defaults to `main`. */
   shade?: 'main' | 'dark' | 'light';
 }
-
-/**
- * Reusable stat card component for displaying dashboard metrics
- */
 export function StatCard({
   title,
   value,
@@ -32,54 +22,50 @@ export function StatCard({
   shade = 'main',
 }: StatCardProps) {
   const theme = useTheme();
-  const paletteColor = theme.palette[tone][shade];
-
+  const color = theme.palette[tone][shade];
   return (
-    <Card className="hover-lift" sx={{ height: '100%' }}>
-      <CardContent>
+    <Card sx={{ p: 2.5, height: '100%' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography fontSize={12} color="text.secondary" fontWeight={550}>
+          {title}
+        </Typography>
         <Box
           sx={{
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            mb: 2,
+            p: 0.75,
+            borderRadius: 1.5,
+            color,
+            bgcolor: alpha(color, 0.07),
+            '& svg': { fontSize: 18 },
           }}
         >
-          <Box
-            sx={{
-              width: 48,
-              height: 48,
-              borderRadius: 2,
-              bgcolor: alpha(paletteColor, 0.08),
-              color: paletteColor,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {icon}
-          </Box>
-          {change && Number.isFinite(Number(change.value)) && (
-            <Chip
-              size="small"
-              icon={change.positive ? <TrendingUp /> : <TrendingDown />}
-              label={`${change.positive ? '+' : ''}${change.value}%`}
-              color={change.positive ? 'success' : 'error'}
-            />
-          )}
+          {icon}
         </Box>
-        <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5 }}>
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Typography
+          sx={{ fontSize: 28, fontWeight: 650, letterSpacing: '-.04em', lineHeight: 1.2 }}
+        >
           {value}
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-          {title}
-        </Typography>
-        {subtitle && (
-          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
-            {subtitle}
-          </Typography>
+        {change && Number.isFinite(Number(change.value)) && (
+          <Chip
+            icon={change.positive ? <TrendingUp /> : <TrendingDown />}
+            label={`${change.positive ? '+' : ''}${change.value}%`}
+            color={change.positive ? 'success' : 'error'}
+            size="small"
+          />
         )}
-      </CardContent>
+      </Box>
+      {subtitle && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: 'block', mt: 1.5, whiteSpace: 'pre-line', fontSize: 10 }}
+        >
+          {subtitle}
+        </Typography>
+      )}
     </Card>
   );
 }

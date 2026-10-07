@@ -1,67 +1,24 @@
-use chrono::{Duration, Utc};
-use sqlx::PgPool;
+use crate::error::AppError;
+use crate::models::{
+    balance_status, SetStaffGamingAllowanceDto, StaffGamingAllowanceStatus,
+    StaffGamingAllowanceSummary,
+};
+use crate::services::{BalanceService, ConfigService};
+use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::cache::{self, keys, CacheService};
-use crate::error::AppError;
-use crate::models::{
-    balance_status, ledger_reason, plan_kind, SetStaffGamingAllowanceDto,
-    StaffGamingAllowanceStatus, StaffGamingAllowanceSummary, STAFF_ALLOWANCE_PERIOD_DAYS,
-};
-use crate::repositories::{BalanceRepository, LedgerRepository};
-use crate::services::{BalanceService, UserService};
-
 pub struct StaffGamingAllowanceService {
-    balances: BalanceRepository,
-    ledger: LedgerRepository,
-    users: Arc<UserService>,
     balance_service: Arc<BalanceService>,
-    cache: Arc<dyn CacheService>,
+    settings: Arc<ConfigService>,
 }
-
 impl StaffGamingAllowanceService {
-    pub fn new(
-        pool: PgPool,
-        users: Arc<UserService>,
-        balance_service: Arc<BalanceService>,
-        cache: Arc<dyn CacheService>,
-    ) -> Self {
+    pub fn new(balance_service: Arc<BalanceService>, settings: Arc<ConfigService>) -> Self {
         Self {
-            balances: BalanceRepository::new(pool.clone()),
-            ledger: LedgerRepository::new(pool),
-            users,
             balance_service,
-            cache,
+            settings,
         }
     }
-
-    async fn invalidate(&self, user_id: Uuid) -> Result<(), AppError> {
-        cache::invalidate(
-            &*self.cache,
-            &[keys::balance_active(
-                &user_id,
-                &format!("null:null:{}", plan_kind::STAFF_ALLOWANCE),
-            )],
-        )
-        .await
-    }
-
-    async fn ensure_staff_user(&self, user_id: Uuid) -> Result<(), AppError> {
-        let user = self.users.get_by_id(user_id).await?;
-        if user.role.as_deref() != Some("staff") {
-            return Err(AppError::BadRequest(
-                "Gaming allowance can only be configured for staff users".to_string(),
-            ));
-        }
-        if !user.is_active {
-            return Err(AppError::BadRequest(
-                "Cannot configure allowance for inactive staff".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
     fn summary_from_balance(
         user_id: Uuid,
         balance: &crate::models::PlayerPlanBalance,
@@ -93,111 +50,70 @@ impl StaffGamingAllowanceService {
         }
     }
 
-    pub async fn get_summary(&self, user_id: Uuid) -> Result<StaffGamingAllowanceSummary, AppError> {
-        self.ensure_staff_user(user_id).await?;
-        let now = Utc::now();
-
-        let Some(balance) = self.balances.find_latest_staff_allowance(user_id).await? else {
-            return Ok(StaffGamingAllowanceSummary::none(user_id));
-        };
-
-        let allotted = self
-            .ledger
-            .find_grant_delta_for_balance(balance.id)
-            .await?
-            .unwrap_or(balance.remaining_minutes);
-
-        Ok(Self::summary_from_balance(user_id, &balance, allotted, now))
-    }
-
-    pub async fn grant(
+    pub async fn get_summary_tenant(
         &self,
-        user_id: Uuid,
-        dto: SetStaffGamingAllowanceDto,
-        actor_id: Option<Uuid>,
+        db: Arc<crate::tenancy::TenantDb>,
+        user: Uuid,
     ) -> Result<StaffGamingAllowanceSummary, AppError> {
-        self.ensure_staff_user(user_id).await?;
-
-        if !dto.allotted_hours.is_finite() || dto.allotted_hours <= 0.0 {
+        Ok(
+            match crate::repositories::TenantBalanceRepository::new(db)
+                .staff_allowance_summary(user)
+                .await?
+            {
+                Some((balance, minutes)) => {
+                    Self::summary_from_balance(user, &balance, minutes, Utc::now())
+                }
+                None => StaffGamingAllowanceSummary::none(user),
+            },
+        )
+    }
+    pub async fn grant_tenant(
+        &self,
+        db: Arc<crate::tenancy::TenantDb>,
+        user: Uuid,
+        dto: SetStaffGamingAllowanceDto,
+        actor: Option<Uuid>,
+    ) -> Result<StaffGamingAllowanceSummary, AppError> {
+        let minutes = (dto.allotted_hours * 60.0).round();
+        if !dto.allotted_hours.is_finite()
+            || dto.allotted_hours <= 0.0
+            || !(1.0..=i32::MAX as f64).contains(&minutes)
+        {
             return Err(AppError::BadRequest(
-                "allottedHours must be a positive number".to_string(),
+                "allottedHours must convert to between 1 and 2147483647 minutes".into(),
             ));
         }
-
-        let allotted_minutes = (dto.allotted_hours * 60.0).round() as i32;
-        if allotted_minutes <= 0 {
-            return Err(AppError::BadRequest(
-                "allottedHours must convert to at least one minute".to_string(),
-            ));
-        }
-
-        let had_prior = self
-            .balances
-            .find_latest_staff_allowance(user_id)
-            .await?
-            .is_some();
-
-        if let Some(existing) = self.balances.find_active_staff_allowance(user_id).await? {
-            self.balances
-                .set_status(existing.id, balance_status::CANCELLED)
-                .await?;
-            self.ledger
-                .append(
-                    existing.id,
-                    user_id,
-                    -existing.remaining_minutes,
-                    ledger_reason::ADJUSTMENT,
-                    None,
-                    None,
-                    0,
-                    existing.expiry_date,
-                    actor_id,
-                )
-                .await?;
-            if let Ok(Some(cancelled)) = self.balances.find_by_id(existing.id).await {
-                self.balance_service
-                    .sync_balance_cache_after_mutation(&cancelled)
-                    .await?;
-            }
-        }
-
-        let now = Utc::now();
-        let expiry = now + Duration::days(STAFF_ALLOWANCE_PERIOD_DAYS);
-        let balance = self
-            .balances
-            .create_staff_allowance(user_id, allotted_minutes, expiry, actor_id)
-            .await?;
-
-        let reason = if had_prior {
-            ledger_reason::STAFF_ALLOWANCE_RENEWAL
-        } else {
-            ledger_reason::STAFF_ALLOWANCE_GRANT
-        };
-
-        self.ledger
-            .append(
-                balance.id,
-                user_id,
-                allotted_minutes,
-                reason,
-                None,
-                None,
-                balance.remaining_minutes,
-                balance.expiry_date,
-                actor_id,
+        let values = self
+            .settings
+            .effective_tenant(
+                db.clone(),
+                db.tenant_id(),
+                crate::models::EffectiveSettingsQuery {
+                    location_id: None,
+                    category: Some("staff".into()),
+                },
             )
             .await?;
-
-        self.invalidate(user_id).await?;
-        self.balance_service
-            .sync_balance_cache_after_mutation(&balance)
+        let days = values
+            .into_iter()
+            .find(|value| value.key == "staff.allowance_period_days")
+            .and_then(|value| value.value.as_i64())
+            .ok_or_else(|| AppError::Internal("Staff allowance period is unavailable".into()))?;
+        let balance = crate::repositories::TenantBalanceRepository::new(db.clone())
+            .grant_staff_allowance(user, minutes as i32, days, actor)
             .await?;
-
+        if let Err(error) = self
+            .balance_service
+            .sync_tenant_balance_cache_after_mutation(db, &balance)
+            .await
+        {
+            tracing::warn!(%error, %user, "Committed staff allowance cache refresh failed");
+        }
         Ok(Self::summary_from_balance(
-            user_id,
+            user,
             &balance,
-            allotted_minutes,
-            now,
+            minutes as i32,
+            Utc::now(),
         ))
     }
 }

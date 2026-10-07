@@ -10,6 +10,7 @@ export interface CreateTransactionPayload {
   playerId: string;
   transactionType: TransactionTypeValue;
   planId?: string;
+  venueLocationId?: string;
   amount?: number;
   paymentMethod: PaymentMethodValue;
   paymentStatus?: PaymentStatusValue;

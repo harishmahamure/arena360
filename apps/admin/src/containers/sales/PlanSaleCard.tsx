@@ -32,7 +32,7 @@ export function PlanSaleCard({ plan, selected, onSelect, disabled = false }: Pla
             {plan.planType}
           </Typography>
           <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>
-            ₹{parseFloat(plan.price).toFixed(2)}
+            ₹{(plan.currentPrice ?? Number(plan.price)).toFixed(2)}
           </Typography>
           {plan.timeCredits != null && (
             <Typography variant="caption" color="text.secondary" display="block">

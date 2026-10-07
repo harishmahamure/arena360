@@ -1,105 +1,102 @@
-use chrono::{DateTime, Duration, Utc};
-use sqlx::PgPool;
-use uuid::Uuid;
-
 use crate::error::AppError;
 use crate::models::{
     status, AssignPlanDto, Plan, PlayerPlan, PlayerPlanCreateValues, PlayerPlanFilterDto,
     PlayerPlanResponse, PlayerPlanUpdateValues, ValidationResult,
 };
-use crate::repositories::{PlanRepository, PlayerPlanRepository, UserRepository};
+use crate::repositories::{TenantPlanRepository, TenantPlayerPlanRepository, TenantUserRepository};
+use crate::tenancy::TenantDb;
+use chrono::{DateTime, Duration, Utc};
+use std::sync::Arc;
+use uuid::Uuid;
 
-pub struct PlayerPlanService {
-    repo: PlayerPlanRepository,
-    plan_repo: PlanRepository,
-    user_repo: UserRepository,
-}
-
+#[derive(Default)]
+pub struct PlayerPlanService;
 impl PlayerPlanService {
-    pub fn new(pool: PgPool) -> Self {
-        Self {
-            repo: PlayerPlanRepository::new(pool.clone()),
-            plan_repo: PlanRepository::new(pool.clone()),
-            user_repo: UserRepository::new(pool),
-        }
+    pub fn new() -> Self {
+        Self
     }
-
-    pub async fn list(
+    pub async fn list_tenant(
         &self,
+        db: Arc<TenantDb>,
         filters: PlayerPlanFilterDto,
     ) -> Result<crate::dto::PaginationResult<PlayerPlanResponse>, AppError> {
-        let mut result = self.repo.list(&filters).await?;
-        self.expire_stale_in_results(&mut result.data).await?;
+        let repo = TenantPlayerPlanRepository::new(db);
+        let mut result = repo.list(&filters).await?;
+        let now = Utc::now();
+        for player_plan in &mut result.data {
+            if player_plan.status == status::ACTIVE && player_plan.expiry_date < now {
+                repo.update(
+                    player_plan.id,
+                    &PlayerPlanUpdateValues {
+                        status: Some(status::EXPIRED.into()),
+                        remaining_time_credits: None,
+                        remaining_usage_count: None,
+                        activation_date: None,
+                    },
+                    None,
+                )
+                .await?;
+                player_plan.status = status::EXPIRED.into();
+            }
+        }
         Ok(result)
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<PlayerPlanResponse, AppError> {
-        self.repo
-            .find_enriched_by_id(id)
+    pub async fn get_by_id_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<PlayerPlanResponse, AppError> {
+        TenantPlayerPlanRepository::new(db)
+            .find_by_id(id)
             .await?
+            .map(Into::into)
             .ok_or_else(|| AppError::NotFound(format!("Player plan with ID {id} not found")))
     }
 
-    pub async fn assign_plan_to_player(
+    pub async fn assign_plan_to_player_tenant(
         &self,
+        db: Arc<TenantDb>,
         dto: AssignPlanDto,
         actor_id: Option<Uuid>,
     ) -> Result<PlayerPlan, AppError> {
-        let plan = self
-            .plan_repo
+        let plan = TenantPlanRepository::new(db.clone())
             .find_by_id(dto.plan_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Plan with ID {} not found", dto.plan_id)))?;
-
         if !plan.is_active {
             return Err(AppError::BadRequest(
-                "Cannot assign an inactive plan".to_string(),
+                "Cannot assign an inactive plan".into(),
             ));
         }
-
-        let user = self
-            .user_repo
-            .find_by_id(dto.player_id)
-            .await?
-            .ok_or_else(|| {
-                AppError::NotFound(format!("User with ID {} not found", dto.player_id))
-            })?;
-
-        if !user.is_active {
-            return Err(AppError::BadRequest("User is not active".to_string()));
-        }
-
+        TenantUserRepository::new(db.clone())
+            .require_active_player(dto.player_id)
+            .await?;
         let purchase_date = dto.purchase_date.unwrap_or_else(Utc::now);
-        let expiry_date = purchase_date + Duration::days(plan.validity_days as i64);
-
-        let remaining_usage_count: Option<i32> = None;
-
-        let remaining_time_credits = Some(plan.time_credits);
-
-        self.repo
+        TenantPlayerPlanRepository::new(db)
             .create(
                 &PlayerPlanCreateValues {
                     player_id: dto.player_id,
                     plan_id: dto.plan_id,
                     purchase_date,
-                    expiry_date,
-                    remaining_usage_count,
-                    remaining_time_credits,
-                    status: status::ACTIVE.to_string(),
+                    expiry_date: purchase_date + Duration::days(i64::from(plan.validity_days)),
+                    remaining_usage_count: None,
+                    remaining_time_credits: Some(plan.time_credits),
+                    status: status::ACTIVE.into(),
                 },
                 actor_id,
             )
             .await
     }
 
-    pub async fn validate_plan_access(
+    pub async fn validate_plan_access_tenant(
         &self,
+        db: Arc<TenantDb>,
         player_plan_id: Uuid,
         current_time: Option<DateTime<Utc>>,
     ) -> Result<ValidationResult, AppError> {
-        let player_plan = self.get_by_id(player_plan_id).await?;
-        let plan = self
-            .plan_repo
+        let player_plan = self.get_by_id_tenant(db.clone(), player_plan_id).await?;
+        let plan = TenantPlanRepository::new(db)
             .find_by_id(player_plan.plan_id)
             .await?
             .ok_or_else(|| {
@@ -108,7 +105,6 @@ impl PlayerPlanService {
                     player_plan.plan_id
                 ))
             })?;
-
         Ok(Self::validate_player_plan_response(
             &player_plan,
             &plan,
@@ -116,84 +112,101 @@ impl PlayerPlanService {
         ))
     }
 
-    pub async fn deduct_time_credits(
+    pub async fn deduct_time_credits_tenant(
         &self,
+        db: Arc<TenantDb>,
         player_plan_id: Uuid,
         credits: i32,
     ) -> Result<PlayerPlan, AppError> {
-        let player_plan = self.get_by_id(player_plan_id).await?;
-
-        let remaining = player_plan.remaining_time_credits.ok_or_else(|| {
-            AppError::BadRequest("This plan does not have time credits".to_string())
-        })?;
-
-        let new_credits = remaining - credits;
-        let mut update = PlayerPlanUpdateValues {
-            remaining_time_credits: Some(new_credits),
-            status: None,
-            remaining_usage_count: None,
-            activation_date: None,
-        };
-
-        if new_credits <= 0 {
-            update.status = Some(status::EXHAUSTED.to_string());
+        if credits <= 0 {
+            return Err(AppError::BadRequest("Credits must be positive".into()));
         }
-
-        self.repo.update(player_plan_id, &update, None).await
-    }
-
-    pub async fn deduct_session_count(&self, player_plan_id: Uuid) -> Result<PlayerPlan, AppError> {
-        let player_plan = self.get_by_id(player_plan_id).await?;
-
-        let remaining = player_plan.remaining_usage_count.ok_or_else(|| {
-            AppError::BadRequest("This plan does not have session limits".to_string())
-        })?;
-
-        if remaining <= 0 {
-            return Err(AppError::BadRequest("No sessions remaining".to_string()));
-        }
-
-        let new_count = remaining - 1;
-        let mut update = PlayerPlanUpdateValues {
-            remaining_usage_count: Some(new_count),
-            status: None,
-            remaining_time_credits: None,
-            activation_date: None,
-        };
-
-        if new_count <= 0 {
-            update.status = Some(status::EXHAUSTED.to_string());
-        }
-
-        self.repo.update(player_plan_id, &update, None).await
-    }
-
-    pub async fn get_best_plan(&self, player_id: Uuid) -> Result<PlayerPlan, AppError> {
-        let mut result = self
-            .list(PlayerPlanFilterDto {
-                player_id: Some(player_id),
-                status: Some(status::ACTIVE.to_string()),
-                ..Default::default()
-            })
-            .await?;
-
-        if result.data.is_empty() {
-            return Err(AppError::NotFound(format!(
-                "No active player plans found for player {player_id}"
-            )));
-        }
-
-        result.data.sort_by(|a, b| {
-            b.remaining_time_credits
-                .unwrap_or(0)
-                .cmp(&a.remaining_time_credits.unwrap_or(0))
-        });
-
-        let best = result.data.remove(0);
-        self.repo
-            .find_by_id(best.id)
+        let plan = TenantPlayerPlanRepository::new(db.clone())
+            .find_by_id(player_plan_id)
             .await?
-            .ok_or_else(|| AppError::NotFound(format!("Player plan with ID {} not found", best.id)))
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Player plan with ID {player_plan_id} not found"))
+            })?;
+        let remaining = plan
+            .remaining_time_credits
+            .ok_or_else(|| AppError::BadRequest("This plan does not have time credits".into()))?;
+        let next = (remaining - credits).max(0);
+        TenantPlayerPlanRepository::new(db)
+            .update(
+                player_plan_id,
+                &PlayerPlanUpdateValues {
+                    remaining_time_credits: Some(next),
+                    status: (next == 0).then(|| status::EXHAUSTED.into()),
+                    remaining_usage_count: None,
+                    activation_date: None,
+                },
+                None,
+            )
+            .await
+    }
+
+    pub async fn deduct_session_count_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_plan_id: Uuid,
+    ) -> Result<PlayerPlan, AppError> {
+        let plan = TenantPlayerPlanRepository::new(db.clone())
+            .find_by_id(player_plan_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Player plan with ID {player_plan_id} not found"))
+            })?;
+        let remaining = plan
+            .remaining_usage_count
+            .ok_or_else(|| AppError::BadRequest("This plan does not have session limits".into()))?;
+        if remaining <= 0 {
+            return Err(AppError::BadRequest("No sessions remaining".into()));
+        }
+        let next = remaining - 1;
+        TenantPlayerPlanRepository::new(db)
+            .update(
+                player_plan_id,
+                &PlayerPlanUpdateValues {
+                    remaining_usage_count: Some(next),
+                    status: (next == 0).then(|| status::EXHAUSTED.into()),
+                    remaining_time_credits: None,
+                    activation_date: None,
+                },
+                None,
+            )
+            .await
+    }
+
+    pub async fn get_best_plan_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+    ) -> Result<PlayerPlan, AppError> {
+        let result = self
+            .list_tenant(
+                db.clone(),
+                PlayerPlanFilterDto {
+                    player_id: Some(player_id),
+                    status: Some(status::ACTIVE.into()),
+                    limit: Some(100),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let id = result
+            .data
+            .into_iter()
+            .max_by_key(|plan| plan.remaining_time_credits.unwrap_or(0))
+            .map(|plan| plan.id)
+            .ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "No active player plans found for player {player_id}"
+                ))
+            })?;
+        TenantPlayerPlanRepository::new(db)
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Player plan with ID {id} not found")))
     }
 
     pub fn enforce_player_scope(
@@ -240,32 +253,6 @@ impl PlayerPlanService {
             ));
         }
 
-        Ok(())
-    }
-
-    async fn expire_stale_in_results(
-        &self,
-        player_plans: &mut [PlayerPlanResponse],
-    ) -> Result<(), AppError> {
-        let now = Utc::now();
-        for player_plan in player_plans.iter_mut() {
-            if player_plan.status == status::ACTIVE && player_plan.expiry_date < now {
-                let _ = self
-                    .repo
-                    .update(
-                        player_plan.id,
-                        &PlayerPlanUpdateValues {
-                            status: Some(status::EXPIRED.to_string()),
-                            remaining_time_credits: None,
-                            remaining_usage_count: None,
-                            activation_date: None,
-                        },
-                        None,
-                    )
-                    .await;
-                player_plan.status = status::EXPIRED.to_string();
-            }
-        }
         Ok(())
     }
 

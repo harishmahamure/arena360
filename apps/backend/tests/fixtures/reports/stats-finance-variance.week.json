@@ -1,0 +1,94 @@
+{
+  "request": "/stats/finance/variance?startDate=2026-09-26&endDate=2026-10-02",
+  "data": {
+    "period": {
+      "startDate": "2026-09-25T18:30:00+00:00",
+      "endDate": "2026-10-02T18:29:59+00:00",
+      "label": "2026-09-25 - 2026-10-02",
+      "previousLabel": "2026-09-19 - 2026-09-26"
+    },
+    "metrics": {
+      "current": {
+        "totalVariance": 10,
+        "averageVariance": 1.4285714285714286,
+        "overCount": 1,
+        "shortCount": 0,
+        "evenCount": 6,
+        "registerCount": 7
+      },
+      "previous": {
+        "totalVariance": -20,
+        "averageVariance": -2.857142857142857,
+        "overCount": 0,
+        "shortCount": 1,
+        "evenCount": 6,
+        "registerCount": 7
+      }
+    },
+    "registers": [
+      {
+        "id": "ae35f335-94e1-4d1f-a875-84dabffb50c5",
+        "shiftId": "da8d2d14-9875-4ccb-acfb-7ad88a9ae735",
+        "status": "reconciled",
+        "variance": 10,
+        "closingBalance": 1830,
+        "expectedClosing": 1820,
+        "updatedAt": "2026-09-27T20:00:00Z"
+      },
+      {
+        "id": "f0739df6-b7bc-4075-abae-f47adf4662e2",
+        "shiftId": "87ff6c8d-461f-4642-abd3-ad20e1afbd6f",
+        "status": "closed",
+        "variance": 0,
+        "closingBalance": 1310,
+        "expectedClosing": 1310,
+        "updatedAt": "2026-10-01T20:00:00Z"
+      },
+      {
+        "id": "8880ee89-9a99-431f-aa67-93ffc16906c4",
+        "shiftId": "2a69df43-00bd-4952-a92e-8bc6b953911c",
+        "status": "closed",
+        "variance": 0,
+        "closingBalance": 865,
+        "expectedClosing": 865,
+        "updatedAt": "2026-09-30T20:00:00Z"
+      },
+      {
+        "id": "21a8e07f-9fe6-47fc-a59a-f9ae7bbf91c1",
+        "shiftId": "f2f86baa-72ca-48be-a650-48229b3e7cc6",
+        "status": "closed",
+        "variance": 0,
+        "closingBalance": 1460,
+        "expectedClosing": 1460,
+        "updatedAt": "2026-09-29T20:00:00Z"
+      },
+      {
+        "id": "cdbbdcf7-b359-493a-a142-62163803f3d0",
+        "shiftId": "cd6277d3-8752-468f-add5-fab372618d0e",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1055,
+        "expectedClosing": 1055,
+        "updatedAt": "2026-09-28T20:00:00Z"
+      },
+      {
+        "id": "28391529-0226-416e-a1ef-ea7b33327550",
+        "shiftId": "ec59c5af-0062-4cdc-a759-454db01349c6",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1300,
+        "expectedClosing": 1300,
+        "updatedAt": "2026-09-26T20:00:00Z"
+      },
+      {
+        "id": "7d0de259-d5a1-45e3-afb6-bc80e07b1124",
+        "shiftId": "8e93fc30-19c5-4ce6-a899-49d71c8c5435",
+        "status": "reconciled",
+        "variance": 0,
+        "closingBalance": 1340,
+        "expectedClosing": 1340,
+        "updatedAt": "2026-09-25T20:00:00Z"
+      }
+    ]
+  }
+}

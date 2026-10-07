@@ -61,43 +61,32 @@ pub struct StaffLoginDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct CreateSsoTokenDto {
-    pub purpose: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deviceId: Option<String>,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
-pub struct CreateSsoTokenResponseDto {
-    pub token: String,
-    pub expiresAt: String,
-    pub deviceId: Option<String>,
-}
-
-#[allow(non_snake_case)]
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct RedeemSsoTokenDto {
-    pub token: String,
+pub struct PanelMfaDto {
+    pub challengeToken: String,
+    pub code: String,
 }
 
-#[allow(non_snake_case)]
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct DevicePairingDto {
-    pub deviceId: String,
-}
-
-#[allow(non_snake_case)]
 #[derive(Debug, Serialize, ToSchema)]
-pub struct DevicePairingResponseDto {
-    pub accessToken: String,
-    pub expiresAt: String,
-    pub deviceId: String,
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum PanelLoginResponseDto {
+    Authenticated {
+        #[serde(rename = "accessToken")]
+        access_token: String,
+        user: AuthUserDto,
+        #[serde(rename = "nextStep")]
+        next_step: String,
+    },
+    MfaRequired {
+        #[serde(rename = "challengeToken")]
+        challenge_token: String,
+        #[serde(rename = "expiresAt")]
+        expires_at: DateTime<Utc>,
+    },
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ActiveSessionDto {
     pub id: String,
     pub startTime: DateTime<Utc>,
@@ -115,7 +104,7 @@ pub struct ActiveSessionDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AuthResponseDto {
     pub accessToken: String,
     pub user: AuthUserDto,
@@ -126,10 +115,12 @@ pub struct AuthResponseDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AuthUserDto {
     pub id: String,
     pub username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phoneNumber: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -138,6 +129,8 @@ pub struct AuthUserDto {
     pub lastName: Option<String>,
     pub role: String,
     pub isActive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatarUrl: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +159,8 @@ pub struct JwtUserClaims {
     pub orgIds: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deviceId: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locationId: Option<String>,
 }
 
 impl JwtUserClaims {
@@ -179,10 +174,6 @@ impl JwtUserClaims {
 
     pub fn is_device(&self) -> bool {
         self.roles.iter().any(|r| r == "device")
-    }
-
-    pub fn is_device_pairing(&self) -> bool {
-        self.roles.iter().any(|r| r == "device_pairing")
     }
 
     pub fn is_player(&self) -> bool {
@@ -208,6 +199,7 @@ impl JwtUserClaims {
 #[cfg(test)]
 mod jwt_tests {
     use super::*;
+    const TEST_TENANT: uuid::Uuid = uuid::Uuid::from_u128(0x00000000_0000_4000_8000_000000000099);
     use chrono::{Duration, Utc};
     use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
@@ -215,18 +207,19 @@ mod jwt_tests {
         JwtUserClaims {
             sub: "user-id".to_string(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![TEST_TENANT.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(iat),
             exp: Some((now + Duration::minutes(15)).timestamp()),
             userId: "user-id".to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: TEST_TENANT.to_string(),
             roles: vec!["admin".to_string()],
             appId: "game-zone-backend".to_string(),
-            orgIds: vec![],
+            orgIds: vec![TEST_TENANT.to_string()],
             deviceId: None,
+            locationId: None,
         }
     }
 
@@ -234,18 +227,19 @@ mod jwt_tests {
         JwtUserClaims {
             sub: "player-id".to_string(),
             permissions: vec![],
-            allowedTenants: vec![],
+            allowedTenants: vec![TEST_TENANT.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + Duration::hours(24)).timestamp()),
             userId: "player-id".to_string(),
-            tenantId: "dualshock-arena".to_string(),
+            tenantId: TEST_TENANT.to_string(),
             roles: vec!["player".to_string()],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![],
+            orgIds: vec![TEST_TENANT.to_string()],
             deviceId: Some(device_id.to_string()),
+            locationId: None,
         }
     }
 

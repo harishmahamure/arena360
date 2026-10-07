@@ -19,6 +19,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { deleteVendor, getVendor, updateVendor, type Vendor } from '../../../services/vendors';
 
 export default function VendorDetailPage() {
@@ -135,69 +136,88 @@ export default function VendorDetailPage() {
       <Card>
         <CardContent>
           <Stack spacing={3}>
-            <TextField
-              label="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fullWidth
-              required
-            />
-            <TextField
-              label="Contact Person"
-              value={contactPerson}
-              onChange={(e) => setContactPerson(e.target.value)}
-              fullWidth
-            />
-            <PhoneField
-              label="Phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              fullWidth
-            />
-            <TextField
-              label="Address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              fullWidth
-              multiline
-              rows={2}
-            />
-            <TextField
-              label="GST Number"
-              value={gstNumber}
-              onChange={(e) => setGstNumber(e.target.value)}
-              fullWidth
-            />
-            <FormControlLabel
-              control={
-                <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+            <GuidedForm
+              busy={saving}
+              onCancel={() => navigate('/vendors')}
+              actions={
+                <>
+                  <Stack direction="row" spacing={2}>
+                    <Button variant="contained" onClick={handleSave} disabled={saving}>
+                      {saving ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color="error"
+                      onClick={() => setDeleteDialogOpen(true)}
+                      disabled={saving}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      data-wizard-cancel
+                      variant="outlined"
+                      onClick={() => navigate('/vendors')}
+                    >
+                      Back
+                    </Button>
+                  </Stack>
+                </>
               }
-              label="Active"
-            />
-
-            <Stack direction="row" spacing={2}>
-              <Button variant="contained" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={() => setDeleteDialogOpen(true)}
-                disabled={saving}
+            >
+              <GuidedStep
+                title="Supplier & contact"
+                validate={() => (!name.trim() ? 'Enter a supplier name.' : undefined)}
               >
-                Delete
-              </Button>
-              <Button variant="outlined" onClick={() => navigate('/vendors')}>
-                Back
-              </Button>
-            </Stack>
+                <TextField
+                  label="Name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  fullWidth
+                  required
+                />
+                <TextField
+                  label="Contact Person"
+                  value={contactPerson}
+                  onChange={(e) => setContactPerson(e.target.value)}
+                  fullWidth
+                />
+                <PhoneField
+                  label="Phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  fullWidth
+                />
+              </GuidedStep>
+              <GuidedStep title="Business details">
+                <TextField
+                  label="Address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  fullWidth
+                  multiline
+                  rows={2}
+                />
+                <TextField
+                  label="GST Number"
+                  value={gstNumber}
+                  onChange={(e) => setGstNumber(e.target.value)}
+                  fullWidth
+                />
+                <FormControlLabel
+                  control={
+                    <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                  }
+                  label="Active"
+                />
+              </GuidedStep>
+            </GuidedForm>
           </Stack>
         </CardContent>
       </Card>
@@ -210,7 +230,9 @@ export default function VendorDetailPage() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button data-wizard-cancel onClick={() => setDeleteDialogOpen(false)}>
+            Cancel
+          </Button>
           <Button color="error" variant="contained" onClick={handleDeleteConfirm} disabled={saving}>
             Delete
           </Button>

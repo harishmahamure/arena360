@@ -5,6 +5,7 @@ import {
   Alert,
   Autocomplete,
   Box,
+  Button,
   Chip,
   Collapse,
   Divider,
@@ -13,7 +14,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   type Control,
   Controller,
@@ -43,6 +44,7 @@ import PasswordField from './forms/PasswordField';
 import PhoneField from './forms/PhoneField';
 import { RHFSearchOnEnterAutocomplete, type SearchOption } from './forms/SearchInput';
 import UsernameField from './forms/UsernameField';
+import { WizardProgress } from './WizardProgress';
 
 export type FieldType =
   | 'text'
@@ -88,6 +90,8 @@ export interface FieldConfig<T extends FieldValues = FieldValues> {
   fullWidth?: boolean;
   /** Grid column span (1-12) */
   gridCols?: number;
+  /** Custom render already provides its own visible field label */
+  hideCustomLabel?: boolean;
   /** Options for select, radio, checkbox group */
   options?: FormSelectOption[] | FormRadioOption[];
   /** If true, multiline textarea for text type */
@@ -114,6 +118,7 @@ export interface FieldConfig<T extends FieldValues = FieldValues> {
     field: ControllerRenderProps;
     fieldState: { error?: { message?: string }; isDirty: boolean };
     form: UseFormReturn<T>;
+    disabled: boolean;
   }) => React.ReactNode;
   visible?: (values: T) => boolean;
   validate?: (value: unknown, context: T) => string | undefined;
@@ -171,6 +176,10 @@ export interface FormBuilderProps<T extends FieldValues = FieldValues> {
   fields?: FieldConfig<T>[];
   /** Sections for grouped fields */
   sections?: FormSection<T>[];
+  /** Guided entry with validated steps and a final review. Opt-in for existing consumers. */
+  wizard?: boolean;
+  /** Field names grouped into meaningful steps; unassigned fields appear in Details. */
+  wizardSteps?: { title: string; description?: string; fields: Path<T>[] }[];
   /** Yup validation schema */
   schema?: yup.AnyObjectSchema;
   /** Default form values */
@@ -320,6 +329,12 @@ function FieldRenderer<T extends FieldValues>({
       <Controller
         name={name}
         control={control}
+        rules={{
+          required: required ? `${label} is required` : false,
+          validate: config.validate
+            ? (value) => config.validate?.(value, form.getValues()) || true
+            : undefined,
+        }}
         render={({ field, fieldState }) => {
           // Custom render
           if (type === 'custom' && customRender) {
@@ -332,6 +347,7 @@ function FieldRenderer<T extends FieldValues>({
                     isDirty: fieldState.isDirty,
                   },
                   form,
+                  disabled: isDisabled,
                 })}
               </>
             );
@@ -350,8 +366,9 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <FormTextField
                   {...field}
+                  inputRef={field.ref}
                   {...commonProps}
-                  label=""
+                  label={label}
                   required={required}
                   autoComplete="one-time-code"
                   type={type === 'datetime' ? 'datetime-local' : type}
@@ -369,10 +386,11 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <CurrencyField
                   {...commonProps}
-                  label=""
+                  label={label}
                   autoComplete="one-time-code"
                   InputLabelProps={{ shrink: true }}
                   commitMode="blur"
+                  inputRef={field.ref}
                   name={field.name}
                   value={field.value ?? ''}
                   onBlur={field.onBlur}
@@ -390,8 +408,9 @@ function FieldRenderer<T extends FieldValues>({
                 return (
                   <IntegerField
                     {...field}
+                    inputRef={field.ref}
                     {...commonProps}
-                    label=""
+                    label={label}
                     autoComplete="one-time-code"
                     InputLabelProps={{ shrink: true }}
                     inputProps={{ min, max }}
@@ -407,11 +426,12 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <DecimalField
                   {...commonProps}
-                  label=""
+                  label={label}
                   autoComplete="one-time-code"
                   InputLabelProps={{ shrink: true }}
                   decimalPlaces={decimalPlaces}
                   commitMode="blur"
+                  inputRef={field.ref}
                   name={field.name}
                   inputProps={{ min, max }}
                   value={numericValue}
@@ -427,8 +447,9 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <FormTextField
                   {...field}
+                  inputRef={field.ref}
                   {...commonProps}
-                  label={''}
+                  label={label}
                   multiline
                   rows={rows}
                   value={field.value ?? ''}
@@ -441,8 +462,9 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <PasswordField
                   {...field}
+                  inputRef={field.ref}
                   {...commonProps}
-                  label={''}
+                  label={label}
                   value={field.value ?? ''}
                   autoComplete="new-password"
                   inputProps={{
@@ -456,8 +478,9 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <PhoneField
                   {...field}
+                  inputRef={field.ref}
                   {...commonProps}
-                  label=""
+                  label={label}
                   required={required}
                   value={field.value ?? ''}
                   InputLabelProps={{ shrink: true }}
@@ -468,8 +491,9 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <OtpField
                   {...field}
+                  inputRef={field.ref}
                   {...commonProps}
-                  label=""
+                  label={label}
                   required={required}
                   value={field.value ?? ''}
                   InputLabelProps={{ shrink: true }}
@@ -480,8 +504,9 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <UsernameField
                   {...field}
+                  inputRef={field.ref}
                   {...commonProps}
-                  label=""
+                  label={label}
                   required={required}
                   value={field.value ?? ''}
                   InputLabelProps={{ shrink: true }}
@@ -492,12 +517,13 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <FormSelect
                   {...commonProps}
-                  label={''}
+                  label={label}
                   options={options as FormSelectOption[]}
                   value={field.value ?? ''}
                   onChange={(e) => field.onChange(e.target.value)}
                   onBlur={field.onBlur}
                   name={field.name}
+                  inputRef={field.ref}
                 />
               );
 
@@ -533,6 +559,7 @@ function FieldRenderer<T extends FieldValues>({
                   renderInput={(params) => (
                     <TextField
                       {...params}
+                      label={label}
                       placeholder={placeholder}
                       error={!!errorMessage}
                       helperText={resolvedHelper}
@@ -548,7 +575,7 @@ function FieldRenderer<T extends FieldValues>({
                 <>
                   <FormCheckbox
                     {...commonProps}
-                    label={''}
+                    label={label}
                     checked={!!field.value}
                     onChange={(e) => field.onChange(e.target.checked)}
                     onBlur={field.onBlur}
@@ -584,7 +611,7 @@ function FieldRenderer<T extends FieldValues>({
                 <>
                   <FormRadioGroup
                     {...commonProps}
-                    label={''}
+                    label={label}
                     options={options as FormRadioOption[]}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value)}
@@ -628,7 +655,7 @@ function FieldRenderer<T extends FieldValues>({
                 <RHFSearchOnEnterAutocomplete
                   name={name}
                   control={control as Control<FieldValues>}
-                  label={''}
+                  label={label}
                   placeholder={placeholder}
                   onSearch={onSearch as (query: string) => Promise<SearchOption[]>}
                   disabled={isDisabled}
@@ -643,6 +670,7 @@ function FieldRenderer<T extends FieldValues>({
               return (
                 <FormTextField
                   {...field}
+                  inputRef={field.ref}
                   {...commonProps}
                   label={label}
                   value={field.value ?? ''}
@@ -663,6 +691,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   schema,
   defaultValues,
   mode = 'add',
+  wizard = false,
+  wizardSteps,
   onSubmit,
   onCancel,
   onReset,
@@ -687,6 +717,10 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   containerProps,
   onSearchComplete,
 }: FormBuilderProps<T>) {
+  const [activeStep, setActiveStep] = useState(0);
+  const [stepError, setStepError] = useState('');
+  const [advancing, setAdvancing] = useState(false);
+  const [searchLabels, setSearchLabels] = useState<Record<string, SearchOption>>({});
   // Create internal form if not provided externally
   const internalForm = useForm<T>({
     defaultValues,
@@ -741,6 +775,8 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   // Handle reset
   const handleReset = useCallback(() => {
     reset(defaultValues);
+    setActiveStep(0);
+    setStepError('');
     onReset?.();
   }, [reset, defaultValues, onReset]);
 
@@ -767,47 +803,141 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
     return fields;
   }, [fields, sections]);
 
+  const isVisible = (field: FieldConfig<T>) =>
+    field.type !== 'hidden' &&
+    (!field.showInModes || field.showInModes.includes(mode)) &&
+    (!field.visible || field.visible(watchedValues as T));
+  const steps = (() => {
+    if (wizardSteps?.length) {
+      const assigned = new Set(wizardSteps.flatMap((step) => step.fields));
+      const configured = wizardSteps.map((step) => ({
+        ...step,
+        fields: allFields.filter((field) => step.fields.includes(field.name) && isVisible(field)),
+      }));
+      const remaining = allFields.filter((field) => !assigned.has(field.name) && isVisible(field));
+      return [
+        ...configured,
+        ...(remaining.length ? [{ title: 'Additional details', fields: remaining }] : []),
+      ].filter((step) => step.fields.length);
+    }
+    if (sections.length)
+      return sections
+        .map((section, index) => ({
+          ...section,
+          title: section.title || `Details ${index + 1}`,
+          fields: section.fields.filter(isVisible),
+        }))
+        .filter((section) => section.fields.length);
+    const visible = allFields.filter(isVisible);
+    return [{ title: 'Details', fields: visible }];
+  })();
+  const guided = wizard && !isViewMode;
+  const currentStep = Math.min(activeStep, steps.length);
+  const reviewing = guided && currentStep === steps.length;
+  const busy = loading || isSubmitting || advancing || submitSuccess;
+  const getValue = (name: string, values: unknown = watchedValues): unknown =>
+    name
+      .split('.')
+      .reduce<unknown>(
+        (value, key) =>
+          value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined,
+        values,
+      );
+  const nextStep = async () => {
+    if (busy) return;
+    setAdvancing(true);
+    const valid = await form.trigger(
+      steps[currentStep]?.fields.map((field) => field.name),
+      { shouldFocus: true },
+    );
+    setAdvancing(false);
+    if (!valid) {
+      setStepError('Complete the highlighted fields to continue.');
+      return;
+    }
+    setStepError('');
+    setActiveStep(currentStep + 1);
+  };
+  const onInvalid = (invalid: FieldErrors<T>) => {
+    const index = steps.findIndex((step) =>
+      step.fields.some((field) => getValue(field.name, invalid)),
+    );
+    if (guided && index >= 0) {
+      setActiveStep(index);
+      const field = steps[index]?.fields.find((field) => getValue(field.name, invalid));
+      if (field) setTimeout(() => form.setFocus(field.name), 0);
+    }
+    setStepError('Check the highlighted fields before saving.');
+  };
+  const reviewValue = (field: FieldConfig<T>) => {
+    const value = getValue(field.name);
+    if (value === undefined || value === null || value === '') return 'Not provided';
+    if (field.type === 'password' || field.type === 'otp') return '••••••••';
+    if (field.type === 'search' && searchLabels[field.name]?.id === value)
+      return searchLabels[field.name]?.label;
+    if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled';
+    const format = (item: unknown): string => {
+      const option = field.options?.find((option) => String(option.value) === String(item));
+      if (option) return String(option.label);
+      if (item instanceof File) return item.name;
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>;
+        return String(record.label ?? record.name ?? record.username ?? 'Selected');
+      }
+      return String(item);
+    };
+    return Array.isArray(value) ? value.map(format).join(', ') || 'None selected' : format(value);
+  };
+
   // Render fields with grid
-  const renderFields = (fieldsToRender: FieldConfig<T>[]) => (
+  const renderFields = (fieldsToRender: FieldConfig<T>[], inactive = false) => (
     <Grid container spacing={spacing}>
-      {fieldsToRender.map((fieldConfig) => {
-        if (fieldConfig.type === 'hidden') {
+      {fieldsToRender
+        .filter((field) => field.type === 'hidden' || isVisible(field))
+        .map((fieldConfig) => {
+          if (fieldConfig.type === 'hidden') {
+            return (
+              <FieldRenderer
+                key={fieldConfig.name}
+                config={inactive ? { ...fieldConfig, disabled: true } : fieldConfig}
+                control={control}
+                errors={errors}
+                mode={mode}
+                watch={watch}
+                form={form}
+                onSearchComplete={(option) => {
+                  setSearchLabels((previous) => ({ ...previous, [fieldConfig.name]: option }));
+                  onSearchComplete?.(option);
+                }}
+              />
+            );
+          }
+
+          const gridCols = fieldConfig.fullWidth ? 12 : fieldConfig.gridCols || 6;
+
           return (
-            <FieldRenderer
-              key={fieldConfig.name}
-              config={fieldConfig}
-              control={control}
-              errors={errors}
-              mode={mode}
-              watch={watch}
-              form={form}
-              onSearchComplete={onSearchComplete}
-            />
+            <Grid item xs={12} sm={gridCols} key={fieldConfig.name} component="div">
+              {fieldConfig.type === 'custom' && !fieldConfig.hideCustomLabel && (
+                <Typography variant="body2" color="text.secondary" sx={{ pb: 1, px: 0.2 }}>
+                  {fieldConfig.label}
+                  {fieldConfig.required && <span style={{ color: 'red' }}>*</span>}
+                </Typography>
+              )}
+              <FieldRenderer
+                config={inactive ? { ...fieldConfig, disabled: true } : fieldConfig}
+                control={control}
+                errors={errors}
+                mode={mode}
+                watch={watch}
+                form={form}
+                onSearchComplete={(option) => {
+                  setSearchLabels((previous) => ({ ...previous, [fieldConfig.name]: option }));
+                  onSearchComplete?.(option);
+                }}
+              />
+            </Grid>
           );
-        }
-
-        const gridCols = fieldConfig.fullWidth ? 12 : fieldConfig.gridCols || 6;
-
-        return (
-          <Grid item xs={12} sm={gridCols} key={fieldConfig.name} component="div">
-            {fieldConfig.type !== 'switch' && (
-              <Typography variant="body2" color="text.secondary" sx={{ pb: 1, px: 0.2 }}>
-                {fieldConfig.label}
-                {fieldConfig.required && <span style={{ color: 'red' }}>*</span>}
-              </Typography>
-            )}
-            <FieldRenderer
-              config={fieldConfig}
-              control={control}
-              errors={errors}
-              mode={mode}
-              watch={watch}
-              form={form}
-              onSearchComplete={onSearchComplete}
-            />
-          </Grid>
-        );
-      })}
+        })}
     </Grid>
   );
 
@@ -843,13 +973,18 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
   return (
     <FormContainer
       {...containerProps}
-      onSubmit={handleSubmit(handleFormSubmit)}
+      onSubmit={(event) => {
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        if (guided && !reviewing) {
+          event.preventDefault();
+          void nextStep();
+        } else if (!busy && !isSubmitDisabled)
+          void handleSubmit(handleFormSubmit, onInvalid)(event);
+      }}
+      sx={{ p: { xs: 2, sm: 3 }, bgcolor: 'background.paper', borderRadius: 2 }}
       style={{
         width: '100%',
         maxWidth: '100%',
-        padding: 24,
-        backgroundColor: 'background.paper',
-        borderRadius: 2,
         ...containerProps?.style,
       }}
     >
@@ -865,14 +1000,121 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
         </Alert>
       </Collapse>
 
-      <Box sx={{ mb: 3 }}>{sections.length > 0 ? renderSections() : renderFields(allFields)}</Box>
+      {guided && (
+        <WizardProgress
+          titles={[...steps.map((step) => step.title), 'Review & confirm']}
+          activeStep={currentStep}
+          disabled={busy}
+          onBackTo={(step) => {
+            setActiveStep(step);
+            setStepError('');
+          }}
+        />
+      )}
+      {stepError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {stepError}
+        </Alert>
+      )}
+      <Box
+        component="fieldset"
+        disabled={busy}
+        sx={{ mb: 3, p: 0, m: 0, border: 0, minWidth: 0, pointerEvents: busy ? 'none' : undefined }}
+      >
+        {guided && (
+          <>
+            <Box hidden>{renderFields(allFields.filter((field) => field.type === 'hidden'))}</Box>
+            {steps.map((step, index) => (
+              <Box
+                key={step.title}
+                hidden={reviewing || currentStep !== index}
+                sx={{ '&[hidden]': { display: 'none' } }}
+              >
+                {step.description && (
+                  <Typography color="text.secondary" sx={{ mb: 3 }}>
+                    {step.description}
+                  </Typography>
+                )}
+                {renderFields(step.fields, reviewing || currentStep !== index)}
+              </Box>
+            ))}
+          </>
+        )}
+        {guided ? (
+          reviewing ? (
+            <Stack spacing={3}>
+              <Typography color="text.secondary">
+                Check your details before you confirm. Nothing is saved until you submit.
+              </Typography>
+              {steps.map((step, index) => (
+                <Box
+                  key={step.title}
+                  sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 2 }}
+                >
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ mb: 1 }}
+                  >
+                    <Typography fontWeight={600}>{step.title}</Typography>
+                    <Button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setActiveStep(index)}
+                      aria-label={`Edit ${step.title}`}
+                    >
+                      Edit
+                    </Button>
+                  </Stack>
+                  <Box
+                    component="dl"
+                    sx={{
+                      m: 0,
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                      gap: 1.5,
+                    }}
+                  >
+                    {step.fields
+                      .filter(
+                        (field) =>
+                          field.name !== 'confirmPassword' &&
+                          (field.type !== 'custom' || getValue(field.name) !== undefined),
+                      )
+                      .map((field) => (
+                        <Box key={field.name} sx={{ minWidth: 0 }}>
+                          <Typography component="dt" variant="caption" color="text.secondary">
+                            {field.label}
+                          </Typography>
+                          <Typography
+                            component="dd"
+                            variant="body2"
+                            sx={{ m: 0, overflowWrap: 'anywhere' }}
+                          >
+                            {reviewValue(field)}
+                          </Typography>
+                        </Box>
+                      ))}
+                  </Box>
+                </Box>
+              ))}
+            </Stack>
+          ) : null
+        ) : sections.length > 0 ? (
+          renderSections()
+        ) : (
+          renderFields(allFields)
+        )}
+      </Box>
 
       {isEditMode && isDirty && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="caption" color="warning.main">
             Unsaved changes:{' '}
-            {Object.keys(dirtyFields)
-              .filter((key) => (dirtyFields as Record<string, boolean>)[key])
+            {allFields
+              .filter((field) => getValue(field.name, dirtyFields))
+              .map((field) => field.label)
               .join(', ')}
           </Typography>
         </Box>
@@ -885,6 +1127,10 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
             justifyContent: buttonAlignStyles[buttonAlign],
             gap: 2,
             mt: 2,
+            flexWrap: 'wrap',
+            pt: 2,
+            borderTop: 1,
+            borderColor: 'divider',
           }}
         >
           {showCancel && (
@@ -911,7 +1157,20 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
             </FormButton>
           )}
 
-          {actions}
+          {guided && currentStep > 0 && (
+            <FormButton
+              type="button"
+              variant="outlined"
+              disabled={busy}
+              onClick={() => {
+                setActiveStep(currentStep - 1);
+                setStepError('');
+              }}
+            >
+              Back
+            </FormButton>
+          )}
+          {(!guided || reviewing) && actions}
 
           <FormButton
             type="submit"
@@ -922,9 +1181,13 @@ export function FormBuilder<T extends FieldValues = FieldValues>({
             successLabel={submitSuccessLabel}
             error={submitError}
             errorLabel={submitErrorLabel}
-            disabled={isSubmitDisabled}
+            disabled={guided && !reviewing ? busy : isSubmitDisabled}
           >
-            {computedSubmitLabel}
+            {guided && !reviewing
+              ? currentStep === steps.length - 1
+                ? 'Review details'
+                : 'Continue'
+              : computedSubmitLabel}
           </FormButton>
         </Box>
       )}

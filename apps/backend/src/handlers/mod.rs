@@ -3,7 +3,6 @@ pub mod balances;
 pub mod cash_deposits;
 pub mod cash_registers;
 pub mod config;
-pub mod console_tv;
 pub mod credit;
 pub mod devices;
 pub mod expense_categories;
@@ -16,6 +15,8 @@ pub mod kiosk_orders;
 pub mod notifications;
 pub mod plans;
 pub mod player_plans;
+pub mod pricing_rules;
+pub mod procurement;
 pub mod products;
 pub mod realtime_rooms;
 pub mod sessions;
@@ -27,3 +28,10 @@ pub mod units;
 pub mod uploads;
 pub mod users;
 pub mod vendors;
+
+pub mod finance_report;
+pub mod kitchen;
+
+pub mod access;
+
+pub mod catalog_scope;

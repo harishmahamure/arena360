@@ -17,11 +17,11 @@ import {
   Typography,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import {
   approveExpense,
-  type Expense,
   getExpense,
   rejectExpense,
   updateExpense,
@@ -48,22 +48,30 @@ export default function ExpenseDetailPage() {
     enabled: !!id,
   });
 
-  const populateForm = (exp: Expense) => {
-    if (!editAmount) {
-      setEditAmount(String(exp.amount));
-      setEditPaymentMethod(exp.paymentMethod);
-      setEditDescription(exp.description || '');
+  const initializedId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (expense && initializedId.current !== expense.id) {
+      initializedId.current = expense.id;
+      setEditAmount(String(expense.amount));
+      setEditPaymentMethod(expense.paymentMethod);
+      setEditDescription(expense.description || '');
     }
-  };
-
-  if (expense && !editAmount) {
-    populateForm(expense);
-  }
+  }, [expense]);
+  const hasEdits = Boolean(
+    expense &&
+      (Number(editAmount) !== Number(expense.amount) ||
+        editPaymentMethod !== expense.paymentMethod ||
+        editDescription !== (expense.description || '')),
+  );
 
   const isPending = expense?.approvalStatus === 'pending';
 
   const handleSave = async () => {
     if (!id) return;
+    if (!Number.isFinite(Number(editAmount)) || Number(editAmount) <= 0) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
     setSaving(true);
     setError(undefined);
     try {
@@ -155,141 +163,184 @@ export default function ExpenseDetailPage() {
       <Card>
         <CardContent>
           <Stack spacing={3}>
-            {isPending ? (
-              <>
-                <CurrencyField
-                  label="Amount"
-                  value={editAmount}
-                  onChange={(e) => setEditAmount(e.target.value)}
-                  fullWidth
-                />
-                <TextField
-                  select
-                  label="Payment Method"
-                  value={editPaymentMethod}
-                  onChange={(e) => setEditPaymentMethod(e.target.value)}
-                  fullWidth
-                >
-                  <MenuItem value="cash">Cash</MenuItem>
-                  <MenuItem value="online">Online</MenuItem>
-                  <MenuItem value="split_payment">Split Payment</MenuItem>
-                </TextField>
-                <TextField
-                  label="Notes"
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  fullWidth
-                  multiline
-                  rows={3}
-                />
-              </>
-            ) : (
-              <>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Amount
-                  </Typography>
-                  <Typography variant="h6">
-                    {new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                    }).format(expense.amount)}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Payment Method
-                  </Typography>
-                  <Typography>{expense.paymentMethod}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Description
-                  </Typography>
-                  <Typography>{expense.description || '-'}</Typography>
-                </Box>
-                {expense.rejectionReason && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Rejection Reason
-                    </Typography>
-                    <Typography color="error">{expense.rejectionReason}</Typography>
-                  </Box>
-                )}
-              </>
-            )}
-
-            <Box>
-              <Typography variant="caption" color="text.secondary">
-                Expense Date
-              </Typography>
-              <Typography>{formatDisplayDate(expense.expenseDate)}</Typography>
-            </Box>
-
-            <Box>
-              <Typography variant="caption" color="text.secondary">
-                Created At
-              </Typography>
-              <Typography>{formatDisplayDate(expense.createdAt)}</Typography>
-            </Box>
-
-            <Stack direction="row" spacing={2}>
-              {isPending && (
+            <GuidedForm
+              busy={saving}
+              enabled={isPending}
+              onCancel={() => navigate('/expenses')}
+              actions={
                 <>
-                  <Button variant="contained" onClick={handleSave} disabled={saving}>
-                    Save
-                  </Button>
-                  <Button
-                    variant="contained"
-                    color="success"
-                    onClick={handleApprove}
-                    disabled={saving}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    variant="contained"
-                    color="error"
-                    onClick={() => setRejectDialogOpen(true)}
-                    disabled={saving}
-                  >
-                    Reject
-                  </Button>
+                  <Stack direction="row" spacing={2}>
+                    {isPending && (
+                      <>
+                        <Button variant="contained" onClick={handleSave} disabled={saving}>
+                          Save
+                        </Button>
+                        <Button
+                          variant="contained"
+                          color="success"
+                          onClick={handleApprove}
+                          disabled={saving || hasEdits}
+                          title={
+                            hasEdits ? 'Save your edits before approving this expense.' : undefined
+                          }
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          variant="contained"
+                          color="error"
+                          onClick={() => setRejectDialogOpen(true)}
+                          disabled={saving}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      data-wizard-cancel
+                      variant="outlined"
+                      onClick={() => navigate('/expenses')}
+                    >
+                      Back
+                    </Button>
+                  </Stack>
                 </>
-              )}
-              <Button variant="outlined" onClick={() => navigate('/expenses')}>
-                Back
-              </Button>
-            </Stack>
+              }
+            >
+              <GuidedStep
+                title="Expense details"
+                validate={() =>
+                  !Number.isFinite(Number(editAmount)) || Number(editAmount) <= 0
+                    ? 'Enter a positive expense amount.'
+                    : undefined
+                }
+              >
+                {isPending ? (
+                  <>
+                    <CurrencyField
+                      label="Amount"
+                      value={editAmount}
+                      onChange={(e) => setEditAmount(e.target.value)}
+                      fullWidth
+                    />
+                    <TextField
+                      select
+                      label="Payment Method"
+                      value={editPaymentMethod}
+                      onChange={(e) => setEditPaymentMethod(e.target.value)}
+                      fullWidth
+                    >
+                      <MenuItem value="cash">Cash</MenuItem>
+                      <MenuItem value="online">Online</MenuItem>
+                      <MenuItem value="split_payment">Split Payment</MenuItem>
+                    </TextField>
+                    <TextField
+                      label="Notes"
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      fullWidth
+                      multiline
+                      rows={3}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Amount
+                      </Typography>
+                      <Typography variant="h6">
+                        {new Intl.NumberFormat('en-IN', {
+                          style: 'currency',
+                          currency: 'INR',
+                        }).format(expense.amount)}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Payment Method
+                      </Typography>
+                      <Typography>{expense.paymentMethod}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Description
+                      </Typography>
+                      <Typography>{expense.description || '-'}</Typography>
+                    </Box>
+                    {expense.rejectionReason && (
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Rejection Reason
+                        </Typography>
+                        <Typography color="error">{expense.rejectionReason}</Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Expense Date
+                  </Typography>
+                  <Typography>{formatDisplayDate(expense.expenseDate)}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Created At
+                  </Typography>
+                  <Typography>{formatDisplayDate(expense.createdAt)}</Typography>
+                </Box>
+              </GuidedStep>
+            </GuidedForm>
           </Stack>
         </CardContent>
       </Card>
 
-      <Dialog open={rejectDialogOpen} onClose={() => setRejectDialogOpen(false)} fullWidth>
+      <Dialog
+        open={rejectDialogOpen}
+        onClose={saving ? undefined : () => setRejectDialogOpen(false)}
+        fullWidth
+      >
         <DialogTitle>Reject Expense</DialogTitle>
         <DialogContent>
-          <TextField
-            label="Rejection Reason"
-            value={rejectionReason}
-            onChange={(e) => setRejectionReason(e.target.value)}
-            fullWidth
-            multiline
-            rows={3}
-            sx={{ mt: 1 }}
-            required
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={handleRejectConfirm}
-            disabled={!rejectionReason.trim() || saving}
+          <GuidedForm
+            busy={saving}
+            onCancel={() => setRejectDialogOpen(false)}
+            actions={
+              <DialogActions>
+                <Button data-wizard-cancel onClick={() => setRejectDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  color="error"
+                  variant="contained"
+                  onClick={handleRejectConfirm}
+                  disabled={!rejectionReason.trim() || saving}
+                >
+                  Reject
+                </Button>
+              </DialogActions>
+            }
           >
-            Reject
-          </Button>
-        </DialogActions>
+            <GuidedStep
+              title="Reason for rejection"
+              validate={() =>
+                !rejectionReason.trim() ? 'Provide a reason for rejection.' : undefined
+              }
+            >
+              <TextField
+                label="Rejection Reason"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                fullWidth
+                multiline
+                rows={3}
+                sx={{ mt: 1 }}
+                required
+              />
+            </GuidedStep>
+          </GuidedForm>
+        </DialogContent>
       </Dialog>
     </Box>
   );

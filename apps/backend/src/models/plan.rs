@@ -14,6 +14,10 @@ pub struct Plan {
     pub name: String,
     pub description: Option<String>,
     pub price: f64,
+    /// Live purchase price; the catalog price remains editable independently.
+    #[serde(default)]
+    #[sqlx(skip)]
+    pub current_price: Option<f64>,
     pub plan_type: String,
     pub validity_days: i32,
     pub time_window_start: Option<NaiveTime>,
@@ -76,6 +80,9 @@ pub struct UpdatePlanDto {
 #[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanFilterDto {
+    #[serde(skip_deserializing)]
+    pub allowed_location_ids: Option<Vec<Uuid>>,
+    pub location_id: Option<Uuid>,
     pub search: Option<String>,
     pub plan_type: Option<String>,
     pub is_active: Option<i64>,
@@ -105,11 +112,8 @@ pub fn parse_deduction_profile(
     value: &Value,
 ) -> Result<crate::models::deduction_profile::DeductionProfile, AppError> {
     let profile: crate::models::deduction_profile::DeductionProfile =
-        serde_json::from_value(value.clone()).map_err(|e| {
-            AppError::BadRequest(format!("Invalid deductionProfile JSON: {e}"))
-        })?;
-    profile
-        .validate()
-        .map_err(AppError::BadRequest)?;
+        serde_json::from_value(value.clone())
+            .map_err(|e| AppError::BadRequest(format!("Invalid deductionProfile JSON: {e}")))?;
+    profile.validate().map_err(AppError::BadRequest)?;
     Ok(profile)
 }

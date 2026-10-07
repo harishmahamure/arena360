@@ -26,13 +26,13 @@ describe('admin authSession', () => {
     ).toBe(false);
   });
 
-  it('ignores non-token 401 messages', () => {
+  it('logs out when a protected request rejects an inactive account', () => {
     expect(
       shouldLogoutOnUnauthorized({
         url: '/stats/dashboard',
         message: 'User is not active',
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('logs out on token auth failure for authenticated requests', () => {
@@ -53,5 +53,108 @@ describe('admin authSession', () => {
         authHeader: 'Bearer old-token',
       }),
     ).toBe(false);
+  });
+});
+
+import { Permission } from '@gaming-cafe/contracts';
+import { vi } from 'vitest';
+import {
+  bootstrapAuthFromToken,
+  clearAdminSession,
+  panelClaims,
+  sessionPermissions,
+  watchSessionExpiry,
+} from './authSession';
+
+const jwt = (claims: object) => `header.${btoa(JSON.stringify(claims))}.signature`;
+
+describe('panel session lifecycle', () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.useRealTimers();
+  });
+  it('rejects malformed, expired, and non-panel tokens', () => {
+    expect(panelClaims('invalid')).toBeNull();
+    expect(panelClaims(jwt({ userId: 'u', roles: ['admin'] }))).toBeNull();
+    expect(panelClaims(jwt({ userId: 'u', roles: ['admin'], exp: 1 }))).toBeNull();
+    expect(
+      panelClaims(jwt({ userId: 'u', roles: ['player'], exp: Date.now() / 1000 + 60 })),
+    ).toBeNull();
+  });
+  it('does not trust a persisted administrator role for a staff token', () => {
+    local.set(
+      'accessToken',
+      jwt({
+        userId: 'staff',
+        roles: ['staff'],
+        exp: Date.now() / 1000 + 60,
+        permissions: ['settings:read'],
+      }),
+    );
+    local.set('state', JSON.stringify({ auth: { id: 'staff', role: 'admin' } }));
+    const dispatch = vi.fn();
+    bootstrapAuthFromToken(dispatch);
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ role: 'staff' }) }),
+    );
+    expect(sessionPermissions()).not.toContain(Permission.SessionsWrite);
+    expect(sessionPermissions()).toContain(Permission.SettingsRead);
+    expect(sessionPermissions()).not.toContain(Permission.SettingsWrite);
+    expect(sessionPermissions()).not.toContain(Permission.DevicesWrite);
+  });
+  it('requires explicit organization grants, including for administrators', () => {
+    const claims = {
+      userId: 'admin',
+      roles: ['admin'],
+      permissions: [],
+      exp: Date.now() / 1000 + 60,
+    };
+    expect(sessionPermissions(claims)).not.toContain(Permission.DevicesWrite);
+    expect(sessionPermissions(claims)).not.toContain(Permission.RulesPublish);
+  });
+  it('expires proactively and cleans up its timer', async () => {
+    vi.useFakeTimers();
+    local.set('accessToken', jwt({ userId: 'u', roles: ['admin'], exp: Date.now() / 1000 + 2 }));
+    const expire = vi.fn();
+    const stop = watchSessionExpiry(expire);
+    await vi.advanceTimersByTimeAsync(2001);
+    expect(expire).toHaveBeenCalledOnce();
+    stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('renews an active session before the token expires', async () => {
+    vi.useFakeTimers();
+    local.set('accessToken', jwt({ userId: 'u', roles: ['admin'], exp: Date.now() / 1000 + 60 }));
+    const renewed = jwt({ userId: 'u', roles: ['admin'], exp: Date.now() / 1000 + 900 });
+    const renew = vi.fn().mockResolvedValue(renewed);
+    const expire = vi.fn();
+    const stop = watchSessionExpiry(expire, 30 * 60_000, renew);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(renew).toHaveBeenCalledOnce();
+    expect(local.get('accessToken')).toBe(renewed);
+    expect(expire).not.toHaveBeenCalled();
+    stop();
+  });
+  it('clears persisted identity and acknowledgement on logout', () => {
+    local.set('state', 'private-profile');
+    local.set('accessToken', 'token');
+    local.set('realtime_last_ack_id', 22);
+    clearAdminSession();
+    expect(local.get('state')).toBeNull();
+    expect(local.get('accessToken')).toBeNull();
+    expect(local.get('realtime_last_ack_id')).toBeNull();
+  });
+  it('expires an idle session, while activity in another tab extends it', async () => {
+    vi.useFakeTimers();
+    local.set('accessToken', jwt({ userId: 'u', roles: ['admin'], exp: Date.now() / 1000 + 60 }));
+    const expire = vi.fn();
+    const stop = watchSessionExpiry(expire, 2000);
+    await vi.advanceTimersByTimeAsync(1500);
+    local.set('arena:last-activity', Date.now());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(expire).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(expire).toHaveBeenCalledOnce();
+    stop();
   });
 });

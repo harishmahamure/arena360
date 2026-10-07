@@ -4,6 +4,7 @@ import { Alert, Autocomplete, Box, Button, MenuItem, TextField } from '@mui/mate
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { createWasteEvent, getInventoryLocations } from '../../../services/inventory';
 import { getProducts } from '../../../services/product/list';
 
@@ -82,95 +83,129 @@ export default function InventoryWasteNewPage() {
         </Alert>
       )}
 
-      <Box sx={{ display: 'grid', gap: 2 }}>
-        <TextField
-          select
-          label="Location"
-          value={locationId}
-          onChange={(e) => setLocationId(e.target.value)}
-          required
-          helperText="Store or warehouse where the waste occurred"
-        >
-          {activeLocations.map((l) => (
-            <MenuItem key={l.id} value={l.id}>
-              {l.name} ({l.kind})
-            </MenuItem>
-          ))}
-        </TextField>
-
-        <Autocomplete
-          options={productsData?.data ?? []}
-          getOptionLabel={(p) => p.name}
-          onChange={(_, p) => setProductId(p?.id ?? '')}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Product"
-              required
-              helperText="Product being written off from inventory"
-            />
-          )}
-        />
-
-        <IntegerField
-          label="Quantity (pieces)"
-          value={quantityPieces}
-          onChange={(e) => setQuantityPieces(e.target.value)}
-          inputProps={{ min: 1 }}
-          required
-          helperText="Number of individual pieces wasted"
-        />
-
-        <TextField
-          select
-          label="Reason"
-          value={reasonCode}
-          onChange={(e) => setReasonCode(e.target.value)}
-          helperText="Why the stock is being removed"
-        >
-          {REASON_OPTIONS.map((r) => (
-            <MenuItem key={r.value} value={r.value}>
-              {r.label}
-            </MenuItem>
-          ))}
-        </TextField>
-
-        <TextField
-          label={needsNote ? 'Detail (min 10 chars)' : 'Line note (optional)'}
-          value={lineNote}
-          onChange={(e) => setLineNote(e.target.value)}
-          multiline
-          rows={2}
-          required={needsNote}
-          helperText={
-            needsNote
-              ? 'Required when reason is Other — describe what happened (min 10 chars)'
-              : 'Optional detail for this line item'
+      <GuidedForm
+        busy={createMut.isPending}
+        onCancel={() => navigate('/inventory/waste')}
+        actions={
+          <>
+            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+              <Button
+                data-wizard-cancel
+                variant="outlined"
+                onClick={() => navigate('/inventory/waste')}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                disabled={!canSubmit || createMut.isPending}
+                onClick={() => createMut.mutate()}
+              >
+                Submit for approval
+              </Button>
+            </Box>
+          </>
+        }
+      >
+        <GuidedStep
+          title="Stock & quantity"
+          validate={() =>
+            !locationId ||
+            !productId ||
+            !Number.isInteger(Number(quantityPieces)) ||
+            Number(quantityPieces) <= 0
+              ? 'Choose a location and product and enter a positive whole quantity.'
+              : undefined
           }
-        />
-
-        <TextField
-          label="Event notes (optional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          multiline
-          rows={2}
-          helperText="Optional notes for the whole waste event"
-        />
-      </Box>
-
-      <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-        <Button variant="outlined" onClick={() => navigate('/inventory/waste')}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          disabled={!canSubmit || createMut.isPending}
-          onClick={() => createMut.mutate()}
         >
-          Submit for approval
-        </Button>
-      </Box>
+          <Box sx={{ display: 'grid', gap: 2 }}>
+            <TextField
+              select
+              label="Location"
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              required
+              helperText="Store or warehouse where the waste occurred"
+            >
+              {activeLocations.map((l) => (
+                <MenuItem key={l.id} value={l.id}>
+                  {l.name} ({l.kind})
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <Autocomplete
+              options={productsData?.data ?? []}
+              getOptionLabel={(p) => p.name}
+              onChange={(_, p) => setProductId(p?.id ?? '')}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Product"
+                  required
+                  helperText="Product being written off from inventory"
+                />
+              )}
+            />
+
+            <IntegerField
+              label="Quantity (pieces)"
+              value={quantityPieces}
+              onChange={(e) => setQuantityPieces(e.target.value)}
+              inputProps={{ min: 1 }}
+              required
+              helperText="Number of individual pieces wasted"
+            />
+          </Box>
+        </GuidedStep>
+        <GuidedStep
+          title="Reason & notes"
+          validate={() =>
+            needsNote && lineNote.trim().length < 10
+              ? 'Describe the reason in at least 10 characters.'
+              : undefined
+          }
+        >
+          <Box sx={{ display: 'grid', gap: 2 }}>
+            <TextField
+              select
+              label="Reason"
+              value={reasonCode}
+              onChange={(e) => setReasonCode(e.target.value)}
+              helperText="Why the stock is being removed"
+            >
+              {REASON_OPTIONS.map((r) => (
+                <MenuItem key={r.value} value={r.value}>
+                  {r.label}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              label={needsNote ? 'Detail (min 10 chars)' : 'Line note (optional)'}
+              value={lineNote}
+              onChange={(e) => setLineNote(e.target.value)}
+              multiline
+              rows={2}
+              required={needsNote}
+              helperText={
+                needsNote
+                  ? 'Required when reason is Other — describe what happened (min 10 chars)'
+                  : 'Optional detail for this line item'
+              }
+            />
+
+            <TextField
+              label="Event notes (optional)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              multiline
+              rows={2}
+              helperText="Optional notes for the whole waste event"
+            />
+          </Box>
+        </GuidedStep>
+      </GuidedForm>
     </FormPage>
   );
 }

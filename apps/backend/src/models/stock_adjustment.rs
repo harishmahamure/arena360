@@ -33,14 +33,14 @@ pub struct StockAdjustmentWithLines {
     pub lines: Vec<StockAdjustmentLine>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockAdjustmentLineDto {
     pub product_id: Uuid,
     pub counted_pieces: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockAdjustmentDto {
     pub location_id: Uuid,
@@ -48,7 +48,7 @@ pub struct CreateStockAdjustmentDto {
     pub lines: Vec<CreateStockAdjustmentLineDto>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct StockAdjustmentFilterDto {
     pub location_id: Option<Uuid>,

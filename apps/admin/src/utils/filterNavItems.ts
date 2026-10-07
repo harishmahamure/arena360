@@ -2,14 +2,20 @@ import type { Permission } from '@gaming-cafe/contracts';
 import type { NavItem } from '@gaming-cafe/ui';
 
 export interface AdminNavChildItem {
+  id?: string;
   title: string;
   path: string;
   requiredPermission?: Permission;
+  breadcrumbs?: string[];
+  searchKeywords?: string[];
 }
 
 export interface AdminNavItem extends NavItem {
+  id?: string;
   requiredPermission?: Permission;
   children?: AdminNavChildItem[];
+  breadcrumbs?: string[];
+  searchKeywords?: string[];
 }
 
 export function filterNavItemsByPermission(

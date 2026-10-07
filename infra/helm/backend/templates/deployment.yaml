@@ -1,3 +1,11 @@
+{{- $roles := default "control,cell,router" .Values.env.ARENA_ROLES -}}
+{{- $cell := regexMatch "(^|[, ])cell([, ]|$)" (lower $roles) -}}
+{{- if and $cell (or (not .Values.persistence.enabled) .Values.autoscaling.enabled (ne (int .Values.replicaCount) 1)) -}}
+{{- fail "Owning-cell deployments require persistent tenant storage, replicaCount=1 and autoscaling disabled; use distinct cells for additional replicas" -}}
+{{- end -}}
+{{- if and $cell (ne .Values.env.TENANT_DATA_DIR .Values.persistence.mountPath) -}}
+{{- fail "TENANT_DATA_DIR must equal persistence.mountPath for owning-cell deployments" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,6 +13,10 @@ metadata:
   labels:
     {{- include "arena360-backend.labels" . | nindent 4 }}
 spec:
+  {{- if $cell }}
+  strategy:
+    type: Recreate
+  {{- end }}
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
@@ -70,6 +82,11 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: tenant-storage
+              mountPath: {{ .Values.persistence.mountPath | quote }}
+          {{- end }}
           envFrom:
             {{- if .Values.configMap.enabled }}
             - configMapRef:
@@ -92,6 +109,12 @@ spec:
                   {{- end }}
             {{- end }}
           {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: tenant-storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-tenants" (include "arena360-backend.fullname" .)) | quote }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

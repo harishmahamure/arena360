@@ -32,6 +32,19 @@ postgresql:
     limits:
       cpu: "1"
       memory: 1Gi
+  config:
+    sharedBuffers: 256MB
+    effectiveCacheSize: 768MB
+    workMem: 2MB
+    maintenanceWorkMem: 64MB
+    walBuffers: 16MB
+    checkpointCompletionTarget: "0.9"
+    maxWalSize: 2GB
+    maxConnections: "80"
+    sharedPreloadLibraries: pg_stat_statements
+    trackIoTiming: "on"
+    logMinDurationStatement: "500"
+    logAutovacuumMinDuration: "1000"
 
 pgbouncer:
   enabled: true
@@ -58,8 +71,8 @@ pgbouncer:
     userlistKey: pgbouncer-users.txt
   config:
     poolMode: transaction
-    maxClientConn: 200
-    defaultPoolSize: 25
+    maxClientConn: 500
+    defaultPoolSize: 20
     reservePoolSize: 5
   resources:
     requests:

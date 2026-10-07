@@ -1,6 +1,4 @@
-use axum::{
-    extract::{Path, Query, State},
-};
+use axum::extract::{Path, Query, State};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -14,6 +12,7 @@ use crate::openapi::responses::{
     ActivityLogPaginationEnvelope, ErrorEnvelope, NotificationPaginationEnvelope,
     UnreadCountEnvelope,
 };
+use crate::repositories::TenantNotificationRepository;
 
 #[utoipa::path(
     get,
@@ -34,7 +33,9 @@ pub async fn list_notifications(
 ) -> ApiResult<PaginationResult<NotificationItem>> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let result = state.notifications.list_notifications(user_id, filters).await?;
+    let result = TenantNotificationRepository::new(state.business_db(&claims).await?)
+        .list_notifications(user_id, &filters)
+        .await?;
     ok(result)
 }
 
@@ -57,8 +58,10 @@ pub async fn unread_count(
 ) -> ApiResult<UnreadCountDto> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let result = state.notifications.unread_count(user_id, filters).await?;
-    ok(result)
+    let result = TenantNotificationRepository::new(state.business_db(&claims).await?)
+        .unread_count(user_id, filters.important_only.unwrap_or(false))
+        .await?;
+    ok(UnreadCountDto { count: result })
 }
 
 #[utoipa::path(
@@ -83,17 +86,18 @@ pub async fn mark_read(
 ) -> ApiResult<UnreadCountDto> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let updated = state.notifications.mark_read(id, user_id).await?;
+    let updated = TenantNotificationRepository::new(state.business_db(&claims).await?)
+        .mark_read(id, user_id)
+        .await?;
     if !updated {
         return Err(crate::error::AppError::NotFound(format!(
             "Notification {id} not found"
         )));
     }
-    let count = state
-        .notifications
-        .unread_count(user_id, NotificationFilterDto::default())
+    let count = TenantNotificationRepository::new(state.business_db(&claims).await?)
+        .unread_count(user_id, false)
         .await?;
-    ok(count)
+    ok(UnreadCountDto { count })
 }
 
 #[utoipa::path(
@@ -113,12 +117,13 @@ pub async fn mark_all_read(
 ) -> ApiResult<UnreadCountDto> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let _ = state.notifications.mark_all_read(user_id).await?;
-    let count = state
-        .notifications
-        .unread_count(user_id, NotificationFilterDto::default())
+    let _ = TenantNotificationRepository::new(state.business_db(&claims).await?)
+        .mark_all_read(user_id)
         .await?;
-    ok(count)
+    let count = TenantNotificationRepository::new(state.business_db(&claims).await?)
+        .unread_count(user_id, false)
+        .await?;
+    ok(UnreadCountDto { count })
 }
 
 #[utoipa::path(
@@ -140,9 +145,8 @@ pub async fn list_activity_log(
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
     let is_admin = claims.is_admin();
-    let result = state
-        .notifications
-        .list_activity_log(user_id, is_admin, filters)
+    let result = TenantNotificationRepository::new(state.business_db(&claims).await?)
+        .list_activity_log(user_id, is_admin, &filters)
         .await?;
     ok(result)
 }

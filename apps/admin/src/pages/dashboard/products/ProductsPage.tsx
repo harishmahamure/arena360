@@ -38,7 +38,12 @@ export default function ProductsPage() {
     [navigate],
   );
 
-  const { data, isLoading, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: listError,
+    refetch,
+  } = useQuery({
     queryKey: ['products', debouncedSearch, page, deletedProducts, stockExpiringSoon],
     queryFn: () =>
       getProducts({
@@ -136,6 +141,8 @@ export default function ProductsPage() {
 
   return (
     <ListPage<ProductResponse>
+      error={listError ? 'Could not load records. Please try again.' : null}
+      onRetry={() => void refetch()}
       title="Products"
       description="Manage your game zone Products here."
       data={data?.data || []}

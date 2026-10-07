@@ -43,5 +43,6 @@ export interface ProvisionDeviceDto {
   deviceType?: string | null;
   deviceSubType?: string | null;
   location?: string | null;
+  locationId?: string | null;
   provisionClient?: string | null;
 }

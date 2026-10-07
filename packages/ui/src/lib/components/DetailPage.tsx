@@ -112,7 +112,13 @@ export function DetailPage({
       )}
 
       {actions && (
-        <Stack direction="row" spacing={2} sx={{ mb: hasSections ? 3 : 0 }}>
+        <Stack
+          direction="row"
+          useFlexGap
+          flexWrap="wrap"
+          spacing={2}
+          sx={{ mb: hasSections ? 3 : 0 }}
+        >
           {actions}
         </Stack>
       )}

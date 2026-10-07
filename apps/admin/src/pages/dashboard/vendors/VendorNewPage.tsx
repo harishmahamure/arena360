@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { createVendor } from '../../../services/vendors';
 
 export default function VendorNewPage() {
@@ -74,85 +75,103 @@ export default function VendorNewPage() {
       )}
 
       <Stack spacing={3}>
-        <TextField
-          label="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          fullWidth
-          required
-          helperText="Business or supplier name shown on expense records"
-        />
-        <TextField
-          label="Contact Person"
-          value={contactPerson}
-          onChange={(e) => setContactPerson(e.target.value)}
-          fullWidth
-          helperText="Primary contact at the vendor (optional)"
-        />
-        <PhoneField
-          label="Phone"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          fullWidth
-          helperText="Contact phone number (optional)"
-        />
-        <TextField
-          label="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          fullWidth
-          helperText="Contact email for invoices and orders (optional)"
-        />
-        <TextField
-          label="Address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          fullWidth
-          multiline
-          rows={2}
-          helperText="Vendor address for records (optional)"
-        />
-        <TextField
-          label="GST Number"
-          value={gstNumber}
-          onChange={(e) => setGstNumber(e.target.value)}
-          fullWidth
-          helperText="GSTIN for tax reporting (optional)"
-        />
-        <Box>
-          <FormControlLabel
-            control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />}
-            label="Active"
-          />
-          <FormHelperText sx={{ mx: 0 }}>
-            Inactive vendors are hidden from expense vendor pickers
-          </FormHelperText>
-        </Box>
-
-        <Stack direction="row" spacing={2}>
-          <FormButton
-            variant="contained"
-            onClick={handleSubmit}
-            loading={loading}
-            success={succeeded}
-            successLabel="Vendor created"
-            error={failed}
-            errorLabel={errorMessage ?? 'Failed to create vendor'}
-            disabled={actionDisabled}
-            fullWidth
+        <GuidedForm
+          busy={loading || succeeded}
+          onCancel={() => navigate('/vendors')}
+          actions={
+            <>
+              <Stack direction="row" spacing={2}>
+                <FormButton
+                  variant="contained"
+                  onClick={handleSubmit}
+                  loading={loading}
+                  success={succeeded}
+                  successLabel="Vendor created"
+                  error={failed}
+                  errorLabel={errorMessage ?? 'Failed to create vendor'}
+                  disabled={actionDisabled}
+                  fullWidth
+                >
+                  Create Vendor
+                </FormButton>
+                <Button
+                  data-wizard-cancel
+                  variant="outlined"
+                  onClick={() => navigate('/vendors')}
+                  disabled={loading}
+                  fullWidth
+                >
+                  Cancel
+                </Button>
+              </Stack>
+            </>
+          }
+        >
+          <GuidedStep
+            title="Supplier & contact"
+            validate={() => (!name.trim() ? 'Enter a supplier name.' : undefined)}
           >
-            Create Vendor
-          </FormButton>
-          <Button
-            variant="outlined"
-            onClick={() => navigate('/vendors')}
-            disabled={loading}
-            fullWidth
-          >
-            Cancel
-          </Button>
-        </Stack>
+            <TextField
+              label="Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              fullWidth
+              required
+              helperText="Business or supplier name shown on expense records"
+            />
+            <TextField
+              label="Contact Person"
+              value={contactPerson}
+              onChange={(e) => setContactPerson(e.target.value)}
+              fullWidth
+              helperText="Primary contact at the vendor (optional)"
+            />
+            <PhoneField
+              label="Phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              fullWidth
+              helperText="Contact phone number (optional)"
+            />
+            <TextField
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              fullWidth
+              helperText="Contact email for invoices and orders (optional)"
+            />
+          </GuidedStep>
+          <GuidedStep title="Business details">
+            <TextField
+              label="Address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              fullWidth
+              multiline
+              rows={2}
+              helperText="Vendor address for records (optional)"
+            />
+            <TextField
+              label="GST Number"
+              value={gstNumber}
+              onChange={(e) => setGstNumber(e.target.value)}
+              fullWidth
+              helperText="GSTIN for tax reporting (optional)"
+            />
+            <Box>
+              <FormControlLabel
+                control={
+                  <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                }
+                label="Active"
+              />
+              <FormHelperText sx={{ mx: 0 }}>
+                Inactive vendors are hidden from expense vendor pickers
+              </FormHelperText>
+            </Box>
+          </GuidedStep>
+        </GuidedForm>
       </Stack>
     </FormPage>
   );

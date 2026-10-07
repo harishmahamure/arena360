@@ -14,6 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { GuidedForm, GuidedStep } from '../../../components/GuidedForm';
 import { Permission, usePermissions } from '../../../hooks/usePermissions';
 import {
   approveTransferRequest,
@@ -201,31 +202,56 @@ export default function InventoryTransfersPage() {
         }}
       />
 
-      <Dialog open={!!rejectId} onClose={() => setRejectId(null)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={!!rejectId}
+        onClose={rejectMut.isPending ? undefined : () => setRejectId(null)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Reject transfer request</DialogTitle>
         <DialogContent>
-          <TextField
-            label="Reason"
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            fullWidth
-            multiline
-            rows={3}
-            sx={{ mt: 1 }}
-            required
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectId(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={rejectReason.trim().length < 3 || rejectMut.isPending}
-            onClick={() => rejectId && rejectMut.mutate({ id: rejectId, reason: rejectReason })}
+          <GuidedForm
+            busy={rejectMut.isPending}
+            onCancel={() => setRejectId(null)}
+            actions={
+              <DialogActions>
+                <Button data-wizard-cancel onClick={() => setRejectId(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  color="error"
+                  variant="contained"
+                  disabled={rejectReason.trim().length < 3 || rejectMut.isPending}
+                  onClick={() =>
+                    rejectId && rejectMut.mutate({ id: rejectId, reason: rejectReason })
+                  }
+                >
+                  Reject
+                </Button>
+              </DialogActions>
+            }
           >
-            Reject
-          </Button>
-        </DialogActions>
+            <GuidedStep
+              title="Reason for rejection"
+              validate={() =>
+                rejectReason.trim().length < 3
+                  ? 'Enter a reason of at least 3 characters.'
+                  : undefined
+              }
+            >
+              <TextField
+                label="Reason"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                fullWidth
+                multiline
+                rows={3}
+                sx={{ mt: 1 }}
+                required
+              />
+            </GuidedStep>
+          </GuidedForm>
+        </DialogContent>
       </Dialog>
     </>
   );

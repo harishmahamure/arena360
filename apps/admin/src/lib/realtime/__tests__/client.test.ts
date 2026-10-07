@@ -1,3 +1,4 @@
+import { decodeClientFrame, encodeServerFrame } from '@gaming-cafe/proto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RealtimeClient, type ServerFrame } from '../client';
 
@@ -9,25 +10,26 @@ class MockWebSocket {
 
   readyState = MockWebSocket.CONNECTING;
   onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
+  onmessage: ((event: { data: ArrayBuffer }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  sentMessages: string[] = [];
+  sentMessages: Uint8Array[] = [];
+  binaryType = '';
   protocol: string;
 
   constructor(
     public url: string,
     public protocols?: string | string[],
   ) {
-    this.protocol = Array.isArray(protocols) ? protocols[0] : (protocols ?? '');
+    this.protocol = Array.isArray(protocols) ? (protocols[0] ?? '') : (protocols ?? '');
     setTimeout(() => {
       this.readyState = MockWebSocket.OPEN;
       this.onopen?.();
     }, 0);
   }
 
-  send(data: string) {
-    this.sentMessages.push(data);
+  send(data: Uint8Array) {
+    this.sentMessages.push(new Uint8Array(data));
   }
 
   close() {
@@ -36,7 +38,13 @@ class MockWebSocket {
   }
 
   simulateMessage(frame: ServerFrame) {
-    this.onmessage?.({ data: JSON.stringify(frame) });
+    const bytes = encodeServerFrame(frame);
+    this.onmessage?.({
+      data: bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ) as ArrayBuffer,
+    });
   }
 }
 
@@ -69,7 +77,7 @@ describe('RealtimeClient', () => {
     client.connect();
 
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
     expect(ws.url).toBe('ws://localhost:3000/realtime');
     expect(ws.protocols).toContain('bearer');
 
@@ -90,13 +98,13 @@ describe('RealtimeClient', () => {
     client.connect();
 
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
 
     await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
 
-    const subscribeMsg = JSON.parse(ws.sentMessages[0]);
+    const subscribeMsg = decodeClientFrame(ws.sentMessages[0]!);
     expect(subscribeMsg.type).toBe('Subscribe');
-    expect(subscribeMsg.channels).toEqual(['admin', 'staff']);
+    expect(subscribeMsg).toMatchObject({ channels: ['admin', 'staff'] });
 
     client.disconnect();
   });
@@ -106,7 +114,7 @@ describe('RealtimeClient', () => {
     client.connect();
 
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
     await vi.waitFor(() => expect(ws.readyState).toBe(MockWebSocket.OPEN));
 
     ws.simulateMessage({
@@ -118,9 +126,9 @@ describe('RealtimeClient', () => {
       ts: new Date().toISOString(),
     });
 
-    const ackMsg = ws.sentMessages.find((m) => JSON.parse(m).type === 'Ack');
+    const ackMsg = ws.sentMessages.find((m) => decodeClientFrame(m).type === 'Ack');
     expect(ackMsg).toBeDefined();
-    expect(JSON.parse(ackMsg ?? '').msg_id).toBe(42);
+    expect(decodeClientFrame(ackMsg!)).toMatchObject({ type: 'Ack', msg_id: 42 });
 
     client.disconnect();
   });
@@ -132,7 +140,7 @@ describe('RealtimeClient', () => {
     client.connect();
 
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
 
     ws.simulateMessage({
       type: 'Event',
@@ -144,7 +152,7 @@ describe('RealtimeClient', () => {
     });
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0].payload).toEqual({ amount: 100 });
+    expect(handler.mock.calls[0]![0].payload).toEqual({ amount: 100 });
 
     client.disconnect();
   });
@@ -156,7 +164,7 @@ describe('RealtimeClient', () => {
     client.connect();
 
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
 
     ws.simulateMessage({
       type: 'Welcome',
@@ -165,7 +173,7 @@ describe('RealtimeClient', () => {
     });
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0].type).toBe('Welcome');
+    expect(handler.mock.calls[0]![0].type).toBe('Welcome');
 
     client.disconnect();
   });
@@ -177,7 +185,7 @@ describe('RealtimeClient', () => {
 
     client.connect();
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
 
     unsub();
 
@@ -200,16 +208,16 @@ describe('RealtimeClient', () => {
     const client = new RealtimeClient('ws://localhost:3000/realtime');
     client.connect();
 
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(0);
     expect(mockWsInstances.length).toBe(1);
 
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
     ws.close();
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(mockWsInstances.length).toBe(2);
 
-    const ws2 = mockWsInstances[1];
+    const ws2 = mockWsInstances[1]!;
     ws2.close();
 
     await vi.advanceTimersByTimeAsync(2000);
@@ -223,7 +231,7 @@ describe('RealtimeClient', () => {
     const client = new RealtimeClient('ws://localhost:3000/realtime');
     client.connect();
 
-    await vi.runAllTimersAsync();
+    await vi.advanceTimersByTimeAsync(0);
     expect(mockWsInstances.length).toBe(1);
 
     client.disconnect();
@@ -237,7 +245,7 @@ describe('RealtimeClient', () => {
     client.connect();
 
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
 
     ws.simulateMessage({
       type: 'Event',
@@ -259,17 +267,66 @@ describe('RealtimeClient', () => {
     client.connect();
 
     await vi.waitFor(() => expect(mockWsInstances.length).toBe(1));
-    const ws = mockWsInstances[0];
+    const ws = mockWsInstances[0]!;
     await vi.waitFor(() => expect(ws.readyState).toBe(MockWebSocket.OPEN));
 
     client.publish('room:support-1', { text: 'hello' });
 
-    const pubMsg = ws.sentMessages.find((m) => JSON.parse(m).type === 'Publish');
+    const pubMsg = ws.sentMessages.find((m) => decodeClientFrame(m).type === 'Publish');
     expect(pubMsg).toBeDefined();
-    const parsed = JSON.parse(pubMsg ?? '');
-    expect(parsed.channel).toBe('room:support-1');
-    expect(parsed.payload.text).toBe('hello');
+    const parsed = decodeClientFrame(pubMsg!);
+    expect(parsed).toMatchObject({
+      type: 'Publish',
+      channel: 'room:support-1',
+      payload: { text: 'hello' },
+    });
 
+    client.disconnect();
+  });
+  it('does not open duplicate sockets while connecting', () => {
+    const client = new RealtimeClient('ws://localhost/realtime');
+    client.connect();
+    client.connect();
+    expect(mockWsInstances).toHaveLength(1);
+    client.disconnect();
+  });
+
+  it('keeps idle connections alive and reconnects when heartbeat replies stop', async () => {
+    vi.useFakeTimers();
+    const client = new RealtimeClient('ws://localhost/realtime');
+    client.connect();
+    await vi.advanceTimersByTimeAsync(25_000);
+    const ws = mockWsInstances[0]!;
+    expect(ws.sentMessages.some((frame) => decodeClientFrame(frame).type === 'Ping')).toBe(true);
+    ws.simulateMessage({ type: 'Pong' });
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(mockWsInstances).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(26_000);
+    expect(mockWsInstances).toHaveLength(2);
+    client.disconnect();
+    expect(vi.getTimerCount()).toBeLessThanOrEqual(1);
+  });
+
+  it('isolates handler errors and withholds acknowledgement when delivery fails', async () => {
+    vi.useFakeTimers();
+    const client = new RealtimeClient('ws://localhost/realtime');
+    const healthy = vi.fn();
+    client.on('test', () => {
+      throw new Error('consumer failed');
+    });
+    client.on('test', healthy);
+    client.connect();
+    await vi.advanceTimersByTimeAsync(0);
+    const ws = mockWsInstances[0]!;
+    ws.simulateMessage({
+      type: 'Event',
+      msg_id: 42,
+      event_type: 'test',
+      channel: 'staff',
+      payload: {},
+    });
+    expect(healthy).toHaveBeenCalledOnce();
+    expect(ws.sentMessages.some((frame) => decodeClientFrame(frame).type === 'Ack')).toBe(false);
     client.disconnect();
   });
 });

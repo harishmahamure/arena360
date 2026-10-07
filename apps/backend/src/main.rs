@@ -15,17 +15,21 @@ async fn main() {
 
     let state = app::build_state().await;
     let port = state.settings.port;
+    let roles = state.settings.roles;
     let router = app::build_router(state);
 
     let addr = format!("0.0.0.0:{port}");
-    tracing::info!("Starting server on {addr}");
+    tracing::info!(%roles, "Starting server on {addr}");
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .unwrap();
 }
 
 async fn shutdown_signal() {
