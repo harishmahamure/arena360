@@ -44,15 +44,15 @@ The public HTTP API (OpenAPI) stays stable, so the admin and kiosk apps keep wor
 | M2 | Ownership and routing | Leases with self-fencing and handoff; router for HTTP, SSE, and WebSocket | M1 | 1–2 weeks |
 | M3 | Tenant storage foundation | Per-tenant SQLite handle, migrations, provisioning, outbox table | M2 | 2 weeks |
 | M4 | Core venue operations on SQLite | Sessions, wallets, plan purchases, POS checkout, credit, realtime | M3 | 3 weeks |
-| M5 | Back office on SQLite (operational cutover) | Every business API on SQLite; demo seed ported; `platform-v2` merged | M4 | 3 weeks |
+| M5 | Back office on SQLite (operational cutover) | Every business API on SQLite; demo seed ported; `platform-v2` merged | M4 | 4 weeks |
 | M6 | Analytics ingestion | Outbox → JetStream → per-tenant DuckDB, with rebuilds | M5 | 2 weeks |
 | M7 | Reports on DuckDB | Every report matches the golden fixtures; ClickHouse removed | M6 | 2 weeks |
 | M8 | Replication and recovery (launch gate) | WAL replication to Wasabi, snapshots, restore, cell-loss drill | M5 | 3–4 weeks |
-| | **MVP: single cell, ready for paying venues (M0–M8)** | | | **~19–22 weeks** |
+| | **MVP: single cell, ready for paying venues (M0–M8)** | | | **~20–23 weeks** |
 | M9 | Multiple cells | Tenant moves, rebalancing, staged migrations, capacity benchmarks | M8 | 3–4 weeks |
 | M10 | Cold tenants | Inactive tenants live only in Wasabi until their next request | M8 | 1–2 weeks |
 | M11 | Archive and historical exports | 18-month archive, batched purge, `hot/` Parquet, export jobs | M7, M8 | 5–6 weeks |
-| | **Full baseline (M0–M11)** | | | **~28–34 weeks** |
+| | **Full baseline (M0–M11)** | | | **~29–35 weeks** |
 
 M8 depends only on M5, so it can run before M6 and M7 if launch timing calls for it. M11 must be complete before the oldest paying tenant's data reaches 18 months.
 
@@ -169,7 +169,9 @@ Every port replaces `FOR UPDATE` with `BEGIN IMMEDIATE` transactions, moves PL/p
 - [x] API-0032: Realtime: replace `PgListener` (`realtime/dispatcher.rs`) with in-process `tokio::broadcast` in the owning cell. — S
   - Done: the owning cell now uses a bounded in-process wake hub for committed PostgreSQL and tenant SQLite events; the business dispatcher no longer depends on `PgListener`, while routing notifications remain on PostgreSQL. PostgreSQL producers wake only after commit, tenant writers batch exact outbox sequences after fenced commit, and runtime lag recovery deduplicates pending work. Tenant projections preserve session, balance, device, kiosk, configuration, pricing, and staff-sale payload contracts while enforcing source-tenant ACLs and durable-delivery-before-send semantics. Tests cover commit and rollback notification boundaries, schema-zero migration bootstrap, projection allowlists and payload snapshots, tenant isolation, lag deduplication, and existing realtime ACLs. Process restart retains the prior non-replayed `LISTEN`/`NOTIFY` behavior; durable cross-process publishing remains API-0040.
 
-**Done when:** integration tests cover the full core flow against SQLite: kiosk login, session start, dynamic deduction, session end, plan purchase, POS checkout with stock deduction, credit sale, and credit settlement. The admin floor view updates live. The measured porting pace is recorded and the rest of the plan re-estimated.
+**Done when:** staged SQLite integration tests cover kiosk login, session start, dynamic deduction, session end, plan purchase, POS checkout with stock deduction, credit sale, and credit settlement; the tenant outbox projects session and device events with the admin floor's realtime payload contract. Record the measured porting pace and re-estimate the remaining plan. The live admin floor demo against SQLite belongs to M5's operational cutover, because M4 intentionally leaves the HTTP handlers on PostgreSQL.
+
+M4 verified (2026-10-07): `cargo test` passes, with database and external-service tests marked ignored by their existing harnesses. The staged SQLite repository suites cover kiosk player login, session lifecycle and weighted deduction, plan grants, POS stock deduction, credit sale and settlement. The realtime dispatcher tests prove that committed SQLite session events project to the staff channel. The M4 implementation commits for catalog through realtime span about five hours on 2026-10-07 and change 53 backend source/test files; that short commit window is not a reliable estimate of end-to-end cutover effort. M5 is provisionally increased from three to four weeks because its remaining domain ports also require coordinated HTTP and admin/kiosk cutover. Later milestone estimates are unchanged until M5 supplies a live benchmark.
 
 ---
 
@@ -177,7 +179,8 @@ Every port replaces `FOR UPDATE` with `BEGIN IMMEDIATE` transactions, moves PL/p
 
 **Goal:** every business API runs on SQLite, and PostgreSQL holds only the control plane.
 
-- [ ] DB-0010c: Schema for inventory and procurement, shifts, cash and expenses, settings, notifications, and kitchen. — M
+- [x] DB-0010c: Schema for inventory and procurement, shifts, cash and expenses, settings, notifications, and kitchen. — M
+  - Done: `tenant/0004_back_office.sql` adds strict tenant-local procurement, stock workflow, cash, expense, configuration, notification, and kitchen tables around the M4 shift and stock roots, plus a transactional purchase-order number counter. UUID text, UTC timestamps, scale-4 money, JSON, status, and relationship constraints follow the accepted tenant conventions. `tenant_back_office_schema` tests check table isolation, foreign keys, receipt accounting, duplicate invoices, and invalid references.
 - [ ] API-0029: Port inventory and procurement (`inventory_repo`, `vendor_repo`, procurement services). — L
 - [ ] API-0030: Port shifts, cash, and expenses (`shift_repo`, `cash_register_repo`, `cash_deposit_repo`, `expense_repo`, `expense_category_repo`). — M
 - [ ] API-0031: Port settings, configuration, notifications, and kitchen (`settings_repo`, `config_repo`, `notification_repo`, `kitchen_service`). Replace the PostgreSQL advisory locks in `settings_repo`, `handlers/kitchen.rs`, and `handlers/access.rs` with `BEGIN IMMEDIATE` or control-plane locks, depending on which database each one guards. — M
@@ -186,7 +189,7 @@ Every port replaces `FOR UPDATE` with `BEGIN IMMEDIATE` transactions, moves PL/p
 - [ ] TEST-0020: All backend integration tests run against temporary tenant SQLite files and a test control-plane database. — M
 - [ ] OPS-0011: Retire the PostgreSQL operational schema and its 119 migrations, then merge `platform-v2` into `main`. — S
 
-**Done when:** the admin and kiosk apps work end to end against the new backend on the ported demo seed; no `PgPool` is used outside the control plane; `platform-v2` is merged. Reports return `503 ANALYTICS_UNAVAILABLE` until M7.
+**Done when:** the admin and kiosk apps work end to end against the new backend on the ported demo seed; the admin floor view updates live from SQLite-backed sessions and devices; no `PgPool` is used outside the control plane; `platform-v2` is merged. Reports return `503 ANALYTICS_UNAVAILABLE` until M7.
 
 ---
 
