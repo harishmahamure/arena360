@@ -135,6 +135,20 @@ impl TenantTransport {
             .map(|r| r.into_event(self.db.tenant_id()))
             .collect()
     }
+    pub async fn ack_current(&self, id: i64, claims: &JwtUserClaims) -> Result<(), AppError> {
+        let user = claims
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Invalid identity".into()))?;
+        let stored: Option<StoredRow> = sqlx::query_as(&format!("{SELECT} JOIN realtime_deliveries d ON d.outbox_id=o.id WHERE o.id=? AND d.subscriber_id=? AND d.ack_at IS NULL"))
+            .bind(id).bind(user.to_string()).fetch_optional(&self.db.read_pool()?).await?;
+        if let Some(stored) = stored {
+            let row = stored.into_event(self.db.tenant_id())?;
+            if can_receive(self.db.clone(), claims, &row).await? {
+                self.ack(id, user).await?;
+            }
+        }
+        Ok(())
+    }
     pub async fn ack(&self, id: i64, user: Uuid) -> Result<(), AppError> {
         let at = timestamp(Utc::now())?;
         self.db.with_immediate_writer(move|c|Box::pin(async move {
@@ -228,7 +242,10 @@ pub async fn current_claims(
     let user = claims
         .user_id_uuid()
         .ok_or_else(|| AppError::Unauthorized("Invalid identity".into()))?;
-    if claims.is_admin_or_staff() {
+    let kiosk_player = claims.appId == "game-zone-kiosk"
+        && claims.deviceId.is_some()
+        && claims.roles.iter().any(|r| r == "player" || r == "staff");
+    if claims.is_admin_or_staff() && !kiosk_player {
         let repo = crate::repositories::TenantSettingsRepository::new(db);
         let membership = repo
             .membership_context(user)
@@ -255,14 +272,38 @@ pub async fn current_claims(
     } else {
         current.permissions.clear();
         current.roles = vec!["player".into()];
-        let local = crate::repositories::TenantUserRepository::new(db)
+        let local = crate::repositories::TenantUserRepository::new(db.clone())
             .find_by_id(user)
             .await?
-            .filter(|u| u.is_active && u.role.as_deref() == Some("player"))
+            .filter(|u| {
+                u.is_active
+                    && (u.role.as_deref() == Some("player")
+                        || (kiosk_player && u.role.as_deref() == Some("staff")))
+            })
             .ok_or_else(|| AppError::Unauthorized("Player access changed".into()))?;
-        if !claims.roles.iter().any(|r| r == "player") || local.id != user {
+        if !(claims.roles.iter().any(|r| r == "player") || kiosk_player) || local.id != user {
             return Err(AppError::Unauthorized("Player identity required".into()));
         }
+        if local.role.as_deref() == Some("staff")
+            && crate::repositories::TenantShiftRepository::new(db.clone())
+                .find_active_by_user(user)
+                .await?
+                .is_some()
+        {
+            return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
+        }
+        let device_id = claims
+            .device_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Player device identity required".into()))?;
+        let device = crate::repositories::TenantDeviceRepository::new(db)
+            .find_by_id(device_id)
+            .await?
+            .filter(|d| {
+                d.registration_status == "registered"
+                    && claims.locationId == Some(d.location_id.to_string())
+            })
+            .ok_or_else(|| AppError::Unauthorized("Player device registration changed".into()))?;
+        current.deviceId = Some(device.id.to_string());
     }
     Ok(current)
 }
@@ -318,6 +359,9 @@ pub async fn can_receive(
         } else {
             Err(error)
         };
+    }
+    if row.event.event_type == "notification.created" && !claims.is_admin_or_staff() {
+        return Ok(false);
     }
     if row.event.event_type == "notification.created"
         && row

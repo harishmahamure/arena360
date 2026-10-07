@@ -340,7 +340,7 @@ async fn handle_client_frame(
             send_frame(tx, slow_consumer, ServerFrame::Unsubscribed { channels });
         }
         ClientFrame::Ack { msg_id } => {
-            if let Err(error) = transport.ack(msg_id, claims.user_id_uuid().unwrap()).await {
+            if let Err(error) = transport.ack_current(msg_id, &claims).await {
                 send_frame(
                     tx,
                     slow_consumer,

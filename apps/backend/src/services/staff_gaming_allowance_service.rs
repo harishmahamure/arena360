@@ -97,6 +97,70 @@ impl StaffGamingAllowanceService {
         }
     }
 
+    pub async fn get_summary_tenant(
+        &self,
+        db: Arc<crate::tenancy::TenantDb>,
+        user: Uuid,
+    ) -> Result<StaffGamingAllowanceSummary, AppError> {
+        Ok(
+            match crate::repositories::TenantBalanceRepository::new(db)
+                .staff_allowance_summary(user)
+                .await?
+            {
+                Some((balance, minutes)) => {
+                    Self::summary_from_balance(user, &balance, minutes, Utc::now())
+                }
+                None => StaffGamingAllowanceSummary::none(user),
+            },
+        )
+    }
+    pub async fn grant_tenant(
+        &self,
+        db: Arc<crate::tenancy::TenantDb>,
+        user: Uuid,
+        dto: SetStaffGamingAllowanceDto,
+        actor: Option<Uuid>,
+    ) -> Result<StaffGamingAllowanceSummary, AppError> {
+        let minutes = (dto.allotted_hours * 60.0).round();
+        if !dto.allotted_hours.is_finite()
+            || dto.allotted_hours <= 0.0
+            || !(1.0..=i32::MAX as f64).contains(&minutes)
+        {
+            return Err(AppError::BadRequest(
+                "allottedHours must convert to between 1 and 2147483647 minutes".into(),
+            ));
+        }
+        let values = self
+            .settings
+            .effective_tenant(
+                db.clone(),
+                db.tenant_id(),
+                crate::models::EffectiveSettingsQuery {
+                    location_id: None,
+                    category: Some("staff".into()),
+                },
+            )
+            .await?;
+        let days = values
+            .into_iter()
+            .find(|value| value.key == "staff.allowance_period_days")
+            .and_then(|value| value.value.as_i64())
+            .ok_or_else(|| AppError::Internal("Staff allowance period is unavailable".into()))?;
+        let balance = crate::repositories::TenantBalanceRepository::new(db.clone())
+            .grant_staff_allowance(user, minutes as i32, days, actor)
+            .await?;
+        self.invalidate(user).await?;
+        self.balance_service
+            .sync_tenant_balance_cache_after_mutation(db, &balance)
+            .await?;
+        Ok(Self::summary_from_balance(
+            user,
+            &balance,
+            minutes as i32,
+            Utc::now(),
+        ))
+    }
+
     pub async fn get_summary(
         &self,
         user_id: Uuid,

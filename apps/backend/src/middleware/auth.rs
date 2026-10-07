@@ -71,6 +71,12 @@ pub async fn authorize_tenant_request(
         .get::<JwtUserClaims>()
         .cloned()
         .ok_or_else(|| AppError::Unauthorized("Authentication required".into()))?;
+    if claims.appId == "game-zone-kiosk" && claims.deviceId.is_some() && claims.is_admin_or_staff()
+    {
+        return Err(AppError::Forbidden(
+            "Use a panel session for staff operations".into(),
+        ));
+    }
     if claims.is_admin_or_staff() {
         let db = state.business_db(&claims).await?;
         let user = claims
@@ -523,6 +529,11 @@ where
             ));
         }
 
+        let player_claims = crate::realtime::tenant_transport::current_claims(
+            app_state.business_db(&device_claims).await?,
+            &player_claims,
+        )
+        .await?;
         Ok(PlayerUser(player_claims))
     }
 }

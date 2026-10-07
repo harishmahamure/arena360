@@ -2161,6 +2161,295 @@ async fn unchanged_identity_poll_does_not_prevent_idle_handle_eviction() {
 }
 
 #[tokio::test]
+#[ignore = "requires isolated CONTROL_TEST_DATABASE_URL"]
+async fn staff_kiosk_login_uses_global_credentials_and_local_allowance_with_player_capabilities() {
+    use gaming_cafe_api::repositories::{
+        TenantBalanceRepository, TenantDeviceRepository, TenantSessionRepository,
+        TenantShiftRepository,
+    };
+    let f = Fixture::new().await;
+    let control = PgPoolOptions::new()
+        .connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap())
+        .await
+        .unwrap();
+    gaming_cafe_api::control::migrate(&control).await.unwrap();
+    let cell = Uuid::now_v7();
+    let staff = f.staff_id;
+    let username = format!("kiosk-staff-{staff}");
+    sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)")
+        .bind(cell)
+        .bind(format!("cell-{cell}"))
+        .bind(format!("http://{cell}"))
+        .execute(&control)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Kiosk staff test','UTC',$3,1,'ACTIVE')")
+        .bind(f.tenant_id).bind(format!("kiosk-{}",f.tenant_id)).bind(cell).execute(&control).await.unwrap();
+    sqlx::query("INSERT INTO users(id,username,password_hash) VALUES($1,$2,$3)")
+        .bind(staff)
+        .bind(&username)
+        .bind(hash("playing-password", DEFAULT_COST).unwrap())
+        .execute(&control)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO organization_memberships(tenant_id,user_id,role) VALUES($1,$2,'staff')",
+    )
+    .bind(f.tenant_id)
+    .bind(staff)
+    .execute(&control)
+    .await
+    .unwrap();
+    let device = TenantDeviceRepository::new(f.db.clone()).create(&serde_json::from_value(serde_json::json!({
+        "name":"Staff kiosk","locationId":f.location_a,"deviceType":"PC","deviceSubType":"HIGH_END_PCS","registrationStatus":"registered"
+    })).unwrap(),None).await.unwrap();
+    let pg = PgPoolOptions::new()
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    pg.close().await;
+    let cache = create_cache(None).await;
+    let settings = test_settings();
+    let auth = AuthService::new(
+        pg.clone(),
+        settings.clone(),
+        Arc::new(BalanceService::new(pg.clone(), cache.clone())),
+        Arc::new(UserService::new(pg, cache)),
+    )
+    .with_control_pool(Some(control.clone()));
+    let login = || LoginDto {
+        username: username.clone(),
+        password: "playing-password".into(),
+    };
+    let absent = auth
+        .login_player_tenant(f.db.clone(), &device, login(), "UTC".into())
+        .await
+        .unwrap_err();
+    assert!(matches!(absent,AppError::Api {ref code,..} if code=="STAFF_ALLOWANCE_NONE"));
+    let allowance = TenantBalanceRepository::new(f.db.clone())
+        .grant_staff_allowance(staff, 120, 30, None)
+        .await
+        .unwrap();
+    let response = auth
+        .login_player_tenant(f.db.clone(), &device, login(), "UTC".into())
+        .await
+        .unwrap();
+    assert_eq!(response.user.role, "staff");
+    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+    validation.set_audience(&["gamezone"]);
+    let claims = jsonwebtoken::decode::<gaming_cafe_api::dto::JwtUserClaims>(
+        &response.accessToken,
+        &jsonwebtoken::DecodingKey::from_secret(settings.jwt_secret.as_bytes()),
+        &validation,
+    )
+    .unwrap()
+    .claims;
+    assert_eq!(claims.roles, vec!["player"]);
+    assert!(claims.permissions.is_empty());
+    assert_eq!(claims.tenantId, f.tenant_id.to_string());
+    let current =
+        gaming_cafe_api::realtime::tenant_transport::current_claims(f.db.clone(), &claims)
+            .await
+            .unwrap();
+    assert_eq!(current.roles, vec!["player"]);
+    assert!(current.permissions.is_empty());
+    assert!(gaming_cafe_api::realtime::tenant_transport::check_channel(
+        f.db.clone(),
+        &current,
+        &gaming_cafe_api::realtime::channel::ChannelId::Admin
+    )
+    .await
+    .is_err());
+    let notification = Uuid::now_v7();
+    f.db.with_immediate_writer(move |c| -> BoxFuture<'_,Result<(),AppError>> {Box::pin(async move {
+        gaming_cafe_api::tenancy::write_outbox_event_on_connection(c,gaming_cafe_api::tenancy::NewOutboxEvent {
+            aggregate_type:"notification".into(),aggregate_id:notification,event_type:"notification.created".into(),location_id:Some(device.location_id),
+            schema_version:1,deleted:false,payload:serde_json::json!({"userId":staff,"notificationId":notification,"kind":"kiosk_order_placed"}),
+        }).await?;Ok(())
+    })}).await.unwrap();
+    let transport = gaming_cafe_api::realtime::tenant_transport::TenantTransport::new(f.db.clone());
+    transport.project_pending().await.unwrap();
+    let inbox_event = transport
+        .pending()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.event.payload["notificationId"] == notification.to_string())
+        .unwrap();
+    assert!(!gaming_cafe_api::realtime::tenant_transport::can_receive(
+        f.db.clone(),
+        &claims,
+        &inbox_event
+    )
+    .await
+    .unwrap());
+    transport
+        .record_deliveries(inbox_event.event.id, vec![staff])
+        .await
+        .unwrap();
+    transport
+        .ack_current(inbox_event.event.id, &claims)
+        .await
+        .unwrap();
+    assert!(transport
+        .replay(staff)
+        .await
+        .unwrap()
+        .iter()
+        .any(|row| row.event.id == inbox_event.event.id));
+    transport
+        .publish_chat(
+            &claims,
+            format!("user:{staff}"),
+            serde_json::json!({"body":"own message"}),
+        )
+        .await
+        .unwrap();
+    transport.project_pending().await.unwrap();
+    let own_chat = transport
+        .pending()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| {
+            row.event.channel == format!("user:{staff}") && row.event.event_type == "chat.message"
+        })
+        .unwrap();
+    transport
+        .record_deliveries(own_chat.event.id, vec![staff])
+        .await
+        .unwrap();
+    transport
+        .ack_current(own_chat.event.id, &claims)
+        .await
+        .unwrap();
+    assert!(!transport
+        .replay(staff)
+        .await
+        .unwrap()
+        .iter()
+        .any(|row| row.event.id == own_chat.event.id));
+    let projected = TenantUserRepository::new(f.db.clone())
+        .find_by_id(staff)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(projected.password_hash.is_none());
+    assert!(projected.totp_secret.is_none());
+    let sessions = TenantSessionRepository::new(f.db.clone());
+    let session = sessions
+        .start(
+            staff,
+            allowance.id,
+            device.id,
+            f.location_a,
+            None,
+            Utc::now(),
+            None,
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(TenantShiftRepository::new(f.db.clone()).create(staff,f.location_a,None,staff).await,Err(AppError::Api {ref code,..}) if code=="STAFF_GAMING_SESSION_ACTIVE")
+    );
+    sessions
+        .charge(
+            session.session.id,
+            0,
+            Some((Utc::now(), 1, "voluntary".into())),
+            None,
+        )
+        .await
+        .unwrap();
+    let shift = TenantShiftRepository::new(f.db.clone())
+        .create(staff, f.location_a, None, staff)
+        .await
+        .unwrap();
+    let on_shift = auth
+        .login_player_tenant(f.db.clone(), &device, login(), "UTC".into())
+        .await
+        .unwrap_err();
+    assert!(matches!(on_shift,AppError::Api {ref code,..} if code=="STAFF_SHIFT_ACTIVE"));
+    assert!(sessions
+        .start(
+            staff,
+            allowance.id,
+            device.id,
+            f.location_a,
+            None,
+            Utc::now(),
+            None,
+            serde_json::json!({})
+        )
+        .await
+        .is_err());
+    assert!(
+        gaming_cafe_api::realtime::tenant_transport::current_claims(f.db.clone(), &claims)
+            .await
+            .is_err()
+    );
+    TenantShiftRepository::new(f.db.clone())
+        .force_close(shift.id, staff)
+        .await
+        .unwrap();
+    let wrong = auth
+        .login_player_tenant(
+            f.db.clone(),
+            &device,
+            LoginDto {
+                username: username.clone(),
+                password: "wrong".into(),
+            },
+            "UTC".into(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(wrong,AppError::Api {ref code,..} if code=="AUTH_INVALID_CREDENTIALS"));
+    sqlx::query(
+        "UPDATE organization_memberships SET is_active=false WHERE tenant_id=$1 AND user_id=$2",
+    )
+    .bind(f.tenant_id)
+    .bind(staff)
+    .execute(&control)
+    .await
+    .unwrap();
+    assert!(auth
+        .login_player_tenant(f.db.clone(), &device, login(), "UTC".into())
+        .await
+        .is_err());
+    gaming_cafe_api::control::staff_projection::sync_user(&control, f.db.clone(), staff)
+        .await
+        .unwrap();
+    assert!(
+        gaming_cafe_api::realtime::tenant_transport::current_claims(f.db.clone(), &claims)
+            .await
+            .is_err()
+    );
+    sqlx::query("DELETE FROM organization_memberships WHERE tenant_id=$1")
+        .bind(f.tenant_id)
+        .execute(&control)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM tenants WHERE id=$1")
+        .bind(f.tenant_id)
+        .execute(&control)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(staff)
+        .execute(&control)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM cells WHERE id=$1")
+        .bind(cell)
+        .execute(&control)
+        .await
+        .unwrap();
+    control.close().await;
+    f.close().await;
+}
+
+#[tokio::test]
 async fn staged_tenant_login_authenticates_only_tenant_players() {
     let fixture = Fixture::new().await;
     let repo = TenantUserRepository::new(fixture.db.clone());

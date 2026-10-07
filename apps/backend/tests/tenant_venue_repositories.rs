@@ -418,6 +418,211 @@ async fn session_service_activity_commits_locally_and_failure_rolls_back_the_ses
 }
 
 #[tokio::test]
+async fn staff_allowance_renewal_preserves_ledger_and_recovers_atomically_without_postgres() {
+    use gaming_cafe_api::models::{SetStaffGamingAllowanceDto, StaffGamingAllowanceStatus};
+    let f = Fixture::new().await;
+    let staff = Uuid::now_v7();
+    f.db.with_immediate_writer(move |c| Box::pin(async move {
+        let ts = gaming_cafe_api::time::format_sqlite_timestamp(&Utc::now()).unwrap();
+        sqlx::query("INSERT INTO users(id,username,role,created_at,updated_at) VALUES(?,'allowance-staff','staff',?,?)")
+            .bind(staff.to_string()).bind(&ts).bind(&ts).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO setting_overrides(id,key,value,created_at,updated_at) VALUES(?,'staff.allowance_period_days','7',?,?)")
+            .bind(Uuid::now_v7().to_string()).bind(&ts).bind(&ts).execute(c).await?; Ok(())
+    })).await.unwrap();
+    let pg = PgPoolOptions::new()
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    pg.close().await;
+    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let service = gaming_cafe_api::services::StaffGamingAllowanceService::new(
+        pg.clone(),
+        Arc::new(gaming_cafe_api::services::UserService::new(
+            pg.clone(),
+            cache.clone(),
+        )),
+        Arc::new(BalanceService::new(pg.clone(), cache.clone())),
+        cache.clone(),
+        Arc::new(gaming_cafe_api::services::ConfigService::new(
+            pg,
+            cache,
+            "UTC".into(),
+        )),
+    );
+    assert_eq!(
+        service
+            .get_summary_tenant(f.db.clone(), staff)
+            .await
+            .unwrap()
+            .status,
+        StaffGamingAllowanceStatus::None
+    );
+    let grant = service
+        .grant_tenant(
+            f.db.clone(),
+            staff,
+            SetStaffGamingAllowanceDto {
+                allotted_hours: 2.0,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(grant.remaining_minutes, 120);
+    assert_eq!(
+        grant.period_end.unwrap() - grant.period_start.unwrap(),
+        ChronoDuration::days(7)
+    );
+    let device = f.device("STAFF-PLAY").await;
+    let session = TenantSessionRepository::new(f.db.clone())
+        .start(
+            staff,
+            grant.balance_id.unwrap(),
+            device.id,
+            f.location_id,
+            None,
+            Utc::now(),
+            None,
+            json!({}),
+        )
+        .await
+        .unwrap();
+    TenantSessionRepository::new(f.db.clone())
+        .charge(
+            session.session.id,
+            30,
+            Some((Utc::now(), 1, "voluntary".into())),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .get_summary_tenant(f.db.clone(), staff)
+            .await
+            .unwrap()
+            .used_minutes,
+        30
+    );
+    let (a, b) = tokio::join!(
+        service.grant_tenant(
+            f.db.clone(),
+            staff,
+            SetStaffGamingAllowanceDto {
+                allotted_hours: 1.0
+            },
+            None
+        ),
+        service.grant_tenant(
+            f.db.clone(),
+            staff,
+            SetStaffGamingAllowanceDto {
+                allotted_hours: 3.0
+            },
+            None
+        )
+    );
+    let a = a.unwrap();
+    let b = b.unwrap();
+    assert_ne!(a.balance_id, b.balance_id);
+    assert_eq!(a.allotted_minutes, 60);
+    assert_eq!(b.allotted_minutes, 180);
+    let pool = f.db.read_pool().unwrap();
+    let balances: Vec<(String,i32,String,i64)> = sqlx::query_as("SELECT b.id,b.remaining_minutes,b.status,COALESCE((SELECT SUM(delta_minutes) FROM player_plan_ledger l WHERE l.balance_id=b.id),0) FROM player_plan_balances b WHERE b.player_id=?")
+        .bind(staff.to_string()).fetch_all(&pool).await.unwrap();
+    assert_eq!(balances.len(), 3);
+    assert_eq!(balances.iter().filter(|row| row.2 == "active").count(), 1);
+    for (_, remaining, state, ledger) in balances {
+        assert_eq!(remaining as i64, ledger);
+        if state == "cancelled" {
+            assert_eq!(remaining, 0);
+        }
+    }
+    let before: (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM player_plan_ledger),(SELECT COUNT(*) FROM outbox_events)",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    f.db.with_immediate_writer(|c| Box::pin(async move {
+        sqlx::query("CREATE TRIGGER reject_allowance BEFORE INSERT ON player_plan_ledger WHEN NEW.reason='staff_allowance_renewal' BEGIN SELECT RAISE(ABORT,'ledger unavailable'); END").execute(c).await?;Ok(())
+    })).await.unwrap();
+    assert!(service
+        .grant_tenant(
+            f.db.clone(),
+            staff,
+            SetStaffGamingAllowanceDto {
+                allotted_hours: 4.0
+            },
+            None
+        )
+        .await
+        .is_err());
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(
+            "SELECT (SELECT COUNT(*) FROM player_plan_ledger),(SELECT COUNT(*) FROM outbox_events)"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        before
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM player_plan_balances WHERE player_id=? AND status='active'"
+        )
+        .bind(staff.to_string())
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    for hours in [f64::NAN, f64::INFINITY, 0.0, 0.001, 1e20] {
+        assert!(service
+            .grant_tenant(
+                f.db.clone(),
+                staff,
+                SetStaffGamingAllowanceDto {
+                    allotted_hours: hours
+                },
+                None
+            )
+            .await
+            .is_err());
+    }
+    assert!(service
+        .grant_tenant(
+            f.db.clone(),
+            f.player_id,
+            SetStaffGamingAllowanceDto {
+                allotted_hours: 1.0
+            },
+            None
+        )
+        .await
+        .is_err());
+    let other = Fixture::new().await;
+    assert!(service
+        .get_summary_tenant(other.db.clone(), staff)
+        .await
+        .is_err());
+    other.close().await;
+    f.lease.generations.write().unwrap().clear();
+    assert!(service
+        .grant_tenant(
+            f.db.clone(),
+            staff,
+            SetStaffGamingAllowanceDto {
+                allotted_hours: 1.0
+            },
+            None
+        )
+        .await
+        .is_err());
+    pool.close().await;
+    f.close().await;
+}
+
+#[tokio::test]
 async fn unique_open_sessions_and_lease_fencing_are_enforced() {
     let fixture = Fixture::new().await;
     let device = fixture.device("PC-02").await;

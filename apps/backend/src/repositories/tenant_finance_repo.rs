@@ -852,6 +852,8 @@ impl TenantShiftRepository {
         actor: Uuid,
     ) -> Result<Shift, AppError> {
         Self::staff(c, user).await?;
+        let playing: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM usage_sessions WHERE player_id=? AND end_time IS NULL AND deleted_at IS NULL)").bind(user.to_string()).fetch_one(&mut *c).await?;
+        if playing {return Err(AppError::conflict_code("STAFF_GAMING_SESSION_ACTIVE",None));}
         let id = Uuid::now_v7();
         let ts = now()?;
         sqlx::query("INSERT INTO shifts(id,user_id,location_id,clock_in,notes,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)").bind(id.to_string()).bind(user.to_string()).bind(venue.to_string()).bind(&ts).bind(notes).bind(actor.to_string()).bind(actor.to_string()).bind(&ts).bind(&ts).execute(&mut *c).await.map_err(|e| match &e {

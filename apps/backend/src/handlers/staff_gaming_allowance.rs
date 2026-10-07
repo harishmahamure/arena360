@@ -29,11 +29,14 @@ use crate::openapi::responses::{ErrorEnvelope, StaffGamingAllowanceSummaryEnvelo
     tag = "staff-gaming-allowance"
 )]
 pub async fn get_staff_gaming_allowance(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StaffGamingAllowanceSummary> {
-    let summary = state.staff_gaming_allowances.get_summary(id).await?;
+    let summary = state
+        .staff_gaming_allowances
+        .get_summary_tenant(state.business_db(&claims).await?, id)
+        .await?;
     ok(summary)
 }
 
@@ -63,7 +66,12 @@ pub async fn update_staff_gaming_allowance(
 ) -> ApiResult<StaffGamingAllowanceSummary> {
     let summary = state
         .staff_gaming_allowances
-        .grant(id, dto, claims.user_id_uuid())
+        .grant_tenant(
+            state.business_db(&claims).await?,
+            id,
+            dto,
+            claims.user_id_uuid(),
+        )
         .await?;
     ok(summary)
 }

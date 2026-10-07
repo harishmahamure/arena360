@@ -436,6 +436,48 @@ impl TenantBalanceRepository {
         .fetch_optional(&self.db.read_pool()?)
         .await?)
     }
+    pub async fn staff_allowance_summary(&self, user: Uuid) -> Result<Option<(PlayerPlanBalance, i32)>, AppError> {
+        let mut tx = self.db.read_pool()?.begin().await?;
+        require_allowance_staff(&mut tx, user).await?;
+        let balance: Option<PlayerPlanBalance> = sqlx::query_as(&format!("{BALANCE_SELECT} WHERE player_id=? AND kind='staff_allowance' AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 1"))
+            .bind(user.to_string()).fetch_optional(&mut *tx).await?;
+        let result = if let Some(balance) = balance {
+            let granted: Option<i32> = sqlx::query_scalar("SELECT delta_minutes FROM player_plan_ledger WHERE balance_id=? AND reason IN('staff_allowance_grant','staff_allowance_renewal') ORDER BY created_at,id LIMIT 1")
+                .bind(balance.id.to_string()).fetch_optional(&mut *tx).await?;
+            let minutes = granted.unwrap_or(balance.remaining_minutes);
+            Some((balance, minutes))
+        } else { None };
+        tx.commit().await?;
+        Ok(result)
+    }
+    pub async fn grant_staff_allowance(&self, user: Uuid, minutes: i32, period_days: i64, actor: Option<Uuid>) -> Result<PlayerPlanBalance, AppError> {
+        if minutes <= 0 || !(1..=3650).contains(&period_days) {
+            return Err(AppError::BadRequest("Invalid staff allowance duration".into()));
+        }
+        write(&self.db, Box::new(move |c| Box::pin(async move {
+            require_allowance_staff(c, user).await?;
+            let had_prior: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM player_plan_balances WHERE player_id=? AND kind='staff_allowance' AND deleted_at IS NULL)")
+                .bind(user.to_string()).fetch_one(&mut *c).await?;
+            let at = Utc::now(); let at_text = timestamp(&at)?;
+            let expiry = at.checked_add_signed(Duration::days(period_days)).ok_or_else(||AppError::BadRequest("Allowance expiry is out of range".into()))?;
+            let expiry_text = timestamp(&expiry)?;
+            let previous: Vec<(String,i32,String)> = sqlx::query_as("SELECT id,remaining_minutes,expiry_date FROM player_plan_balances WHERE player_id=? AND kind='staff_allowance' AND status='active' AND deleted_at IS NULL")
+                .bind(user.to_string()).fetch_all(&mut *c).await?;
+            for (id, remaining, old_expiry) in previous {
+                let id = Uuid::parse_str(&id).map_err(|e|AppError::Internal(e.to_string()))?;
+                sqlx::query("UPDATE player_plan_balances SET status='cancelled',remaining_minutes=0,updated_by=?,updated_at=? WHERE id=?")
+                    .bind(actor.map(|v|v.to_string())).bind(&at_text).bind(id.to_string()).execute(&mut *c).await?;
+                append_ledger(c,id,user,-remaining,ledger_reason::ADJUSTMENT,None,None,0,&old_expiry,actor,&at_text).await?;
+                event(c,"balance",id,"balance.updated",None,json!({"id":id,"playerId":user,"kind":"staff_allowance","status":"cancelled","remainingMinutes":0,"expiryDate":old_expiry,"updatedAt":at_text})).await?;
+            }
+            let id = Uuid::now_v7();
+            sqlx::query("INSERT INTO player_plan_balances(id,player_id,kind,remaining_minutes,expiry_date,status,created_by,updated_by,created_at,updated_at) VALUES(?,?,'staff_allowance',?,?,'active',?,?,?,?)")
+                .bind(id.to_string()).bind(user.to_string()).bind(minutes).bind(&expiry_text).bind(actor.map(|v|v.to_string())).bind(actor.map(|v|v.to_string())).bind(&at_text).bind(&at_text).execute(&mut *c).await?;
+            append_ledger(c,id,user,minutes,if had_prior {ledger_reason::STAFF_ALLOWANCE_RENEWAL}else{ledger_reason::STAFF_ALLOWANCE_GRANT},None,None,minutes,&expiry_text,actor,&at_text).await?;
+            event(c,"balance",id,"balance.updated",None,json!({"id":id,"playerId":user,"kind":"staff_allowance","status":"active","remainingMinutes":minutes,"expiryDate":expiry_text,"updatedAt":at_text})).await?;
+            Ok(sqlx::query_as(&format!("{BALANCE_SELECT} WHERE id=?")).bind(id.to_string()).fetch_one(c).await?)
+        }))).await
+    }
     pub async fn find_open_session_ids(
         &self,
         player: Uuid,
@@ -538,6 +580,16 @@ impl TenantBalanceRepository {
             let changed=sqlx::query("UPDATE player_plan_balances SET status=?,updated_at=? WHERE id=? AND deleted_at IS NULL AND status<>?").bind(&status).bind(&at).bind(id.to_string()).bind(&status).execute(&mut *connection).await?;
             if changed.rows_affected()>0{event(connection,"balance",id,"balance.updated",None,json!({"id":id,"status":status,"updatedAt":at})).await?;}Ok(())
         }))).await
+    }
+}
+
+async fn require_allowance_staff(c: &mut SqliteConnection, user: Uuid) -> Result<(), AppError> {
+    let row: Option<(String,bool)> = sqlx::query_as("SELECT role,is_active FROM users WHERE id=? AND deleted_at IS NULL")
+        .bind(user.to_string()).fetch_optional(c).await?;
+    match row {
+        None => Err(AppError::NotFound("Staff user not found".into())),
+        Some((role,true)) if role=="staff" => Ok(()),
+        Some(_) => Err(AppError::BadRequest("Gaming allowance requires an active staff user".into())),
     }
 }
 
@@ -895,6 +947,14 @@ impl TenantSessionRepository {
             let wallet:Option<(i32,Option<String>,String,String,String)>=sqlx::query_as("SELECT remaining_minutes,source_plan_id,status,expiry_date,player_id FROM player_plan_balances WHERE id=? AND deleted_at IS NULL").bind(balance.to_string()).fetch_optional(&mut *connection).await?;
             let Some((minutes,source,status,expiry,owner))=wallet else{return Err(AppError::NotFound(format!("Balance with ID {balance} not found")))};
             if owner!=player.to_string(){return Err(AppError::Forbidden("Balance does not belong to this player".into()));}
+            let player_role: Option<String> = sqlx::query_scalar("SELECT role FROM users WHERE id=? AND is_active=1 AND deleted_at IS NULL").bind(player.to_string()).fetch_optional(&mut *connection).await?;
+            if !matches!(player_role.as_deref(),Some("player"|"staff")) {return Err(AppError::Unauthorized("Player access changed".into()));}
+            if player_role.as_deref()==Some("staff") {
+                let on_shift: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shifts WHERE user_id=? AND status='active')").bind(player.to_string()).fetch_one(&mut *connection).await?;
+                if on_shift {return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));}
+                let allowance: bool = sqlx::query_scalar("SELECT kind='staff_allowance' FROM player_plan_balances WHERE id=?").bind(balance.to_string()).fetch_one(&mut *connection).await?;
+                if !allowance {return Err(AppError::forbidden_code("STAFF_ALLOWANCE_NONE"));}
+            }
             if status!="active"||minutes<=0||expiry<=start_text{return Err(AppError::Forbidden("Balance access denied".into()));}
             let device_name:Option<String>=sqlx::query_scalar("SELECT name FROM devices WHERE id=? AND location_id=? AND deleted_at IS NULL AND status IN ('available','operational')").bind(device.to_string()).bind(location.to_string()).fetch_optional(&mut *connection).await?;
             let Some(device_name)=device_name else{return Err(AppError::BadRequest("Device is not available".into()));};

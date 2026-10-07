@@ -437,16 +437,24 @@ impl AuthService {
         dto: LoginDto,
         timezone: String,
     ) -> Result<AuthResponseDto, AppError> {
+        if device.organization_id != db.tenant_id() {
+            return Err(AppError::Unauthorized("Kiosk tenant mismatch".into()));
+        }
         if device.registration_status != "registered" {
             return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
         }
         if device.status == "under_maintenance" {
             return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
         }
-        let user = self
-            .users
-            .find_by_username_for_auth_tenant(db.clone(), &normalize_username(&dto.username))
-            .await?;
+        let username = normalize_username(&dto.username);
+        let local_player = self.users.find_by_username_for_auth_tenant(db.clone(), &username).await?;
+        let global_staff = if local_player.is_none() {
+            if let Some(control) = &self.control_pool {
+                crate::control::identity::IdentityRepository::new(control.clone()).kiosk_staff_identity(db.tenant_id(), &username).await?
+            } else { None }
+        } else { None };
+        let authenticating_staff = global_staff.is_some();
+        let user = local_player.or(global_staff);
         let password = trim_secret(&dto.password);
         let password_hash = user
             .as_ref()
@@ -457,6 +465,22 @@ impl AuthService {
             (Some(user), true) => user,
             _ => return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS")),
         };
+        let user = if authenticating_staff {
+            crate::control::staff_projection::sync_user(self.control_pool.as_ref().unwrap(), db.clone(), user.id).await?;
+            let projected = crate::repositories::TenantUserRepository::new(db.clone()).require_active_staff(user.id).await?;
+            if projected.role.as_deref() != Some("staff") {return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));}
+            projected
+        } else { user };
+        let is_staff = user.role.as_deref() == Some("staff");
+        if is_staff {
+            if crate::repositories::TenantShiftRepository::new(db.clone()).find_active_by_user(user.id).await?.is_some() {
+                return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
+            }
+            let allowance = TenantBalanceRepository::new(db.clone()).find_existing_for_scope(user.id,None,None,crate::models::plan_kind::STAFF_ALLOWANCE).await?
+                .ok_or_else(||AppError::forbidden_code("STAFF_ALLOWANCE_NONE"))?;
+            let validation = BalanceService::validate_balance(&allowance,Some(device),None);
+            if !validation.valid { return Err(BalanceService::validation_to_app_error_for_balance(&allowance,validation)); }
+        }
         let sessions = TenantSessionRepository::new(db.clone());
         let active_session = if let Some(open) = sessions.find_open_for_player(user.id).await? {
             if open.device_id != device.id {
@@ -497,6 +521,8 @@ impl AuthService {
                 timeCreditsConsumed: Some(session.time_credits_consumed.unwrap_or(0) as f64),
                 expiryDate: balance.expiry_date,
             })
+        } else if is_staff {
+            None
         } else {
             let balances = TenantBalanceRepository::new(db)
                 .list(&crate::models::BalanceFilterDto {
@@ -648,7 +674,8 @@ impl AuthService {
     ) -> Result<String, AppError> {
         let now = Utc::now();
         let exp_duration = parse_duration(&self.settings.jwt_player_expiration);
-        let role = user.role.clone().unwrap_or_else(|| "player".to_string());
+        // Playing credentials carry player capabilities even when the account is staff.
+        let role = "player".to_string();
         let tenant_id = tenant_id.to_string();
 
         let claims = JwtUserClaims {
