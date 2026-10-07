@@ -10,7 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arena360 -d arena360"]
+      test: ["CMD-SHELL", "pg_isready -U arena360 -d arena360_control"]
       interval: 5s
       timeout: 5s
       retries: 5
