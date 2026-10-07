@@ -156,7 +156,8 @@ M2 verified: timed multi-cell fencing passes with second-scale configuration; HT
 
 Every port replaces `FOR UPDATE` with `BEGIN IMMEDIATE` transactions, moves PL/pgSQL trigger logic into services, and writes outbox events in the same transaction.
 
-- [ ] DB-0010b: Schema for catalog and pricing, devices, sessions and wallets, transactions, ledger and credit, players and staff projection, plus the inventory stock and recipe tables that checkout deducts from. — M
+- [x] DB-0010b: Schema for catalog and pricing, devices, sessions and wallets, transactions, ledger and credit, players and staff projection, plus the inventory stock and recipe tables that checkout deducts from. — M
+  - Done: accepted ADR-0046 defines the core venue contract. Migration `tenant/0003_core_venue.sql` adds strict tenant-local catalog, pricing, location, device, player/staff projection, wallet, session, transaction, credit, kiosk, recipe, and checkout-stock tables with canonical representations, normalized location scope, immutable sale snapshots, restrictive foreign keys, and access-path indexes. Contract tests exercise schema isolation, credentials, constraints, relationships, uniqueness, payment reconciliation, and representative checkout and credit flows.
 - [ ] API-0024: Port catalog and pricing (`product_repo`, `plan_repo`, `pricing_policy_repo`, `unit_repo`, `product_recipe_repo`, `game_repo`, `settings_repo` price overrides). — L
 - [ ] API-0026: Port devices, sessions, and wallets (`device_repo`, `session_repo`, `player_plan_repo`, `balance_repo`), including dynamic plan deduction. — L
 - [ ] API-0027: Port transactions, ledger, and credit (`transaction_repo`, `transaction_product_repo`, `ledger_repo`, `credit_repo`, `kiosk_order_repo`), including the stock deduction performed at checkout. — L

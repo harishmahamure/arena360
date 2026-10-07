@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through M3
+## Completed through DB-0010b
 
-- 19 planned tasks completed.
+- 20 planned tasks completed.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -35,16 +35,16 @@
 - Resumable tenant provisioning with canonical units, access roles, and setting overrides.
 - Exact scale-4 money and fixed-width UTC timestamp helpers with property tests.
 - Transactional tenant outbox writer with atomic commit/rollback coverage.
+- Strict tenant-local core venue schema for catalog, pricing, devices, identities, wallets,
+  sessions, transactions, credit, kiosk checkout, recipes, and checkout stock.
 
 ## Current task
 
-- [ ] `DB-0010b` — Add the M4 tenant schema for catalog and pricing, devices, sessions and
-  wallets, transactions, ledger and credit, players and staff projection, plus checkout-critical
-  inventory and recipe tables.
+- [ ] `API-0024` — Port catalog and pricing repositories to the tenant SQLite schema.
 
 ## M4 queue
 
-- [ ] `DB-0010b` — Core venue SQLite schema.
+- [x] `DB-0010b` — Core venue SQLite schema.
 - [ ] `API-0024` — Catalog and pricing repositories.
 - [ ] `API-0026` — Devices, sessions, and wallets.
 - [ ] `API-0027` — Transactions, ledger, credit, kiosk orders, and checkout stock deduction.
@@ -56,12 +56,13 @@
 - `ADR-0043` — Storage Cells with per-tenant SQLite and DuckDB.
 - `ADR-0044` — Tenant SQLite baseline and outbox schema.
 - `ADR-0045` — Tenant provisioning bootstrap schema and defaults.
+- `ADR-0046` — Core venue SQLite schema.
 
 ## Verification
 
 - Full backend test suite passes.
-- Working tree was clean at this checkpoint.
-- Latest completed implementation commit: `72ba6f3` (`API-0025`).
+- Core schema contract and tenant storage regression tests pass.
+- Latest completed implementation commit: `1aa54fb` (`DB-0010b`).
 
 ## Update rule
 
