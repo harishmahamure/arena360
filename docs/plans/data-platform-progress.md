@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0030
+## Completed through API-0031
 
-- 28 planned tasks completed.
+- 29 planned tasks completed.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -56,16 +56,18 @@
 
 - Tenant SQLite shifts, cash registers, deposits, expense categories, and expense approvals, with atomic handover and financial source entries.
 
+- Tenant settings/configuration, notification inbox, kitchen preparation, and access editing with atomic revisions, audit history, and checkout snapshots.
+
 ## Current task
 
-- [ ] `API-0031` — Port settings, configuration, notifications, access locks, and kitchen.
+- [ ] `API-0033` — Wire the operational cutover and remove shared-table compatibility.
 
 ## M5 queue
 
 - [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).
 - [x] `API-0029` — Inventory and procurement (`828a90c`).
 - [x] `API-0030` — Shifts, cash, and expenses (`e098ef7`).
-- [ ] `API-0031` — Settings, notifications, access locks, and kitchen.
+- [x] `API-0031` — Settings, notifications, access locks, and kitchen (`379a8cc`).
 - [ ] `API-0033` — Operational cutover and shared-table compatibility removal.
 - [ ] `OPS-0010` — Tenant service demo seed.
 - [ ] `TEST-0020` — SQLite/control-plane integration harnesses.
@@ -92,10 +94,12 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed implementation commit: `e098ef7` (`API-0030`).
+- Latest completed implementation commit: `379a8cc` (`API-0031`).
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.
+
+- Settings/configuration, notification retention, access edit, migration preservation, and kitchen checkout tests pass; full backend suite and final focused configuration regressions pass.
 
 ## Update rule
 
