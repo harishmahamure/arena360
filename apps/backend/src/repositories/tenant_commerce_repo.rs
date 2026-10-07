@@ -2189,7 +2189,7 @@ impl TenantKioskOrderRepository {
                             "unitPrice": price,
                         }));
                     }
-                    super::TenantNotificationRepository::record_on(connection,
+                    super::TenantNotificationRepository::record_at_on(connection,
                         crate::services::notification_service::RecordNotification {
                             kind: crate::models::activity_kind::KIOSK_ORDER_PLACED.into(),
                             title: format!("Kiosk order from {device_name}"),
@@ -2197,7 +2197,7 @@ impl TenantKioskOrderRepository {
                             payload: json!({"orderId":id,"deviceId":device,"deviceName":device_name,"playerId":player,"playerUsername":player_username,"items":item_snapshots}),
                             actor_user_id: Some(player), entity_type: Some("kiosk_order".into()), entity_id: Some(id),
                             recipients: crate::services::notification_service::Recipients::AllStaff,
-                        }).await?;
+                        }, Some(venue)).await?;
                     event(
                         connection,
                         "kiosk_order",

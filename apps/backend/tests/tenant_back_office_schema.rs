@@ -188,3 +188,90 @@ async fn notification_upgrade_preserves_rows_and_foreign_keys() {
     assert_eq!(count, 0);
     pool.close().await;
 }
+
+#[tokio::test]
+async fn activity_venue_migration_uses_original_events_and_preserves_replay() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .in_memory(true)
+                .foreign_keys(true),
+        )
+        .await
+        .unwrap();
+    let mut migrator = sqlx::migrate::Migrator::new(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/tenant"
+    )))
+    .await
+    .unwrap();
+    migrator
+        .migrations
+        .to_mut()
+        .retain(|migration| migration.version <= 10);
+    migrator.run(&pool).await.unwrap();
+    let venue = uuid::Uuid::now_v7().to_string();
+    let order = uuid::Uuid::now_v7().to_string();
+    let activity = uuid::Uuid::now_v7().to_string();
+    let unknown = uuid::Uuid::now_v7().to_string();
+    let payload =
+        serde_json::json!({"activityId":activity,"kind":"kiosk_order_placed"}).to_string();
+    sqlx::query("INSERT INTO venue_locations(id,slug,name,created_at,updated_at) VALUES(?,'original','Original',?,?)")
+        .bind(&venue).bind(NOW).bind(NOW).execute(&pool).await.unwrap();
+    for (id, entity) in [(&activity, &order), (&unknown, &unknown)] {
+        sqlx::query("INSERT INTO activity_log(id,kind,title,entity_type,entity_id,created_at) VALUES(?,'kiosk_order_placed','Old order','kiosk_order',?,?)")
+            .bind(id).bind(entity).bind(NOW).execute(&pool).await.unwrap();
+    }
+    sqlx::query("INSERT INTO outbox_events(event_id,location_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,payload) VALUES(?,?,'kiosk_order',?,'kiosk_order.placed',?,1,'{}')")
+        .bind(uuid::Uuid::now_v7().to_string()).bind(&venue).bind(&order).bind(NOW).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO outbox_events(event_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,payload) VALUES(?,'notification',?,'notification.created',?,1,?)")
+        .bind(uuid::Uuid::now_v7().to_string()).bind(uuid::Uuid::now_v7().to_string()).bind(NOW).bind(&payload).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO realtime_outbox(source_sequence,projection_index,channel,event_type,payload,durable,created_at) VALUES(2,0,'user:old','notification.created',?,1,?)")
+        .bind(&payload).bind(NOW).execute(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO realtime_deliveries(outbox_id,subscriber_id,delivered_at) VALUES(1,'old',?)",
+    )
+    .bind(NOW)
+    .execute(&pool)
+    .await
+    .unwrap();
+    gaming_cafe_api::tenancy::migrate(&pool).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT location_id FROM activity_log WHERE id=?")
+            .bind(&activity)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        venue
+    );
+    assert!(sqlx::query_scalar::<_, Option<String>>(
+        "SELECT location_id FROM activity_log WHERE id=?"
+    )
+    .bind(unknown)
+    .fetch_one(&pool)
+    .await
+    .unwrap()
+    .is_none());
+    for table in ["outbox_events", "realtime_outbox"] {
+        assert_eq!(
+            sqlx::query_scalar::<_, String>(&format!(
+                "SELECT location_id FROM {table} WHERE event_type='notification.created'"
+            ))
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+            venue
+        );
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM realtime_deliveries WHERE ack_at IS NULL"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    pool.close().await;
+}

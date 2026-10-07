@@ -110,6 +110,7 @@ pub async fn authorize_tenant_request(
                 | "products"
                 | "stats"
                 | "notifications"
+                | "activity-log"
                 | "sessions"
                 | "realtime"
                 | "metrics"

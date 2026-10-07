@@ -367,7 +367,7 @@ impl SessionService {
                 &balance, validation,
             ));
         }
-        let (snapshot, timezone) = self.tenant_profile(db.clone(), &balance, &device).await?;
+        let (snapshot, _) = self.tenant_profile(db.clone(), &balance, &device).await?;
         // API-0030 owns shift projection. This remains connection-ready, but a
         // caller may supply only a shift already present in this tenant database.
         let mutation = TenantSessionRepository::new(db.clone())
@@ -385,13 +385,6 @@ impl SessionService {
         self.after_tenant_session_mutation(db.clone(), &mutation.session, &mutation.balance)
             .await;
         self.publish_tenant_device_status(db, device.id).await;
-        self.publish_tenant_session_started(
-            &mutation.session,
-            &mutation.balance,
-            &device,
-            &timezone,
-        )
-        .await;
         Ok(mutation.session)
     }
 
@@ -579,8 +572,6 @@ impl SessionService {
             .await;
         if mutation.session.end_time.is_some() {
             self.publish_tenant_device_status(db, device_id).await;
-            self.publish_tenant_session_ended(&mutation.session, &mutation.balance, "auto")
-                .await;
             return Err(AppError::NotFound(format!(
                 "Session with ID {session_id} has ended"
             )));
@@ -686,75 +677,7 @@ impl SessionService {
             .await;
         self.publish_tenant_device_status(db, session.device_id)
             .await;
-        self.publish_tenant_session_ended(&mutation.session, &mutation.balance, &reason)
-            .await;
         Ok(mutation.session)
-    }
-
-    async fn publish_tenant_session_started(
-        &self,
-        session: &UsageSession,
-        balance: &PlayerPlanBalance,
-        device: &Device,
-        timezone: &str,
-    ) {
-        let payload = json!({
-            "sessionId": session.id,
-            "deviceId": device.id,
-            "playerId": balance.player_id,
-            "balanceId": balance.id,
-            "startTime": crate::time::utc_timestamp(&session.start_time),
-            "walletMinutesAtStart": balance.remaining_minutes,
-            "sourcePlanIdAtStart": balance.source_plan_id,
-            "remainingMinutes": display_remaining_for_session(balance, session, timezone),
-            "deductionProfile": session_profile_value(balance, session),
-            "cafeTimezone": timezone,
-        });
-        let _ = self
-            .notifications
-            .record_activity(RecordNotification {
-                kind: activity_kind::SESSION_STARTED.into(),
-                title: "Session started".into(),
-                summary: Some(format!(
-                    "Player session on {} · {} min at login",
-                    device.name, balance.remaining_minutes
-                )),
-                payload,
-                actor_user_id: None,
-                entity_type: Some("session".into()),
-                entity_id: Some(session.id),
-                recipients: Recipients::AllStaff,
-            })
-            .await;
-    }
-
-    async fn publish_tenant_session_ended(
-        &self,
-        session: &UsageSession,
-        balance: &PlayerPlanBalance,
-        reason: &str,
-    ) {
-        let payload = json!({
-            "sessionId": session.id,
-            "deviceId": session.device_id,
-            "playerId": balance.player_id,
-            "remainingMinutes": balance.remaining_minutes,
-            "endTime": session.end_time.as_ref().map(crate::time::utc_timestamp),
-            "reason": reason,
-        });
-        let _ = self
-            .notifications
-            .record_activity(RecordNotification {
-                kind: activity_kind::SESSION_ENDED.into(),
-                title: "Session ended".into(),
-                summary: Some(reason.into()),
-                payload,
-                actor_user_id: None,
-                entity_type: Some("session".into()),
-                entity_id: Some(session.id),
-                recipients: Recipients::AllStaff,
-            })
-            .await;
     }
 
     async fn after_tenant_session_mutation(

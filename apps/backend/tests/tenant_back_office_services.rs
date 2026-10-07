@@ -344,23 +344,70 @@ async fn notifications_are_atomic_scoped_and_retained_by_policy() {
     let f = Fixture::new().await;
     let staff = f.staff().await;
     let other = f.staff().await;
+    let outsider = f.staff().await;
+    let venue = f.location("inbox").await;
+    let other_venue = f.location("other-inbox").await;
+    let role = Uuid::now_v7();
+    f.db.with_immediate_writer(move |c| Box::pin(async move {
+        let ts = gaming_cafe_api::tenancy::format_sqlite_timestamp(&Utc::now()).unwrap();
+        sqlx::query("INSERT INTO access_roles(id,name,permissions,created_at,updated_at) VALUES(?,'Inbox','[\"notifications:read\",\"activity:read\"]',?,?)")
+            .bind(role.to_string()).bind(&ts).bind(&ts).execute(&mut *c).await?;
+        for (user, location) in [(staff,venue),(other,venue),(outsider,other_venue)] {
+            sqlx::query("INSERT INTO location_role_assignments(user_id,location_id,role_id,created_at) VALUES(?,?,?,?)")
+                .bind(user.to_string()).bind(location.to_string()).bind(role.to_string()).bind(&ts).execute(&mut *c).await?;
+        }
+        Ok(())
+    })).await.unwrap();
     let repo = TenantNotificationRepository::new(f.db.clone());
     repo.record(notification(activity_kind::TRANSACTION_SALE, staff))
         .await
         .unwrap();
     assert_eq!(repo.unread_count(staff, false).await.unwrap(), 0);
     let activity = repo
-        .record(notification(activity_kind::KIOSK_ORDER_PLACED, staff))
+        .record_at(
+            notification(activity_kind::KIOSK_ORDER_PLACED, staff),
+            venue,
+        )
         .await
         .unwrap();
     assert_eq!(repo.unread_count(staff, true).await.unwrap(), 1);
     assert_eq!(f.scalar("SELECT COUNT(*) FROM user_notifications").await, 2);
+    assert_eq!(repo.unread_count(outsider, false).await.unwrap(), 0);
+    assert_eq!(
+        repo.list_activity_log(outsider, false, &ActivityLogFilterDto::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
     let inbox = repo
         .list_notifications(staff, &NotificationFilterDto::default())
         .await
         .unwrap();
     assert_eq!(inbox.data[0].activity_id, activity.id);
     assert_eq!(inbox.data[0].payload, json!({"x":1}));
+    let claims: gaming_cafe_api::dto::JwtUserClaims = dto(json!({
+        "sub":staff,"userId":staff,"tenantId":f.db.tenant_id(),"roles":["staff"],"permissions":[],
+        "allowedTenants":[f.db.tenant_id()],"orgIds":[f.db.tenant_id()],"appId":"game-zone-admin",
+        "iss":"gamezone","aud":"gamezone","exp":Utc::now().timestamp()+3600
+    }));
+    let transport = gaming_cafe_api::realtime::tenant_transport::TenantTransport::new(f.db.clone());
+    transport.project_pending().await.unwrap();
+    let notification_event = transport
+        .pending()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.event.payload["notificationId"] == inbox.data[0].id.to_string())
+        .unwrap();
+    assert!(gaming_cafe_api::realtime::tenant_transport::can_receive(
+        f.db.clone(),
+        &claims,
+        &notification_event
+    )
+    .await
+    .unwrap());
+
     assert!(!repo.mark_read(inbox.data[0].id, other).await.unwrap());
     assert!(repo.mark_read(inbox.data[0].id, staff).await.unwrap());
     assert!(!repo.mark_read(inbox.data[0].id, staff).await.unwrap());
@@ -378,6 +425,38 @@ async fn notifications_are_atomic_scoped_and_retained_by_policy() {
             .unwrap()
             .total,
         2
+    );
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("DELETE FROM location_role_assignments WHERE user_id=?")
+                .bind(staff.to_string())
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert!(!gaming_cafe_api::realtime::tenant_transport::can_receive(
+        f.db.clone(),
+        &claims,
+        &notification_event
+    )
+    .await
+    .unwrap());
+    assert_eq!(
+        repo.list_notifications(staff, &NotificationFilterDto::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        repo.list_activity_log(staff, true, &ActivityLogFilterDto::default())
+            .await
+            .unwrap()
+            .total,
+        1
     );
     let before = f.outbox_count().await;
     assert!(repo
@@ -401,7 +480,10 @@ async fn notifications_are_atomic_scoped_and_retained_by_policy() {
     assert_eq!(f.scalar("SELECT COUNT(*) FROM activity_log").await, 2);
     f.lease.generations.write().unwrap().clear();
     assert!(repo
-        .record(notification(activity_kind::KIOSK_ORDER_PLACED, staff))
+        .record_at(
+            notification(activity_kind::KIOSK_ORDER_PLACED, staff),
+            venue
+        )
         .await
         .is_err());
     f.close().await;
@@ -430,7 +512,11 @@ async fn access_edits_preserve_manager_revision_and_scopes() {
             .unwrap(),
         1
     );
-    assert_eq!(f.scalar("SELECT COUNT(*) FROM staff_membership_commands").await,1);
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM staff_membership_commands")
+            .await,
+        1
+    );
     assert!(access
         .save_member_assignments(member, m, staff)
         .await

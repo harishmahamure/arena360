@@ -270,6 +270,154 @@ async fn device_wallet_and_session_mutations_are_atomic_and_idempotent() {
 }
 
 #[tokio::test]
+async fn session_service_activity_commits_locally_and_failure_rolls_back_the_session() {
+    let fixture = Fixture::new().await;
+    let device = fixture.device("PC-ACTIVITY").await;
+    let balance = TenantBalanceRepository::new(fixture.db.clone())
+        .purchase_or_recharge(
+            &PurchaseBalanceDto {
+                player_id: fixture.player_id,
+                plan_id: fixture.plan_id,
+                transaction_id: Some(fixture.transaction_id),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    // A closed pool fails immediately if the tenant service accidentally reaches PostgreSQL.
+    let postgres = PgPoolOptions::new()
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    postgres.close().await;
+    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let events = EventService::new(Broadcaster::new(16));
+    let outbox = OutboxService::new(postgres.clone());
+    let notifications = NotificationService::new(postgres.clone(), outbox.clone(), cache.clone());
+    let devices = DeviceService::new(
+        postgres.clone(),
+        events.clone(),
+        outbox.clone(),
+        notifications.clone(),
+        cache.clone(),
+    );
+    let service = gaming_cafe_api::services::SessionService::new(
+        postgres.clone(),
+        devices,
+        Arc::new(BalanceService::new(postgres, cache.clone())),
+        events,
+        outbox,
+        notifications,
+        "UTC".into(),
+        cache,
+    );
+    // Use unrestricted wallet calendar to exercise the service on any test date.
+    fixture.db.with_immediate_writer(move |c| Box::pin(async move {
+        sqlx::query("UPDATE player_plan_balances SET allowed_days=NULL,allowed_months=NULL WHERE id=?")
+            .bind(balance.id.to_string()).execute(c).await?; Ok(())
+    })).await.unwrap();
+    let started = tokio::time::timeout(
+        Duration::from_secs(3),
+        service.start_tenant(
+            fixture.db.clone(),
+            gaming_cafe_api::models::CreateSessionDto {
+                balance_id: balance.id,
+                device_id: device.id,
+                shift_id: None,
+                start_time: Some(Utc::now()),
+            },
+            fixture.player_id,
+            None,
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let ended = tokio::time::timeout(
+        Duration::from_secs(3),
+        service.end_tenant(
+            fixture.db.clone(),
+            started.id,
+            gaming_cafe_api::models::EndSessionDto::default(),
+            None,
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(ended.end_time.is_some());
+    // Repeated end and heartbeat paths must not create duplicate activity.
+    service
+        .end_tenant(
+            fixture.db.clone(),
+            started.id,
+            gaming_cafe_api::models::EndSessionDto::default(),
+            None,
+        )
+        .await
+        .unwrap();
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT kind,payload FROM activity_log WHERE entity_id=? ORDER BY kind")
+            .bind(started.id.to_string())
+            .fetch_all(&fixture.db.read_pool().unwrap())
+            .await
+            .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].0, "session_ended");
+    assert_eq!(rows[1].0, "session_started");
+    for (_, payload) in rows {
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&payload).unwrap()["locationId"],
+            fixture.location_id.to_string()
+        );
+    }
+    fixture.db.with_immediate_writer(|c| Box::pin(async move {
+        sqlx::query("CREATE TRIGGER reject_session_activity BEFORE INSERT ON activity_log WHEN NEW.kind='session_started' BEGIN SELECT RAISE(ABORT,'activity unavailable'); END")
+            .execute(c).await?; Ok(())
+    })).await.unwrap();
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events")
+        .fetch_one(&fixture.db.read_pool().unwrap())
+        .await
+        .unwrap();
+    assert!(TenantSessionRepository::new(fixture.db.clone())
+        .start(
+            fixture.player_id,
+            balance.id,
+            device.id,
+            fixture.location_id,
+            None,
+            Utc::now(),
+            None,
+            json!({})
+        )
+        .await
+        .is_err());
+    assert_eq!(
+        TenantDeviceRepository::new(fixture.db.clone())
+            .find_by_id(device.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "available"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM usage_sessions WHERE end_time IS NULL")
+            .fetch_one(&fixture.db.read_pool().unwrap())
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM outbox_events")
+            .fetch_one(&fixture.db.read_pool().unwrap())
+            .await
+            .unwrap(),
+        before
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
 async fn unique_open_sessions_and_lease_fencing_are_enforced() {
     let fixture = Fixture::new().await;
     let device = fixture.device("PC-02").await;

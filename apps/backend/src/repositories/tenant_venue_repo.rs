@@ -913,6 +913,15 @@ impl TenantSessionRepository {
                 "remainingMinutes":minutes,"deductionProfile":snapshot_value,
                 "cafeTimezone":timezone,"updatedAt":at
             })).await?;
+            super::TenantNotificationRepository::record_at_on(connection, crate::services::notification_service::RecordNotification {
+                kind: crate::models::activity_kind::SESSION_STARTED.into(), title: "Session started".into(),
+                summary: Some(format!("Player session on {device_name} · {minutes} min at login")),
+                payload: json!({"sessionId":id,"deviceId":device,"locationId":location,"playerId":player,"balanceId":balance,
+                    "startTime":start_text,"walletMinutesAtStart":minutes,"sourcePlanIdAtStart":source,
+                    "remainingMinutes":minutes,"deductionProfile":snapshot_value,"cafeTimezone":timezone}),
+                actor_user_id: actor, entity_type: Some("session".into()), entity_id: Some(id),
+                recipients: crate::services::notification_service::Recipients::Users(vec![]),
+            }, Some(location)).await?;
             event(connection,"device",device,"device.status_changed",Some(location),json!({"id":device,"status":"in_use","updatedAt":at})).await?;
             Ok(())
         }))).await?;
@@ -960,6 +969,13 @@ impl TenantSessionRepository {
                     "remainingMinutes":after,"deductionProfile":deduction_profile,
                     "cafeTimezone":cafe_timezone,"endTime":end_text,"reason":reason,"updatedAt":at
                 })).await?;
+                super::TenantNotificationRepository::record_at_on(connection, crate::services::notification_service::RecordNotification {
+                    kind: crate::models::activity_kind::SESSION_ENDED.into(), title: "Session ended".into(), summary: Some(reason.clone()),
+                    payload: json!({"sessionId":id,"deviceId":device,"locationId":location,"playerId":player,"balanceId":balance,
+                        "remainingMinutes":after,"endTime":end_text,"reason":reason}),
+                    actor_user_id: actor, entity_type: Some("session".into()), entity_id: Some(id),
+                    recipients: crate::services::notification_service::Recipients::Users(vec![]),
+                }, Some(location)).await?;
                 event(connection,"device",device,"device.status_changed",Some(location),json!({"id":device,"status":"available","updatedAt":at})).await?;
             }else{
                 sqlx::query("UPDATE usage_sessions SET time_credits_consumed=?,updated_at=? WHERE id=?").bind(persisted).bind(&at).bind(id.to_string()).execute(&mut *connection).await?;

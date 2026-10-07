@@ -25,9 +25,21 @@ impl TenantNotificationRepository {
         c: &mut SqliteConnection,
         input: RecordNotification,
     ) -> Result<ActivityLog, AppError> {
+        Self::record_at_on(c, input, None).await
+    }
+    pub(crate) async fn record_at_on(
+        c: &mut SqliteConnection,
+        input: RecordNotification,
+        location: Option<Uuid>,
+    ) -> Result<ActivityLog, AppError> {
+        if input.kind == activity_kind::KIOSK_ORDER_PLACED && location.is_none() {
+            return Err(AppError::BadRequest(
+                "Kiosk notifications require their venue".into(),
+            ));
+        }
         let id = Uuid::now_v7();
         let at = now()?;
-        sqlx::query("INSERT INTO activity_log(id,kind,title,summary,payload,actor_user_id,entity_type,entity_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)").bind(id.to_string()).bind(&input.kind).bind(&input.title).bind(&input.summary).bind(input.payload.to_string()).bind(input.actor_user_id.map(|x| x.to_string())).bind(&input.entity_type).bind(input.entity_id.map(|x| x.to_string())).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO activity_log(id,kind,title,summary,payload,actor_user_id,entity_type,entity_id,created_at,location_id) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(id.to_string()).bind(&input.kind).bind(&input.title).bind(&input.summary).bind(input.payload.to_string()).bind(input.actor_user_id.map(|x| x.to_string())).bind(&input.entity_type).bind(input.entity_id.map(|x| x.to_string())).bind(&at).bind(location.map(|id|id.to_string())).execute(&mut *c).await?;
         let row: ActivityLog = sqlx::query_as(&format!("{ACTIVITY} WHERE al.id=?"))
             .bind(id.to_string())
             .fetch_one(&mut *c)
@@ -35,11 +47,11 @@ impl TenantNotificationRepository {
         if input.kind == activity_kind::KIOSK_ORDER_PLACED
             && matches!(input.recipients, Recipients::AllStaff)
         {
-            let users: Vec<String> = sqlx::query_scalar("SELECT id FROM users WHERE role='staff' AND is_active=1 AND deleted_at IS NULL ORDER BY id").fetch_all(&mut *c).await?;
+            let users: Vec<String> = sqlx::query_scalar("SELECT u.id FROM users u JOIN venue_locations l ON l.id=? AND l.is_active=1 WHERE u.role='staff' AND u.is_active=1 AND u.deleted_at IS NULL AND COALESCE((SELECT enabled FROM access_modules WHERE module='notifications'),1)=1 AND EXISTS(SELECT 1 FROM location_role_assignments a JOIN access_roles r ON r.id=a.role_id JOIN json_each(r.permissions) p ON p.value='notifications:read' WHERE a.user_id=u.id AND a.location_id=l.id) ORDER BY u.id").bind(location.map(|id|id.to_string())).fetch_all(&mut *c).await?;
             for user in users {
                 let notification = Uuid::now_v7();
                 sqlx::query("INSERT INTO user_notifications(id,activity_id,user_id,created_at) VALUES(?,?,?,?)").bind(notification.to_string()).bind(id.to_string()).bind(&user).bind(&at).execute(&mut *c).await?;
-                event(c, "notification", notification, "notification.created", None, false, json!({"userId":user,"notificationId":notification,"activityId":id,"kind":row.kind,"title":row.title,"summary":row.summary,"payload":row.payload,"entityType":row.entity_type,"entityId":row.entity_id,"createdAt":at})).await?;
+                event(c, "notification", notification, "notification.created", location, false, json!({"userId":user,"notificationId":notification,"activityId":id,"kind":row.kind,"title":row.title,"summary":row.summary,"payload":row.payload,"entityType":row.entity_type,"entityId":row.entity_id,"createdAt":at})).await?;
             }
         }
         Ok(row)
@@ -48,6 +60,19 @@ impl TenantNotificationRepository {
         write(
             &self.db,
             Box::new(move |c| Box::pin(async move { Self::record_on(c, input).await })),
+        )
+        .await
+    }
+    pub async fn record_at(
+        &self,
+        input: RecordNotification,
+        location: Uuid,
+    ) -> Result<ActivityLog, AppError> {
+        write(
+            &self.db,
+            Box::new(move |c| {
+                Box::pin(async move { Self::record_at_on(c, input, Some(location)).await })
+            }),
         )
         .await
     }
@@ -81,6 +106,21 @@ impl TenantNotificationRepository {
             })
             .unwrap_or_else(|| "Unknown".into()))
     }
+    fn visibility(
+        b: &mut QueryBuilder<'_, Sqlite>,
+        user: Uuid,
+        permission: &str,
+        allow_unscoped: bool,
+    ) {
+        b.push(" AND EXISTS(SELECT 1 FROM users u WHERE u.id=").push_bind(user.to_string())
+            .push(" AND u.is_active=1 AND u.deleted_at IS NULL AND u.role IN('admin','staff') AND COALESCE((SELECT enabled FROM access_modules WHERE module=")
+            .push_bind(permission.split(':').next().unwrap_or(permission).to_owned()).push("),1)=1 AND (");
+        if allow_unscoped {
+            b.push("(al.location_id IS NULL AND al.kind NOT IN('kiosk_order_placed','kiosk_order_fulfilled','kiosk_order_cancelled')) OR ");
+        }
+        b.push("EXISTS(SELECT 1 FROM venue_locations l WHERE l.id=al.location_id AND l.is_active=1 AND (u.role='admin' OR EXISTS(SELECT 1 FROM location_role_assignments a JOIN access_roles r ON r.id=a.role_id JOIN json_each(r.permissions) p ON p.value=")
+            .push_bind(permission.to_owned()).push(" WHERE a.user_id=u.id AND a.location_id=l.id)))))");
+    }
     fn inbox_where(b: &mut QueryBuilder<'_, Sqlite>, user: Uuid, unread: bool, cutoff: String) {
         b.push(" WHERE un.user_id=")
             .push_bind(user.to_string())
@@ -89,6 +129,7 @@ impl TenantNotificationRepository {
         if unread {
             b.push(" AND un.read_at IS NULL");
         }
+        Self::visibility(b, user, "notifications:read", false);
     }
     fn cutoff(days: i64) -> Result<String, AppError> {
         let d = chrono::Duration::try_days(days)
@@ -152,7 +193,9 @@ impl TenantNotificationRepository {
             Box::new(move |c| {
                 Box::pin(async move {
                     let mut b = QueryBuilder::<Sqlite>::new("UPDATE user_notifications SET read_at=");
-                    b.push_bind(now()?).push(" WHERE user_id=").push_bind(user.to_string()).push(" AND read_at IS NULL AND created_at>=").push_bind(cutoff).push(" AND EXISTS(SELECT 1 FROM activity_log al WHERE al.id=user_notifications.activity_id AND al.kind='kiosk_order_placed')");
+                    b.push_bind(now()?).push(" WHERE user_id=").push_bind(user.to_string()).push(" AND read_at IS NULL AND created_at>=").push_bind(cutoff).push(" AND EXISTS(SELECT 1 FROM activity_log al WHERE al.id=user_notifications.activity_id AND al.kind='kiosk_order_placed'");
+                    Self::visibility(&mut b, user, "notifications:read", false);
+                    b.push(")");
                     if let Some(id) = id {
                         b.push(" AND id=").push_bind(id.to_string());
                     }
@@ -183,6 +226,7 @@ impl TenantNotificationRepository {
             QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM activity_log al WHERE 1=1");
         let mut list = QueryBuilder::<Sqlite>::new(format!("{ACTIVITY} WHERE 1=1"));
         for b in [&mut count, &mut list] {
+            Self::visibility(b, user, "activity:read", true);
             if !admin {
                 b.push(" AND (EXISTS(SELECT 1 FROM user_notifications un WHERE un.activity_id=al.id AND un.user_id=").push_bind(user.to_string()).push(") OR al.kind IN(");
                 let mut sep = b.separated(",");

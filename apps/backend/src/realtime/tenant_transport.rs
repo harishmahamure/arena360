@@ -319,6 +319,17 @@ pub async fn can_receive(
             Err(error)
         };
     }
+    if row.event.event_type == "notification.created"
+        && row
+            .event
+            .payload
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            == Some("kiosk_order_placed")
+        && row.location_id.is_none()
+    {
+        return Ok(false);
+    }
     if claims.is_admin_or_staff() {
         if let Some(location) = row.location_id {
             let permission = match channel {
@@ -326,6 +337,9 @@ pub async fn can_receive(
                 ChannelId::Staff => Some("events:staff"),
                 ChannelId::Kitchen => Some("kitchen:read"),
                 ChannelId::Device(_) => Some("devices:read"),
+                ChannelId::User(_) if row.event.event_type == "notification.created" => {
+                    Some("notifications:read")
+                }
                 ChannelId::Configuration => {
                     Some(if row.event.event_type == "pricing.rules.changed" {
                         "rules:read"
