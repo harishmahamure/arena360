@@ -1,275 +1,59 @@
-use chrono::Utc;
-use serde_json::json;
+use crate::error::AppError;
+use crate::models::{
+    kiosk_order_status, ConvertKioskOrderDto, CreateKioskOrderDto, CreateLineItemDto,
+    CreateTransactionDto, KioskMenuProduct, KioskOrderFilterDto, KioskOrderWithItems,
+};
+use crate::repositories::TenantKioskOrderRepository;
+use crate::services::{ConfigService, TransactionService};
+use crate::tenancy::TenantDb;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::error::AppError;
-use crate::models::{
-    activity_kind, kiosk_order_status, ConvertKioskOrderDto, CreateKioskOrderDto,
-    CreateLineItemDto, CreateTransactionDto, KioskMenuProduct, KioskOrderFilterDto,
-    KioskOrderWithItems,
-};
-use crate::realtime::OutboxService;
-use crate::repositories::{
-    KioskOrderRepository, ProductRecipeRepository, SessionRepository, TenantKioskOrderRepository,
-};
-use crate::services::product_recipe_service::made_to_order_capacity;
-use crate::services::{
-    ConfigService, NotificationService, PricingPolicyService, Recipients, RecordNotification,
-    TransactionService,
-};
-use crate::tenancy::TenantDb;
-
 pub struct KioskOrderService {
-    repo: KioskOrderRepository,
-    sessions: SessionRepository,
-    notifications: NotificationService,
-    outbox: OutboxService,
-    cafe_timezone: String,
     settings: Arc<ConfigService>,
-    pricing: PricingPolicyService,
 }
-
 impl KioskOrderService {
-    pub fn new(
-        pool: sqlx::PgPool,
-        notifications: NotificationService,
-        outbox: OutboxService,
-        cafe_timezone: String,
-        settings: Arc<ConfigService>,
-    ) -> Self {
-        Self {
-            repo: KioskOrderRepository::new(pool.clone()),
-            sessions: SessionRepository::new(pool.clone()),
-            pricing: PricingPolicyService::new(pool.clone()),
-            notifications,
-            outbox,
-            cafe_timezone,
-            settings,
-        }
+    pub fn new(settings: Arc<ConfigService>) -> Self {
+        Self { settings }
     }
-
-    async fn venue_and_store(
+    pub async fn list_menu_tenant(
         &self,
+        db: Arc<TenantDb>,
         device_id: Uuid,
-    ) -> Result<(crate::models::Device, Uuid), AppError> {
-        let device = crate::repositories::DeviceRepository::new(self.repo.pool().clone())
+        products: &crate::services::ProductService,
+    ) -> Result<Vec<KioskMenuProduct>, AppError> {
+        let device = crate::repositories::TenantDeviceRepository::new(db.clone())
             .find_by_id(device_id)
             .await?
             .ok_or_else(|| AppError::NotFound("Device not found".into()))?;
-        let store: Option<Uuid> = sqlx::query_scalar(r#"SELECT id FROM inventory_locations WHERE "venueLocationId"=$1 AND kind='store' AND "isActive" AND "deletedAt" IS NULL ORDER BY name,id LIMIT 1"#)
-            .bind(device.location_id).fetch_optional(self.repo.pool()).await?;
-        let store = store.ok_or_else(|| {
-            AppError::BadRequest("No active store is configured for this venue".into())
-        })?;
-        Ok((device, store))
-    }
-
-    pub async fn list_menu_tenant(&self, db: Arc<TenantDb>, device_id: Uuid, products: &crate::services::ProductService) -> Result<Vec<KioskMenuProduct>, AppError> {
-        let device = crate::repositories::TenantDeviceRepository::new(db.clone()).find_by_id(device_id).await?
-            .ok_or_else(|| AppError::NotFound("Device not found".into()))?;
-        let prices = products.current_prices_tenant(db.clone(), None, device.location_id, &self.settings).await?;
+        let prices = products
+            .current_prices_tenant(db.clone(), None, device.location_id, &self.settings)
+            .await?;
         let rows: Vec<(Uuid,String,Option<String>,String,i32)> = sqlx::query_as("SELECT unhex(replace(p.id,'-','')),p.name,p.description,p.category,COALESCE(ls.quantity_pieces,0) FROM products p LEFT JOIN product_locations pl ON pl.product_id=p.id AND pl.location_id=? LEFT JOIN location_stock ls ON ls.product_id=p.id AND ls.inventory_location_id=(SELECT id FROM inventory_locations WHERE venue_location_id=? AND kind='store' AND is_active=1 AND deleted_at IS NULL ORDER BY id LIMIT 1) WHERE p.deleted_at IS NULL AND p.is_active=1 AND p.is_raw_material=0 AND (p.availability_scope='ALL' OR pl.product_id IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM product_option_groups g WHERE g.product_id=p.id AND g.required=1) ORDER BY p.category,p.name,p.id")
             .bind(device.location_id.to_string()).bind(device.location_id.to_string()).fetch_all(&db.read_pool()?).await?;
-        let prices = prices.into_iter().map(|price| (price.product_id,price)).collect::<std::collections::HashMap<_,_>>();
-        rows.into_iter().map(|(id,name,description,category,stock)| {
-            let price=prices.get(&id).ok_or_else(|| AppError::Conflict("Menu changed while loading prices".into()))?;
-            let available=price.made_to_order_available.unwrap_or(stock);
-            Ok(KioskMenuProduct { id,name,description,category,price:price.price,stock_available:available,in_stock:available>0 })
-        }).collect()
-    }
-
-    pub async fn list_menu(&self, device_id: Uuid) -> Result<Vec<KioskMenuProduct>, AppError> {
-        let (device, sale_location_id) = self.venue_and_store(device_id).await?;
-
-        let now = Utc::now();
-        let (timezone, night_start, night_end) = self
-            .settings
-            .venue_pricing_context(device.organization_id, Some(device.location_id))
-            .await
-            .unwrap_or_else(|_| {
-                (
-                    self.cafe_timezone.clone(),
-                    "23:00".to_string(),
-                    "08:00".to_string(),
-                )
-            });
-        let rows = sqlx::query_as::<_, (Uuid, String, Option<String>, String, f64, f64, i32)>(
-            r#"
-            SELECT p.id,
-                   p.name,
-                   p.description,
-                   p.category::text,
-                   coalesce(lp.price,p."dayPrice")::float8,
-                   coalesce(lp.price,p."nightPrice")::float8,
-                   COALESCE(ls."quantityPieces", p."stockQuantity", 0) as stock
-            FROM products p
-            JOIN venue_locations v ON v.id=$2 AND v."organizationId"=p."organizationId"
-            LEFT JOIN product_location_prices lp ON lp."productId"=p.id AND lp."locationId"=v.id
-            LEFT JOIN location_stock ls
-              ON ls."productId" = p.id
-             AND ls."locationId" = $1
-            WHERE p."deletedAt" IS NULL
-              AND (cardinality(p."locationIds")=0 OR v.id=ANY(p."locationIds"))
-              AND p."isActive" = true
-              AND p."isRawMaterial" = false
-              AND NOT EXISTS (
-                SELECT 1 FROM product_option_groups g
-                WHERE g."productId" = p.id AND g.required
-              )
-            ORDER BY p.category, p.name
-            "#,
-        )
-        .bind(sale_location_id)
-        .bind(device.location_id)
-        .fetch_all(self.repo.pool())
-        .await?;
-        let product_rules = self
-            .product_rules(device.organization_id, device.location_id)
-            .await?;
-        let makeable = made_to_order_capacity(
-            ProductRecipeRepository::new(self.repo.pool().clone())
-                .made_to_order_stock(Some(sale_location_id))
-                .await?,
-        );
-
+        let prices = prices
+            .into_iter()
+            .map(|price| (price.product_id, price))
+            .collect::<std::collections::HashMap<_, _>>();
         rows.into_iter()
-            .map(
-                |(id, name, description, category, day_price, night_price, stock)| {
-                    let stock = makeable.get(&id).copied().unwrap_or(stock);
-                    let price = PricingPolicyService::evaluate_product_price(
-                        day_price,
-                        night_price,
-                        id,
-                        &category,
-                        &product_rules,
-                        now,
-                        &timezone,
-                        &night_start,
-                        &night_end,
-                    )?;
-                    Ok(KioskMenuProduct {
-                        id,
-                        name,
-                        description,
-                        category,
-                        price,
-                        stock_available: stock,
-                        in_stock: stock > 0,
-                    })
-                },
-            )
-            .collect::<Result<Vec<_>, AppError>>()
+            .map(|(id, name, description, category, stock)| {
+                let price = prices.get(&id).ok_or_else(|| {
+                    AppError::Conflict("Menu changed while loading prices".into())
+                })?;
+                let available = price.made_to_order_available.unwrap_or(stock);
+                Ok(KioskMenuProduct {
+                    id,
+                    name,
+                    description,
+                    category,
+                    price: price.price,
+                    stock_available: available,
+                    in_stock: available > 0,
+                })
+            })
+            .collect()
     }
 
-    pub async fn place_order(
-        &self,
-        player_id: Uuid,
-        device_id: Uuid,
-        dto: CreateKioskOrderDto,
-    ) -> Result<KioskOrderWithItems, AppError> {
-        if dto.line_items.is_empty() {
-            return Err(AppError::BadRequest(
-                "lineItems must not be empty".to_string(),
-            ));
-        }
-
-        let open = self
-            .sessions
-            .find_open_session_for_player(player_id)
-            .await?
-            .ok_or_else(|| AppError::not_found_code("KIOSK_NO_ACTIVE_SESSION"))?;
-
-        if open.device_id != device_id {
-            return Err(AppError::not_found_code("KIOSK_NO_ACTIVE_SESSION"));
-        }
-
-        let (device, sale_location_id) = self.venue_and_store(device_id).await?;
-
-        let now = Utc::now();
-        let (timezone, night_start, night_end) = self
-            .settings
-            .venue_pricing_context(device.organization_id, Some(device.location_id))
-            .await
-            .unwrap_or_else(|_| {
-                (
-                    self.cafe_timezone.clone(),
-                    "23:00".to_string(),
-                    "08:00".to_string(),
-                )
-            });
-        let product_rules = self
-            .product_rules(device.organization_id, device.location_id)
-            .await?;
-        let mut resolved: Vec<(Uuid, i32, String, f64)> = Vec::new();
-
-        for item in &dto.line_items {
-            if item.quantity <= 0 {
-                return Err(AppError::BadRequest(format!(
-                    "Quantity must be positive for product {}",
-                    item.product_id
-                )));
-            }
-
-            let row: Option<(String, f64, f64, bool, String)> = sqlx::query_as(
-                r#"
-                SELECT p.name,
-                       coalesce(lp.price,p."dayPrice")::float8,
-                       coalesce(lp.price,p."nightPrice")::float8,
-                       p."isActive" AND NOT p."isRawMaterial" AND NOT EXISTS (
-                         SELECT 1 FROM product_option_groups g
-                         WHERE g."productId" = p.id AND g.required
-                       ),
-                       p.category::text
-                FROM products p JOIN venue_locations v ON v.id=$2 AND v."organizationId"=p."organizationId"
-                LEFT JOIN product_location_prices lp ON lp."productId"=p.id AND lp."locationId"=v.id
-                WHERE p.id = $1 AND p."deletedAt" IS NULL AND (cardinality(p."locationIds")=0 OR v.id=ANY(p."locationIds"))
-                "#,
-            )
-            .bind(item.product_id)
-            .bind(device.location_id)
-            .fetch_optional(self.repo.pool())
-            .await?;
-
-            let (name, day_price, night_price, is_active, category) = row.ok_or_else(|| {
-                AppError::NotFound(format!("Product {} not found", item.product_id))
-            })?;
-
-            if !is_active {
-                return Err(AppError::BadRequest(format!(
-                    "Product {} is not available",
-                    item.product_id
-                )));
-            }
-
-            let unit_price = PricingPolicyService::evaluate_product_price(
-                day_price,
-                night_price,
-                item.product_id,
-                &category,
-                &product_rules,
-                now,
-                &timezone,
-                &night_start,
-                &night_end,
-            )?;
-
-            resolved.push((item.product_id, item.quantity, name, unit_price));
-        }
-
-        let _ = sale_location_id;
-
-        let order = self
-            .repo
-            .create_with_items(open.session_id, player_id, device_id, dto.note, &resolved)
-            .await?;
-
-        self.notify_order_placed(&order).await?;
-
-        Ok(order)
-    }
-
-    /// Staged tenant-cell path. Placement snapshots products but does not reserve stock.
     pub async fn place_order_tenant(
         &self,
         db: Arc<TenantDb>,
@@ -284,109 +68,6 @@ impl KioskOrderService {
             .await
     }
 
-    async fn product_rules(
-        &self,
-        organization_id: Uuid,
-        location_id: Uuid,
-    ) -> Result<Vec<crate::models::PricingRule>, AppError> {
-        self.pricing
-            .active_product_rules(organization_id, Some(location_id))
-            .await
-    }
-
-    async fn notify_order_placed(&self, order: &KioskOrderWithItems) -> Result<(), AppError> {
-        let device_name = order
-            .device_name
-            .clone()
-            .unwrap_or_else(|| "Unknown PC".to_string());
-        let username = order
-            .player_username
-            .clone()
-            .unwrap_or_else(|| "player".to_string());
-
-        let items_summary: Vec<_> = order
-            .line_items
-            .iter()
-            .map(|i| {
-                json!({
-                    "productName": i.product_name,
-                    "quantity": i.quantity,
-                })
-            })
-            .collect();
-
-        let payload = json!({
-            "orderId": order.id.to_string(),
-            "sessionId": order.session_id.to_string(),
-            "deviceId": order.device_id.to_string(),
-            "deviceName": device_name,
-            "playerUsername": username,
-            "playerId": order.player_id.to_string(),
-            "items": items_summary,
-        });
-
-        let _ = self
-            .outbox
-            .publish(
-                "staff",
-                "kiosk_order.placed",
-                payload.clone(),
-                Some("staff"),
-                None,
-                false,
-            )
-            .await;
-
-        let title = format!("Order from {device_name} — {username}");
-        let summary = order
-            .line_items
-            .iter()
-            .map(|i| format!("{}× {}", i.quantity, i.product_name))
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        let _ = self
-            .notifications
-            .record(RecordNotification {
-                kind: activity_kind::KIOSK_ORDER_PLACED.to_string(),
-                title,
-                summary: Some(summary),
-                payload,
-                actor_user_id: None,
-                entity_type: Some("kiosk_order".to_string()),
-                entity_id: Some(order.id),
-                recipients: Recipients::AllStaff,
-            })
-            .await;
-
-        Ok(())
-    }
-
-    pub async fn current_order_for_player(
-        &self,
-        player_id: Uuid,
-        device_id: Uuid,
-    ) -> Result<Option<KioskOrderWithItems>, AppError> {
-        let open = self
-            .sessions
-            .find_open_session_for_player(player_id)
-            .await?;
-
-        let Some(open) = open else {
-            return Ok(None);
-        };
-
-        if open.device_id != device_id {
-            return Ok(None);
-        }
-
-        let order = self.repo.find_open_for_session(open.session_id).await?;
-        match order {
-            Some(o) => Ok(Some(self.repo.get_with_details(o.id).await?)),
-            None => Ok(None),
-        }
-    }
-
     pub async fn current_order_for_player_tenant(
         &self,
         db: Arc<TenantDb>,
@@ -398,13 +79,6 @@ impl KioskOrderService {
             .await
     }
 
-    pub async fn list(
-        &self,
-        filters: KioskOrderFilterDto,
-    ) -> Result<crate::dto::PaginationResult<KioskOrderWithItems>, AppError> {
-        self.repo.list(&filters).await
-    }
-
     pub async fn list_tenant(
         &self,
         db: Arc<TenantDb>,
@@ -413,47 +87,12 @@ impl KioskOrderService {
         TenantKioskOrderRepository::new(db).list(&filters).await
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<KioskOrderWithItems, AppError> {
-        self.repo.get_with_details(id).await
-    }
-
     pub async fn get_by_id_tenant(
         &self,
         db: Arc<TenantDb>,
         id: Uuid,
     ) -> Result<KioskOrderWithItems, AppError> {
         TenantKioskOrderRepository::new(db).get(id).await
-    }
-
-    pub async fn update_status(
-        &self,
-        id: Uuid,
-        status: &str,
-    ) -> Result<KioskOrderWithItems, AppError> {
-        if status == kiosk_order_status::CANCELLED {
-            let order = self.repo.update_status(id, status).await?;
-            let details = self.repo.get_with_details(order.id).await?;
-            let _ = self
-                .notifications
-                .record_activity(RecordNotification {
-                    kind: activity_kind::KIOSK_ORDER_CANCELLED.to_string(),
-                    title: format!(
-                        "Order cancelled — {}",
-                        details.device_name.as_deref().unwrap_or("PC")
-                    ),
-                    summary: None,
-                    payload: json!({ "orderId": id.to_string() }),
-                    actor_user_id: None,
-                    entity_type: Some("kiosk_order".to_string()),
-                    entity_id: Some(id),
-                    recipients: Recipients::AllStaff,
-                })
-                .await;
-            return Ok(details);
-        }
-
-        self.repo.update_status(id, status).await?;
-        self.repo.get_with_details(id).await
     }
 
     pub async fn update_status_tenant(
@@ -465,35 +104,6 @@ impl KioskOrderService {
         TenantKioskOrderRepository::new(db)
             .update_status(id, status)
             .await
-    }
-
-    pub async fn mark_fulfilled(
-        &self,
-        order_id: Uuid,
-        transaction_id: Uuid,
-    ) -> Result<(), AppError> {
-        let order = self.repo.mark_fulfilled(order_id, transaction_id).await?;
-        let details = self.repo.get_with_details(order.id).await?;
-        let _ = self
-            .notifications
-            .record_activity(RecordNotification {
-                kind: activity_kind::KIOSK_ORDER_FULFILLED.to_string(),
-                title: format!(
-                    "Order fulfilled — {}",
-                    details.device_name.as_deref().unwrap_or("PC")
-                ),
-                summary: Some(format!("Sale recorded · tx {}", transaction_id)),
-                payload: json!({
-                    "orderId": order_id.to_string(),
-                    "transactionId": transaction_id.to_string(),
-                }),
-                actor_user_id: None,
-                entity_type: Some("kiosk_order".to_string()),
-                entity_id: Some(order_id),
-                recipients: Recipients::AllStaff,
-            })
-            .await;
-        Ok(())
     }
 
     pub fn build_transaction_dto(
@@ -535,33 +145,6 @@ impl KioskOrderService {
             venue_location_id: None,
             kiosk_order_id: Some(order.id),
         }
-    }
-
-    pub async fn convert_to_sale(
-        &self,
-        order_id: Uuid,
-        convert: ConvertKioskOrderDto,
-        shift_id: Uuid,
-        actor_id: Uuid,
-        actor_role: Option<&str>,
-        transactions: &TransactionService,
-        cash_registers: &Arc<crate::services::CashRegisterService>,
-    ) -> Result<crate::models::Transaction, AppError> {
-        let order = self.get_by_id(order_id).await?;
-        if !kiosk_order_status::OPEN.contains(&order.status.as_str()) {
-            return Err(AppError::Conflict(
-                "Order is not open for conversion".to_string(),
-            ));
-        }
-
-        let mut dto = Self::build_transaction_dto(&order, &convert);
-        let (device, _) = self.venue_and_store(order.device_id).await?;
-        dto.venue_location_id = Some(device.location_id);
-        dto.shift_id = Some(shift_id);
-        let tx = transactions
-            .create(dto, Some(actor_id), actor_role, cash_registers)
-            .await?;
-        Ok(tx)
     }
 
     pub async fn convert_to_sale_tenant(
