@@ -923,6 +923,14 @@ mod tests {
         assert_eq!(price, 100.0);
     }
 
+    #[test]
+    fn legacy_product_night_window_observes_local_boundaries() {
+        for (hour, minute, expected) in [(10,30,100.0),(17,30,80.0),(2,0,80.0),(2,30,100.0),(2,29,80.0)] {
+            let at = Utc.with_ymd_and_hms(2026,6,6,hour,minute,0).unwrap();
+            assert_eq!(PricingPolicyService::evaluate_legacy_product_price(100.0,80.0,at,"Asia/Kolkata","23:00","08:00").unwrap(), expected);
+        }
+    }
+
     fn product_rule(id: &str, priority: i32, action: PricingAction) -> PricingRule {
         PricingRule {
             id: id.to_string(),

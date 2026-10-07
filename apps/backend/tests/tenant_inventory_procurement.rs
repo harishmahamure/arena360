@@ -275,6 +275,16 @@ async fn procurement_snapshots_receipt_expense_idempotency_and_reorder() {
     let actor = f.staff().await;
     let vendor = f.supplier().await;
     let service = TenantProcurementService::new(f.db.clone(), "Asia/Kolkata".into());
+    let before = f.outbox_count().await;
+    for body in [
+        json!({"vendorId":vendor.id,"destinationLocationId":store.id,"lines":[{"productId":product,"orderedBoxes":1,"boxCost":100},{"productId":product,"orderedBoxes":2,"boxCost":100}]}),
+        json!({"vendorId":vendor.id,"destinationLocationId":store.id,"discount":-1,"lines":[{"productId":product,"orderedBoxes":1,"boxCost":100}]}),
+        json!({"vendorId":vendor.id,"destinationLocationId":store.id,"freight":-1,"lines":[{"productId":product,"orderedBoxes":1,"boxCost":100}]})
+    ] {
+        assert!(service.create_order(serde_json::from_value(body).unwrap(),actor).await.is_err());
+        assert_eq!(f.outbox_count().await,before);
+        assert_eq!(f.scalar("SELECT COUNT(*) FROM purchase_orders").await,0);
+    }
     let create:CreatePurchaseOrderDto=serde_json::from_value(json!({"vendorId":vendor.id,"destinationLocationId":store.id,"lines":[{"productId":product,"orderedBoxes":4,"boxCost":10.1234,"taxRate":5}]})).unwrap();
     let order = service.create_order(create, actor).await.unwrap();
     assert_eq!(order.order.subtotal, 40.4936);
@@ -313,6 +323,8 @@ async fn procurement_snapshots_receipt_expense_idempotency_and_reorder() {
         .await
         .unwrap();
     assert_eq!(result.purchase_order.order.status, "partially_received");
+    assert!(service.transition(id,"cancel",None,actor).await.is_err());
+    assert!(service.transition(id,"receive",None,actor).await.is_err());
     assert_eq!(f.scalar("SELECT amount FROM expenses").await, 212591);
     assert_eq!(
         f.scalar("SELECT quantity_pieces FROM location_stock").await,
@@ -334,6 +346,8 @@ async fn procurement_snapshots_receipt_expense_idempotency_and_reorder() {
         .receive(id, receive("OVER", 3, 0), actor)
         .await
         .is_err());
+    assert!(service.receive(id,receive("REJECTED-OVER",1,2),actor).await.is_err());
+    assert!(service.receive(id,receive("ZERO-ACCEPTED",0,1),actor).await.is_err());
     let mut cash = receive("CASH", 1, 0);
     cash.payment_method = "cash".into();
     assert!(service.receive(id, cash, actor).await.is_err());
@@ -343,6 +357,7 @@ async fn procurement_snapshots_receipt_expense_idempotency_and_reorder() {
         .await
         .unwrap();
     assert_eq!(final_receipt.purchase_order.order.status, "received");
+    assert!(service.transition(id,"cancel",None,actor).await.is_err());
     let historical_expense =
         gaming_cafe_api::repositories::TenantExpenseRepository::new(f.db.clone());
     assert_eq!(
