@@ -19,6 +19,7 @@ use uuid::Uuid;
 pub struct TenantProcurementService {
     db: Arc<TenantDb>,
     timezone: String,
+    venues: Option<Vec<Uuid>>,
 }
 struct Snapshot {
     product: Uuid,
@@ -32,8 +33,9 @@ struct Snapshot {
 }
 impl TenantProcurementService {
     pub fn new(db: Arc<TenantDb>, timezone: String) -> Self {
-        Self { db, timezone }
+        Self { db, timezone, venues: None }
     }
+    pub fn scoped(db: Arc<TenantDb>, timezone: String, venues: Vec<Uuid>) -> Self { Self { db, timezone, venues: Some(venues) } }
     const ORDER_SELECT: &'static str = r#"
                         SELECT unhex(replace(id, '-' , '' )) AS id, po_number, unhex(replace(vendor_id, '-' , '' )) AS
                         vendor_id, unhex(replace(destination_location_id, '-' , '' )) AS destination_location_id, status,
@@ -56,6 +58,7 @@ impl TenantProcurementService {
         // Both statements share one reader transaction, preserving a consistent order version.
         let mut tx = self.db.read_pool()?.begin().await?;
         let row = Self::get(&mut tx, id).await?;
+        Self::require_destination(&mut tx, row.order.destination_location_id, &self.venues).await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -81,6 +84,7 @@ impl TenantProcurementService {
         let page = f.page.unwrap_or(1).max(1);
         let limit = f.limit.unwrap_or(20).clamp(1, 100);
         let mut q = QueryBuilder::<Sqlite>::new(format!("{} WHERE 1=1", Self::ORDER_SELECT));
+        append_venue_scope(&mut q, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=purchase_orders.destination_location_id)", self.venues.as_deref());
         Self::filters(&mut q, &f);
         q.push(" ORDER BY updated_at DESC,id DESC LIMIT ")
             .push_bind(limit)
@@ -90,6 +94,7 @@ impl TenantProcurementService {
         let items = q.build_query_as().fetch_all(&pool).await?;
         let mut count =
             QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM purchase_orders WHERE 1=1");
+        append_venue_scope(&mut count, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=purchase_orders.destination_location_id)", self.venues.as_deref());
         Self::filters(&mut count, &f);
         let total = count.build_query_scalar().fetch_one(&pool).await?;
         Ok(PaginationResult::new(items, total, page, limit))
@@ -235,11 +240,13 @@ impl TenantProcurementService {
             .timezone
             .parse()
             .map_err(|_| AppError::BadRequest("Invalid tenant timezone".into()))?;
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let location = Self::references(c, dto.vendor_id, dto.destination_location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let lines = Self::snapshots(c, &dto.lines).await?;
                     let discount = Self::nonnegative(dto.discount.unwrap_or(0.0))?;
                     let freight = Self::nonnegative(dto.freight.unwrap_or(0.0))?;
@@ -268,11 +275,13 @@ impl TenantProcurementService {
         dto: UpdatePurchaseOrderDto,
         actor: Uuid,
     ) -> Result<PurchaseOrderWithLines, AppError> {
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let old = Self::get(c, id).await?;
+                    Self::require_destination(c, old.order.destination_location_id, &venues).await?;
                     if !matches!(old.order.status.as_str(), "draft" | "rejected") {
                         return Err(AppError::conflict_code("PURCHASE_ORDER_NOT_EDITABLE", None));
                     }
@@ -282,6 +291,7 @@ impl TenantProcurementService {
                     let vendor = dto.vendor_id.unwrap_or(old.order.vendor_id);
                     let dest = dto.destination_location_id.unwrap_or(old.order.destination_location_id);
                     let location = Self::references(c, vendor, dest).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let (stored_discount,stored_freight):(i64,i64)=sqlx::query_as("SELECT discount,freight FROM purchase_orders WHERE id=?").bind(id.to_string()).fetch_one(&mut *c).await?;
                     let discount=match dto.discount{Some(value)=>Self::nonnegative(value)?,None=>stored_discount};
                     let freight=match dto.freight{Some(value)=>Self::nonnegative(value)?,None=>stored_freight};
@@ -351,15 +361,18 @@ impl TenantProcurementService {
                 None,
             ));
         }
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let old = Self::get(c, id).await?;
+                    Self::require_destination(c, old.order.destination_location_id, &venues).await?;
                     if !allowed.contains(&old.order.status.as_str()) {
                         return Err(AppError::conflict_code("PURCHASE_ORDER_INVALID_TRANSITION", None));
                     }
                     let location = TenantInventoryRepository::location(c, old.order.destination_location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let ts = now()?;
                     sqlx::query(&format!("UPDATE purchase_orders SET status=?,{by}=?,{at}=?,rejection_reason=?,version=version+1,updated_at=? WHERE id=?")).bind(status).bind(actor.to_string()).bind(&ts).bind(if status == "rejected" { reason } else { None }).bind(&ts).bind(id.to_string()).execute(&mut *c).await?;
                     let row = Self::get(c, id).await?;
@@ -401,17 +414,20 @@ impl TenantProcurementService {
                 None,
             ));
         }
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let old = Self::get(c, id).await?;
+                    Self::require_destination(c, old.order.destination_location_id, &venues).await?;
                     let order = old.order;
                     if !matches!(order.status.as_str(), "approved" | "ordered" | "partially_received") {
                         return Err(AppError::conflict_code("PURCHASE_ORDER_NOT_RECEIVABLE", None));
                     }
                     let approver = order.approved_by.ok_or_else(|| AppError::conflict_code("PURCHASE_ORDER_NOT_APPROVED", None))?;
                     let location = TenantInventoryRepository::location(c, order.destination_location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let mut seen = HashSet::new();
                     let mut lines = Vec::new();
                     let mut subtotal = 0;
@@ -509,22 +525,20 @@ impl TenantProcurementService {
         .await
     }
     pub async fn list_reorder_rules(&self) -> Result<Vec<InventoryReorderRule>, AppError> {
-        Ok(sqlx::query_as::<_, InventoryReorderRule>(
-            r#"
+        let mut query = QueryBuilder::<Sqlite>::new(r#"
                         SELECT unhex(replace(r.id, '-' , '' )) AS id, unhex(replace(r.inventory_location_id, '-' , '' )) AS
                         location_id, unhex(replace(r.product_id, '-' , '' )) AS product_id, p.name as product_name,
                         r.minimum_pieces as minimum_pieces, r.target_pieces as target_pieces,
                         unhex(replace(r.preferred_vendor_id, '-' , '' )) AS preferred_vendor_id, r.lead_time_days as
                         lead_time_days, r.is_active as is_active, r.created_at as created_at, r.updated_at as updated_at
-                        FROM inventory_reorder_rules r JOIN products p ON p.id=r.product_id ORDER BY p.name
-                    "#,
-        )
-        .fetch_all(&self.db.read_pool()?)
-        .await?)
+                        FROM inventory_reorder_rules r JOIN products p ON p.id=r.product_id  WHERE 1=1 "#);
+        append_venue_scope(&mut query, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=r.inventory_location_id)", self.venues.as_deref());
+        query.push(r#" ORDER BY p.name
+                    "#);
+        Ok(query.build_query_as::<InventoryReorderRule>().fetch_all(&self.db.read_pool()?).await?)
     }
     pub async fn reorder_suggestions(&self) -> Result<Vec<ReorderSuggestion>, AppError> {
-        Ok(sqlx::query_as::<_, ReorderSuggestion>(
-            r#"
+        let mut query = QueryBuilder::<Sqlite>::new(r#"
                         SELECT unhex(replace(r.id, '-' , '' )) AS rule_id, unhex(replace(r.inventory_location_id, '-' , ''
                         )) AS location_id, l.name as location_name, unhex(replace(r.product_id, '-' , '' )) AS product_id,
                         p.name as product_name, COALESCE(ls.quantity_pieces, 0) as current_pieces, r.minimum_pieces as
@@ -534,12 +548,12 @@ impl TenantProcurementService {
                         l.id=r.inventory_location_id JOIN products p ON p.id=r.product_id LEFT JOIN location_stock ls ON
                         ls.inventory_location_id=r.inventory_location_id AND ls.product_id=r.product_id WHERE
                         r.is_active=true AND l.deleted_at IS NULL AND l.is_active=1 AND p.deleted_at IS NULL AND
-                        COALESCE(ls.quantity_pieces, 0) <= r.minimum_pieces ORDER BY
+                        COALESCE(ls.quantity_pieces, 0) <= r.minimum_pieces "#);
+        append_venue_scope(&mut query, "l.venue_location_id", self.venues.as_deref());
+        query.push(r#" ORDER BY
                         (r.minimum_pieces-COALESCE(ls.quantity_pieces, 0)) DESC, p.name
-                    "#,
-        )
-        .fetch_all(&self.db.read_pool()?)
-        .await?)
+                    "#);
+        Ok(query.build_query_as::<ReorderSuggestion>().fetch_all(&self.db.read_pool()?).await?)
     }
     pub async fn list_movements(
         &self,
@@ -558,6 +572,7 @@ impl TenantProcurementService {
                         created_by, m.created_at as created_at{base}
                     "#
         ));
+        append_venue_scope(&mut q, "l.venue_location_id", self.venues.as_deref());
         Self::apply_movement_filters(&mut q, &filters)?;
         q.push(" ORDER BY m.created_at DESC,m.id DESC LIMIT ");
         q.push_bind(limit);
@@ -568,6 +583,7 @@ impl TenantProcurementService {
             .fetch_all(&self.db.read_pool()?)
             .await?;
         let mut c = QueryBuilder::<Sqlite>::new(format!("SELECT COUNT(*){base}"));
+        append_venue_scope(&mut c, "l.venue_location_id", self.venues.as_deref());
         Self::apply_movement_filters(&mut c, &filters)?;
         let total: (i64,) = c.build_query_as().fetch_one(&self.db.read_pool()?).await?;
         Ok(PaginationResult::new(data, total.0, page, limit))
@@ -583,11 +599,13 @@ impl TenantProcurementService {
         {
             return Err(AppError::bad_request_code("REORDER_RULE_INVALID", None));
         }
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let location = TenantInventoryRepository::location(c, dto.location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM products WHERE id=? AND deleted_at IS NULL)").bind(dto.product_id.to_string()).fetch_one(&mut *c).await?;
                     if !valid {
                         return Err(AppError::bad_request_code("REORDER_RULE_INVALID", None));
@@ -626,6 +644,14 @@ impl TenantProcurementService {
             details: None,
         })
     }
+    async fn require_destination(c: &mut SqliteConnection, destination: Uuid, venues: &Option<Vec<Uuid>>) -> Result<(), AppError> {
+        if venues.is_some() {
+            let venue: Uuid = sqlx::query_scalar("SELECT unhex(replace(venue_location_id,'-','')) FROM inventory_locations WHERE id=?")
+                .bind(destination.to_string()).fetch_one(c).await?;
+            require_venue(venues, venue)?;
+        }
+        Ok(())
+    }
     fn apply_movement_filters(
         q: &mut QueryBuilder<Sqlite>,
         f: &StockMovementFilterDto,
@@ -662,5 +688,22 @@ impl TenantProcurementService {
             );
         }
         Ok(())
+    }
+}
+
+fn require_venue(venues: &Option<Vec<Uuid>>, venue: Uuid) -> Result<(), AppError> {
+    if venues.as_ref().is_some_and(|allowed| !allowed.contains(&venue)) {
+        Err(AppError::Forbidden("Procurement location is outside the permitted venues".into()))
+    } else { Ok(()) }
+}
+fn append_venue_scope(query: &mut QueryBuilder<Sqlite>, expression: &str, venues: Option<&[Uuid]>) {
+    if let Some(venues) = venues {
+        if venues.is_empty() { query.push(" AND 0"); }
+        else {
+            query.push(" AND ").push(expression).push(" IN (");
+            let mut separated = query.separated(",");
+            for venue in venues { separated.push_bind(venue.to_string()); }
+            separated.push_unseparated(")");
+        }
     }
 }

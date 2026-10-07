@@ -9,11 +9,14 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct TenantInventoryRepository {
     db: Arc<TenantDb>,
+    venues: Option<Vec<Uuid>>,
 }
 impl TenantInventoryRepository {
     pub fn new(db: Arc<TenantDb>) -> Self {
-        Self { db }
+        Self { db, venues: None }
     }
+    /// HTTP callers supply the current venue grants; `new` is for trusted tenant workflows.
+    pub fn scoped(db: Arc<TenantDb>, venues: Vec<Uuid>) -> Self { Self { db, venues: Some(venues) } }
     const LOCATION_SELECT: &'static str = r#"
                         SELECT unhex(replace(id, '-' , '' )) AS id, unhex(replace(venue_location_id, '-' , '' )) AS
                         venue_location_id, name, kind, is_active, unhex(replace(created_by, '-' , '' )) AS created_by,
@@ -24,14 +27,10 @@ impl TenantInventoryRepository {
         &self,
         id: Uuid,
     ) -> Result<Option<InventoryLocation>, AppError> {
-        let query = format!(
-            "{} WHERE id = $1 AND deleted_at IS NULL",
-            Self::LOCATION_SELECT
-        );
-        Ok(sqlx::query_as::<_, InventoryLocation>(&query)
-            .bind(id.to_string())
-            .fetch_optional(&self.db.read_pool()?)
-            .await?)
+        let mut query = QueryBuilder::<Sqlite>::new(format!("{} WHERE deleted_at IS NULL AND id=", Self::LOCATION_SELECT));
+        query.push_bind(id.to_string());
+        append_location_scope(&mut query, "venue_location_id", self.venues.as_deref());
+        Ok(query.build_query_as::<InventoryLocation>().fetch_optional(&self.db.read_pool()?).await?)
     }
     pub async fn list_locations(
         &self,
@@ -47,6 +46,7 @@ impl TenantInventoryRepository {
              deleted_at as deleted_at \
              FROM inventory_locations WHERE deleted_at IS NULL",
         );
+        append_location_scope(&mut builder, "venue_location_id", self.venues.as_deref());
         if let Some(kind) = &filters.kind {
             builder.push(" AND kind = ");
             builder.push_bind(kind);
@@ -70,6 +70,7 @@ impl TenantInventoryRepository {
             .await?;
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM inventory_locations WHERE deleted_at IS NULL");
+        append_location_scope(&mut count_builder, "venue_location_id", self.venues.as_deref());
         if let Some(kind) = &filters.kind {
             count_builder.push(" AND kind = ");
             count_builder.push_bind(kind);
@@ -106,6 +107,7 @@ impl TenantInventoryRepository {
              LEFT JOIN inventory_reorder_rules rr ON rr.inventory_location_id=ls.inventory_location_id AND rr.product_id=ls.product_id AND rr.is_active=true \
              WHERE 1=1",
         );
+        append_location_scope(&mut builder, "l.venue_location_id", self.venues.as_deref());
         if let Some(location_id) = filters.location_id {
             builder.push(" AND ls.inventory_location_id = ");
             builder.push_bind(location_id.to_string());
@@ -161,6 +163,7 @@ impl TenantInventoryRepository {
              LEFT JOIN inventory_reorder_rules rr ON rr.inventory_location_id=ls.inventory_location_id \
                AND rr.product_id=ls.product_id AND rr.is_active=true WHERE 1=1",
         );
+        append_location_scope(&mut count_builder, "l.venue_location_id", self.venues.as_deref());
         if let Some(location_id) = filters.location_id {
             count_builder.push(" AND ls.inventory_location_id = ");
             count_builder.push_bind(location_id.to_string());
@@ -201,6 +204,7 @@ impl TenantInventoryRepository {
         location_id: Uuid,
         product_id: Uuid,
     ) -> Result<i32, AppError> {
+        if self.venues.is_some() { self.get_location(location_id).await?; }
         let row: Option<(i32,)> = sqlx::query_as(
             r#"SELECT quantity_pieces FROM location_stock
                WHERE inventory_location_id = $1 AND product_id = $2"#,
@@ -222,6 +226,7 @@ impl TenantInventoryRepository {
             "SELECT unhex(replace(id,'-','')) AS id, unhex(replace(inventory_location_id,'-','')) AS location_id, notes, unhex(replace(created_by,'-','')) AS created_by, \
              created_at as created_at FROM stock_adjustments WHERE 1=1",
         );
+        append_location_scope(&mut builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_adjustments.inventory_location_id)", self.venues.as_deref());
         if let Some(location_id) = filters.location_id {
             builder.push(" AND inventory_location_id = ");
             builder.push_bind(location_id.to_string());
@@ -236,6 +241,7 @@ impl TenantInventoryRepository {
             .await?;
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM stock_adjustments WHERE 1=1");
+        append_location_scope(&mut count_builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_adjustments.inventory_location_id)", self.venues.as_deref());
         if let Some(location_id) = filters.location_id {
             count_builder.push(" AND inventory_location_id = ");
             count_builder.push_bind(location_id.to_string());
@@ -250,21 +256,20 @@ impl TenantInventoryRepository {
         &self,
         id: Uuid,
     ) -> Result<Option<StockAdjustment>, AppError> {
-        Ok(sqlx::query_as::<_, StockAdjustment>(
-            r#"
+        let mut query = QueryBuilder::<Sqlite>::new(r#"
             SELECT unhex(replace(id,'-','')) AS id, unhex(replace(inventory_location_id,'-','')) AS location_id, notes, unhex(replace(created_by,'-','')) AS created_by,
                    created_at as created_at
-            FROM stock_adjustments WHERE id = $1
-            "#,
-        )
-        .bind(id.to_string())
-        .fetch_optional(&self.db.read_pool()?)
-        .await?)
+            FROM stock_adjustments WHERE 1=1
+            "#);
+        query.push(" AND id=").push_bind(id.to_string());
+        append_location_scope(&mut query, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_adjustments.inventory_location_id)", self.venues.as_deref());
+        Ok(query.build_query_as::<StockAdjustment>().fetch_optional(&self.db.read_pool()?).await?)
     }
     pub async fn adjustment_lines(
         &self,
         adjustment_id: Uuid,
     ) -> Result<Vec<StockAdjustmentLine>, AppError> {
+        if self.venues.is_some() && self.find_adjustment_by_id(adjustment_id).await?.is_none() { return Err(AppError::NotFound("Inventory record not found".into())); }
         Ok(sqlx::query_as::<_, StockAdjustmentLine>(
             r#"
             SELECT unhex(replace(id,'-','')) AS id, unhex(replace(adjustment_id,'-','')) AS adjustment_id, unhex(replace(product_id,'-','')) AS product_id,
@@ -289,6 +294,7 @@ impl TenantInventoryRepository {
              unhex(replace(created_by,'-','')) AS created_by, created_at as created_at \
              FROM stock_receipts WHERE 1=1",
         );
+        append_location_scope(&mut builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_receipts.inventory_location_id)", self.venues.as_deref());
         if let Some(location_id) = filters.location_id {
             builder.push(" AND inventory_location_id = ");
             builder.push_bind(location_id.to_string());
@@ -317,6 +323,7 @@ impl TenantInventoryRepository {
             .await?;
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM stock_receipts WHERE 1=1");
+        append_location_scope(&mut count_builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_receipts.inventory_location_id)", self.venues.as_deref());
         if let Some(location_id) = filters.location_id {
             count_builder.push(" AND inventory_location_id = ");
             count_builder.push_bind(location_id.to_string());
@@ -342,6 +349,13 @@ impl TenantInventoryRepository {
         Ok(PaginationResult::new(rows, total.0, page, limit))
     }
     pub async fn receipt_lines(&self, receipt_id: Uuid) -> Result<Vec<StockReceiptLine>, AppError> {
+        if self.venues.is_some() {
+            let mut query = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM stock_receipts WHERE id=");
+            query.push_bind(receipt_id.to_string());
+            append_location_scope(&mut query, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_receipts.inventory_location_id)", self.venues.as_deref());
+            let count: i64 = query.build_query_scalar().fetch_one(&self.db.read_pool()?).await?;
+            if count == 0 { return Err(AppError::NotFound("Receipt not found".into())); }
+        }
         Ok(sqlx::query_as::<_, StockReceiptLine>(
             r#"
             SELECT unhex(replace(id,'-','')) AS id, unhex(replace(receipt_id,'-','')) AS receipt_id, unhex(replace(product_id,'-','')) AS product_id,
@@ -357,25 +371,25 @@ impl TenantInventoryRepository {
         &self,
         id: Uuid,
     ) -> Result<Option<StockTransferRequest>, AppError> {
-        Ok(sqlx::query_as::<_, StockTransferRequest>(
-            r#"
+        let mut query = QueryBuilder::<Sqlite>::new(r#"
             SELECT unhex(replace(id,'-','')) AS id, unhex(replace(from_location_id,'-','')) AS from_location_id, unhex(replace(to_location_id,'-','')) AS to_location_id,
                    status as status, unhex(replace(requested_by,'-','')) AS requested_by,
                    unhex(replace(approved_by,'-','')) AS approved_by, approved_at as approved_at,
                    rejection_reason as rejection_reason, unhex(replace(fulfilled_by,'-','')) AS fulfilled_by,
                    fulfilled_at as fulfilled_at, created_at as created_at,
                    updated_at as updated_at
-            FROM stock_transfer_requests WHERE id = $1
-            "#,
-        )
-        .bind(id.to_string())
-        .fetch_optional(&self.db.read_pool()?)
-        .await?)
+            FROM stock_transfer_requests WHERE 1=1
+            "#);
+        query.push(" AND id=").push_bind(id.to_string());
+        append_location_scope(&mut query, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_transfer_requests.from_location_id)", self.venues.as_deref());
+        append_location_scope(&mut query, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_transfer_requests.to_location_id)", self.venues.as_deref());
+        Ok(query.build_query_as::<StockTransferRequest>().fetch_optional(&self.db.read_pool()?).await?)
     }
     pub async fn transfer_lines(
         &self,
         request_id: Uuid,
     ) -> Result<Vec<StockTransferLine>, AppError> {
+        if self.venues.is_some() && self.find_transfer_by_id(request_id).await?.is_none() { return Err(AppError::NotFound("Inventory record not found".into())); }
         Ok(sqlx::query_as::<_, StockTransferLine>(
             r#"
             SELECT unhex(replace(id,'-','')) AS id, unhex(replace(transfer_request_id,'-','')) AS transfer_request_id, unhex(replace(product_id,'-','')) AS product_id,
@@ -402,6 +416,8 @@ impl TenantInventoryRepository {
              fulfilled_at as fulfilled_at, created_at as created_at, \
              updated_at as updated_at FROM stock_transfer_requests WHERE 1=1",
         );
+        append_location_scope(&mut builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_transfer_requests.from_location_id)", self.venues.as_deref());
+        append_location_scope(&mut builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_transfer_requests.to_location_id)", self.venues.as_deref());
         if let Some(status) = &filters.status {
             builder.push(" AND status = ");
             builder.push_bind(status);
@@ -424,6 +440,8 @@ impl TenantInventoryRepository {
             .await?;
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM stock_transfer_requests WHERE 1=1");
+        append_location_scope(&mut count_builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_transfer_requests.from_location_id)", self.venues.as_deref());
+        append_location_scope(&mut count_builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_transfer_requests.to_location_id)", self.venues.as_deref());
         if let Some(status) = &filters.status {
             count_builder.push(" AND status = ");
             count_builder.push_bind(status);
@@ -443,20 +461,19 @@ impl TenantInventoryRepository {
         Ok(PaginationResult::new(rows, total.0, page, limit))
     }
     pub async fn find_waste_by_id(&self, id: Uuid) -> Result<Option<StockWasteEvent>, AppError> {
-        Ok(sqlx::query_as::<_, StockWasteEvent>(
-            r#"
+        let mut query = QueryBuilder::<Sqlite>::new(r#"
             SELECT unhex(replace(id,'-','')) AS id, unhex(replace(inventory_location_id,'-','')) AS location_id, status as status, notes,
                    unhex(replace(approved_by,'-','')) AS approved_by, approved_at as approved_at,
                    rejection_reason as rejection_reason, unhex(replace(created_by,'-','')) AS created_by,
                    created_at as created_at, updated_at as updated_at
-            FROM stock_waste_events WHERE id = $1
-            "#,
-        )
-        .bind(id.to_string())
-        .fetch_optional(&self.db.read_pool()?)
-        .await?)
+            FROM stock_waste_events WHERE 1=1
+            "#);
+        query.push(" AND id=").push_bind(id.to_string());
+        append_location_scope(&mut query, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_waste_events.inventory_location_id)", self.venues.as_deref());
+        Ok(query.build_query_as::<StockWasteEvent>().fetch_optional(&self.db.read_pool()?).await?)
     }
     pub async fn waste_lines(&self, event_id: Uuid) -> Result<Vec<StockWasteLine>, AppError> {
+        if self.venues.is_some() && self.find_waste_by_id(event_id).await?.is_none() { return Err(AppError::NotFound("Inventory record not found".into())); }
         Ok(sqlx::query_as::<_, StockWasteLine>(
             r#"
             SELECT unhex(replace(id,'-','')) AS id, unhex(replace(waste_event_id,'-','')) AS waste_event_id, unhex(replace(product_id,'-','')) AS product_id,
@@ -482,6 +499,7 @@ impl TenantInventoryRepository {
              created_at as created_at, updated_at as updated_at \
              FROM stock_waste_events WHERE 1=1",
         );
+        append_location_scope(&mut builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_waste_events.inventory_location_id)", self.venues.as_deref());
         if let Some(status) = &filters.status {
             builder.push(" AND status = ");
             builder.push_bind(status);
@@ -514,6 +532,7 @@ impl TenantInventoryRepository {
             .await?;
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM stock_waste_events WHERE 1=1");
+        append_location_scope(&mut count_builder, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_waste_events.inventory_location_id)", self.venues.as_deref());
         if let Some(status) = &filters.status {
             count_builder.push(" AND status = ");
             count_builder.push_bind(status);
@@ -548,11 +567,13 @@ impl TenantInventoryRepository {
         actor: Option<Uuid>,
     ) -> Result<InventoryLocation, AppError> {
         let dto = dto.clone();
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let venue = dto.venue_location_id.ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?;
+                    require_venue(&venues, venue)?;
                     let kind = dto.kind.trim().to_lowercase();
                     if !matches!(kind.as_str(), "warehouse" | "store") {
                         return Err(AppError::BadRequest("Invalid location kind".into()));
@@ -575,11 +596,14 @@ impl TenantInventoryRepository {
         actor: Option<Uuid>,
     ) -> Result<InventoryLocation, AppError> {
         let dto = dto.clone();
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
-                    Self::location_row(c, id).await?;
+                    let existing = Self::location_row(c, id).await?;
+                    require_venue(&venues, existing.venue_location_id)?;
+                    if let Some(venue) = dto.venue_location_id { require_venue(&venues, venue)?; }
                     let kind = dto.kind.map(|x| x.trim().to_lowercase());
                     if kind.as_deref().is_some_and(|x| !matches!(x, "warehouse" | "store")) {
                         return Err(AppError::BadRequest("Invalid location kind".into()));
@@ -594,11 +618,13 @@ impl TenantInventoryRepository {
         .await
     }
     pub async fn soft_delete_location(&self, id: Uuid) -> Result<InventoryLocation, AppError> {
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let row = Self::location_row(c, id).await?;
+                    require_venue(&venues, row.venue_location_id)?;
                     let ts = now()?;
                     sqlx::query("UPDATE inventory_locations SET deleted_at=?,updated_at=?,is_active=0 WHERE id=?").bind(&ts).bind(&ts).bind(id.to_string()).execute(&mut *c).await?;
                     event(c, "inventory_location", id, "inventory.location_deleted", Some(row.venue_location_id), true, json!({"id":id})).await?;
@@ -672,6 +698,7 @@ impl TenantInventoryRepository {
         actor: Option<Uuid>,
     ) -> Result<(StockReceipt, Vec<StockReceiptLine>), AppError> {
         let dto = dto.clone();
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
@@ -681,6 +708,7 @@ impl TenantInventoryRepository {
                     }
                     Self::valid_lines(dto.lines.iter().map(|x| (x.product_id, x.box_quantity)))?;
                     let location = Self::location(c, dto.location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let id = Uuid::now_v7();
                     let ts = now()?;
                     sqlx::query("INSERT INTO stock_receipts(id,inventory_location_id,vendor_id,notes,exceptional_reason,created_by,receipt_date,created_at) VALUES(?,?,?,?,?,?,?,?)").bind(id.to_string()).bind(dto.location_id.to_string()).bind(dto.vendor_id.map(|x| x.to_string())).bind(dto.notes).bind(dto.exceptional_reason.trim()).bind(actor.map(|x| x.to_string())).bind(&ts).bind(&ts).execute(&mut *c).await?;
@@ -721,6 +749,7 @@ impl TenantInventoryRepository {
         actor: Option<Uuid>,
     ) -> Result<(StockAdjustment, Vec<StockAdjustmentLine>), AppError> {
         let dto = dto.clone();
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
@@ -729,6 +758,7 @@ impl TenantInventoryRepository {
                         return Err(AppError::BadRequest("Adjustment notes and lines are required".into()));
                     }
                     let location = Self::location(c, dto.location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let mut seen = HashSet::new();
                     let id = Uuid::now_v7();
                     let ts = now()?;
@@ -776,13 +806,16 @@ impl TenantInventoryRepository {
         actor: Option<Uuid>,
     ) -> Result<(StockTransferRequest, Vec<StockTransferLine>), AppError> {
         let lines = lines.to_vec();
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     Self::valid_lines(lines.iter().copied())?;
                     let src = Self::location(c, from).await?;
+                    require_venue(&venues, src.venue_location_id)?;
                     let dest = Self::location(c, to).await?;
+                    require_venue(&venues, dest.venue_location_id)?;
                     if src.kind != "warehouse" || dest.kind != "store" || from == to {
                         return Err(AppError::BadRequest("Transfer must be from a warehouse to a store".into()));
                     }
@@ -828,6 +861,7 @@ impl TenantInventoryRepository {
         actor: Uuid,
         reason: Option<String>,
     ) -> Result<StockTransferRequest, AppError> {
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
@@ -836,7 +870,10 @@ impl TenantInventoryRepository {
                     if old.status != "pending" {
                         return Err(AppError::Conflict("Transfer is not pending".into()));
                     }
+                    let src = Self::location(c, old.from_location_id).await?;
+                    require_venue(&venues, src.venue_location_id)?;
                     let dest = Self::location(c, old.to_location_id).await?;
+                    require_venue(&venues, dest.venue_location_id)?;
                     let status = if reason.is_some() { "rejected" } else { "approved" };
                     let ts = now()?;
                     sqlx::query("UPDATE stock_transfer_requests SET status=?,approved_by=?,approved_at=?,rejection_reason=?,updated_at=? WHERE id=?").bind(status).bind(actor.to_string()).bind(&ts).bind(reason).bind(&ts).bind(id.to_string()).execute(&mut *c).await?;
@@ -853,6 +890,7 @@ impl TenantInventoryRepository {
         id: Uuid,
         actor: Uuid,
     ) -> Result<StockTransferRequest, AppError> {
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
@@ -861,8 +899,10 @@ impl TenantInventoryRepository {
                     if old.status != "approved" {
                         return Err(AppError::Conflict("Transfer must be approved before fulfillment".into()));
                     }
-                    Self::location(c, old.from_location_id).await?;
+                    let src = Self::location(c, old.from_location_id).await?;
+                    require_venue(&venues, src.venue_location_id)?;
                     let dest = Self::location(c, old.to_location_id).await?;
+                    require_venue(&venues, dest.venue_location_id)?;
                     let lines: Vec<(String, i32)> = sqlx::query_as("SELECT product_id,quantity_pieces FROM stock_transfer_lines WHERE transfer_request_id=? ORDER BY product_id").bind(id.to_string()).fetch_all(&mut *c).await?;
                     for (product, quantity) in lines {
                         let product = Uuid::parse_str(&product).map_err(|e| AppError::Internal(e.to_string()))?;
@@ -895,6 +935,7 @@ impl TenantInventoryRepository {
         actor: Option<Uuid>,
     ) -> Result<(StockWasteEvent, Vec<StockWasteLine>), AppError> {
         let dto = dto.clone();
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
@@ -903,6 +944,7 @@ impl TenantInventoryRepository {
                         return Err(AppError::BadRequest("At least one waste line is required".into()));
                     }
                     let location = Self::location(c, dto.location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     let id = Uuid::now_v7();
                     let ts = now()?;
                     sqlx::query("INSERT INTO stock_waste_events(id,inventory_location_id,notes,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?)").bind(id.to_string()).bind(dto.location_id.to_string()).bind(dto.notes).bind(actor.map(|x| x.to_string())).bind(&ts).bind(&ts).execute(&mut *c).await?;
@@ -945,6 +987,7 @@ impl TenantInventoryRepository {
         actor: Uuid,
         reason: Option<String>,
     ) -> Result<StockWasteEvent, AppError> {
+        let venues = self.venues.clone();
         write(
             &self.db,
             Box::new(move |c| {
@@ -954,6 +997,7 @@ impl TenantInventoryRepository {
                         return Err(AppError::Conflict("Waste event is not pending".into()));
                     }
                     let location = Self::location(c, old.location_id).await?;
+                    require_venue(&venues, location.venue_location_id)?;
                     if reason.is_none() {
                         let lines: Vec<(String, i32)> = sqlx::query_as("SELECT product_id,quantity_pieces FROM stock_waste_lines WHERE waste_event_id=? ORDER BY product_id,id").bind(id.to_string()).fetch_all(&mut *c).await?;
                         for (product, quantity) in lines {
@@ -972,12 +1016,15 @@ impl TenantInventoryRepository {
         .await
     }
     pub async fn get_location(&self, id: Uuid) -> Result<InventoryLocation, AppError> {
-        self.find_location_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Location {id} not found")))
+        let row = self.find_location_by_id(id).await?.ok_or_else(|| AppError::NotFound(format!("Location {id} not found")))?;
+        require_venue(&self.venues, row.venue_location_id)?;
+        Ok(row)
     }
     pub async fn get_receipt(&self, id: Uuid) -> Result<StockReceiptWithLines, AppError> {
-        let receipt=sqlx::query_as("SELECT unhex(replace(id,'-','')) AS id,unhex(replace(inventory_location_id,'-','')) AS location_id,unhex(replace(vendor_id,'-','')) AS vendor_id,notes,unhex(replace(created_by,'-','')) AS created_by,created_at FROM stock_receipts WHERE id=?").bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?.ok_or_else(||AppError::NotFound(format!("Receipt {id} not found")))?;
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT unhex(replace(id,'-','')) AS id,unhex(replace(inventory_location_id,'-','')) AS location_id,unhex(replace(vendor_id,'-','')) AS vendor_id,notes,unhex(replace(created_by,'-','')) AS created_by,created_at FROM stock_receipts WHERE id=");
+        query.push_bind(id.to_string());
+        append_location_scope(&mut query, "(SELECT l.venue_location_id FROM inventory_locations l WHERE l.id=stock_receipts.inventory_location_id)", self.venues.as_deref());
+        let receipt = query.build_query_as::<StockReceipt>().fetch_optional(&self.db.read_pool()?).await?.ok_or_else(|| AppError::NotFound(format!("Receipt {id} not found")))?;
         Ok(StockReceiptWithLines {
             receipt,
             lines: self.receipt_lines(id).await?,
@@ -1048,5 +1095,22 @@ impl TenantInventoryRepository {
             .create_transfer_request(from, to, &lines, actor)
             .await?;
         Ok(StockTransferRequestWithLines { request, lines })
+    }
+}
+
+fn require_venue(venues: &Option<Vec<Uuid>>, venue: Uuid) -> Result<(), AppError> {
+    if venues.as_ref().is_some_and(|allowed| !allowed.contains(&venue)) {
+        Err(AppError::Forbidden("Inventory location is outside the permitted venues".into()))
+    } else { Ok(()) }
+}
+fn append_location_scope(builder: &mut QueryBuilder<Sqlite>, expression: &str, venues: Option<&[Uuid]>) {
+    if let Some(venues) = venues {
+        if venues.is_empty() { builder.push(" AND 0"); }
+        else {
+            builder.push(" AND ").push(expression).push(" IN (");
+            let mut separated = builder.separated(",");
+            for venue in venues { separated.push_bind(venue.to_string()); }
+            separated.push_unseparated(")");
+        }
     }
 }

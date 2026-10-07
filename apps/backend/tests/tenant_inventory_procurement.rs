@@ -546,3 +546,274 @@ async fn invalid_money_and_fenced_ownership_never_write() {
     pool.close().await;
     f.close().await;
 }
+
+#[tokio::test]
+async fn scoped_inventory_and_procurement_deny_other_venues_before_side_effects() {
+    let f = Fixture::new().await;
+    let venue = f.location("permitted").await;
+    let other = f.location("other-venue").await;
+    let warehouse = f.inventory(venue, "warehouse").await;
+    let store = f.inventory(venue, "store").await;
+    let remote = f.inventory(other, "store").await;
+    let product = f.product("Coffee").await;
+    let actor = f.staff().await;
+    let vendor = f.supplier().await;
+    let trusted = TenantInventoryRepository::new(f.db.clone());
+    let scoped = TenantInventoryRepository::scoped(f.db.clone(), vec![venue]);
+    let empty = TenantInventoryRepository::scoped(f.db.clone(), vec![]);
+    let receipt = |location| {
+        serde_json::from_value::<CreateStockReceiptDto>(json!({"locationId":location,"exceptionalReason":"Opening stock","lines":[{"productId":product,"boxQuantity":2}]})).unwrap()
+    };
+    let (local_receipt, _) = trusted
+        .create_receipt(&receipt(warehouse.id), Some(actor))
+        .await
+        .unwrap();
+    let (remote_receipt, _) = trusted
+        .create_receipt(&receipt(remote.id), Some(actor))
+        .await
+        .unwrap();
+    let local = scoped
+        .list_locations(&serde_json::from_value(json!({"limit":1})).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(local.total, 2);
+    assert_eq!(local.data.len(), 1);
+    assert_eq!(
+        scoped.list_stock(&Default::default()).await.unwrap().total,
+        1
+    );
+    assert_eq!(
+        scoped
+            .list_receipts(&Default::default())
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    assert_eq!(
+        empty
+            .list_locations(&Default::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        empty
+            .list_receipts(&Default::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert!(scoped.get_receipt(local_receipt.id).await.is_ok());
+    assert!(scoped.get_location(remote.id).await.is_err());
+    assert!(scoped.get_receipt(remote_receipt.id).await.is_err());
+    assert!(scoped.receipt_lines(remote_receipt.id).await.is_err());
+    assert!(scoped.stock_quantity_at(remote.id, product).await.is_err());
+    let before = f.outbox_count().await;
+    assert!(scoped
+        .create_receipt(&receipt(remote.id), Some(actor))
+        .await
+        .is_err());
+    assert!(scoped
+        .update_location(
+            store.id,
+            &serde_json::from_value(json!({"venueLocationId":other})).unwrap(),
+            Some(actor)
+        )
+        .await
+        .is_err());
+    assert_eq!(f.outbox_count().await, before);
+    let remote_id = remote.id;
+    let store_id = store.id;
+    f.db.with_immediate_writer(move|c|Box::pin(async move {
+        let at = gaming_cafe_api::tenancy::format_sqlite_timestamp(&Utc::now()).unwrap();
+        for (key, location) in [("inventory.default_warehouse_id", remote_id), ("inventory.default_store_id", store_id)] {
+            sqlx::query("INSERT INTO setting_overrides(id,key,value,created_at,updated_at) VALUES(?,?,?,?,?)")
+                .bind(Uuid::now_v7().to_string()).bind(key).bind(serde_json::json!(location).to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        }
+        Ok(())
+    })).await.unwrap();
+    let before_default_transfer = f.outbox_count().await;
+    assert!(scoped
+        .request_transfer(
+            serde_json::from_value(json!({"lines":[{"productId":product,"quantityPieces":1}]}))
+                .unwrap(),
+            Some(actor)
+        )
+        .await
+        .is_err());
+    assert_eq!(f.outbox_count().await, before_default_transfer);
+    let (cross, _) = trusted
+        .create_transfer_request(warehouse.id, remote.id, &[(product, 1)], Some(actor))
+        .await
+        .unwrap();
+    let (within, _) = trusted
+        .create_transfer_request(warehouse.id, store.id, &[(product, 1)], Some(actor))
+        .await
+        .unwrap();
+    assert_eq!(
+        scoped
+            .list_transfer_requests(&Default::default())
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    assert!(scoped.get_transfer_request(within.id).await.is_ok());
+    assert!(scoped.get_transfer_request(cross.id).await.is_err());
+    assert!(scoped.transfer_lines(cross.id).await.is_err());
+    let before = f.outbox_count().await;
+    assert!(scoped.approve_transfer(cross.id, actor).await.is_err());
+    assert!(scoped
+        .reject_transfer(cross.id, "Outside venue", actor)
+        .await
+        .is_err());
+    assert!(scoped
+        .create_transfer_request(warehouse.id, remote.id, &[(product, 1)], Some(actor))
+        .await
+        .is_err());
+    assert_eq!(f.outbox_count().await, before);
+    trusted.approve_transfer(cross.id, actor).await.unwrap();
+    let before = f.outbox_count().await;
+    assert!(scoped.fulfill_transfer(cross.id, actor).await.is_err());
+    assert_eq!(f.outbox_count().await, before);
+    assert_eq!(
+        trusted
+            .stock_quantity_at(warehouse.id, product)
+            .await
+            .unwrap(),
+        24
+    );
+    let (remote_adjustment, _) = trusted.create_adjustment(&serde_json::from_value(json!({"locationId":remote.id,"notes":"Stock count","lines":[{"productId":product,"countedPieces":25}]})).unwrap(), Some(actor)).await.unwrap();
+    assert_eq!(
+        scoped
+            .list_adjustments(&Default::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert!(scoped.get_adjustment(remote_adjustment.id).await.is_err());
+    assert!(scoped.adjustment_lines(remote_adjustment.id).await.is_err());
+    let (waste, _) = trusted.create_waste_event(&serde_json::from_value(json!({"locationId":remote.id,"lines":[{"productId":product,"quantityPieces":1,"reasonCode":"damaged"}]})).unwrap(), Some(actor)).await.unwrap();
+    assert_eq!(
+        scoped
+            .list_waste_events(&Default::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert!(scoped.get_waste_event(waste.id).await.is_err());
+    assert!(scoped.waste_lines(waste.id).await.is_err());
+    let before = f.outbox_count().await;
+    assert!(scoped.approve_waste(waste.id, actor).await.is_err());
+    assert_eq!(f.outbox_count().await, before);
+    let procurement = TenantProcurementService::new(f.db.clone(), "Asia/Kolkata".into());
+    let allowed =
+        TenantProcurementService::scoped(f.db.clone(), "Asia/Kolkata".into(), vec![venue]);
+    let no_venues = TenantProcurementService::scoped(f.db.clone(), "Asia/Kolkata".into(), vec![]);
+    let order = |destination| {
+        serde_json::from_value::<CreatePurchaseOrderDto>(json!({"vendorId":vendor.id,"destinationLocationId":destination,"lines":[{"productId":product,"orderedBoxes":1,"boxCost":10}]})).unwrap()
+    };
+    let own_order = procurement
+        .create_order(order(store.id), actor)
+        .await
+        .unwrap();
+    let other_order = procurement
+        .create_order(order(remote.id), actor)
+        .await
+        .unwrap();
+    let page = allowed
+        .list_orders(serde_json::from_value(json!({"limit":1})).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.data[0].id, own_order.order.id);
+    assert_eq!(
+        no_venues
+            .list_orders(Default::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert!(allowed.get_order(other_order.order.id).await.is_err());
+    let before = f.outbox_count().await;
+    assert!(allowed.create_order(order(remote.id), actor).await.is_err());
+    assert!(allowed
+        .transition(other_order.order.id, "submit", None, actor)
+        .await
+        .is_err());
+    assert!(allowed
+        .update_order(
+            other_order.order.id,
+            serde_json::from_value(json!({"version":1,"notes":"Blocked"})).unwrap(),
+            actor
+        )
+        .await
+        .is_err());
+    assert!(allowed
+        .update_order(
+            own_order.order.id,
+            serde_json::from_value(json!({"version":1,"destinationLocationId":remote.id})).unwrap(),
+            actor
+        )
+        .await
+        .is_err());
+    assert_eq!(f.outbox_count().await, before);
+    procurement
+        .transition(other_order.order.id, "submit", None, actor)
+        .await
+        .unwrap();
+    procurement
+        .transition(other_order.order.id, "approve", None, actor)
+        .await
+        .unwrap();
+    let before = f.outbox_count().await;
+    assert!(allowed.receive(other_order.order.id, serde_json::from_value(json!({"invoiceReference":"Denied","paymentMethod":"online","paymentAccount":"Bank","lines":[{"purchaseOrderLineId":other_order.lines[0].id,"acceptedBoxes":1}]})).unwrap(), actor).await.is_err());
+    assert_eq!(f.outbox_count().await, before);
+    for location in [store.id, remote.id] {
+        procurement.upsert_reorder_rule(serde_json::from_value(json!({"locationId":location,"productId":product,"minimumPieces":30,"targetPieces":50})).unwrap(), actor).await.unwrap();
+    }
+    assert_eq!(allowed.list_reorder_rules().await.unwrap().len(), 1);
+    assert_eq!(allowed.reorder_suggestions().await.unwrap().len(), 1);
+    assert!(no_venues.list_reorder_rules().await.unwrap().is_empty());
+    assert!(no_venues.reorder_suggestions().await.unwrap().is_empty());
+    let page = allowed
+        .list_movements(serde_json::from_value(json!({"limit":1})).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.data[0].location_id, warehouse.id);
+    assert_eq!(
+        no_venues
+            .list_movements(Default::default())
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    // A scope resolved before a location move cannot write to its new venue.
+    trusted
+        .update_location(
+            store.id,
+            &serde_json::from_value(json!({"venueLocationId":other})).unwrap(),
+            Some(actor),
+        )
+        .await
+        .unwrap();
+    let before = f.outbox_count().await;
+    assert!(scoped
+        .create_receipt(&receipt(store.id), Some(actor))
+        .await
+        .is_err());
+    assert!(allowed
+        .transition(own_order.order.id, "submit", None, actor)
+        .await
+        .is_err());
+    assert_eq!(f.outbox_count().await, before);
+    f.close().await;
+}

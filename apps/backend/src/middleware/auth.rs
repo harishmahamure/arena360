@@ -122,6 +122,7 @@ pub async fn authorize_tenant_request(
                 | "cash-deposits"
                 | "expenses"
                 | "shifts"
+                | "inventory"
                 | "realtime"
                 | "metrics"
                 | "health"
