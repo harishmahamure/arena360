@@ -51,16 +51,22 @@ pub async fn auth_middleware(
     let token = extract_bearer(req.headers())
         .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
 
-    let claims = decode_token(&state, token)?;
-    let session_active = if let Some(control_db) = &state.control_db {
-        control_panel_session_active(control_db, &claims).await?
-    } else {
-        panel_session_active(&state.db, &claims).await?
-    };
-    if !session_active {
-        return Err(AppError::Unauthorized(
-            "Account or organization access changed; sign in again".to_string(),
-        ));
+    let mut claims = decode_token(&state, token)?;
+    if claims.is_admin_or_staff() {
+        let db = state.business_db(&claims).await?;
+        let user = claims
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        let settings = crate::repositories::TenantSettingsRepository::new(db);
+        let member = settings
+            .membership_context(user)
+            .await?
+            .filter(|m| claims.roles.contains(&m.role))
+            .ok_or_else(|| {
+                AppError::Unauthorized("Account or tenant access changed; sign in again".into())
+            })?;
+        claims.permissions = settings.effective_permissions(user).await?;
+        claims.roles = vec![member.role];
     }
     if claims.is_admin_or_staff() {
         crate::access::routes::authorize(&claims, req.method().as_str(), &path)?;
@@ -103,11 +109,13 @@ pub async fn auth_middleware(
                         .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
                     let org = Uuid::parse_str(&claims.tenantId)
                         .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
-                    crate::access::require_location(
-                        &state.db,
+                    crate::repositories::TenantSettingsRepository::new(
+                        state.business_db(&claims).await?,
+                    )
+                    .ensure_location_permission(
                         org,
-                        user,
                         crate::models::DEFAULT_VENUE_LOCATION_ID,
+                        user,
                         &permission,
                     )
                     .await?;
@@ -476,7 +484,10 @@ where
             .user_id_uuid()
             .ok_or_else(|| AppError::Internal("Invalid device ID in token".to_string()))?;
 
-        if player_device != kiosk_device || player_claims.tenantId != device_claims.tenantId || player_claims.locationId != device_claims.locationId {
+        if player_device != kiosk_device
+            || player_claims.tenantId != device_claims.tenantId
+            || player_claims.locationId != device_claims.locationId
+        {
             return Err(AppError::Forbidden(
                 "Player token deviceId does not match device token".to_string(),
             ));

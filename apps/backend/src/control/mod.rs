@@ -4,6 +4,8 @@
 
 pub mod entitlement;
 pub mod lease;
+pub mod identity;
+pub mod staff_projection;
 mod repository;
 
 use sqlx::{migrate::Migrator, PgPool};

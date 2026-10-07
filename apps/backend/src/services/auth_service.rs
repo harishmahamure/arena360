@@ -821,6 +821,23 @@ impl AuthService {
         }
     }
 
+    /// Authentication can consult the control plane; the issued grants come from
+    /// the selected tenant. Refresh and handover keep this tenant selected.
+    pub async fn issue_tenant_auth_response(&self, db: Arc<crate::tenancy::TenantDb>, user_id: Uuid) -> Result<AuthResponseDto, AppError> {
+        let pool = self.control_pool.as_ref().ok_or_else(|| AppError::Api { code:"CONTROL_AUTH_UNAVAILABLE".into(),status:axum::http::StatusCode::SERVICE_UNAVAILABLE,details:None })?;
+        let memberships: Vec<(Uuid,String)> = sqlx::query_as("SELECT m.tenant_id,m.role FROM organization_memberships m JOIN users u ON u.id=m.user_id JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=$1 AND m.is_active AND u.is_active AND u.deleted_at IS NULL AND t.state NOT IN('DELETED','FAILED') ORDER BY m.created_at,m.tenant_id")
+            .bind(user_id).fetch_all(pool).await?;
+        let role = memberships.iter().find(|m| m.0 == db.tenant_id()).map(|m| m.1.clone())
+            .ok_or_else(|| AppError::Forbidden("Active membership required in the selected tenant".into()))?;
+        crate::control::staff_projection::sync_tenant(pool,db.clone()).await?;
+        let mut user = crate::repositories::TenantUserRepository::new(db.clone()).require_active_staff(user_id).await?;
+        user.role = Some(role);
+        let grants = crate::repositories::TenantSettingsRepository::new(db.clone()).effective_permissions(user_id).await?;
+        let mut scopes = vec![(db.tenant_id(),serde_json::json!(grants))];
+        scopes.extend(memberships.into_iter().filter(|m| m.0 != db.tenant_id()).map(|m| (m.0,serde_json::json!([]))));
+        Ok(AuthResponseDto { accessToken:self.encode_access_token(&user,&scopes)?,user:user.to_auth_user(),shiftId:None,activeSession:None })
+    }
+
     pub async fn issue_auth_response(&self, user: &User) -> Result<AuthResponseDto, AppError> {
         let token = self.generate_access_token(user).await?;
         Ok(AuthResponseDto {

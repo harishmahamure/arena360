@@ -430,14 +430,10 @@ pub async fn handover_shift(
     TenantSettingsRepository::new(db.clone())
         .ensure_location_permission(db.tenant_id(), venue, validator.id, "shifts:write")
         .await?;
-    let auth = state.auth.issue_auth_response(&validator).await?;
-    // The token must select the same tenant as the handover before any cash is moved.
-    let token = crate::middleware::auth::decode_token(&state, &auth.accessToken)?;
-    if token.tenantId != claims.tenantId {
-        return Err(crate::error::AppError::Conflict(
-            "Validator must select this tenant before handover".into(),
-        ));
-    }
+    let auth = state
+        .auth
+        .issue_tenant_auth_response(db.clone(), validator.id)
+        .await?;
     let (closed, new_shift, _) = repo
         .handover(
             active.id,

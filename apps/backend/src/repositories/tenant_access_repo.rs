@@ -221,7 +221,8 @@ impl TenantAccessRepository {
         }
         Ok(())
     }
-    /// Membership activation must also be persisted in the control plane by the caller before projection.
+    /// Persist a durable control-plane activation command with the local grant edit.
+    /// New activation remains disabled until the control-plane commit is acknowledged.
     pub async fn save_member_assignments(
         &self,
         user: Uuid,
@@ -232,8 +233,8 @@ impl TenantAccessRepository {
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
-                    let row: Option<(bool, i64)> = sqlx::query_as("SELECT is_active,access_revision FROM users WHERE id=? AND role IN('admin','staff') AND deleted_at IS NULL").bind(user.to_string()).fetch_optional(&mut *c).await?;
-                    let (active, revision) = row.ok_or_else(|| AppError::NotFound("Team member not found in this tenant".into()))?;
+                    let row: Option<(bool, i64, i64)> = sqlx::query_as("SELECT is_active,access_revision,identity_revision FROM users WHERE id=? AND role IN('admin','staff') AND deleted_at IS NULL").bind(user.to_string()).fetch_optional(&mut *c).await?;
+                    let (active, revision, identity_revision) = row.ok_or_else(|| AppError::NotFound("Team member not found in this tenant".into()))?;
                     if revision != dto.expected_revision {
                         return Err(AppError::Conflict("Member changed. Reload before saving.".into()));
                     }
@@ -276,7 +277,8 @@ impl TenantAccessRepository {
                         }
                     }
                     let next = revision.checked_add(1).ok_or_else(|| AppError::Conflict("Member revision exhausted".into()))?;
-                    sqlx::query("UPDATE users SET is_active=?,access_revision=?,updated_at=? WHERE id=?").bind(dto.active).bind(next).bind(&ts).bind(user.to_string()).execute(&mut *c).await?;
+                    sqlx::query("UPDATE users SET is_active=?,access_revision=?,updated_at=? WHERE id=?").bind(active && dto.active).bind(next).bind(&ts).bind(user.to_string()).execute(&mut *c).await?;
+                    sqlx::query("INSERT INTO staff_membership_commands(user_id,desired_active,identity_revision,access_revision) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET desired_active=excluded.desired_active,identity_revision=excluded.identity_revision,access_revision=excluded.access_revision").bind(user.to_string()).bind(dto.active).bind(identity_revision).bind(next).execute(&mut *c).await?;
                     Self::keep_manager(c).await?;
                     Self::audit(c, actor, "member.updated", &user.to_string(), json!({"active":active,"roleIds":before_roles}), json!({"active":dto.active,"roleIds":dto.role_ids,"locationIds":locations,"locationRoles":scopes})).await?;
                     Ok(next)

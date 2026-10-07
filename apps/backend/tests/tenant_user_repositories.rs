@@ -68,6 +68,409 @@ impl TenantLease for Lease {
 }
 
 #[tokio::test]
+#[ignore = "requires isolated CONTROL_TEST_DATABASE_URL"]
+async fn control_identity_and_local_membership_commands_recover_and_preserve_grants() {
+    use gaming_cafe_api::{
+        control::staff_projection::sync_tenant,
+        repositories::{TenantAccessRepository, TenantMemberDto},
+    };
+    let f = Fixture::new().await;
+    let pool = PgPoolOptions::new()
+        .connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap())
+        .await
+        .unwrap();
+    gaming_cafe_api::control::migrate(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenants(id,slug,name,timezone) VALUES($1,$2,'Projection test','UTC')")
+        .bind(f.tenant_id)
+        .bind(format!("projection-{}", f.tenant_id))
+        .execute(&pool)
+        .await
+        .unwrap();
+    let cell = Uuid::now_v7();
+    sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)")
+        .bind(cell)
+        .bind(format!("cell-{cell}"))
+        .bind(format!("http://{cell}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE tenants SET owner_cell=$2,ownership_generation=1,state='ACTIVE' WHERE id=$1",
+    )
+    .bind(f.tenant_id)
+    .bind(cell)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO tenant_leases(tenant_id,owner_cell,ownership_generation,expires_at) VALUES($1,$2,1,now()+interval '1 hour')").bind(f.tenant_id).bind(cell).execute(&pool).await.unwrap();
+    let user = f.staff_id;
+    let manager = Uuid::now_v7();
+    for (id, role) in [(manager, "admin"), (user, "staff")] {
+        sqlx::query(
+            "INSERT INTO users(id,username,password_hash) VALUES($1,$2,'secret-never-projected')",
+        )
+        .bind(id)
+        .bind(format!("global-{id}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO organization_memberships(tenant_id,user_id,role) VALUES($1,$2,$3)",
+        )
+        .bind(f.tenant_id)
+        .bind(id)
+        .bind(role)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    let repo = TenantUserRepository::new(f.db.clone());
+    assert!(repo
+        .require_active_staff(user)
+        .await
+        .unwrap()
+        .password_hash
+        .is_none());
+    let access = TenantAccessRepository::new(f.db.clone());
+    let edit = |active, revision| TenantMemberDto {
+        role_ids: vec![Uuid::from_u128(12)],
+        location_ids: Some(vec![f.location_a]),
+        location_roles: None,
+        active,
+        expected_revision: revision,
+    };
+    access
+        .save_member_assignments(user, edit(false, 0), manager)
+        .await
+        .unwrap();
+    assert!(repo.require_active_staff(user).await.is_err());
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    let active: bool = sqlx::query_scalar(
+        "SELECT is_active FROM organization_memberships WHERE tenant_id=$1 AND user_id=$2",
+    )
+    .bind(f.tenant_id)
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!active);
+    access
+        .save_member_assignments(user, edit(true, 1), manager)
+        .await
+        .unwrap();
+    // Pending activation survives a control-plane outage and stays disabled.
+    let unavailable = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    assert!(sync_tenant(&unavailable, f.db.clone()).await.is_err());
+    assert!(repo.require_active_staff(user).await.is_err());
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.require_active_staff(user).await.is_ok());
+    sqlx::query("UPDATE users SET first_name='Global refresh' WHERE id=$1")
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert_eq!(
+        repo.require_active_staff(user)
+            .await
+            .unwrap()
+            .first_name
+            .as_deref(),
+        Some("Global refresh")
+    );
+    let key: String = sqlx::query_scalar("SELECT r.system_key FROM access_assignments a JOIN access_roles r ON r.id=a.role_id WHERE a.user_id=?")
+        .bind(user.to_string()).fetch_one(&f.db.read_pool().unwrap()).await.unwrap();
+    assert_eq!(key, "finance");
+    let other = Uuid::now_v7();
+    sqlx::query("INSERT INTO tenants(id,slug,name,timezone) VALUES($1,$2,'Other tenant','UTC')")
+        .bind(other)
+        .bind(format!("other-{other}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO organization_memberships(tenant_id,user_id,role,created_at) VALUES($1,$2,'admin','2000-01-01')").bind(other).bind(user).execute(&pool).await.unwrap();
+    let unavailable_operational = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    let cache = create_cache(None).await;
+    let auth_settings = test_settings();
+    let auth = AuthService::new(
+        unavailable_operational.clone(),
+        auth_settings.clone(),
+        Arc::new(BalanceService::new(
+            unavailable_operational.clone(),
+            cache.clone(),
+        )),
+        Arc::new(UserService::new(unavailable_operational, cache)),
+    )
+    .with_control_pool(Some(pool.clone()));
+    let response = auth
+        .issue_tenant_auth_response(f.db.clone(), user)
+        .await
+        .unwrap();
+    let mut validation = jsonwebtoken::Validation::default();
+    validation.set_audience(&["gamezone"]);
+    let claims = jsonwebtoken::decode::<gaming_cafe_api::dto::JwtUserClaims>(
+        &response.accessToken,
+        &jsonwebtoken::DecodingKey::from_secret(auth_settings.jwt_secret.as_bytes()),
+        &validation,
+    )
+    .unwrap()
+    .claims;
+    assert_eq!(claims.tenantId, f.tenant_id.to_string());
+    assert_eq!(claims.roles, vec!["staff"]);
+    assert_eq!(claims.allowedTenants[0], f.tenant_id.to_string());
+    assert!(claims.permissions.contains(&"finance:read".into()));
+    assert!(claims
+        .permissions
+        .contains(&gaming_cafe_api::access::MANAGED.into()));
+    assert!(!claims.permissions.contains(&"access:manage".into()));
+    access
+        .save_member_assignments(user, edit(false, 2), manager)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    access
+        .save_member_assignments(user, edit(true, 3), manager)
+        .await
+        .unwrap();
+    // A newer control-plane revocation cannot be undone by this queued activation.
+    sqlx::query(
+        "UPDATE organization_memberships SET is_active=false WHERE tenant_id=$1 AND user_id=$2",
+    )
+    .bind(f.tenant_id)
+    .bind(user)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.require_active_staff(user).await.is_err());
+    let conflicts: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_events WHERE event_type='access.membership_conflict'",
+    )
+    .fetch_one(&f.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    assert_eq!(conflicts, 1);
+    access
+        .save_member_assignments(user, edit(true, 4), manager)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.require_active_staff(user).await.is_ok());
+    let identities = gaming_cafe_api::control::identity::IdentityRepository::new(pool.clone());
+    let setup = identities.setup_totp(f.tenant_id, user).await.unwrap();
+    let state: (bool, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT totp_enabled,totp_secret,totp_pending_secret FROM users WHERE id=$1",
+    )
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, (false, None, Some(setup.secret.clone())));
+    assert!(identities
+        .verify_totp_setup(f.tenant_id, user, "invalid")
+        .await
+        .is_err());
+    let generator = totp_rs::TOTP::new(
+        totp_rs::Algorithm::SHA1,
+        6,
+        1,
+        30,
+        totp_rs::Secret::Encoded(setup.secret).to_bytes().unwrap(),
+        Some("GameZone".into()),
+        format!("global-{user}"),
+    )
+    .unwrap();
+    identities
+        .verify_totp_setup(f.tenant_id, user, &generator.generate_current().unwrap())
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    let enabled: bool = sqlx::query_scalar("SELECT totp_enabled FROM users WHERE id=$1")
+        .bind(user)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(enabled);
+    identities.disable_totp(f.tenant_id, user).await.unwrap();
+    let created = identities
+        .create_disabled_staff(
+            f.tenant_id,
+            manager,
+            &format!("new-{user}"),
+            "staff creation password",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        identities
+            .create_disabled_staff(
+                f.tenant_id,
+                manager,
+                &format!("new-{user}"),
+                "staff creation password"
+            )
+            .await
+            .unwrap(),
+        created
+    );
+    assert!(identities
+        .create_disabled_staff(
+            f.tenant_id,
+            user,
+            &format!("new-{user}"),
+            "staff creation password"
+        )
+        .await
+        .is_err());
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.require_active_staff(created).await.is_err());
+    access
+        .save_member_assignments(created, edit(true, 0), manager)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.require_active_staff(created).await.is_ok());
+    let pending: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM pending_staff_creations WHERE user_id=$1")
+            .bind(created)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pending, 0);
+    sqlx::query("UPDATE tenants SET state='FAILED' WHERE id=$1")
+        .bind(f.tenant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.require_active_staff(user).await.is_err());
+    assert!(repo.require_active_staff(created).await.is_err());
+    sqlx::query("UPDATE tenants SET state='ACTIVE' WHERE id=$1")
+        .bind(f.tenant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.require_active_staff(user).await.is_ok());
+    sqlx::query("DELETE FROM organization_memberships WHERE tenant_id=$1 AND user_id=$2")
+        .bind(f.tenant_id)
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+    assert!(repo.find_by_id(user).await.unwrap().is_none());
+    sqlx::query("DELETE FROM tenants WHERE id=$1")
+        .bind(f.tenant_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM cells WHERE id=$1")
+        .bind(cell)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM tenants WHERE id=$1")
+        .bind(other)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for id in [user, manager, created] {
+        sqlx::query("DELETE FROM users WHERE id=$1")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    pool.close().await;
+    f.close().await;
+}
+
+#[tokio::test]
+async fn identity_refresh_preserves_local_grants_and_rejects_stale_reactivation() {
+    let f = Fixture::new().await;
+    let repo = TenantUserRepository::new(f.db.clone());
+    let mut p = projection(
+        f.staff_id,
+        "identity-staff",
+        "staff",
+        1,
+        true,
+        false,
+        vec![TenantLocationRoleGrant {
+            system_key: "finance".into(),
+            location_id: f.location_a,
+        }],
+    );
+    p.global_access_role_system_keys = vec!["finance".into()];
+    repo.project_staff(p.clone()).await.unwrap();
+    let before = counts(&f).await;
+    p.first_name = Some("Changed".into());
+    assert_eq!(
+        repo.project_identity(p.clone(), 10).await.unwrap(),
+        StaffProjectionResult::Applied
+    );
+    let after = counts(&f).await;
+    assert_eq!((before.1, before.2), (after.1, after.2));
+    let role: String = sqlx::query_scalar("SELECT r.system_key FROM access_assignments a JOIN access_roles r ON r.id=a.role_id WHERE a.user_id=?")
+        .bind(f.staff_id.to_string()).fetch_one(&f.db.read_pool().unwrap()).await.unwrap();
+    assert_eq!(role, "finance");
+    assert!(repo
+        .find_by_id(f.staff_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .password_hash
+        .is_none());
+    repo.create_player(TenantCreatePlayer {
+        username: "colliding-player".into(),
+        password_hash: hash("player password", 4).unwrap(),
+        phone_number: "7000000000".into(),
+        first_name: None,
+        last_name: None,
+        actor_id: None,
+    })
+    .await
+    .unwrap();
+    let previous_username = p.username.clone();
+    p.username = "colliding-player".into();
+    p.is_active = false;
+    repo.project_identity(p.clone(), 11).await.unwrap();
+    assert!(repo.require_active_staff(f.staff_id).await.is_err());
+    p.username = previous_username;
+    p.is_active = true;
+    assert_eq!(
+        repo.project_identity(p.clone(), 10).await.unwrap(),
+        StaffProjectionResult::Unchanged
+    );
+    assert!(repo.require_active_staff(f.staff_id).await.is_err());
+    repo.project_identity(p.clone(), 12).await.unwrap();
+    assert!(repo.require_active_staff(f.staff_id).await.is_ok());
+    let before = counts(&f).await;
+    f.lease.fail_next_commit();
+    p.first_name = Some("Must rollback".into());
+    assert!(repo.project_identity(p, 13).await.is_err());
+    assert_eq!(counts(&f).await, before);
+    assert_eq!(
+        repo.find_by_id(f.staff_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .first_name
+            .as_deref(),
+        Some("Changed")
+    );
+    f.close().await;
+}
+
+#[tokio::test]
 async fn players_are_isolated_and_support_safe_lifecycle() {
     let first = Fixture::new().await;
     let second = Fixture::new().await;

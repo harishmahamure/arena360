@@ -68,8 +68,12 @@
 - Tenant timezone metadata is provisioned explicitly; operational pricing no longer reads shared PostgreSQL stock.
 - Local grants scope venue access, venue deactivation checks run inside the writer, and kiosk player/device tokens must match tenant and location.
 - Report routes return `ANALYTICS_UNAVAILABLE` until M7.
-- Staff identity/access, durable realtime transport, middleware, and startup workers still require cutover before API-0033 can be completed.
-- Full backend suite passes at this checkpoint, including local grant, atomic venue edit, and pricing-with-unavailable-PostgreSQL regressions.
+- Operational handler checkpoint committed as `16fe0fc`.
+- Staff/access checkpoint: tenant role/module/member edits, current grants in middleware, global profile/password/MFA/avatar changes, and selected-tenant login/refresh/handover. Global changes are revisioned and projected asynchronously without overwriting local grants.
+- Membership activation commands and control-plane receipts recover across outages and unknown commit outcomes; newer global revocation wins over stale activation. Staff creation starts disabled and supports interrupted creation retries.
+- Owning-cell routing before local authorization, login finalization on a remote cell, durable realtime transport, staff gaming allowance, and startup workers still require cutover before API-0033 can be completed. The original-venue restriction remains until those shared business paths are removed.
+- Full backend suite passes at both checkpoints, including local grant, atomic venue edit, pricing-with-unavailable-PostgreSQL, staff projection, and credential-boundary regressions.
+- A live isolated PostgreSQL/SQLite integration test passes for activation outage recovery, newer global revocation, MFA verification, interrupted staff creation, tenant-state revocation, and selected-tenant tokens with operational PostgreSQL unavailable.
 
 ## M5 queue
 

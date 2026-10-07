@@ -430,6 +430,7 @@ async fn access_edits_preserve_manager_revision_and_scopes() {
             .unwrap(),
         1
     );
+    assert_eq!(f.scalar("SELECT COUNT(*) FROM staff_membership_commands").await,1);
     assert!(access
         .save_member_assignments(member, m, staff)
         .await

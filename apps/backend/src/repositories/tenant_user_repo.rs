@@ -114,6 +114,62 @@ impl TenantUserRepository {
         Self { db }
     }
 
+    /// Global profile refreshes preserve tenant-owned role and venue assignments.
+    /// Only first hydration and a global membership role change install baseline roles.
+    pub async fn project_identity(
+        &self,
+        p: TenantStaffProjection,
+        revision: i64,
+    ) -> Result<StaffProjectionResult, AppError> {
+        if revision <= 0 || !matches!(p.role.as_str(), "admin" | "staff") {
+            return Err(AppError::BadRequest(
+                "Invalid staff identity projection".into(),
+            ));
+        }
+        write(&self.db, Box::new(move |c| Box::pin(async move {
+            let old: Option<(String,i64)> = sqlx::query_as("SELECT role,identity_revision FROM users WHERE id=?")
+                .bind(p.user_id.to_string()).fetch_optional(&mut *c).await?;
+            if old.as_ref().is_some_and(|v| v.0 == "player") {
+                return Err(AppError::Conflict("Control-plane staff identity collides with a tenant player".into()));
+            }
+            if old.as_ref().is_some_and(|v| v.1 >= revision) {
+                return Ok(StaffProjectionResult::Unchanged);
+            }
+            let ts = now()?;
+            let pending: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM staff_membership_commands WHERE user_id=?)").bind(p.user_id.to_string()).fetch_one(&mut *c).await?;
+            if pending { return Ok(StaffProjectionResult::Unchanged); }
+            let active = p.is_active && !p.deleted;
+            if !active && old.is_some() {
+                // Revocation must succeed even if the new global profile name
+                // collides with a tenant-local player created while disconnected.
+                sqlx::query("UPDATE users SET is_active=0,deleted_at=?,identity_revision=?,updated_at=? WHERE id=?")
+                    .bind(p.deleted.then_some(ts.clone())).bind(revision).bind(&ts).bind(p.user_id.to_string()).execute(&mut *c).await?;
+                super::tenant_back_office::event(c,"user",p.user_id,"user.updated",None,false,
+                    json!({"id":p.user_id,"isActive":false,"deleted":p.deleted,"identityRevision":revision,"updatedAt":ts})).await?;
+                return Ok(StaffProjectionResult::Applied);
+            }
+            let result = sqlx::query("INSERT INTO users(id,email,username,password_hash,first_name,last_name,phone_number,avatar_url,role,permissions,is_active,credit_limit,created_at,updated_at,deleted_at,identity_revision) VALUES(?,?,?,NULL,?,?,?,?,?,'[]',?,0,?,?,?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email,username=excluded.username,password_hash=NULL,first_name=excluded.first_name,last_name=excluded.last_name,phone_number=excluded.phone_number,avatar_url=excluded.avatar_url,role=excluded.role,is_active=excluded.is_active,updated_at=excluded.updated_at,deleted_at=excluded.deleted_at,identity_revision=excluded.identity_revision")
+                .bind(p.user_id.to_string()).bind(&p.email).bind(&p.username).bind(&p.first_name).bind(&p.last_name).bind(&p.phone_number).bind(&p.avatar_url).bind(&p.role).bind(active).bind(&ts).bind(&ts).bind(p.deleted.then_some(ts.clone())).bind(revision).execute(&mut *c).await;
+            map_unique(result, &p.username)?;
+            if old.as_ref().map(|v| v.0.as_str()) != Some(p.role.as_str()) {
+                if old.is_some() {
+                    sqlx::query("UPDATE users SET access_revision=access_revision+1 WHERE id=?").bind(p.user_id.to_string()).execute(&mut *c).await?;
+                }
+                clear_assignments(c,p.user_id).await?;
+                if !p.deleted {
+                    let role: Option<String> = sqlx::query_scalar("SELECT id FROM access_roles WHERE system_key=? AND is_template=0")
+                        .bind(&p.role).fetch_optional(&mut *c).await?;
+                    let role = role.ok_or_else(|| AppError::Conflict("Tenant baseline role missing".into()))?;
+                    sqlx::query("INSERT INTO access_assignments(user_id,role_id,created_at) VALUES(?,?,?)")
+                        .bind(p.user_id.to_string()).bind(role).bind(&ts).execute(&mut *c).await?;
+                }
+            }
+            super::tenant_back_office::event(c,"user",p.user_id,"user.updated",None,false,
+                json!({"id":p.user_id,"username":p.username,"firstName":p.first_name,"lastName":p.last_name,"role":p.role,"isActive":active,"deleted":p.deleted,"identityRevision":revision,"updatedAt":ts})).await?;
+            Ok(StaffProjectionResult::Applied)
+        }))).await
+    }
+
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, AppError> {
         Ok(sqlx::query_as::<_, User>(&format!(
             "{USER_SELECT} WHERE id = ? AND deleted_at IS NULL"

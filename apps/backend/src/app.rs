@@ -150,6 +150,9 @@ pub async fn build_state() -> Arc<AppState> {
         manager.clone().spawn_reaper();
         manager
     });
+    if let (Some(control), Some(manager)) = (control_db.clone(), tenant_dbs.clone()) {
+        crate::control::staff_projection::spawn(control, manager);
+    }
     let tenant_provisioner = match (control_db.clone(), leases.clone()) {
         (Some(control_pool), Some(leases)) => {
             let control = Arc::new(crate::tenancy::PostgresProvisioningControl::new(

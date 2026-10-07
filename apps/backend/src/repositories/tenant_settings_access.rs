@@ -12,6 +12,17 @@ impl TenantSettingsRepository {
     ) -> Result<Option<OrganizationMembershipContext>, AppError> {
         Ok(sqlx::query_as("SELECT ? AS organization_id,role,permissions FROM users WHERE id=? AND role IN('admin','staff') AND is_active=1 AND deleted_at IS NULL").bind(self.db.tenant_id()).bind(user.to_string()).fetch_optional(&self.db.read_pool()?).await?)
     }
+    pub async fn effective_permissions(&self, user: Uuid) -> Result<Vec<String>, AppError> {
+        if self.membership_context(user).await?.is_none() {
+            return Err(AppError::Unauthorized("Account or tenant membership revoked".into()));
+        }
+        let mut grants: Vec<String> = sqlx::query_scalar("SELECT DISTINCT p.value FROM access_assignments a JOIN access_roles r ON r.id=a.role_id JOIN json_each(r.permissions) p WHERE a.user_id=? AND r.is_template=0 AND COALESCE((SELECT enabled FROM access_modules WHERE module=substr(p.value,1,instr(p.value,':')-1)),1)=1 ORDER BY p.value")
+            .bind(user.to_string()).fetch_all(&self.db.read_pool()?).await?;
+        grants.retain(|p| crate::access::known(p));
+        grants.push(crate::access::MANAGED.into());
+        grants.sort();
+        Ok(grants)
+    }
     pub async fn ensure_access(
         &self,
         org: Uuid,

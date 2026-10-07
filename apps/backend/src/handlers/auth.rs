@@ -1,6 +1,5 @@
 use axum::{extract::State, Json};
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::dto::{
@@ -15,6 +14,41 @@ use crate::openapi::responses::{
     RegisterResponseEnvelope,
 };
 use crate::services::KioskRegistrationRateLimiter;
+
+async fn local_auth(state: &AppState, token: &str) -> Result<AuthResponseDto, AppError> {
+    let claims = crate::middleware::auth::decode_token(state, token)?;
+    let user = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    state
+        .auth
+        .issue_tenant_auth_response(state.business_db(&claims).await?, user)
+        .await
+}
+async fn local_panel(
+    state: &AppState,
+    response: PanelLoginResponseDto,
+) -> Result<PanelLoginResponseDto, AppError> {
+    match response {
+        PanelLoginResponseDto::Authenticated { access_token, .. } => {
+            let auth = local_auth(state, &access_token).await?;
+            let claims = crate::middleware::auth::decode_token(state, &auth.accessToken)?;
+            let next_step = if crate::access::has(&claims, "shifts:write")
+                && !crate::access::has(&claims, "access:manage")
+            {
+                "shift_setup"
+            } else {
+                "dashboard"
+            };
+            Ok(PanelLoginResponseDto::Authenticated {
+                access_token: auth.accessToken,
+                user: auth.user,
+                next_step: next_step.into(),
+            })
+        }
+        challenge => Ok(challenge),
+    }
+}
 
 #[utoipa::path(
     post,
@@ -31,7 +65,7 @@ pub async fn login_panel(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<StaffLoginDto>,
 ) -> ApiResult<PanelLoginResponseDto> {
-    ok(state.auth.login_panel(dto).await?)
+    ok(local_panel(&state, state.auth.login_panel(dto).await?).await?)
 }
 
 #[utoipa::path(
@@ -49,7 +83,7 @@ pub async fn verify_panel_mfa(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<PanelMfaDto>,
 ) -> ApiResult<PanelLoginResponseDto> {
-    ok(state.auth.verify_panel_mfa(dto).await?)
+    ok(local_panel(&state, state.auth.verify_panel_mfa(dto).await?).await?)
 }
 
 #[utoipa::path(
@@ -68,15 +102,15 @@ pub async fn login_admin(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<StaffLoginDto>,
 ) -> ApiResult<AuthResponseDto> {
-    let result = state.auth.login_admin(dto).await?;
-    let user_id: Uuid = result
-        .user
-        .id
-        .parse()
-        .map_err(|_| AppError::Internal("Invalid user ID".to_string()))?;
-
-    if let Some(active) = state.shifts.get_active(user_id).await? {
-        state.shifts.force_close(active.id, user_id).await?;
+    let control = state.auth.login_admin(dto).await?;
+    let result = local_auth(&state, &control.accessToken).await?;
+    let claims = crate::middleware::auth::decode_token(&state, &result.accessToken)?;
+    let user_id = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    let repo = crate::repositories::TenantShiftRepository::new(state.business_db(&claims).await?);
+    if let Some(active) = repo.find_active_by_user(user_id).await? {
+        repo.force_close(active.id, user_id).await?;
     }
 
     ok(result)
@@ -98,24 +132,41 @@ pub async fn login_staff(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<StaffLoginDto>,
 ) -> ApiResult<AuthResponseDto> {
-    let mut result = state.auth.login_staff(dto).await?;
-    let user_id: Uuid = result
-        .user
-        .id
-        .parse()
-        .map_err(|_| AppError::Internal("Invalid user ID".to_string()))?;
-
-    let shift = state
-        .shifts
-        .ensure_shift_for_staff_login(user_id, user_id)
+    let control = state.auth.login_staff(dto).await?;
+    let mut result = local_auth(&state, &control.accessToken).await?;
+    let claims = crate::middleware::auth::decode_token(&state, &result.accessToken)?;
+    let db = state.business_db(&claims).await?;
+    let user_id = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    let scope = crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "shifts:write",
+        None,
+    )
+    .await?;
+    if scope.locations.len() != 1 {
+        return Err(AppError::bad_request_code("LOCATION_REQUIRED", None));
+    }
+    let venue = scope.locations[0];
+    let opening = crate::repositories::TenantCashRegisterRepository::new(db.clone())
+        .preview_carry_forward_balance_for(venue)
         .await?;
-
-    state
-        .cash_registers
-        .carry_forward_balance(user_id, shift.id, user_id)
+    let started = crate::repositories::TenantShiftRepository::new(db)
+        .start_confirmed(
+            user_id,
+            crate::models::StartShiftDto {
+                opening_balance: opening,
+                opening_denominations: None,
+                notes: None,
+                venue_location_id: Some(venue),
+            },
+            user_id,
+        )
         .await?;
+    result.shiftId = Some(started.shift.id.to_string());
 
-    result.shiftId = Some(shift.id.to_string());
     ok(result)
 }
 
@@ -259,7 +310,12 @@ pub async fn current_panel_user(
     let id = claims
         .user_id_uuid()
         .ok_or_else(|| AppError::Unauthorized("Invalid session".into()))?;
-    ok(state.users.get_by_id(id).await?.to_auth_user())
+    ok(
+        crate::repositories::TenantUserRepository::new(state.business_db(&claims).await?)
+            .require_active_staff(id)
+            .await?
+            .to_auth_user(),
+    )
 }
 
 /// Re-issue a panel access token for an active session so working staff are not
@@ -280,6 +336,8 @@ pub async fn refresh_panel_session(
     let id = claims
         .user_id_uuid()
         .ok_or_else(|| AppError::Unauthorized("Invalid session".into()))?;
-    let user = state.users.get_by_id(id).await?;
-    ok(state.auth.issue_auth_response(&user).await?)
+    ok(state
+        .auth
+        .issue_tenant_auth_response(state.business_db(&claims).await?, id)
+        .await?)
 }
