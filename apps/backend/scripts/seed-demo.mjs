@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-/** Synthetic, repeatable reporting demo. No application credentials are created. */
+import { spawn } from 'node:child_process';
+/** Deterministic report fixtures and a tenant-operated demo seed command. */
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { Client } from 'pg';
 
 const DAY = 86_400_000;
 const PREFIX = 'arena360-demo-v1';
@@ -423,83 +423,87 @@ export function buildDemo(end = new Date()) {
   };
 }
 
-// Explicit FK order. All inserts use normal triggers, including the analytics outbox.
-const ORDER = [
-  'users',
-  'devices',
-  'plans',
-  'products',
-  'vendors',
-  'inventory_locations',
-  'expense_categories',
-  'shifts',
-  'cash_registers',
-  'transactions',
-  'transaction_products',
-  'player_plan_balances',
-  'usage_sessions',
-  'player_plan_ledger',
-  'credit_settlements',
-  'credit_settlement_items',
-  'expenses',
-  'cash_deposits',
-  'cash_register_entries',
-  'stock_receipts',
-  'stock_receipt_lines',
-  'stock_waste_events',
-  'stock_waste_lines',
-  'stock_movements',
-  'location_stock',
-  'inventory_reorder_rules',
-];
-
-export async function seedDemo(client, { end = new Date(), dryRun = false } = {}) {
-  const demo = buildDemo(end);
-  await client.query('BEGIN');
-  try {
-    await client.query('SELECT pg_advisory_xact_lock(36020261004)');
-    const existing = await client.query('SELECT id FROM users WHERE id=$1', [demoId('staff')]);
-    if (existing.rowCount) {
-      await client.query('ROLLBACK');
-      return { status: 'already-seeded', version: PREFIX };
-    }
-    const { rows } = await client.query("SELECT to_regclass('analytics_outbox') AS outbox");
-    if (!rows[0].outbox)
-      throw new Error(
-        'Run PostgreSQL migrations, including analytics_outbox, before demo seeding.',
-      );
-    const counts = {};
-    for (const table of ORDER) {
-      for (const row of demo.tables[table] ?? []) {
-        const keys = Object.keys(row);
-        await client.query(
-          `INSERT INTO "${table}" (${keys.map((k) => `"${k}"`).join(',')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(',')})`,
-          Object.values(row),
-        );
-      }
-      counts[table] = demo.tables[table]?.length ?? 0;
-    }
-    await client.query(dryRun ? 'ROLLBACK' : 'COMMIT');
-    return {
-      status: dryRun ? 'dry-run-rolled-back' : 'seeded',
-      version: PREFIX,
-      startDate: demo.startDate,
-      endDate: demo.endDate,
-      counts,
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  }
+// The operational seed target is exclusively the control plane.
+export function resolveDemoControlDatabaseUrl(env = process.env) {
+  const url = env.DEMO_CONTROL_DATABASE_URL || env.CONTROL_DATABASE_URL;
+  if (!url) throw new Error('Set CONTROL_DATABASE_URL or DEMO_CONTROL_DATABASE_URL');
+  return url;
 }
 
-export function resolveDemoDatabaseUrl(env = process.env) {
-  if (env.DEMO_DATABASE_URL) return env.DEMO_DATABASE_URL;
-  if (env.DATABASE_URL) return env.DATABASE_URL;
-  const username = encodeURIComponent(env.DB_USERNAME ?? 'postgres');
-  const password = encodeURIComponent(env.DB_PASSWORD ?? 'postgres');
-  const database = encodeURIComponent(env.DB_DATABASE ?? 'gamezone_dev');
-  return `postgres://${username}:${password}@${env.DB_HOST ?? 'localhost'}:${env.DB_PORT ?? '5432'}/${database}`;
+export function parseDemoArgs(args = []) {
+  const options = {
+    date: new Date().toISOString().slice(0, 10),
+    tenantSlug: 'arena360-demo',
+    dryRun: false,
+  };
+  args = args.filter((arg) => arg !== '--');
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--dry-run') options.dryRun = true;
+    else if (arg === '--help') options.help = true;
+    else if (['--date', '--tenant-slug', '--cell-id', '--owner-user-id'].includes(arg)) {
+      const value = args[++i];
+      if (!value || value.startsWith('--')) throw new Error(`${arg} requires a value`);
+      options[
+        {
+          '--date': 'date',
+          '--tenant-slug': 'tenantSlug',
+          '--cell-id': 'cellId',
+          '--owner-user-id': 'ownerUserId',
+        }[arg]
+      ] = value;
+    } else throw new Error(`Unknown argument: ${arg}`);
+  }
+  const at = new Date(`${options.date}T00:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(options.date) ||
+    !Number.isFinite(at.getTime()) ||
+    at.toISOString().slice(0, 10) !== options.date
+  )
+    throw new Error('--date must be a valid YYYY-MM-DD calendar date');
+  if (!/^arena360-demo[a-z0-9-]*$/.test(options.tenantSlug) || options.tenantSlug.length > 40)
+    throw new Error(
+      '--tenant-slug must start with arena360-demo and use at most 40 lowercase letters, digits or hyphens',
+    );
+  return options;
+}
+
+async function runService(args, env) {
+  const manifest = fileURLToPath(new URL('../Cargo.toml', import.meta.url));
+  const child = spawn(
+    'cargo',
+    ['run', '--quiet', '--manifest-path', manifest, '--bin', 'demo_seed', '--', ...args],
+    { env, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  let output = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => {
+    output += chunk;
+  });
+  await new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`Tenant demo service exited with status ${code}`)),
+    );
+  });
+  return JSON.parse(output);
+}
+
+export async function seedDemo(options = {}, runner = runService, env = process.env) {
+  const {
+    date = new Date().toISOString().slice(0, 10),
+    tenantSlug = 'arena360-demo',
+    dryRun = false,
+    cellId,
+    ownerUserId,
+  } = options;
+  const args = ['--date', date, '--tenant-slug', tenantSlug];
+  if (dryRun) args.push('--dry-run');
+  if (cellId) args.push('--cell-id', cellId);
+  if (ownerUserId) args.push('--owner-user-id', ownerUserId);
+  const serviceEnv = { ...env };
+  if (!dryRun) serviceEnv.DEMO_CONTROL_DATABASE_URL = resolveDemoControlDatabaseUrl(env);
+  return runner(args, serviceEnv);
 }
 
 export function loadDemoEnv() {
@@ -525,32 +529,15 @@ export function loadDemoEnv() {
 }
 
 async function main() {
-  const args = process.argv.slice(2).filter((a) => a !== '--');
-  let end = new Date();
-  let dryRun = false;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--dry-run') dryRun = true;
-    else if (args[i] === '--date') {
-      const date = args[++i];
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) throw new Error('--date must be YYYY-MM-DD');
-      end = new Date(`${date}T23:59:59Z`);
-      if (!Number.isFinite(end.getTime()) || end.toISOString().slice(0, 10) !== date)
-        throw new Error('Invalid calendar date');
-    } else if (args[i] === '--help') {
-      process.stdout.write(
-        'pnpm demo:seed [--date YYYY-MM-DD] [--dry-run]\nUses the backend environment database. DEMO_DATABASE_URL optionally overrides the target. Existing data is never overwritten.\n',
-      );
-      return;
-    } else throw new Error(`Unknown argument: ${args[i]}`);
+  const options = parseDemoArgs(process.argv.slice(2));
+  if (options.help) {
+    process.stdout.write(
+      'pnpm demo:seed [--date YYYY-MM-DD] [--dry-run] [--tenant-slug arena360-demo...] [--cell-id UUID] [--owner-user-id UUID]\nProvisions a tenant on a registered cell and writes through SQLite services. Requires CONTROL_DATABASE_URL and ARENA_CELL_ID; DEMO_CONTROL_DATABASE_URL may override the control target. TENANT_DATA_DIR selects the cell directory. DEMO_OWNER_USER_ID may select an existing operator. DEMO_PLAYER_PASSWORD optionally enables demo player login. Existing operational data is preserved.\n',
+    );
+    return;
   }
   loadDemoEnv();
-  const client = new Client({ connectionString: resolveDemoDatabaseUrl() });
-  await client.connect();
-  try {
-    process.stdout.write(`${JSON.stringify(await seedDemo(client, { end, dryRun }), null, 2)}\n`);
-  } finally {
-    await client.end();
-  }
+  process.stdout.write(`${JSON.stringify(await seedDemo(options), null, 2)}\n`);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {

@@ -74,23 +74,56 @@ Delivery semantics follow [NATS durable consumers](https://docs.nats.io/nats-con
 
 ## Demo data
 
-Run `pnpm demo:seed` to populate the current backend environment database. The command loads `apps/backend/.env` without overriding process environment variables, then resolves `DATABASE_URL` or the backend `DB_*` settings. `DEMO_DATABASE_URL` remains an optional explicit override. Node 20.12 or newer is required for native environment-file loading.
+`pnpm demo:seed` provisions a tenant on a registered storage cell and writes operational
+records through the same fenced SQLite commands used by the API. Configure
+`CONTROL_DATABASE_URL`, `ARENA_CELL_ID`, and `TENANT_DATA_DIR` for that cell.
+`DEMO_CONTROL_DATABASE_URL` can explicitly select a disposable control database.
+`DATABASE_URL`, `DB_*`, and `DEMO_DATABASE_URL` are not seed targets.
+The command loads `apps/backend/.env` without overriding process variables and requires
+Node 20.12 or newer plus the backend Rust toolchain.
 
 ```bash
-pnpm demo:seed
+pnpm demo:seed --dry-run
+pnpm demo:seed --date 2026-10-02 --tenant-slug arena360-demo
 ```
 
-The dataset covers the last 60 UTC calendar dates, ending at the seed time. For a reproducible presentation use `--date 2026-10-02`; select August 4–October 2, 2026 in reports. `--dry-run` validates all inserts and rolls back both records and outbox events.
+`--dry-run` prints the seed plan without connecting to a database or creating files.
+The date selects the end of 60 UTC calendar dates and must not be in the future.
+The operational dataset includes 32 fictional players, 12 PCs, three plans, five
+products, 430 sales, 270 completed sessions, five active sessions, two pending kiosk
+orders, partial credit settlements, kitchen tickets, expenses, stock receipts,
+a partially received purchase order, reorder rules, and reconciled cash registers.
+Every business command commits its own records, ledger effects, and canonical outbox
+snapshots atomically. M6 will deliver this SQLite outbox to DuckDB; reports remain
+`503 ANALYTICS_UNAVAILABLE` until M7. The retired PostgreSQL/ClickHouse worker does
+not consume this tenant dataset.
 
-It includes 32 fictional players, a demo counter staff record, 12 PCs, three plans, five products, roughly 570 sales, 270 sessions, partial credit collections, daily expenses and cash reconciliations, receipts, waste, and low-stock reorder rules. Visit volume rises over the period, with weekend peaks. Two live sessions populate the current floor view. Counts vary slightly with the calendar and synthetic payment outcomes. Cash, wallet, credit, and stock balances reconcile with their associated records.
+Global demo owner/counter accounts and local player accounts have unusable password
+hashes by default. Set `DEMO_OWNER_USER_ID` (or `--owner-user-id`) to an existing active
+control-plane operator to give that operator administrator membership in the demo tenant;
+its credentials are preserved. Set `DEMO_PLAYER_PASSWORD` to an 8–72 byte password to
+enable player login with usernames `demo.player.01` through `demo.player.32`.
+Credentials are absent from command output and outbox events. No external payment or
+notification delivery is performed.
 
-All demo names are marked `DEMO` or use `demo.*` usernames. These accounts have deliberately unusable password hashes; sign in with your existing local admin. The script creates no usable login credentials and sends no notifications or external payments.
+The tenant file stores a completion marker. Repeating a completed seed returns the
+original summary with `already-seeded`, without changing records or presentation dates.
+An occupied target is rejected. Seeding spans multiple business transactions; an
+interrupted run preserves its committed data and rejects another run under that slug.
+Choose a fresh `arena360-demo...` slug for an interrupted run or a new date range.
+Only ACTIVE tenants owned by the selected cell can be reopened.
 
-Seeding is a single transaction, uses stable IDs, and never overwrites existing records. Running it again returns `already-seeded` without creating additional data or changing dates. Use a fresh migrated demo database for a new presentation period. Validation errors roll back the entire dataset.
+`pnpm demo:test` checks the deterministic legacy report fixture generator and the Node
+command adapter. The fixture generator remains available for M0 report baselines; the
+new operational seed is version `arena360-demo-v2` and report parity is verified in M7.
+The production binary integration test checks real provisioning, service writes, wallet
+and cash reconciliation, secret-free outbox payloads, credential preservation and repeat
+behavior against temporary tenant files:
 
-Keep the analytics worker running against the same PostgreSQL database. The data flows through the outbox and JetStream; there are no direct ClickHouse fixture inserts. On a fresh analytics database, run `pnpm analytics:backfill` once as described above. Allow the outbox to drain and any existing dashboard cache to expire before presenting.
-
-`pnpm demo:test` checks deterministic generation and ledger reconciliation. To test rollback, idempotency, and capture against PostgreSQL, run it with `DEMO_TEST_DATABASE_URL` pointing to a disposable migrated database with no existing demo dataset; this integration test commits its fixtures.
+```bash
+CONTROL_TEST_DATABASE_URL=postgres://.../isolated_control \
+  cargo test --manifest-path apps/backend/Cargo.toml --test demo_seed -- --ignored
+```
 
 ## Advanced analytics workspace
 

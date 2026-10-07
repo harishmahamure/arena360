@@ -1,6 +1,6 @@
 # Data Platform Progress
 
-**Updated:** 2026-10-07  
+**Updated:** 2026-10-08
 **Branch:** `platform-v2`  
 **Source plan:** `docs/plans/data-platform-build-plan.md`  
 **Architecture source:** `docs/architecture/data-platform.md`
@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0031
+## Completed through OPS-0010
 
-- 29 planned tasks completed.
+- M0–M4 are complete; operational API cutover is verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -48,7 +48,7 @@
 - Tenant SQLite player lifecycle and kiosk authentication, plus a credential-free, revisioned
   global staff membership projection with exact role and location scope, atomic revocation,
   idempotent tombstones, and secret-free outbox events.
-- In-process owning-cell realtime dispatch with commit-only PostgreSQL and tenant SQLite wakes,
+- In-process owning-cell realtime dispatch with commit-only tenant SQLite wakes,
   runtime lag deduplication, source-tenant ACL enforcement, immutable event snapshots, and
   durable-delivery-before-send ordering.
 
@@ -60,20 +60,24 @@
 
 ## Current task
 
-- [ ] `API-0033` — Wire the operational cutover and remove shared-table compatibility.
+- [ ] `TEST-0020` — Run integration tests against temporary tenant files and an isolated control database.
 
-### API-0033 checkpoint
+### API-0033 completed
 
-- Operational catalog, venue, player, wallet, session, checkout, inventory, procurement, shift, finance, kitchen, notification, and configuration handlers now require the authenticated tenant SQLite database.
-- Tenant timezone metadata is provisioned explicitly; operational pricing no longer reads shared PostgreSQL stock.
-- Local grants scope venue access, venue deactivation checks run inside the writer, and kiosk player/device tokens must match tenant and location.
-- Report routes return `ANALYTICS_UNAVAILABLE` until M7.
-- Operational handler checkpoint committed as `16fe0fc`.
-- Staff/access checkpoint: tenant role/module/member edits, current grants in middleware, global profile/password/MFA/avatar changes, and selected-tenant login/refresh/handover. Global changes are revisioned and projected asynchronously without overwriting local grants.
-- Membership activation commands and control-plane receipts recover across outages and unknown commit outcomes; newer global revocation wins over stale activation. Staff creation starts disabled and supports interrupted creation retries.
-- Owning-cell routing before local authorization, login finalization on a remote cell, durable realtime transport, staff gaming allowance, and startup workers still require cutover before API-0033 can be completed. The original-venue restriction remains until those shared business paths are removed.
-- Full backend suite passes at both checkpoints, including local grant, atomic venue edit, pricing-with-unavailable-PostgreSQL, staff projection, and credential-boundary regressions.
-- A live isolated PostgreSQL/SQLite integration test passes for activation outage recovery, newer global revocation, MFA verification, interrupted staff creation, tenant-state revocation, and selected-tenant tokens with operational PostgreSQL unavailable.
+- Operational startup, handlers, services, access checks, repositories, rooms, and realtime use tenant SQLite. The application has no operational PostgreSQL pool.
+- Shared repositories/services, default organization/venue IDs, organization predicates, and legacy realtime wake paths are removed.
+- Staff credentials/MFA remain global; current secret-free identities, local grants, and venue boundaries are checked on the owning cell.
+- Atomic business, activity, inbox, and canonical outbox writes are verified. Reports remain `ANALYTICS_UNAVAILABLE` until M7.
+- Full suite: 359 passing tests, 15 infrastructure gates. Seven isolated control/lease/bootstrap/staff tests pass separately.
+- Implementation commits: `9286c5b`, `167c17f`, `4c3f880`.
+
+### OPS-0010 completed
+
+- `pnpm demo:seed` provisions a tenant on a registered cell and writes through fenced operational SQLite commands.
+- Completion markers preserve successful repeat runs and reject interrupted/occupied targets. Existing operators keep their credentials; player login is explicitly configurable.
+- Real binary seed/repeat test verifies 430 sales, 275 sessions (five active), two kiosk orders, stock/wallet/cash reconciliation, secret-free events, and unchanged operator credentials.
+- Six Node tests and three provisioning/schema tests pass. The actual `pnpm` dry-run path is checked.
+- M0 deterministic report generator is retained; operational v2 report parity remains an M7 gate.
 
 ## M5 queue
 
@@ -81,8 +85,8 @@
 - [x] `API-0029` — Inventory and procurement (`828a90c`).
 - [x] `API-0030` — Shifts, cash, and expenses (`e098ef7`).
 - [x] `API-0031` — Settings, notifications, access locks, and kitchen (`379a8cc`).
-- [ ] `API-0033` — Operational cutover and shared-table compatibility removal.
-- [ ] `OPS-0010` — Tenant service demo seed.
+- [x] `API-0033` — Operational cutover and shared-table compatibility removal.
+- [x] `OPS-0010` — Tenant service demo seed.
 - [ ] `TEST-0020` — SQLite/control-plane integration harnesses.
 - [ ] `OPS-0011` — Retire operational PostgreSQL and merge.
 
@@ -107,7 +111,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed implementation commit: `379a8cc` (`API-0031`).
+- Latest completed implementation commit: `4c3f880` (`API-0033`); OPS-0010 is verified and ready to commit.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

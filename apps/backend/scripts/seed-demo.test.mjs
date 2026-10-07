@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Client } from 'pg';
-import { buildDemo, demoId, resolveDemoDatabaseUrl, seedDemo } from './seed-demo.mjs';
+import { buildDemo, parseDemoArgs, resolveDemoControlDatabaseUrl, seedDemo } from './seed-demo.mjs';
 
 const end = new Date('2026-10-02T18:00:00Z');
 test('demo is deterministic, covers 60 days, and has growing activity', () => {
@@ -73,68 +72,69 @@ test('stock, wallet, cash, and credit ledgers reconcile with the demo balances',
   }
 });
 
-test('seed commits once, rolls back dry runs, and emits analytics outbox events', {
-  skip: !process.env.DEMO_TEST_DATABASE_URL,
-}, async () => {
-  const client = new Client({ connectionString: process.env.DEMO_TEST_DATABASE_URL });
-  await client.connect();
-  try {
-    assert.equal(
-      (await client.query('SELECT id FROM users WHERE id=$1', [demoId('staff')])).rowCount,
-      0,
-      'Use a migrated test database without demo data',
-    );
-    assert.equal((await seedDemo(client, { end, dryRun: true })).status, 'dry-run-rolled-back');
-    assert.equal(
-      (await client.query('SELECT id FROM users WHERE id=$1', [demoId('staff')])).rowCount,
-      0,
-    );
-    const seeded = await seedDemo(client, { end });
-    assert.equal(seeded.status, 'seeded');
-    const before = await client.query('SELECT count(*) AS n FROM analytics_outbox');
-    assert.ok(Number(before.rows[0].n) > 1000);
-    assert.equal(
-      (await seedDemo(client, { end: new Date('2026-10-03') })).status,
-      'already-seeded',
-    );
-    assert.deepEqual(
-      (await client.query('SELECT count(*) AS n FROM analytics_outbox')).rows,
-      before.rows,
-    );
-    const payload = await client.query(
-      'SELECT row_data FROM analytics_outbox WHERE row_id=$1 LIMIT 1',
-      [demoId('staff')],
-    );
-    assert.equal(payload.rows[0].row_data.password_hash, undefined);
-  } finally {
-    await client.end();
-  }
+test('seed invokes the tenant service and passes explicit ownership without operational SQL', async () => {
+  let called;
+  const result = await seedDemo(
+    { date: '2026-10-02', tenantSlug: 'arena360-demo-test', cellId: 'cell', ownerUserId: 'owner' },
+    async (args, env) => {
+      called = { args, env };
+      return { status: 'seeded', tenantId: 'tenant', counts: { outbox_events: 1000 } };
+    },
+    { CONTROL_DATABASE_URL: 'postgres://control/db', DATABASE_URL: 'postgres://old/unused' },
+  );
+  assert.equal(result.status, 'seeded');
+  assert.deepEqual(called.args, [
+    '--date',
+    '2026-10-02',
+    '--tenant-slug',
+    'arena360-demo-test',
+    '--cell-id',
+    'cell',
+    '--owner-user-id',
+    'owner',
+  ]);
+  assert.equal(called.env.DEMO_CONTROL_DATABASE_URL, 'postgres://control/db');
 });
 
-test('demo resolves the current backend database and supports an explicit override', () => {
+test('dry-run reaches the service preview without a database environment', async () => {
+  const result = await seedDemo(
+    { date: '2026-10-02', dryRun: true },
+    async (args, env) => {
+      assert.ok(args.includes('--dry-run'));
+      assert.equal(env.DEMO_CONTROL_DATABASE_URL, undefined);
+      return { status: 'planned' };
+    },
+    {},
+  );
+  assert.equal(result.status, 'planned');
+});
+
+test('only explicit control database configuration is accepted', () => {
   assert.equal(
-    resolveDemoDatabaseUrl({ DATABASE_URL: 'postgres://current/db' }),
-    'postgres://current/db',
+    resolveDemoControlDatabaseUrl({ CONTROL_DATABASE_URL: 'postgres://control/db' }),
+    'postgres://control/db',
   );
   assert.equal(
-    resolveDemoDatabaseUrl({
-      DEMO_DATABASE_URL: 'postgres://demo/db',
-      DATABASE_URL: 'postgres://current/db',
+    resolveDemoControlDatabaseUrl({
+      CONTROL_DATABASE_URL: 'postgres://control/db',
+      DEMO_CONTROL_DATABASE_URL: 'postgres://test/db',
     }),
-    'postgres://demo/db',
+    'postgres://test/db',
   );
-  const url = new URL(
-    resolveDemoDatabaseUrl({
-      DB_HOST: 'db.local',
-      DB_PORT: '6432',
-      DB_USERNAME: 'demo user',
-      DB_PASSWORD: 'p@ss:/?#',
-      DB_DATABASE: 'demo db',
-    }),
+  assert.throws(
+    () => resolveDemoControlDatabaseUrl({ DATABASE_URL: 'postgres://old/db' }),
+    /CONTROL_DATABASE_URL/,
   );
-  assert.equal(url.hostname, 'db.local');
-  assert.equal(url.port, '6432');
-  assert.equal(decodeURIComponent(url.username), 'demo user');
-  assert.equal(decodeURIComponent(url.password), 'p@ss:/?#');
-  assert.equal(decodeURIComponent(url.pathname), '/demo db');
+});
+
+test('arguments reject invalid dates, unsafe target names and missing values', () => {
+  assert.equal(parseDemoArgs(['--date', '2026-10-02', '--dry-run']).dryRun, true);
+  for (const args of [
+    ['--date', '2026-02-30'],
+    ['--date', 'bad'],
+    ['--tenant-slug', 'customer'],
+    ['--cell-id'],
+    ['--unknown'],
+  ])
+    assert.throws(() => parseDemoArgs(args));
 });

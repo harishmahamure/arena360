@@ -67,14 +67,16 @@ pnpm analytics:backfill # first start; keeps consuming after the initial snapsho
 Reporting reads ClickHouse only. PostgreSQL remains the transaction ledger.
 See the [analytics setup and recovery guide](docs/architecture/analytics.md).
 
-Populate the current backend environment database with 60 days of synthetic sales and activity:
+Provision a demo tenant with 60 days of synthetic sales and activity. Configure
+`CONTROL_DATABASE_URL`, `ARENA_CELL_ID`, and `TENANT_DATA_DIR` for a registered cell:
 
 ```bash
 pnpm demo:seed
 ```
 
-The demo uses the same outbox → JetStream → ClickHouse pipeline. Repeated runs
-leave the existing dataset unchanged.
+The demo writes through tenant SQLite services and produces canonical outbox events.
+Repeated completed runs return the original summary. See the
+[demo setup guide](docs/architecture/analytics.md#demo-data) for operator and player login options.
 
 The API listens on `http://localhost:3000`. In non-production environments,
 Swagger UI is available at `http://localhost:3000/api/docs`.
