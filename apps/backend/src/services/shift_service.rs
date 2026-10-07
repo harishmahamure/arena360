@@ -357,3 +357,9 @@ impl ShiftService {
             .await;
     }
 }
+
+impl ShiftService {
+    pub fn tenant(db: std::sync::Arc<crate::tenancy::TenantDb>) -> crate::repositories::TenantShiftRepository {
+        crate::repositories::TenantShiftRepository::new(db)
+    }
+}

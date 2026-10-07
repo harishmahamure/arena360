@@ -344,3 +344,9 @@ impl ExpenseService {
             .await
     }
 }
+
+impl ExpenseService {
+    pub fn tenant(db: std::sync::Arc<crate::tenancy::TenantDb>) -> crate::repositories::TenantExpenseRepository {
+        crate::repositories::TenantExpenseRepository::new(db)
+    }
+}

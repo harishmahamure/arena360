@@ -77,3 +77,6 @@ pub mod tenant_inventory_repo;
 pub mod tenant_vendor_repo;
 pub use tenant_inventory_repo::TenantInventoryRepository;
 pub use tenant_vendor_repo::TenantVendorRepository;
+
+pub mod tenant_finance_repo;
+pub use tenant_finance_repo::{TenantShiftRepository,TenantCashRegisterRepository,TenantCashDepositRepository,TenantExpenseRepository,TenantExpenseCategoryRepository};

@@ -113,3 +113,9 @@ impl ExpenseCategoryService {
         self.invalidate_categories(Some(id)).await
     }
 }
+
+impl ExpenseCategoryService {
+    pub fn tenant(db: std::sync::Arc<crate::tenancy::TenantDb>) -> crate::repositories::TenantExpenseCategoryRepository {
+        crate::repositories::TenantExpenseCategoryRepository::new(db)
+    }
+}

@@ -32,7 +32,7 @@ pub struct Expense {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateExpenseDto {
     pub category_id: Uuid,
@@ -48,7 +48,7 @@ pub struct CreateExpenseDto {
     pub shift_id: Option<Uuid>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateExpenseDto {
     pub category_id: Option<Uuid>,
@@ -64,19 +64,19 @@ pub struct UpdateExpenseDto {
     pub shift_id: Option<Uuid>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApproveExpenseDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RejectExpenseDto {
     pub rejection_reason: String,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ExpenseFilterDto {
     pub category_id: Option<Uuid>,

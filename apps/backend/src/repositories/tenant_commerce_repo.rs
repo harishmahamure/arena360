@@ -598,6 +598,13 @@ impl TenantTransactionRepository {
                     .bind(id.to_string())
                     .execute(&mut *connection)
                     .await?;
+                    if old != "completed" && next == "completed" {
+                        let shift: Option<String> = sqlx::query_scalar("SELECT shift_id FROM transactions WHERE id=?")
+                            .bind(id.to_string()).fetch_one(&mut *connection).await?;
+                        super::tenant_finance_repo::TenantCashRegisterRepository::record_tender_on(
+                            connection, shift.as_deref().map(parse_uuid).transpose()?, actor, cash, id, "transaction",
+                        ).await?;
+                    }
                     if old != "completed" && next == "completed" && kind == "plan_purchase" {
                         let plan = plan.ok_or_else(|| {
                             AppError::Internal("Plan purchase has no plan".into())
@@ -830,8 +837,13 @@ async fn insert_transaction(
     .bind(actor.map(|value| value.to_string()))
     .bind(at)
     .bind(at)
-    .execute(connection)
+    .execute(&mut *connection)
     .await?;
+    if payment.status == "completed" {
+        super::tenant_finance_repo::TenantCashRegisterRepository::record_tender_on(
+            connection, dto.shift_id, actor, payment.cash, id, "transaction",
+        ).await?;
+    }
     Ok(())
 }
 
@@ -1738,6 +1750,9 @@ impl TenantCreditRepository {
                     .bind(&at)
                     .execute(&mut *connection)
                     .await?;
+                    super::tenant_finance_repo::TenantCashRegisterRepository::record_tender_on(
+                        connection, Some(shift), Some(actor), cash, id, "credit_settlement",
+                    ).await?;
                     for (transaction, applied) in items {
                         let row: Option<(i64, i64)> = sqlx::query_as(
                             "SELECT amount,paid_amount FROM transactions WHERE id=? AND player_id=?

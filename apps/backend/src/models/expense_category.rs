@@ -20,7 +20,7 @@ pub struct ExpenseCategory {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateExpenseCategoryDto {
     pub name: String,
@@ -31,7 +31,7 @@ pub struct CreateExpenseCategoryDto {
     pub budget_period: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateExpenseCategoryDto {
     pub name: Option<String>,
@@ -42,7 +42,7 @@ pub struct UpdateExpenseCategoryDto {
     pub budget_period: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ExpenseCategoryFilterDto {
     pub name: Option<String>,

@@ -794,6 +794,9 @@ impl Fixture {
         sqlx::query("INSERT INTO shifts(id,user_id,location_id,clock_in,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?)")
             .bind(shift.to_string()).bind(staff.to_string()).bind(venue.to_string()).bind(&at).bind(&at).bind(&at)
             .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO cash_registers(id,shift_id,opened_by,opening_balance,created_at,updated_at) VALUES(?,?,?,0,?,?)")
+            .bind(Uuid::now_v7().to_string()).bind(shift.to_string()).bind(staff.to_string()).bind(&at).bind(&at)
+            .execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO inventory_locations(id,venue_location_id,name,kind,created_at,updated_at) VALUES(?,?,'Counter','store',?,?)")
             .bind(store.to_string()).bind(venue.to_string()).bind(&at).bind(&at).execute(&pool).await.unwrap();
         sqlx::query("INSERT INTO inventory_locations(id,venue_location_id,name,kind,created_at,updated_at) VALUES(?,?,'Warehouse','warehouse',?,?)")
@@ -1137,4 +1140,57 @@ impl Fixture {
         self.admin.close().await;
         tokio::fs::remove_dir_all(self.root).await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn sales_and_settlements_update_cash_atomically() {
+    let f = Fixture::new().await;
+    let transactions = TenantTransactionRepository::new(f.db.clone());
+    let sale = transactions
+        .create(f.sale("cash", "completed", 1, None), Some(f.staff))
+        .await
+        .unwrap();
+    transactions
+        .update(
+            sale.id,
+            &UpdateTransactionDto {
+                payment_status: None,
+                notes: Some("note only".into()),
+            },
+            Some(f.staff),
+        )
+        .await
+        .unwrap();
+    let entries:i64=sqlx::query_scalar("SELECT COUNT(*) FROM cash_register_entries WHERE reference_id=? AND reference_type='transaction'").bind(sale.id.to_string()).fetch_one(&f.db.read_pool().unwrap()).await.unwrap();
+    assert_eq!(entries, 1);
+    let credit = transactions
+        .create(f.sale("credit", "credit", 1, None), Some(f.staff))
+        .await
+        .unwrap();
+    let credits = TenantCreditRepository::new(f.db.clone());
+    credits
+        .settle(f.settlement(credit.id, 5.0), f.shift, f.staff)
+        .await
+        .unwrap();
+    let cash: i64 = sqlx::query_scalar("SELECT SUM(amount) FROM cash_register_entries")
+        .fetch_one(&f.db.read_pool().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(cash, 175000);
+    sqlx::query("UPDATE cash_registers SET status='closed',closing_balance=175000,expected_closing=175000,variance=0 WHERE shift_id=?").bind(f.shift.to_string()).execute(&f.admin).await.unwrap();
+    let before = f.atomic_counts().await;
+    let stock = f.stock().await;
+    assert!(transactions
+        .create(f.sale("cash", "completed", 1, None), Some(f.staff))
+        .await
+        .is_err());
+    assert_eq!(f.atomic_counts().await, before);
+    assert_eq!(f.stock().await, stock);
+    assert!(credits
+        .settle(f.settlement(credit.id, 7.5), f.shift, f.staff)
+        .await
+        .is_err());
+    assert_eq!(f.atomic_counts().await, before);
+    assert_eq!(credits.summary(f.player).await.unwrap().outstanding, 7.5);
+    f.close().await;
 }

@@ -48,7 +48,7 @@ pub struct CashRegisterEntry {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenCashRegisterDto {
     pub shift_id: Uuid,
@@ -57,7 +57,7 @@ pub struct OpenCashRegisterDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseCashRegisterDto {
     pub closing_balance: f64,
@@ -65,7 +65,7 @@ pub struct CloseCashRegisterDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCashRegisterEntryDto {
     pub entry_type: String,
@@ -75,20 +75,20 @@ pub struct CreateCashRegisterEntryDto {
     pub reference_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ReconcileCashRegisterDto {
     pub reconciliation_notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateOpeningBalanceDto {
     pub opening_balance: f64,
     pub opening_denominations: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct CashRegisterFilterDto {
     pub shift_id: Option<Uuid>,

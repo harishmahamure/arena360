@@ -23,13 +23,13 @@ pub struct Shift {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ClockInDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StartShiftDto {
     pub opening_balance: f64,
@@ -55,13 +55,13 @@ pub struct ShiftStartResponseDto {
     pub cash_register: CashRegister,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ClockOutDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HandoverDepositDto {
     pub amount: f64,
@@ -69,7 +69,7 @@ pub struct HandoverDepositDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ShiftCloseDto {
     pub closing_balance: f64,
@@ -78,7 +78,7 @@ pub struct ShiftCloseDto {
     pub deposit: Option<HandoverDepositDto>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ShiftHandoverDto {
     pub closing_balance: f64,
@@ -121,7 +121,7 @@ pub struct CashRegisterSummary {
     pub status: String,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ShiftFilterDto {
     pub user_id: Option<Uuid>,

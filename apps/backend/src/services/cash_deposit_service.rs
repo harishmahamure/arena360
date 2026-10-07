@@ -302,3 +302,9 @@ impl CashDepositService {
         self.repo.list(&filters).await
     }
 }
+
+impl CashDepositService {
+    pub fn tenant(db: std::sync::Arc<crate::tenancy::TenantDb>) -> crate::repositories::TenantCashDepositRepository {
+        crate::repositories::TenantCashDepositRepository::new(db)
+    }
+}

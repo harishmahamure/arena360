@@ -350,3 +350,9 @@ impl CashRegisterService {
         }
     }
 }
+
+impl CashRegisterService {
+    pub fn tenant(db: std::sync::Arc<crate::tenancy::TenantDb>) -> crate::repositories::TenantCashRegisterRepository {
+        crate::repositories::TenantCashRegisterRepository::new(db)
+    }
+}
