@@ -19,3 +19,6 @@ pub mod session_hours;
 
 #[cfg(feature = "duckdb-analytics")]
 pub mod rebuild;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod retention;

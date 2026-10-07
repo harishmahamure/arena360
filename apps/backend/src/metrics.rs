@@ -27,6 +27,8 @@ pub struct Metrics {
     analytics_rebuild_started: AtomicU64,
     analytics_rebuild_completed: AtomicU64,
     analytics_rebuild_millis: AtomicU64,
+    analytics_retention_runs: AtomicU64,
+    analytics_retention_rows: AtomicU64,
 }
 
 impl Metrics {
@@ -86,6 +88,7 @@ impl Metrics {
     }
     pub fn analytics_ingested(&self, events: u64) { self.analytics_events.fetch_add(events, Ordering::Relaxed); }
     pub fn analytics_gap(&self) { self.analytics_gaps.fetch_add(1, Ordering::Relaxed); }
+    pub fn analytics_retained(&self, rows:u64) { self.analytics_retention_runs.fetch_add(1,Ordering::Relaxed);self.analytics_retention_rows.fetch_add(rows,Ordering::Relaxed); }
     pub fn analytics_rebuild_started(&self) { self.analytics_rebuild_started.fetch_add(1, Ordering::Relaxed); }
     pub fn analytics_rebuild_finished(&self, success: bool, millis: u64) {
         if success { self.analytics_rebuild_completed.fetch_add(1, Ordering::Relaxed); }
@@ -135,7 +138,11 @@ impl Metrics {
                 "# TYPE arena360_analytics_rebuild_completed_total counter\n",
                 "arena360_analytics_rebuild_completed_total {}\n",
                 "# TYPE arena360_analytics_rebuild_duration_milliseconds_total counter\n",
-                "arena360_analytics_rebuild_duration_milliseconds_total {}\n"
+                "arena360_analytics_rebuild_duration_milliseconds_total {}\n",
+                "# TYPE arena360_analytics_retention_runs_total counter\n",
+                "arena360_analytics_retention_runs_total {}\n",
+                "# TYPE arena360_analytics_retention_deleted_rows_total counter\n",
+                "arena360_analytics_retention_deleted_rows_total {}\n"
             ),
             self.rate_limit_allowed.load(Ordering::Relaxed),
             self.rate_limit_rejected.load(Ordering::Relaxed),
@@ -161,6 +168,8 @@ impl Metrics {
             self.analytics_rebuild_started.load(Ordering::Relaxed),
             self.analytics_rebuild_completed.load(Ordering::Relaxed),
             self.analytics_rebuild_millis.load(Ordering::Relaxed),
+            self.analytics_retention_runs.load(Ordering::Relaxed),
+            self.analytics_retention_rows.load(Ordering::Relaxed),
         )
     }
 }

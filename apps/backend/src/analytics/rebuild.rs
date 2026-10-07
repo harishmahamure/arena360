@@ -32,7 +32,7 @@ fn failure(message: &str) -> AppError {
 fn literal(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
-fn boundary(date: NaiveDate, zone: Tz) -> Result<DateTime<Utc>, AppError> {
+pub(crate) fn boundary(date: NaiveDate, zone: Tz) -> Result<DateTime<Utc>, AppError> {
     let mut naive = date
         .and_hms_opt(0, 0, 0)
         .ok_or_else(|| failure("invalid month boundary"))?;
@@ -88,8 +88,30 @@ async fn snapshot(db: &TenantDb, files: &RebuildFiles) -> Result<i64, AppError> 
 /// Recalculate bounded hot-month aggregates. All-locations visitors are computed
 /// distinctly, never summed from venue rows. Old summaries are preserved separately.
 pub fn refresh_monthly(tx: &duckdb::Transaction<'_>) -> Result<(), AppError> {
-    tx.execute_batch(r#"
-DELETE FROM monthly_summary WHERE month >= (SELECT hot_window_start FROM _ingest_state);
+    let start: String = tx
+        .query_row(
+            "SELECT CAST(hot_window_start AS VARCHAR) FROM _ingest_state",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(error)?;
+    refresh_monthly_from(
+        tx,
+        start
+            .parse()
+            .map_err(|_| failure("invalid summary month"))?,
+    )
+}
+pub(crate) fn refresh_monthly_from(
+    tx: &duckdb::Transaction<'_>,
+    start: NaiveDate,
+) -> Result<(), AppError> {
+    // The literal is generated from a typed date, never from SQL supplied by a caller.
+    let sql = MONTHLY_SQL.replace("__START__", &format!("DATE '{start}'"));
+    tx.execute_batch(&sql).map_err(error)
+}
+const MONTHLY_SQL: &str = r#"
+DELETE FROM monthly_summary WHERE month >= __START__;
 INSERT INTO monthly_summary
 WITH sales AS (
  SELECT CAST(date_trunc('month',local_date) AS DATE) AS month,location_id,
@@ -97,18 +119,18 @@ WITH sales AS (
         sum(CASE WHEN transaction_type='plan_purchase' THEN amount ELSE 0 END) plan_revenue,
         sum(CASE WHEN transaction_type='product_purchase' THEN amount ELSE 0 END) pos_revenue,
         count(*) transactions
- FROM transactions WHERE is_booked
+ FROM transactions WHERE is_booked AND local_date>=__START__
  GROUP BY GROUPING SETS ((month,location_id),(month))
  HAVING GROUPING(location_id)=1 OR location_id IS NOT NULL
 ), starts AS (
  SELECT CAST(date_trunc('month',start_local_date) AS DATE) AS month,location_id,
         count(*) session_starts,count(DISTINCT player_id) visitors
- FROM sessions WHERE NOT is_staff_allowance GROUP BY GROUPING SETS ((month,location_id),(month))
+ FROM sessions WHERE NOT is_staff_allowance AND start_local_date>=__START__ GROUP BY GROUPING SETS ((month,location_id),(month))
  HAVING GROUPING(location_id)=1 OR location_id IS NOT NULL
 ), hours AS (
  SELECT CAST(date_trunc('month',local_date) AS DATE) AS month,location_id,
         sum(occupied_seconds)/3600.0 occupied_hours
- FROM session_hours WHERE session_id IN (SELECT id FROM sessions WHERE NOT is_staff_allowance) GROUP BY GROUPING SETS ((month,location_id),(month))
+ FROM session_hours WHERE local_date>=__START__ AND session_id IN (SELECT id FROM sessions WHERE NOT is_staff_allowance) GROUP BY GROUPING SETS ((month,location_id),(month))
  HAVING GROUPING(location_id)=1 OR location_id IS NOT NULL
 ), keys AS (
  SELECT month,coalesce(location_id,'00000000-0000-0000-0000-000000000000'::UUID) location_id FROM sales
@@ -121,9 +143,8 @@ FROM keys k
 LEFT JOIN sales s ON s.month=k.month AND coalesce(s.location_id,'00000000-0000-0000-0000-000000000000'::UUID)=k.location_id
 LEFT JOIN starts t ON t.month=k.month AND coalesce(t.location_id,'00000000-0000-0000-0000-000000000000'::UUID)=k.location_id
 LEFT JOIN hours h ON h.month=k.month AND coalesce(h.location_id,'00000000-0000-0000-0000-000000000000'::UUID)=k.location_id
-WHERE k.month >= (SELECT hot_window_start FROM _ingest_state);
-"#).map_err(error)
-}
+WHERE k.month >= __START__;
+"#;
 #[derive(Debug)]
 struct MonthlyRow {
     month: String,
@@ -194,7 +215,12 @@ async fn backfill(
             let mut select=spec.select();
             if let Some(time)=spec.time {
                 let column=spec.columns.iter().find(|c|c.name==time).ok_or_else(||failure("missing retention source"))?;
-                select.push_str(&format!(" AND {} >= {}",column.source,literal(&cutoff)));
+                let condition=match spec.name {
+                    "sessions"=>format!("({} >= {} OR r.end_time IS NULL OR r.end_time > {})",column.source,literal(&cutoff),literal(&cutoff)),
+                    "shifts"=>format!("({} >= {} OR r.clock_out IS NULL OR r.clock_out > {})",column.source,literal(&cutoff),literal(&cutoff)),
+                    _=>format!("({} IS NULL OR {} >= {})",column.source,column.source,literal(&cutoff)),
+                };
+                select.push_str(&format!(" AND {condition}"));
             }
             if let Some(parent_key)=spec.parent {
                 let parent_name=match spec.name {"transaction_lines"=>"transactions","credit_settlement_items"=>"credit_settlements","stock_receipt_lines"=>"stock_receipts","stock_waste_lines"=>"stock_waste_events",_=>return Err(failure("unknown source parent"))};
@@ -202,7 +228,7 @@ async fn backfill(
                 let mut predicate=parent.predicate.to_owned();
                 if let Some(time)=parent.time {
                     let c=parent.columns.iter().find(|c|c.name==time).ok_or_else(||failure("missing parent retention source"))?;
-                    predicate.push_str(&format!(" AND {} >= {}",c.source,literal(&cutoff)));
+                    predicate.push_str(&format!(" AND ({} IS NULL OR {} >= {})",c.source,c.source,literal(&cutoff)));
                 }
                 select.push_str(&format!(" AND r.{parent_key} IN (SELECT r.id FROM {} WHERE {predicate})",parent.source));
             }

@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0042
+## Completed through API-0044
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `API-0044` — Nightly batched hot-window retention and monthly summary refresh.
+- [ ] `API-0045` — Revisioned timezone changes and automatic analytics rebuild.
 
 ### API-0033 completed
 
@@ -125,7 +125,13 @@
 - Schema v2 persists the pre-snapshot broker position to skip superseded deliveries after restore/restart. Failed builds preserve canonical facts; corrupt/old files are quarantined, newer schemas remain intact, and old monthly aggregates survive ordinary rebuilds.
 - All 401 backend/control/live checks pass. Native demo parity: 1,419 rows across 27 projections, every money-column total, and 486,000 occupied seconds match SQLite. Concurrent replay, failure preservation, purge-safe T0, self-fencing and superseded retained events are verified.
 - Deployment compiles analytics and caches the matching signed extension. The real setup binary, Biome and YAML checks pass; Docker image execution is unverified on this host.
-- Next: `API-0044` nightly retention.
+- Implementation: `d0e112e`.
+
+### API-0044 completed
+
+- Nightly tenant-calendar maintenance seals expiring summaries and deletes facts/child collections in bounded, fenced transactions. Open and crossing work survives; checkpoints and sealed history remain intact. Pending SQLite watermarks delay maintenance until ingestion catches up.
+- Full regression: 404 backend/control/live checks pass. Five targeted retention checks pass, including two final source-backlog/DST cases: 406 distinct passing checks across the runs.
+- Next: `API-0045` timezone changes.
 
 ## M5 queue
 
@@ -159,7 +165,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed item: `API-0042`; 401 backend checks pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
+- Latest completed item: `API-0044`; 406 distinct backend checks pass across full and final targeted runs. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

@@ -166,7 +166,10 @@ pub fn replace_hours(tx: &Transaction<'_>, id: &str, zone: Tz) -> Result<(), App
                 .map(|t| t.and_utc())
                 .map_err(|_| invalid("stored session timestamp"))
         };
+        let hot:String=tx.query_row("SELECT CAST(hot_window_start AS VARCHAR) FROM _ingest_state",[],|r|r.get(0)).map_err(error)?;
+        let hot=hot.parse::<chrono::NaiveDate>().map_err(|_|invalid("invalid hot date"))?;
         for h in session_hours::split(parse(&start)?, parse(&end)?, zone)? {
+            if h.local_date<hot {continue;}
             tx.execute("INSERT INTO session_hours VALUES(CAST(? AS UUID),CAST(? AS TIMESTAMP),CAST(? AS DATE),?,?,?, ?,CAST(? AS UUID),CAST(? AS UUID))",params![id,crate::time::format_sqlite_timestamp(&h.hour_start).map_err(|_|invalid("hour timestamp"))?,h.local_date.to_string(),h.weekday,h.local_hour,h.occupied_seconds,h.is_start_hour,device,location]).map_err(error)?;
         }
     }
@@ -207,17 +210,18 @@ fn apply_change(tx: &Transaction<'_>, change: Change, zone: Tz, hot: &str) -> Re
         }
         derive_labels(spec, &mut row, zone)?;
         if let Some(time) = spec.time {
-            let local = timestamp(
-                row[time]
-                    .as_str()
-                    .ok_or_else(|| invalid("missing retention timestamp"))?,
-            )?
-            .with_timezone(&zone)
-            .date_naive()
-            .to_string();
-            if local.as_str() < hot {
-                continue;
-            }
+            if let Some(instant)=row[time].as_str() {
+                let before=timestamp(instant)?.with_timezone(&zone).date_naive().to_string().as_str()<hot;
+                if before {
+                    let end=match spec.name {"sessions"=>Some("end_time"),"shifts"=>Some("clock_out"),_=>None};
+                    let overlaps=match end {
+                        Some(end) if row[end].is_null()=>true,
+                        Some(end)=>timestamp(row[end].as_str().ok_or_else(||invalid("invalid interval end"))?)?>super::rebuild::boundary(hot.parse().map_err(|_|invalid("invalid hot date"))?,zone)?,
+                        None=>false,
+                    };
+                    if !overlaps {continue;}
+                }
+            } else if !row[time].is_null() {return Err(invalid("invalid retention timestamp"));}
         }
         if let Some(parent) = spec.parent {
             let parent_table = match spec.name {
@@ -525,8 +529,19 @@ pub fn spawn(
                         let analytics = TenantAnalytics::open_for_ingestion(db.clone()).await?;
                         let mut consumer =
                             JetStreamConsumer::connect(&context, db.clone(), analytics).await?;
+                        let mut retention_due=chrono::Utc::now();
                         loop {
                             db.ensure_current_owner()?;
+                            let now=chrono::Utc::now();
+                            if now>=retention_due {
+                                match super::retention::run(consumer.analytics.clone(),now).await {
+                                    Ok(super::retention::RetentionOutcome::Applied{deleted_rows,next_due,..})=> {
+                                        metrics.analytics_retained(deleted_rows as u64);retention_due=next_due;
+                                    }
+                                    Ok(super::retention::RetentionOutcome::Skipped)=>retention_due=now+chrono::Duration::seconds(5),
+                                    Err(error)=> {metrics.analytics_failed();tracing::warn!(tenant=%id,%error,"Analytics retention delayed");retention_due=now+chrono::Duration::seconds(5);}
+                                }
+                            }
                             match consumer.poll(&metrics).await {
                                 Ok(BatchOutcome::RebuildRequired) => {
                                     metrics.analytics_rebuild_started();

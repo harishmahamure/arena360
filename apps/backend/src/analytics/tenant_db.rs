@@ -194,6 +194,7 @@ impl TenantAnalytics {
     pub fn path(&self) -> &std::path::Path {
         &self.path
     }
+    pub(crate) fn owner(&self) -> &Arc<TenantDb> { &self.db }
     pub fn tenant_id(&self) -> uuid::Uuid {
         self.db.tenant_id()
     }

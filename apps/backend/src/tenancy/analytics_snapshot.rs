@@ -532,7 +532,7 @@ pub static TABLES: &[Table] = &[
         source: "shifts r",
         predicate: "1=1",
         parent: None,
-        time: None,
+        time: Some("clock_in"),
         columns: &[
             Column {
                 name: "id",
@@ -980,7 +980,7 @@ pub static TABLES: &[Table] = &[
         source: "stock_waste_events r",
         predicate: "1=1",
         parent: None,
-        time: None,
+        time: Some("approved_at"),
         columns: &[
             Column {
                 name: "id",
