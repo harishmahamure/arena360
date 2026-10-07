@@ -104,8 +104,8 @@ impl Metrics {
 pub async fn prometheus(
     axum::extract::State(state): axum::extract::State<std::sync::Arc<crate::app::AppState>>,
 ) -> impl IntoResponse {
-    let pool_size = state.db.size();
-    let pool_idle = state.db.num_idle();
+    let pool_size = state.control_db.as_ref().map_or(0, |pool| pool.size());
+    let pool_idle = state.control_db.as_ref().map_or(0, |pool| pool.num_idle());
     let body = format!("{}# TYPE arena360_sql_pool_connections gauge\narena360_sql_pool_connections{{state=\"total\"}} {pool_size}\narena360_sql_pool_connections{{state=\"idle\"}} {pool_idle}\n", state.metrics.render());
     ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body)
 }

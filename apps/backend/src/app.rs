@@ -12,25 +12,22 @@ use tower_http::{
 use uuid::Uuid;
 
 use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
-use crate::config::{create_pool, create_pool_for, load_dotenv, Settings};
+use crate::config::{create_pool_for, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::{auth_middleware, global_rate_limit, request_context, request_deadline};
 use crate::openapi::ApiDoc;
-use crate::realtime::{Dispatcher, OutboxService, RealtimeHub, RoomService};
+use crate::realtime::{Dispatcher, RealtimeHub};
 use crate::services::{
-    AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
-    CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
-    GameService, InventoryService, KioskOrderService, NotificationService, PlanService,
-    PlayerPlanService, PricingPolicyService, ProcurementService, ProductRecipeService,
-    ProductService, SessionService, ShiftService, StaffGamingAllowanceService, StatsService,
-    StorageConfig, StorageService, TransactionService, UnitService, UserService, VendorService,
+    AuthService, BalanceService, ConfigService, CreditService, DeviceService, EventService,
+    GameService, KioskOrderService, PlanService, PlayerPlanService, PricingPolicyService,
+    ProductRecipeService, ProductService, SessionService, StaffGamingAllowanceService,
+    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 pub struct AppState {
-    pub db: PgPool,
     pub control_db: Option<PgPool>,
     pub leases: Option<Arc<crate::control::LeaseClient>>,
     pub tenant_dbs: Option<Arc<crate::tenancy::TenantDbManager>>,
@@ -49,27 +46,15 @@ pub struct AppState {
     pub balances: Arc<BalanceService>,
     pub units: UnitService,
     pub sessions: SessionService,
-    pub shifts: ShiftService,
-    pub cash_registers: Arc<CashRegisterService>,
-    pub cash_deposits: CashDepositService,
     pub transactions: TransactionService,
     pub products: ProductService,
     pub product_recipes: ProductRecipeService,
     pub games: GameService,
     pub storage: StorageService,
-    pub expense_categories: ExpenseCategoryService,
-    pub vendors: VendorService,
-    pub expenses: ExpenseService,
-    pub inventory: InventoryService,
-    pub procurement: ProcurementService,
     pub stats: StatsService,
     pub credit: Arc<CreditService>,
     pub staff_gaming_allowances: StaffGamingAllowanceService,
-    pub events: EventService,
-    pub notifications: NotificationService,
     pub kiosk_orders: KioskOrderService,
-    pub outbox: OutboxService,
-    pub rooms: RoomService,
     pub ws_connections: Arc<crate::realtime::registry::ConnectionRegistry>,
 }
 
@@ -105,8 +90,11 @@ impl AppState {
 
 pub async fn build_state() -> Arc<AppState> {
     load_dotenv();
-    let settings = Arc::new(Settings::from_env());
-    let pool = create_pool(settings.as_ref()).await;
+    build_state_with_settings(Arc::new(Settings::from_env())).await
+}
+
+/// Construct one process using explicit configuration; operational storage is tenant SQLite.
+pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState> {
     let realtime_hub = RealtimeHub::new(1024);
     let control_db = if let Some(url) = settings.control_database_url.as_deref() {
         let control_pool = create_pool_for(url, settings.as_ref()).await;
@@ -200,21 +188,13 @@ pub async fn build_state() -> Arc<AppState> {
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);
 
-    let outbox = OutboxService::with_hub(pool.clone(), realtime_hub.clone());
     let config_service = Arc::new(ConfigService::new(cache.clone(), settings.cafe_timezone.clone()));
     let pricing_rules = PricingPolicyService::new();
-    let notifications = NotificationService::new(pool.clone(), outbox.clone(), cache.clone());
-    let rooms = RoomService::new(pool.clone());
     let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
 
     let devices = DeviceService::new(events.clone(), cache.clone());
     let player_plans = Arc::new(PlayerPlanService::new());
     let balances = Arc::new(BalanceService::new(cache.clone()));
-
-    let cash_registers = Arc::new(
-        CashRegisterService::new(pool.clone(), cache.clone())
-            .with_notifications(notifications.clone()),
-    );
 
     let credit = Arc::new(CreditService::new());
 
@@ -263,10 +243,6 @@ pub async fn build_state() -> Arc<AppState> {
 
     let users = Arc::new(UserService::new());
 
-    let mut shifts = ShiftService::new(pool.clone());
-    shifts.set_cash_registers(cash_registers.clone());
-    shifts.set_notifications(notifications.clone());
-
     Arc::new(AppState {
         auth: AuthService::new(settings.clone()).with_control_pool(control_db.clone()),
         config: config_service.clone(),
@@ -285,14 +261,6 @@ pub async fn build_state() -> Arc<AppState> {
             PricingPolicyService::new(),
             cache.clone(),
         ),
-        shifts,
-        cash_registers: cash_registers.clone(),
-        cash_deposits: CashDepositService::new(
-            pool.clone(),
-            outbox.clone(),
-            notifications.clone(),
-            cash_registers.clone(),
-        ),
         transactions: TransactionService::new(),
         credit,
         staff_gaming_allowances: StaffGamingAllowanceService::new(
@@ -302,30 +270,9 @@ pub async fn build_state() -> Arc<AppState> {
         product_recipes: ProductRecipeService::new(),
         games: GameService::new(),
         storage: StorageService::new(StorageConfig::from_env()),
-        expense_categories: ExpenseCategoryService::new(pool.clone(), cache.clone()),
-        vendors: VendorService::new(pool.clone()),
-        expenses: ExpenseService::new(
-            pool.clone(),
-            CashRegisterService::new(pool.clone(), cache.clone()),
-            ShiftService::new(pool.clone()),
-            outbox.clone(),
-            notifications.clone(),
-        ),
-        inventory: InventoryService::new(
-            pool.clone(),
-            settings.cafe_timezone.clone(),
-            outbox.clone(),
-            notifications.clone(),
-            cache.clone(),
-        ),
-        procurement: ProcurementService::new(pool.clone()),
         stats: StatsService::new(crate::analytics::ClickHouse::from_env(), cache.clone()),
         kiosk_orders: KioskOrderService::new(config_service.clone()),
-        notifications,
-        outbox,
-        rooms,
         ws_connections,
-        db: pool,
         control_db,
         leases,
         tenant_dbs,
@@ -334,7 +281,6 @@ pub async fn build_state() -> Arc<AppState> {
         cache,
         settings,
         metrics,
-        events,
     })
 }
 

@@ -1,62 +1,49 @@
-//! Integration tests for credit settlement list/detail APIs.
-//! Run with: `cargo test --test credit_settlements -- --ignored`
-
-use gaming_cafe_api::app::build_state;
-use gaming_cafe_api::config::load_dotenv;
-use gaming_cafe_api::models::CreditSettlementFilterDto;
-use std::sync::Arc;
+//! Settlement service reads use isolated tenant SQLite; report projections use ClickHouse.
+mod support;
+use gaming_cafe_api::{models::CreditSettlementFilterDto, services::CreditService};
+use support::TenantFixture;
 use uuid::Uuid;
-
-async fn setup() -> Option<Arc<gaming_cafe_api::app::AppState>> {
-    load_dotenv();
-    if std::env::var("DATABASE_URL").is_err() && std::env::var("DB_HOST").is_err() {
-        return None;
-    }
-    Some(build_state().await)
-}
-
 #[tokio::test]
-#[ignore = "requires DATABASE_URL"]
 async fn list_settlements_returns_paginated_result() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let result = gaming_cafe_api::repositories::CreditRepository::new(state.db.clone())
-        .list_settlements(&CreditSettlementFilterDto {
-            page: Some(1),
-            limit: Some(10),
-            ..Default::default()
-        })
+    let f = TenantFixture::new().await;
+    let result = CreditService::new()
+        .list_settlements_tenant(
+            f.db.clone(),
+            CreditSettlementFilterDto {
+                page: Some(1),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
         .await
-        .expect("list settlements");
-
-    assert!(result.page >= 1);
-    assert!(result.limit >= 1);
-    assert!(result.total >= 0);
+        .unwrap();
+    assert_eq!(result.page, 1);
+    assert_eq!(result.limit, 10);
+    assert_eq!(result.total, 0);
+    assert!(result.data.is_empty());
+    f.close().await;
 }
-
 #[tokio::test]
-#[ignore = "requires DATABASE_URL"]
 async fn get_settlement_returns_not_found_for_missing_id() {
-    let Some(state) = setup().await else {
-        return;
-    };
-
-    let err = gaming_cafe_api::repositories::CreditRepository::new(state.db.clone())
-        .get_settlement_by_id(Uuid::new_v4())
+    let f = TenantFixture::new().await;
+    let error = CreditService::new()
+        .get_settlement_tenant(f.db.clone(), Uuid::now_v7())
         .await
-        .expect_err("missing settlement");
-
-    assert!(err.to_string().contains("not found"));
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        gaming_cafe_api::error::AppError::NotFound(_)
+    ));
+    f.close().await;
 }
 
 #[tokio::test]
-#[ignore = "requires DATABASE_URL"]
+#[ignore = "requires ClickHouse reporting projections"]
 async fn revenue_stats_includes_settlement_collections_for_period() {
-    let Some(state) = setup().await else {
-        return;
-    };
+    let stats = gaming_cafe_api::services::StatsService::new(
+        gaming_cafe_api::analytics::ClickHouse::from_env(),
+        std::sync::Arc::new(gaming_cafe_api::cache::NoopCache),
+    );
 
     let now = chrono::Utc::now();
     let start = now - chrono::Duration::days(30);
@@ -65,8 +52,7 @@ async fn revenue_stats_includes_settlement_collections_for_period() {
     let prev_start = start - chrono::Duration::days(diff);
     let prev_end = end - chrono::Duration::days(diff);
 
-    let revenue = state
-        .stats
+    let revenue = stats
         .get_revenue_by_payment_method(start, end, prev_start, prev_end, false)
         .await
         .expect("revenue stats");

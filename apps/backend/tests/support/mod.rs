@@ -6,10 +6,10 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
-struct Lease(Uuid);
+struct Lease(Uuid, std::sync::atomic::AtomicBool);
 impl TenantLease for Lease {
     fn writable_generation(&self, tenant: Uuid) -> Result<i64, AppError> {
-        if tenant == self.0 {
+        if tenant == self.0 && !self.1.load(std::sync::atomic::Ordering::Acquire) {
             Ok(1)
         } else {
             Err(AppError::Forbidden("foreign test tenant".into()))
@@ -27,10 +27,18 @@ impl TenantLease for Lease {
 /// An isolated, migrated tenant file with a lease scoped to exactly that tenant.
 pub struct TenantFixture {
     pub db: Arc<TenantDb>,
+    pub manager: Arc<TenantDbManager>,
     root: PathBuf,
+    lease: Arc<Lease>,
 }
 impl TenantFixture {
     pub async fn new() -> Self {
+        Self::new_with_idle(Duration::from_secs(60)).await
+    }
+    pub fn revoke(&self) {
+        self.lease.1.store(true, std::sync::atomic::Ordering::Release);
+    }
+    pub async fn new_with_idle(idle_timeout: Duration) -> Self {
         let tenant = Uuid::now_v7();
         let root = std::env::temp_dir().join(format!("arena360-service-test-{tenant}"));
         let path = tenant_path(&root, tenant);
@@ -52,19 +60,22 @@ impl TenantFixture {
             .await
             .unwrap();
         pool.close().await;
-        let manager = TenantDbManager::new(
-            TenantDbConfig {
-                root: root.clone(),
-                read_connections: 2,
-                busy_timeout: Duration::from_millis(500),
-                idle_timeout: Duration::from_secs(60),
-                reaper_interval: Duration::from_secs(1),
-            },
-            Arc::new(Lease(tenant)),
-        )
-        .unwrap();
+        let lease = Arc::new(Lease(tenant, std::sync::atomic::AtomicBool::new(false)));
+        let manager = Arc::new(
+            TenantDbManager::new(
+                TenantDbConfig {
+                    root: root.clone(),
+                    read_connections: 2,
+                    busy_timeout: Duration::from_millis(500),
+                    idle_timeout,
+                    reaper_interval: Duration::from_secs(1),
+                },
+                lease.clone(),
+            )
+            .unwrap(),
+        );
         let db = manager.open(tenant).await.unwrap();
-        Self { db, root }
+        Self { db, root, manager, lease }
     }
     pub async fn player(&self, username: &str) -> Uuid {
         gaming_cafe_api::repositories::TenantUserRepository::new(self.db.clone())
@@ -286,4 +297,101 @@ impl TenantFixture {
         })).await.unwrap();
         user
     }
+}
+
+/// Explicit settings keep HTTP acceptance tests independent of developer environment and services.
+pub fn settings() -> gaming_cafe_api::config::Settings {
+    gaming_cafe_api::config::Settings {
+        roles: gaming_cafe_api::config::Roles {
+            control: false,
+            cell: true,
+            router: false,
+        },
+        cell_id: None,
+        tenant_data_dir: std::env::temp_dir().join(format!("arena360-http-{}", Uuid::now_v7())),
+        database_url: "postgres://unused:unused@127.0.0.1:1/unused".into(),
+        control_database_url: None,
+        database_listener_url: "postgres://unused:unused@127.0.0.1:1/unused".into(),
+        database_min_connections: 0,
+        database_max_connections: 2,
+        database_acquire_timeout_seconds: 1,
+        database_idle_timeout_seconds: 60,
+        database_max_lifetime_seconds: 600,
+        redis_url: None,
+        jwt_secret: "arena360-test-secret-at-least-thirty-two-characters".into(),
+        jwt_access_expiration: "15m".into(),
+        jwt_player_expiration: "24h".into(),
+        jwt_device_expiration: "365d".into(),
+        bcrypt_salt_rounds: 4,
+        port: 0,
+        cafe_timezone: "UTC".into(),
+        zeptomail_token: None,
+        legacy_rest_enabled: true,
+        trusted_proxy_cidrs: vec![],
+        max_concurrent_requests: 64,
+    }
+}
+impl SessionFixture {
+    pub async fn app(&self) -> Arc<gaming_cafe_api::app::AppState> {
+        let mut state = gaming_cafe_api::app::build_state_with_settings(Arc::new(settings())).await;
+        Arc::get_mut(&mut state).unwrap().tenant_dbs = Some(self.tenant.manager.clone());
+        state
+    }
+    pub async fn second_device(&self) -> Uuid {
+        gaming_cafe_api::repositories::TenantDeviceRepository::new(self.tenant.db.clone()).create(
+            &serde_json::from_value(serde_json::json!({"name":"PC-02","locationId":self.venue,"deviceType":"PC","deviceSubType":"HIGH_END_PCS","registrationStatus":"registered"})).unwrap(),None).await.unwrap().id
+    }
+    pub async fn registration(&self, value: &str) {
+        let id = self.device.to_string();
+        let value = value.to_owned();
+        self.tenant
+            .db
+            .with_immediate_writer(move |c| {
+                Box::pin(async move {
+                    sqlx::query("UPDATE devices SET registration_status=? WHERE id=?")
+                        .bind(value)
+                        .bind(id)
+                        .execute(c)
+                        .await?;
+                    Ok(())
+                })
+            })
+            .await
+            .unwrap();
+    }
+}
+pub async fn request(
+    app: axum::Router,
+    method: &str,
+    path: &str,
+    device: Option<&str>,
+    player: Option<&str>,
+    body: serde_json::Value,
+) -> (axum::http::StatusCode, serde_json::Value) {
+    use tower::ServiceExt;
+    let mut request = axum::http::Request::builder()
+        .method(method)
+        .uri(path)
+        .header("content-type", "application/json");
+    if let Some(token) = device {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    if let Some(token) = player {
+        request = request.header("x-player-token", token);
+    }
+    let response = app
+        .oneshot(
+            request
+                .body(axum::body::Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let body = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|_| serde_json::json!({"raw":String::from_utf8_lossy(&bytes)}));
+    (status, body)
 }

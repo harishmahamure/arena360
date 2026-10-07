@@ -22,18 +22,19 @@ impl<T: Serialize> SuccessResponse<T> {
     }
 }
 
-pub type ApiResult<T> = Result<Json<SuccessResponse<T>>, crate::error::AppError>;
+pub type ApiResult<T> = Result<SuccessResponse<T>, crate::error::AppError>;
 
 pub fn ok<T: Serialize>(data: T) -> ApiResult<T> {
-    Ok(Json(SuccessResponse::new(StatusCode::OK, data)))
+    Ok(SuccessResponse::new(StatusCode::OK, data))
 }
 
 pub fn created<T: Serialize>(data: T) -> ApiResult<T> {
-    Ok(Json(SuccessResponse::new(StatusCode::CREATED, data)))
+    Ok(SuccessResponse::new(StatusCode::CREATED, data))
 }
 
 impl<T: Serialize> IntoResponse for SuccessResponse<T> {
     fn into_response(self) -> axum::response::Response {
-        Json(self).into_response()
+        let status = StatusCode::from_u16(self.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        (status, Json(self)).into_response()
     }
 }
