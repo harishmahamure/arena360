@@ -508,13 +508,9 @@ async fn pricing_versions_and_setting_revisions_publish_atomically() {
 }
 
 #[tokio::test]
-async fn tenant_service_path_does_not_touch_postgres() {
+async fn tenant_game_service_needs_only_its_sqlite_handle() {
     let fixture = Fixture::new().await;
-    let postgres = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    let cache = gaming_cafe_api::cache::create_cache(None).await;
-    let service = GameService::new(postgres, cache);
+    let service = GameService::new();
     let game = service
         .create_tenant(
             fixture.db.clone(),
@@ -675,7 +671,7 @@ async fn product_prices_and_settings_use_only_the_selected_tenant() {
         cache.clone(),
         "America/New_York".into(),
     );
-    let products = ProductService::new(unavailable, cache);
+    let products = ProductService::new();
     let values = settings
         .effective_tenant(
             f.db.clone(),

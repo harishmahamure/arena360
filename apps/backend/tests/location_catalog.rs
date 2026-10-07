@@ -4,17 +4,14 @@ use gaming_cafe_api::{
     dto::JwtUserClaims,
     models::{ProductFilterDto, DEFAULT_ORGANIZATION_ID},
     repositories::ProductRepository,
-    services::{
-        catalog_scope::{self, CatalogScope, LocationPrice},
-        ProductService,
-    },
+    services::catalog_scope::{self, CatalogScope, LocationPrice},
 };
 use serde_json::json;
+use std::sync::Arc;
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     Executor,
 };
-use std::sync::Arc;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -100,10 +97,10 @@ async fn location_grants_catalog_visibility_prices_and_shared_write_boundary() {
     assert!(access::scope::require_organization_admin(&pool, org, user)
         .await
         .is_err());
-    let product = ProductService::new(pool.clone(), Arc::new(NoopCache))
+    let product = ProductRepository::new(pool.clone())
         .with_locations(vec![a])
         .create(
-            serde_json::from_value(json!({"name":"Local coffee","price":20,"category":"other"}))
+            &serde_json::from_value(json!({"name":"Local coffee","price":20,"category":"other"}))
                 .unwrap(),
             Some(user),
         )
