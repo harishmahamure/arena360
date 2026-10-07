@@ -158,6 +158,29 @@ async fn concurrent_start_and_handover_are_atomic() {
     let b = b.unwrap();
     assert_eq!(a.shift.id, b.shift.id);
     assert_ne!(a.resumed, b.resumed);
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM activity_log WHERE kind='shift_clock_in'")
+            .await,
+        1
+    );
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM activity_log WHERE kind='cash_register_opened'")
+            .await,
+        1
+    );
+    let activity: (String, String, String) = sqlx::query_as(
+        "SELECT actor_user_id,location_id,payload FROM activity_log WHERE kind='shift_clock_in'",
+    )
+    .fetch_one(&f.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    assert_eq!(activity.0, staff.to_string());
+    assert_eq!(activity.1, venue.to_string());
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&activity.2).unwrap()["shiftId"],
+        a.shift.id.to_string()
+    );
+
     assert!(shifts
         .start_confirmed(
             staff,
@@ -205,6 +228,22 @@ async fn concurrent_start_and_handover_are_atomic() {
         .await
         .unwrap();
     assert_eq!(closed.closedShift.status, "completed");
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM activity_log WHERE kind='shift_handover'")
+            .await,
+        1
+    );
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM activity_log WHERE kind='cash_deposit_initiated'")
+            .await,
+        1
+    );
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM activity_log WHERE kind='approval_requested'")
+            .await,
+        1
+    );
+
     assert_eq!(register.opening_balance, 80.0001);
     assert_eq!(
         f.scalar(&format!(
@@ -777,5 +816,54 @@ async fn financial_lists_and_cash_approval_keep_the_actual_venue() {
     )
     .await
     .is_err());
+    f.close().await;
+}
+
+#[tokio::test]
+async fn financial_activity_failure_rolls_back_the_whole_shift() {
+    let f = Fixture::new().await;
+    let venue = f.location("counter").await;
+    let staff = f.staff().await;
+    let shifts = TenantShiftRepository::new(f.db.clone());
+    f.db.with_immediate_writer(move |c| Box::pin(async move {
+        sqlx::query("CREATE TRIGGER reject_register_activity BEFORE INSERT ON activity_log WHEN NEW.kind='cash_register_opened' BEGIN SELECT RAISE(ABORT,'activity unavailable'); END").execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    let before = f.outbox_count().await;
+    let start: StartShiftDto = dto(json!({"openingBalance":100,"venueLocationId":venue}));
+    assert!(shifts
+        .start_confirmed(staff, start.clone(), staff)
+        .await
+        .is_err());
+    assert_eq!(f.outbox_count().await, before);
+    assert_eq!(f.scalar("SELECT COUNT(*) FROM shifts").await, 0);
+    assert_eq!(f.scalar("SELECT COUNT(*) FROM cash_registers").await, 0);
+    assert_eq!(f.scalar("SELECT COUNT(*) FROM activity_log").await, 0);
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("DROP TRIGGER reject_register_activity")
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    let first = shifts
+        .start_confirmed(staff, start.clone(), staff)
+        .await
+        .unwrap();
+    let retry = shifts.start_confirmed(staff, start, staff).await.unwrap();
+    assert_eq!(first.shift.id, retry.shift.id);
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM activity_log WHERE kind='shift_clock_in'")
+            .await,
+        1
+    );
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM activity_log WHERE kind='cash_register_opened'")
+            .await,
+        1
+    );
     f.close().await;
 }

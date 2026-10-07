@@ -20,7 +20,10 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
             }
         }
         "auth"
-            if matches!(path, "/auth/me" | "/auth/refresh" | "/auth/admin-shift-close") =>
+            if matches!(
+                path,
+                "/auth/me" | "/auth/refresh" | "/auth/admin-shift-close"
+            ) =>
         {
             return Some(String::new())
         }
@@ -133,16 +136,6 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
     Some(exact.into())
 }
 pub fn authorize(claims: &JwtUserClaims, method: &str, path: &str) -> Result<(), AppError> {
-    if claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string()
-        && !matches!(
-            path.trim_matches('/').split('/').next(),
-            Some("access" | "auth" | "organizations" | "realtime" | "stats")
-        )
-    {
-        return Err(AppError::Forbidden(
-            "Operational ledger access is limited to its owning venue".into(),
-        ));
-    }
     // Each upload purpose enforces its own permission in the presign handler.
     if path == "/uploads/presign" {
         return Ok(());
@@ -185,6 +178,20 @@ mod tests {
             assert_eq!(permission(method, path, "me").as_deref(), Some(expected));
         }
         assert!(permission("POST", "/new-unmapped-module", "me").is_none());
+    }
+    #[test]
+    fn operational_permissions_work_for_any_tenant_and_still_deny_missing_grants() {
+        let tenant = uuid::Uuid::now_v7().to_string();
+        let claims: JwtUserClaims = serde_json::from_value(serde_json::json!({"sub":"actor","userId":"actor","tenantId":tenant,"allowedTenants":[tenant],"orgIds":[tenant],"roles":["staff"],"permissions":["transactions:read"],"appId":"admin","iss":"gamezone","aud":"gamezone"})).unwrap();
+        assert!(authorize(&claims, "GET", "/transactions").is_ok());
+        assert!(authorize(&claims, "POST", "/transactions").is_err());
+        assert!(authorize(&claims, "GET", "/new-unmapped-module").is_err());
+        assert!(authorize(
+            &claims,
+            "GET",
+            &format!("/organizations/{}/locations", uuid::Uuid::now_v7())
+        )
+        .is_err());
     }
     #[test]
     fn every_business_route_has_an_explicit_boundary() {

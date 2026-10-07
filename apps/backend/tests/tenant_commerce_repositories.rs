@@ -1556,3 +1556,88 @@ async fn settlement_scope_uses_the_collecting_shift_venue_before_pagination() {
     assert_eq!(credits.list_settlements(&filter).await.unwrap().total, 2);
     f.close().await;
 }
+
+#[tokio::test]
+async fn activity_snapshots_commit_with_sales_and_settlements_or_roll_back() {
+    let f = Fixture::new().await;
+    let tx = TenantTransactionRepository::new(f.db.clone());
+    sqlx::query("CREATE TRIGGER reject_sale_activity BEFORE INSERT ON activity_log WHEN NEW.kind='transaction_sale' BEGIN SELECT RAISE(ABORT,'activity unavailable'); END")
+        .execute(&f.admin).await.unwrap();
+    let before = f.atomic_counts().await;
+    let stock = f.stock().await;
+    assert!(tx
+        .create(f.sale("credit", "credit", 1, None), Some(f.staff))
+        .await
+        .is_err());
+    assert_eq!(f.atomic_counts().await, before);
+    assert_eq!(f.stock().await, stock);
+    sqlx::query("DROP TRIGGER reject_sale_activity")
+        .execute(&f.admin)
+        .await
+        .unwrap();
+    let sale = tx
+        .create(f.sale("credit", "credit", 1, None), Some(f.staff))
+        .await
+        .unwrap();
+    let (kind, payload, venue, actor): (String, String, String, String) = sqlx::query_as(
+        "SELECT kind,payload,location_id,actor_user_id FROM activity_log WHERE entity_id=?",
+    )
+    .bind(sale.id.to_string())
+    .fetch_one(&f.admin)
+    .await
+    .unwrap();
+    assert_eq!(kind, "transaction_sale");
+    assert_eq!(venue, f.venue.to_string());
+    assert_eq!(actor, f.staff.to_string());
+    let payload: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    assert_eq!(payload["staffName"], "staff");
+    assert_eq!(payload["customerName"], "player");
+    assert_eq!(payload["paymentLabel"], "Credit");
+    sqlx::query("UPDATE users SET username='Renamed' WHERE id=?")
+        .bind(f.staff.to_string())
+        .execute(&f.admin)
+        .await
+        .unwrap();
+    let retained: String = sqlx::query_scalar("SELECT payload FROM activity_log WHERE entity_id=?")
+        .bind(sale.id.to_string())
+        .fetch_one(&f.admin)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&retained).unwrap(),
+        payload
+    );
+    sqlx::query("CREATE TRIGGER reject_settlement_activity BEFORE INSERT ON activity_log WHEN NEW.kind='credit_settlement' BEGIN SELECT RAISE(ABORT,'activity unavailable'); END")
+        .execute(&f.admin).await.unwrap();
+    let credits = TenantCreditRepository::new(f.db.clone());
+    let before = f.atomic_counts().await;
+    assert!(credits
+        .settle(f.settlement(sale.id, 5.0), f.shift, f.staff)
+        .await
+        .is_err());
+    assert_eq!(f.atomic_counts().await, before);
+    assert_eq!(credits.summary(f.player).await.unwrap().outstanding, 12.5);
+    sqlx::query("DROP TRIGGER reject_settlement_activity")
+        .execute(&f.admin)
+        .await
+        .unwrap();
+    let settlement = credits
+        .settle(f.settlement(sale.id, 5.0), f.shift, f.staff)
+        .await
+        .unwrap();
+    let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM activity_log WHERE kind='credit_settlement' AND entity_id=? AND location_id=?").bind(settlement.id.to_string()).bind(f.venue.to_string()).fetch_one(&f.admin).await.unwrap();
+    assert_eq!(rows, 1);
+    let canonical_venue: String = sqlx::query_scalar("SELECT location_id FROM outbox_events WHERE event_type='credit.settled' AND aggregate_id=?").bind(settlement.id.to_string()).fetch_one(&f.admin).await.unwrap();
+    assert_eq!(canonical_venue, f.venue.to_string());
+    // Internal sales without a staff actor do not manufacture a staff-sale audit row.
+    let silent = tx.create(f.plan_purchase("pending"), None).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM activity_log WHERE entity_id=?")
+            .bind(silent.id.to_string())
+            .fetch_one(&f.admin)
+            .await
+            .unwrap(),
+        0
+    );
+    f.close().await;
+}

@@ -104,68 +104,6 @@ pub async fn authorize_tenant_request(
     }
     if claims.is_admin_or_staff() {
         crate::access::routes::authorize(&claims, req.method().as_str(), &path)?;
-        let root = path.trim_matches('/').split('/').next().unwrap_or_default();
-        if !matches!(
-            root,
-            "access"
-                | "auth"
-                | "branding"
-                | "organizations"
-                | "devices"
-                | "plans"
-                | "products"
-                | "stats"
-                | "notifications"
-                | "activity-log"
-                | "sessions"
-                | "cash-registers"
-                | "cash-deposits"
-                | "expenses"
-                | "shifts"
-                | "inventory"
-                | "transactions"
-                | "kiosk-orders"
-                | "credit"
-                | "realtime"
-                | "metrics"
-                | "health"
-        ) && !(root == "transactions" && req.method() == axum::http::Method::POST)
-            && !(root == "units" && req.method() == axum::http::Method::GET)
-            && path != "/products/current-prices"
-            && !matches!(path.as_str(), "/inventory/locations" | "/inventory/stock")
-            && !path.starts_with("/inventory/locations/")
-            && !matches!(
-                path.as_str(),
-                "/shifts/start"
-                    | "/shifts/start-context"
-                    | "/shifts/active"
-                    | "/shifts/clock-out"
-                    | "/shifts/close"
-                    | "/shifts/handover"
-            )
-        {
-            if let Some(permission) =
-                crate::access::routes::permission(req.method().as_str(), &path, &claims.userId)
-            {
-                if !permission.is_empty() {
-                    let user = claims
-                        .user_id_uuid()
-                        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
-                    let org = Uuid::parse_str(&claims.tenantId)
-                        .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
-                    crate::repositories::TenantSettingsRepository::new(
-                        state.business_db(&claims).await?,
-                    )
-                    .ensure_location_permission(
-                        org,
-                        crate::models::DEFAULT_VENUE_LOCATION_ID,
-                        user,
-                        &permission,
-                    )
-                    .await?;
-                }
-            }
-        }
     }
     req.extensions_mut().insert(claims);
 

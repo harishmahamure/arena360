@@ -50,6 +50,7 @@ async fn event(
     location_id: Option<Uuid>,
     payload: Value,
 ) -> Result<(), AppError> {
+    super::tenant_activity::record_canonical_on(connection, event_type, aggregate_type, aggregate_id, location_id, &payload).await?;
     write_outbox_event_on_connection(
         connection,
         NewOutboxEvent {
@@ -199,7 +200,7 @@ impl TenantDeviceRepository {
         let at = now()?;
         let location_id = dto
             .location_id
-            .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+            .ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?;
         let name = dto.name.clone();
         let serial = dto.serial_number.clone();
         let ip = dto.local_ip_address.clone();

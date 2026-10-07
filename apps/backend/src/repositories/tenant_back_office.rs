@@ -55,6 +55,7 @@ pub(crate) async fn event(
     deleted: bool,
     payload: Value,
 ) -> Result<(), AppError> {
+    super::tenant_activity::record_canonical_on(connection, event_type, aggregate_type, aggregate_id, location_id, &payload).await?;
     write_outbox_event_on_connection(
         connection,
         NewOutboxEvent {

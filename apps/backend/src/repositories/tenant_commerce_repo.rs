@@ -75,6 +75,7 @@ async fn event(
     location_id: Option<Uuid>,
     payload: Value,
 ) -> Result<(), AppError> {
+    super::tenant_activity::record_canonical_on(connection, event_type, aggregate_type, aggregate_id, location_id, &payload).await?;
     write_outbox_event_on_connection(
         connection,
         NewOutboxEvent {
@@ -1741,6 +1742,7 @@ impl TenantCreditRepository {
                     if !shift_valid {
                         return Err(AppError::BadRequest("Shift is not active for this user".into()));
                     }
+                    let collecting_venue: String = sqlx::query_scalar("SELECT location_id FROM shifts WHERE id=?").bind(shift.to_string()).fetch_one(&mut *connection).await?;
                     sqlx::query(
                         "INSERT INTO credit_settlements(id,player_id,settled_by,shift_id,amount,
                          payment_method,cash_amount,online_amount,notes,online_payment_ref_last4,
@@ -1810,12 +1812,13 @@ impl TenantCreditRepository {
                         .bind(transaction.to_string())
                         .execute(&mut *connection)
                         .await?;
+                        let sale_venue: String = sqlx::query_scalar("SELECT location_id FROM transactions WHERE id=?").bind(transaction.to_string()).fetch_one(&mut *connection).await?;
                         event(
                             connection,
                             "transaction",
                             transaction,
                             "transaction.credit_settled",
-                            None,
+                            Some(parse_uuid(&sale_venue)?),
                             json!({"id":transaction,"settlementId":id,
                                    "paidAmount":money_f64(new_paid)?,"updatedAt":at}),
                         )
@@ -1826,7 +1829,7 @@ impl TenantCreditRepository {
                         "credit_settlement",
                         id,
                         "credit.settled",
-                        None,
+                        Some(parse_uuid(&collecting_venue)?),
                         json!({"id":id,"playerId":player,"amount":money_f64(total)?,"updatedAt":at}),
                     )
                     .await

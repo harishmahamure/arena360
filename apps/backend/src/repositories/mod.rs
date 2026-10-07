@@ -90,3 +90,5 @@ mod tenant_settings_access;
 
 pub mod tenant_access_repo;
 pub use tenant_access_repo::{TenantAccessRepository,TenantRoleDto,TenantMemberDto,TenantLocationRoleDto};
+
+pub(crate) mod tenant_activity;
