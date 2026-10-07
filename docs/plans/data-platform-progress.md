@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0024
+## Completed through API-0026
 
-- 21 planned tasks completed.
+- 22 planned tasks completed.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -40,16 +40,18 @@
 - Lease-fenced tenant SQLite catalog and pricing repositories with transactional outbox events,
   location-scoped authorization, scheduled policy activation, and tenant-aware configuration
   snapshots.
+- Tenant SQLite device, player-plan, wallet, and session repositories with atomic dynamic
+  deduction, ledger/outbox writes, idempotent retries, and staged realtime compatibility.
 
 ## Current task
 
-- [ ] `API-0026` — Port devices, sessions, and wallets to the tenant SQLite schema.
+- [ ] `API-0027` — Port transactions, ledger, credit, kiosk orders, and checkout stock deduction.
 
 ## M4 queue
 
 - [x] `DB-0010b` — Core venue SQLite schema.
 - [x] `API-0024` — Catalog and pricing repositories.
-- [ ] `API-0026` — Devices, sessions, and wallets.
+- [x] `API-0026` — Devices, sessions, and wallets.
 - [ ] `API-0027` — Transactions, ledger, credit, kiosk orders, and checkout stock deduction.
 - [ ] `API-0028` — Players and staff membership projection.
 - [ ] `API-0032` — In-process realtime dispatch.
@@ -64,8 +66,8 @@
 ## Verification
 
 - Full backend test suite passes.
-- Tenant catalog, pricing, schema, provisioning, migration, and lease regression tests pass.
-- Latest completed implementation commit: `b0d3b3c` (`API-0024`).
+- Tenant venue, catalog, schema, provisioning, migration, and lease regression tests pass.
+- Latest completed implementation commit: `3276f13` (`API-0026`).
 
 ## Update rule
 
