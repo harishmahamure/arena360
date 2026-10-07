@@ -5,14 +5,24 @@ use uuid::Uuid;
 use crate::dto::PaginationResult;
 use crate::error::AppError;
 use crate::models::{CreateTransactionDto, Transaction, TransactionFilterDto, TransactionRow};
+use crate::realtime::OutboxService;
 
 pub struct TransactionRepository {
     pub(crate) pool: PgPool,
+    outbox: OutboxService,
 }
 
 impl TransactionRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            outbox: OutboxService::new(pool.clone()),
+            pool,
+        }
+    }
+
+    pub fn with_outbox(mut self, outbox: OutboxService) -> Self {
+        self.outbox = outbox;
+        self
     }
 
     const SELECT: &'static str = r#"
@@ -276,7 +286,12 @@ impl TransactionRepository {
         if !matches!(previous_status.as_str(), "completed" | "credit")
             && matches!(transaction.payment_status.as_str(), "completed" | "credit")
         {
-            crate::services::kitchen_service::enqueue(&mut db_tx, transaction.id, actor_id).await?;
+            let receipts =
+                crate::services::kitchen_service::enqueue(&mut db_tx, transaction.id, actor_id)
+                    .await?;
+            db_tx.commit().await?;
+            self.outbox.notify_all_committed(receipts);
+            return Ok(transaction);
         }
         db_tx.commit().await?;
         Ok(transaction)

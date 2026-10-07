@@ -1,4 +1,7 @@
-use crate::{error::AppError, realtime::OutboxService};
+use crate::{
+    error::AppError,
+    realtime::{OutboxReceipt, OutboxService},
+};
 use serde_json::json;
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
@@ -13,32 +16,39 @@ pub fn valid_transition(from: &str, to: &str) -> bool {
     )
 }
 
-pub async fn publish(tx: &mut Transaction<'_, Postgres>, id: Uuid) -> Result<(), AppError> {
-    OutboxService::publish_in_tx(
-        tx,
-        "kitchen",
-        "kitchen.changed",
-        json!({"ticketId": id}),
-        None,
-        None,
-        None,
-        true,
-    )
-    .await?;
-    for role in ["admin", "staff"] {
+pub async fn publish(
+    tx: &mut Transaction<'_, Postgres>,
+    id: Uuid,
+) -> Result<Vec<OutboxReceipt>, AppError> {
+    let mut receipts = vec![
         OutboxService::publish_in_tx(
             tx,
-            role,
+            "kitchen",
             "kitchen.changed",
             json!({"ticketId": id}),
-            Some(role),
+            None,
             None,
             None,
             true,
         )
-        .await?;
+        .await?,
+    ];
+    for role in ["admin", "staff"] {
+        receipts.push(
+            OutboxService::publish_in_tx(
+                tx,
+                role,
+                "kitchen.changed",
+                json!({"ticketId": id}),
+                Some(role),
+                None,
+                None,
+                true,
+            )
+            .await?,
+        );
     }
-    Ok(())
+    Ok(receipts)
 }
 
 /// Called inside the sale transaction, after its line items exist. Unique transaction_id
@@ -47,7 +57,8 @@ pub async fn enqueue(
     tx: &mut Transaction<'_, Postgres>,
     transaction_id: Uuid,
     actor: Option<Uuid>,
-) -> Result<(), AppError> {
+) -> Result<Vec<OutboxReceipt>, AppError> {
+    let mut receipts = Vec::new();
     let id: Option<Uuid> = sqlx::query_scalar(r#"
         INSERT INTO kitchen_tickets (transaction_id, items, customer, notes, due_at)
         SELECT t.id, jsonb_agg(jsonb_build_object('productId',p.id,'name',p.name,
@@ -72,9 +83,9 @@ pub async fn enqueue(
         .bind(actor)
         .execute(&mut **tx)
         .await?;
-        publish(tx, id).await?;
+        receipts = publish(tx, id).await?;
     }
-    Ok(())
+    Ok(receipts)
 }
 
 #[cfg(test)]

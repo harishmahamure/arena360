@@ -577,14 +577,6 @@ impl SessionService {
         let mutation = repo.charge(session_id, total, None, None).await?;
         self.after_tenant_session_mutation(db.clone(), &mutation.session, &mutation.balance)
             .await;
-        publish_balance_updated_for_session(
-            &self.outbox,
-            player_id,
-            device_id,
-            session_id,
-            &mutation.balance,
-        )
-        .await;
         if mutation.session.end_time.is_some() {
             self.publish_tenant_device_status(db, device_id).await;
             self.publish_tenant_session_ended(&mutation.session, &mutation.balance, "auto")
@@ -719,28 +711,6 @@ impl SessionService {
             "cafeTimezone": timezone,
         });
         let _ = self
-            .outbox
-            .publish(
-                "staff",
-                "session.started",
-                payload.clone(),
-                None,
-                None,
-                true,
-            )
-            .await;
-        let _ = self
-            .outbox
-            .publish(
-                &format!("device:{}", device.id),
-                "session.started",
-                payload.clone(),
-                None,
-                None,
-                false,
-            )
-            .await;
-        let _ = self
             .notifications
             .record_activity(RecordNotification {
                 kind: activity_kind::SESSION_STARTED.into(),
@@ -772,32 +742,6 @@ impl SessionService {
             "endTime": session.end_time.as_ref().map(crate::time::utc_timestamp),
             "reason": reason,
         });
-        let _ = self
-            .outbox
-            .publish("staff", "session.ended", payload.clone(), None, None, true)
-            .await;
-        let _ = self
-            .outbox
-            .publish(
-                &format!("device:{}", session.device_id),
-                "session.ended",
-                payload.clone(),
-                None,
-                None,
-                DEVICE_SESSION_ENDED_DURABLE,
-            )
-            .await;
-        let _ = self
-            .outbox
-            .publish(
-                &format!("user:{}", balance.player_id),
-                "session.ended",
-                payload.clone(),
-                None,
-                Some(balance.player_id),
-                false,
-            )
-            .await;
         let _ = self
             .notifications
             .record_activity(RecordNotification {
@@ -1648,5 +1592,19 @@ mod tests {
     fn effective_remaining_never_negative() {
         let start = Utc::now() - chrono::Duration::minutes(30);
         assert_eq!(effective_remaining_minutes(5, start), 0);
+    }
+
+    #[test]
+    fn staged_tenant_heartbeat_has_no_postgres_realtime_mirror() {
+        let source = include_str!("session_service.rs");
+        let tenant_heartbeat = source
+            .split("pub async fn heartbeat_for_player_tenant")
+            .nth(1)
+            .unwrap()
+            .split("pub async fn open_kiosk_session_for_player_tenant")
+            .next()
+            .unwrap();
+        assert!(!tenant_heartbeat.contains("publish_balance_updated_for_session"));
+        assert!(!tenant_heartbeat.contains(".outbox.publish"));
     }
 }

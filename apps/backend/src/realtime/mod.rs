@@ -9,8 +9,10 @@ pub mod handler;
 pub mod outbox;
 pub mod registry;
 pub mod rooms;
+pub mod wake;
 
 pub use balance_events::{publish_balance_updated_for_player, publish_balance_updated_for_session};
 pub use dispatcher::Dispatcher;
-pub use outbox::OutboxService;
+pub use outbox::{OutboxReceipt, OutboxService};
 pub use rooms::RoomService;
+pub use wake::RealtimeHub;

@@ -18,6 +18,18 @@ pub trait TenantLease: Send + Sync {
     fn ensure_writable(&self, tenant_id: Uuid, expected_generation: i64) -> Result<(), AppError>;
 }
 
+pub trait TenantCommitNotifier: Send + Sync {
+    fn registered(&self, tenant_id: Uuid, current_sequence: i64);
+    fn committed(&self, tenant_id: Uuid, sequences: &[i64]);
+}
+
+struct NoopTenantCommitNotifier;
+
+impl TenantCommitNotifier for NoopTenantCommitNotifier {
+    fn registered(&self, _tenant_id: Uuid, _current_sequence: i64) {}
+    fn committed(&self, _tenant_id: Uuid, _sequences: &[i64]) {}
+}
+
 impl TenantLease for LeaseClient {
     fn writable_generation(&self, tenant_id: Uuid) -> Result<i64, AppError> {
         LeaseClient::writable_generation(self, tenant_id)
@@ -69,6 +81,7 @@ pub struct TenantDb {
     ownership_generation: i64,
     path: PathBuf,
     lease: Arc<dyn TenantLease>,
+    notifier: Arc<dyn TenantCommitNotifier>,
     writer: Mutex<Option<SqliteConnection>>,
     readers: SqlitePool,
     last_used: StdMutex<Instant>,
@@ -141,27 +154,46 @@ impl TenantDb {
             .as_mut()
             .ok_or_else(|| AppError::Forbidden("Tenant writer is closed".into()))?;
         self.touch()?;
+        let previous_sequence: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(sequence), 0) FROM outbox_events")
+                .fetch_one(&mut *connection)
+                .await?;
         sqlx::query("BEGIN IMMEDIATE")
             .execute(&mut *connection)
             .await?;
-        let result = operation(connection).await;
-        match result {
-            Ok(value) => {
-                if let Err(error) = self
-                    .lease
-                    .ensure_writable(self.tenant_id, self.ownership_generation)
-                {
-                    let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
-                    return Err(error);
-                }
-                sqlx::query("COMMIT").execute(&mut *connection).await?;
-                Ok(value)
-            }
+        let value = match operation(connection).await {
+            Ok(value) => value,
             Err(error) => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
-                Err(error)
+                return Err(error);
             }
+        };
+        let sequences: Vec<i64> = match sqlx::query_scalar(
+            "SELECT sequence FROM outbox_events WHERE sequence > ? ORDER BY sequence",
+        )
+        .bind(previous_sequence)
+        .fetch_all(&mut *connection)
+        .await
+        {
+            Ok(sequences) => sequences,
+            Err(error) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+                return Err(error.into());
+            }
+        };
+        if let Err(error) = self
+            .lease
+            .ensure_writable(self.tenant_id, self.ownership_generation)
+        {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+            return Err(error);
         }
+        if let Err(error) = sqlx::query("COMMIT").execute(&mut *connection).await {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+            return Err(error.into());
+        }
+        self.notifier.committed(self.tenant_id, &sequences);
+        Ok(value)
     }
 
     pub async fn close(&self) -> Result<(), AppError> {
@@ -198,6 +230,7 @@ pub struct TenantDbManager {
     lease: Arc<dyn TenantLease>,
     handles: Arc<RwLock<HashMap<Uuid, Arc<TenantDb>>>>,
     open_gate: Arc<Mutex<()>>,
+    notifier: Arc<dyn TenantCommitNotifier>,
 }
 
 impl TenantDbManager {
@@ -207,7 +240,13 @@ impl TenantDbManager {
             lease,
             handles: Arc::new(RwLock::new(HashMap::new())),
             open_gate: Arc::new(Mutex::new(())),
+            notifier: Arc::new(NoopTenantCommitNotifier),
         })
+    }
+
+    pub fn with_commit_notifier(mut self, notifier: Arc<dyn TenantCommitNotifier>) -> Self {
+        self.notifier = notifier;
+        self
     }
 
     pub async fn open(&self, tenant_id: Uuid) -> Result<Arc<TenantDb>, AppError> {
@@ -231,8 +270,16 @@ impl TenantDbManager {
             stale.close().await?;
         }
 
-        let handle =
-            Arc::new(open_tenant(tenant_id, generation, &self.config, self.lease.clone()).await?);
+        let handle = Arc::new(
+            open_tenant(
+                tenant_id,
+                generation,
+                &self.config,
+                self.lease.clone(),
+                self.notifier.clone(),
+            )
+            .await?,
+        );
         self.handles.write().await.insert(tenant_id, handle.clone());
         Ok(handle)
     }
@@ -306,6 +353,7 @@ async fn open_tenant(
     generation: i64,
     config: &TenantDbConfig,
     lease: Arc<dyn TenantLease>,
+    notifier: Arc<dyn TenantCommitNotifier>,
 ) -> Result<TenantDb, AppError> {
     let path = tenant_path(&config.root, tenant_id);
     if !path.is_file() {
@@ -316,7 +364,28 @@ async fn open_tenant(
     }
 
     let writer_options = sqlite_options(&path, config.busy_timeout, false);
-    let writer = SqliteConnection::connect_with(&writer_options).await?;
+    let mut writer = SqliteConnection::connect_with(&writer_options).await?;
+    let outbox_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM sqlite_schema
+            WHERE type = 'table' AND name = 'outbox_events'
+        )",
+    )
+    .fetch_one(&mut writer)
+    .await?;
+    let current_sequence: i64 = if outbox_exists {
+        // Once the table exists, query failures are real corruption/schema errors and
+        // must not be mistaken for an unmigrated database.
+        sqlx::query_scalar("SELECT COALESCE(MAX(sequence), 0) FROM outbox_events")
+            .fetch_one(&mut writer)
+            .await?
+    } else {
+        // Schema-version-0 files are opened by the migration orchestrator before
+        // outbox_events exists. Registering zero preserves no-history startup while
+        // allowing this same handle's first post-migration commit to wake realtime.
+        0
+    };
+    notifier.registered(tenant_id, current_sequence);
     let reader_options = sqlite_options(&path, config.busy_timeout, true);
     let readers = SqlitePoolOptions::new()
         .min_connections(0)
@@ -330,6 +399,7 @@ async fn open_tenant(
         ownership_generation: generation,
         path,
         lease,
+        notifier,
         writer: Mutex::new(Some(writer)),
         readers,
         last_used: StdMutex::new(Instant::now()),

@@ -12,7 +12,9 @@ mod values;
 use sqlx::{migrate::Migrator, SqliteConnection, SqlitePool};
 
 pub use crate::time::{format_sqlite_timestamp, parse_sqlite_timestamp, SqliteTimestampError};
-pub use db::{tenant_path, TenantDb, TenantDbConfig, TenantDbManager, TenantLease};
+pub use db::{
+    tenant_path, TenantCommitNotifier, TenantDb, TenantDbConfig, TenantDbManager, TenantLease,
+};
 pub use location_projection::{
     sync_venue_locations, LocationProjectionResult, ProjectedVenueLocation,
 };

@@ -869,6 +869,11 @@ impl TenantSessionRepository {
         let id = Uuid::now_v7();
         let at = now()?;
         let start_text = timestamp(&start)?;
+        let snapshot_value = snapshot.clone();
+        let timezone = snapshot_value
+            .get("policyTimezone")
+            .cloned()
+            .unwrap_or_else(|| Value::String("UTC".into()));
         let snapshot =
             serde_json::to_string(&snapshot).map_err(|e| AppError::BadRequest(e.to_string()))?;
         let db = self.db.clone();
@@ -877,12 +882,18 @@ impl TenantSessionRepository {
             let Some((minutes,source,status,expiry,owner))=wallet else{return Err(AppError::NotFound(format!("Balance with ID {balance} not found")))};
             if owner!=player.to_string(){return Err(AppError::Forbidden("Balance does not belong to this player".into()));}
             if status!="active"||minutes<=0||expiry<=start_text{return Err(AppError::Forbidden("Balance access denied".into()));}
-            let available:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE id=? AND location_id=? AND deleted_at IS NULL AND status IN ('available','operational'))").bind(device.to_string()).bind(location.to_string()).fetch_one(&mut *connection).await?;
-            if !available{return Err(AppError::BadRequest("Device is not available".into()));}
+            let device_name:Option<String>=sqlx::query_scalar("SELECT name FROM devices WHERE id=? AND location_id=? AND deleted_at IS NULL AND status IN ('available','operational')").bind(device.to_string()).bind(location.to_string()).fetch_optional(&mut *connection).await?;
+            let Some(device_name)=device_name else{return Err(AppError::BadRequest("Device is not available".into()));};
             sqlx::query("INSERT INTO usage_sessions(id,player_id,balance_id,device_id,location_id,shift_id,start_time,time_credits_consumed,wallet_minutes_at_start,source_plan_id_at_start,deduction_profile_snapshot,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,?,?,?,?,?,?,?)")
-                .bind(id.to_string()).bind(player.to_string()).bind(balance.to_string()).bind(device.to_string()).bind(location.to_string()).bind(shift.map(|v|v.to_string())).bind(&start_text).bind(minutes).bind(source).bind(snapshot).bind(actor.map(|v|v.to_string())).bind(actor.map(|v|v.to_string())).bind(&at).bind(&at).execute(&mut *connection).await?;
+                .bind(id.to_string()).bind(player.to_string()).bind(balance.to_string()).bind(device.to_string()).bind(location.to_string()).bind(shift.map(|v|v.to_string())).bind(&start_text).bind(minutes).bind(source.clone()).bind(&snapshot).bind(actor.map(|v|v.to_string())).bind(actor.map(|v|v.to_string())).bind(&at).bind(&at).execute(&mut *connection).await?;
             sqlx::query("UPDATE devices SET status='in_use',updated_at=? WHERE id=?").bind(&at).bind(device.to_string()).execute(&mut *connection).await?;
-            event(connection,"session",id,"session.started",Some(location),json!({"id":id,"playerId":player,"balanceId":balance,"deviceId":device,"locationId":location,"startTime":start_text,"updatedAt":at})).await?;
+            event(connection,"session",id,"session.started",Some(location),json!({
+                "id":id,"playerId":player,"balanceId":balance,"deviceId":device,
+                "deviceName":device_name,"locationId":location,"startTime":start_text,
+                "walletMinutesAtStart":minutes,"sourcePlanIdAtStart":source,
+                "remainingMinutes":minutes,"deductionProfile":snapshot_value,
+                "cafeTimezone":timezone,"updatedAt":at
+            })).await?;
             event(connection,"device",device,"device.status_changed",Some(location),json!({"id":device,"status":"in_use","updatedAt":at})).await?;
             Ok(())
         }))).await?;
@@ -898,8 +909,8 @@ impl TenantSessionRepository {
         let at = now()?;
         let db = self.db.clone();
         write(&db,Box::new(move|connection|Box::pin(async move{
-            let row:Option<(String,String,String,String,i32,Option<i32>,String)>=sqlx::query_as("SELECT balance_id,player_id,device_id,location_id,COALESCE(time_credits_consumed,0),duration_minutes,start_time FROM usage_sessions WHERE id=? AND deleted_at IS NULL AND end_time IS NULL").bind(id.to_string()).fetch_optional(&mut *connection).await?;
-            let Some((balance_text,player_text,device_text,location_text,charged,_,start_text))=row else{return Err(AppError::NotFound(format!("Active session with ID {id} not found")))};
+            let row:Option<(String,String,String,String,i32,Option<i32>,String,i32,Option<String>,Option<String>,String)>=sqlx::query_as("SELECT s.balance_id,s.player_id,s.device_id,s.location_id,COALESCE(s.time_credits_consumed,0),s.duration_minutes,s.start_time,s.wallet_minutes_at_start,s.source_plan_id_at_start,s.deduction_profile_snapshot,d.name FROM usage_sessions s JOIN devices d ON d.id=s.device_id WHERE s.id=? AND s.deleted_at IS NULL AND s.end_time IS NULL").bind(id.to_string()).fetch_optional(&mut *connection).await?;
+            let Some((balance_text,player_text,device_text,location_text,charged,_,start_text,wallet_at_start,source_plan,deduction_snapshot,device_name))=row else{return Err(AppError::NotFound(format!("Active session with ID {id} not found")))};
             let balance=Uuid::parse_str(&balance_text).map_err(|e|AppError::Internal(e.to_string()))?;let player=Uuid::parse_str(&player_text).map_err(|e|AppError::Internal(e.to_string()))?;
             let device=Uuid::parse_str(&device_text).map_err(|e|AppError::Internal(e.to_string()))?;let location=Uuid::parse_str(&location_text).map_err(|e|AppError::Internal(e.to_string()))?;
             let delta=(total.max(charged)-charged).max(0);
@@ -909,7 +920,7 @@ impl TenantSessionRepository {
             if deducted>0{
                 sqlx::query("UPDATE player_plan_balances SET remaining_minutes=?,status=CASE WHEN ?=0 THEN 'exhausted' ELSE status END,updated_at=? WHERE id=?").bind(after).bind(after).bind(&at).bind(&balance_text).execute(&mut *connection).await?;
                 append_ledger(connection,balance,player,-deducted,ledger_reason::SESSION_USAGE,None,Some(id),after,&expiry,actor,&at).await?;
-                event(connection,"balance",balance,"balance.updated",Some(location),json!({"id":balance,"playerId":player,"remainingMinutes":after,"sessionId":id,"updatedAt":at})).await?;
+                event(connection,"balance",balance,"balance.updated",Some(location),json!({"id":balance,"playerId":player,"deviceId":device,"remainingMinutes":after,"sessionId":id,"updatedAt":at})).await?;
             }
             let end=end.or_else(||{
                 if after>0{return None;}
@@ -921,7 +932,15 @@ impl TenantSessionRepository {
                 let end_text=timestamp(&end_time)?;
                 sqlx::query("UPDATE usage_sessions SET end_time=?,duration_minutes=?,time_credits_consumed=?,end_reason=?,updated_by=COALESCE(?,updated_by),updated_at=? WHERE id=?").bind(&end_text).bind(duration).bind(persisted).bind(&reason).bind(actor.map(|v|v.to_string())).bind(&at).bind(id.to_string()).execute(&mut *connection).await?;
                 sqlx::query("UPDATE devices SET status='available',updated_at=? WHERE id=?").bind(&at).bind(&device_text).execute(&mut *connection).await?;
-                event(connection,"session",id,"session.ended",Some(location),json!({"id":id,"playerId":player,"deviceId":device,"locationId":location,"remainingMinutes":after,"endTime":end_text,"reason":reason,"updatedAt":at})).await?;
+                let deduction_profile=deduction_snapshot.as_deref().and_then(|value|serde_json::from_str::<Value>(value).ok()).unwrap_or_else(||json!({}));
+                let cafe_timezone=deduction_profile.get("policyTimezone").cloned().unwrap_or_else(||Value::String("UTC".into()));
+                event(connection,"session",id,"session.ended",Some(location),json!({
+                    "id":id,"playerId":player,"balanceId":balance,"deviceId":device,
+                    "deviceName":device_name,"locationId":location,"startTime":start_text,
+                    "walletMinutesAtStart":wallet_at_start,"sourcePlanIdAtStart":source_plan,
+                    "remainingMinutes":after,"deductionProfile":deduction_profile,
+                    "cafeTimezone":cafe_timezone,"endTime":end_text,"reason":reason,"updatedAt":at
+                })).await?;
                 event(connection,"device",device,"device.status_changed",Some(location),json!({"id":device,"status":"available","updatedAt":at})).await?;
             }else{
                 sqlx::query("UPDATE usage_sessions SET time_credits_consumed=?,updated_at=? WHERE id=?").bind(persisted).bind(&at).bind(id.to_string()).execute(&mut *connection).await?;

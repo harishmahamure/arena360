@@ -6,8 +6,9 @@ use std::time::Duration;
 use chrono::{TimeZone, Utc};
 use gaming_cafe_api::error::AppError;
 use gaming_cafe_api::tenancy::{
-    retry_foreground, sync_venue_locations, tenant_path, ProjectedVenueLocation, SqliteBusyMetrics,
-    SqliteRetryConfig, TenantDbConfig, TenantDbManager, TenantLease,
+    retry_foreground, sync_venue_locations, tenant_path, write_outbox_event_on_connection,
+    NewOutboxEvent, ProjectedVenueLocation, SqliteBusyMetrics, SqliteRetryConfig,
+    TenantCommitNotifier, TenantDbConfig, TenantDbManager, TenantLease,
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Connection, SqliteConnection};
@@ -50,6 +51,40 @@ impl TenantLease for FakeLease {
                 "tenant lease generation changed".into(),
             ))
         }
+    }
+}
+
+#[derive(Default)]
+struct RecordingNotifier {
+    registered: std::sync::Mutex<Vec<(Uuid, i64)>>,
+    committed: std::sync::Mutex<Vec<(Uuid, Vec<i64>)>>,
+}
+
+impl TenantCommitNotifier for RecordingNotifier {
+    fn registered(&self, tenant_id: Uuid, current_sequence: i64) {
+        self.registered
+            .lock()
+            .unwrap()
+            .push((tenant_id, current_sequence));
+    }
+
+    fn committed(&self, tenant_id: Uuid, sequences: &[i64]) {
+        self.committed
+            .lock()
+            .unwrap()
+            .push((tenant_id, sequences.to_vec()));
+    }
+}
+
+fn outbox_event() -> NewOutboxEvent {
+    NewOutboxEvent {
+        location_id: None,
+        aggregate_type: "device".into(),
+        aggregate_id: Uuid::new_v4(),
+        event_type: "device.status_changed".into(),
+        schema_version: 1,
+        deleted: false,
+        payload: serde_json::json!({"status":"available"}),
     }
 }
 
@@ -252,6 +287,100 @@ async fn immediate_writer_rolls_back_when_lease_changes_before_commit() {
         .await
         .unwrap();
     assert_eq!(count, 0);
+    db.close().await.unwrap();
+    remove_test_root(&root).await;
+}
+
+#[tokio::test]
+async fn immediate_writer_notifies_exact_sequences_only_after_commit() {
+    let (root, tenant_id) = provision_tenant().await;
+    let lease = Arc::new(FakeLease::default());
+    lease.set(tenant_id, Some(1));
+    let notifier = Arc::new(RecordingNotifier::default());
+    let manager = TenantDbManager::new(test_config(root.clone()), lease.clone())
+        .unwrap()
+        .with_commit_notifier(notifier.clone());
+    let db = manager.open(tenant_id).await.unwrap();
+    assert_eq!(*notifier.registered.lock().unwrap(), vec![(tenant_id, 0)]);
+
+    db.with_immediate_writer(|connection| {
+        Box::pin(async move {
+            write_outbox_event_on_connection(connection, outbox_event()).await?;
+            write_outbox_event_on_connection(connection, outbox_event()).await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        *notifier.committed.lock().unwrap(),
+        vec![(tenant_id, vec![1, 2])]
+    );
+
+    let rolled_back = db
+        .with_immediate_writer(|connection| {
+            Box::pin(async move {
+                write_outbox_event_on_connection(connection, outbox_event()).await?;
+                Err::<(), _>(AppError::BadRequest("rollback".into()))
+            })
+        })
+        .await;
+    assert!(rolled_back.is_err());
+    lease.set(tenant_id, Some(1));
+    let fenced_lease = lease.clone();
+    let fenced = db
+        .with_immediate_writer(|connection| {
+            Box::pin(async move {
+                write_outbox_event_on_connection(connection, outbox_event()).await?;
+                fenced_lease.set(tenant_id, Some(2));
+                Ok(())
+            })
+        })
+        .await;
+    assert!(fenced.is_err());
+    assert_eq!(notifier.committed.lock().unwrap().len(), 1);
+
+    db.close().await.unwrap();
+    remove_test_root(&root).await;
+}
+
+#[tokio::test]
+async fn sequence_collection_failure_rolls_back_and_writer_remains_usable() {
+    let (root, tenant_id) = provision_tenant().await;
+    let lease = Arc::new(FakeLease::default());
+    lease.set(tenant_id, Some(1));
+    let notifier = Arc::new(RecordingNotifier::default());
+    let manager = TenantDbManager::new(test_config(root.clone()), lease)
+        .unwrap()
+        .with_commit_notifier(notifier.clone());
+    let db = manager.open(tenant_id).await.unwrap();
+
+    let failed = db
+        .with_immediate_writer(|connection| {
+            Box::pin(async move {
+                sqlx::query("DROP TABLE outbox_events")
+                    .execute(connection)
+                    .await?;
+                Ok(())
+            })
+        })
+        .await;
+    assert!(failed.is_err());
+    assert!(notifier.committed.lock().unwrap().is_empty());
+
+    db.with_immediate_writer(|connection| {
+        Box::pin(async move {
+            write_outbox_event_on_connection(connection, outbox_event()).await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        *notifier.committed.lock().unwrap(),
+        vec![(tenant_id, vec![1])]
+    );
+
     db.close().await.unwrap();
     remove_test_root(&root).await;
 }

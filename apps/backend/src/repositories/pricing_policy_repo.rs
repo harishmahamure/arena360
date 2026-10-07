@@ -8,11 +8,20 @@ use crate::realtime::OutboxService;
 #[derive(Clone)]
 pub struct PricingPolicyRepository {
     pool: PgPool,
+    outbox: OutboxService,
 }
 
 impl PricingPolicyRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            outbox: OutboxService::new(pool.clone()),
+            pool,
+        }
+    }
+
+    pub fn with_outbox(mut self, outbox: OutboxService) -> Self {
+        self.outbox = outbox;
+        self
     }
 
     pub async fn list_sets(
@@ -353,7 +362,7 @@ impl PricingPolicyRepository {
             .execute(&mut *tx)
             .await?;
         }
-        OutboxService::publish_in_tx(
+        let receipt = OutboxService::publish_in_tx(
             &mut tx,
             "configuration",
             "pricing.rules.changed",
@@ -372,6 +381,7 @@ impl PricingPolicyRepository {
         )
         .await?;
         tx.commit().await?;
+        self.outbox.notify_committed(receipt);
         Ok(published)
     }
 
@@ -388,6 +398,7 @@ impl PricingPolicyRepository {
         .await?;
         let mut activated = Vec::new();
         for (version_id, set_id, organization_id, version) in rows {
+            let mut receipt = None;
             let mut tx = self.pool.begin().await?;
             sqlx::query(r#"SELECT id FROM pricing_rule_sets WHERE id = $1 FOR UPDATE"#)
                 .bind(set_id)
@@ -428,27 +439,32 @@ impl PricingPolicyRepository {
                 .bind(version_id)
                 .execute(&mut *tx)
                 .await?;
-                OutboxService::publish_in_tx(
-                    &mut tx,
-                    "configuration",
-                    "pricing.rules.changed",
-                    serde_json::json!({
-                        "organizationId": organization_id,
-                        "ruleSetId": set_id,
-                        "versionId": version_id,
-                        "version": version,
-                        "status": "published",
-                        "activatedAt": chrono::Utc::now(),
-                    }),
-                    None,
-                    None,
-                    None,
-                    true,
-                )
-                .await?;
+                receipt = Some(
+                    OutboxService::publish_in_tx(
+                        &mut tx,
+                        "configuration",
+                        "pricing.rules.changed",
+                        serde_json::json!({
+                            "organizationId": organization_id,
+                            "ruleSetId": set_id,
+                            "versionId": version_id,
+                            "version": version,
+                            "status": "published",
+                            "activatedAt": chrono::Utc::now(),
+                        }),
+                        None,
+                        None,
+                        None,
+                        true,
+                    )
+                    .await?,
+                );
                 activated.push((organization_id, set_id, version_id, version));
             }
             tx.commit().await?;
+            if let Some(receipt) = receipt {
+                self.outbox.notify_committed(receipt);
+            }
         }
         Ok(activated)
     }

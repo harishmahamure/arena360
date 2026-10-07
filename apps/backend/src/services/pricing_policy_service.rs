@@ -14,6 +14,7 @@ use crate::models::{
     PricingRule, PricingRuleSet, PricingRuleVersion, PricingSimulationDto, PricingSimulationResult,
     PricingTarget, PricingTraceStep, PublishPricingRuleVersionDto,
 };
+use crate::realtime::OutboxService;
 use crate::repositories::{PricingPolicyRepository, TenantPricingPolicyRepository};
 use crate::tenancy::TenantDb;
 
@@ -30,6 +31,11 @@ impl PricingPolicyService {
         Self {
             repo: PricingPolicyRepository::new(pool),
         }
+    }
+
+    pub fn with_outbox(mut self, outbox: OutboxService) -> Self {
+        self.repo = self.repo.with_outbox(outbox);
+        self
     }
 
     pub async fn list(

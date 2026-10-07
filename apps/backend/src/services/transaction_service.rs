@@ -69,7 +69,7 @@ impl TransactionService {
             line_item_repo: TransactionProductRepository::new(pool.clone()),
             inventory_repo: InventoryRepository::new(pool.clone()),
             pricing: PricingPolicyService::new(pool.clone()),
-            repo: TransactionRepository::new(pool),
+            repo: TransactionRepository::new(pool).with_outbox(outbox.clone()),
             balances,
             credit,
             events,
@@ -409,8 +409,10 @@ impl TransactionService {
             .await?;
         }
 
-        crate::services::kitchen_service::enqueue(&mut db_tx, transaction.id, actor_id).await?;
+        let kitchen_receipts =
+            crate::services::kitchen_service::enqueue(&mut db_tx, transaction.id, actor_id).await?;
         db_tx.commit().await?;
+        self.outbox.notify_all_committed(kitchen_receipts);
 
         let _ = self
             .cache

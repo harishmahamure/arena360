@@ -121,8 +121,9 @@ pub async fn advance(
     })
     .execute(&mut *tx)
     .await?;
-    kitchen_service::publish(&mut tx, id).await?;
+    let receipts = kitchen_service::publish(&mut tx, id).await?;
     tx.commit().await?;
+    state.outbox.notify_all_committed(receipts);
     ok(serde_json::json!({"id":id,"status":dto.status,"revision":revision+1}))
 }
 
@@ -189,7 +190,8 @@ pub async fn save_menu(
     }
     sqlx::query("INSERT INTO kitchen_menu_settings(product_id,enabled,station,prep_minutes,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(product_id) DO UPDATE SET enabled=$2,station=$3,prep_minutes=$4,updated_by=$5,updated_at=now(),revision=kitchen_menu_settings.revision+1")
         .bind(id).bind(dto.enabled).bind(station).bind(dto.prep_minutes).bind(claims.user_id_uuid()).execute(&mut *tx).await?;
-    kitchen_service::publish(&mut tx, id).await?;
+    let receipts = kitchen_service::publish(&mut tx, id).await?;
     tx.commit().await?;
+    state.outbox.notify_all_committed(receipts);
     ok(serde_json::json!({"saved":true}))
 }

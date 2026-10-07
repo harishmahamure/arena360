@@ -207,6 +207,21 @@ async fn kiosk_placement_does_not_deduct_and_conversion_is_atomic() {
         .await
         .unwrap();
     assert_eq!(fixture.stock().await, 5);
+    let placed_payload: String = sqlx::query_scalar(
+        "SELECT payload FROM outbox_events
+         WHERE aggregate_id=? AND event_type='kiosk_order.placed'
+         ORDER BY sequence DESC LIMIT 1",
+    )
+    .bind(order.id.to_string())
+    .fetch_one(&fixture.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    let placed_payload: serde_json::Value = serde_json::from_str(&placed_payload).unwrap();
+    assert_eq!(placed_payload["deviceName"], "PC-1");
+    assert_eq!(placed_payload["playerUsername"], "player");
+    assert_eq!(placed_payload["items"][0]["productName"], "Cola");
+    assert_eq!(placed_payload["items"][0]["quantity"], 2);
+    assert_eq!(placed_payload["items"][0]["unitPrice"], 12.5);
     assert!(kiosk
         .place(
             fixture.player,
@@ -279,6 +294,20 @@ async fn kiosk_placement_does_not_deduct_and_conversion_is_atomic() {
         .await
         .unwrap();
     assert_eq!(transaction.amount, 25.0);
+    let sale_payload: String = sqlx::query_scalar(
+        "SELECT payload FROM outbox_events
+         WHERE aggregate_id=? AND event_type='transaction.created'
+         ORDER BY sequence DESC LIMIT 1",
+    )
+    .bind(transaction.id.to_string())
+    .fetch_one(&fixture.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    let sale_payload: serde_json::Value = serde_json::from_str(&sale_payload).unwrap();
+    assert_eq!(sale_payload["paymentMethod"], "cash");
+    assert_eq!(sale_payload["actorId"], fixture.staff.to_string());
+    assert_eq!(sale_payload["actorRole"], "staff");
+    assert_eq!(sale_payload["transactionType"], "product_purchase");
     let lines = transactions.list_line_items(transaction.id).await.unwrap();
     assert_eq!(lines[0].unit_price, 12.5);
     assert_eq!(lines[0].product_name, "Cola");

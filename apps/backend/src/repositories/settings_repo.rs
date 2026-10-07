@@ -11,11 +11,20 @@ use crate::realtime::OutboxService;
 #[derive(Clone)]
 pub struct SettingsRepository {
     pool: PgPool,
+    outbox: OutboxService,
 }
 
 impl SettingsRepository {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            outbox: OutboxService::new(pool.clone()),
+            pool,
+        }
+    }
+
+    pub fn with_outbox(mut self, outbox: OutboxService) -> Self {
+        self.outbox = outbox;
+        self
     }
 
     pub async fn membership_context(
@@ -86,8 +95,16 @@ impl SettingsRepository {
         user_id: Uuid,
         permission: &str,
     ) -> Result<(), AppError> {
-        self.ensure_location_access(organization_id, location_id, user_id).await?;
-        crate::access::require_location(&self.pool, organization_id, user_id, location_id, permission).await
+        self.ensure_location_access(organization_id, location_id, user_id)
+            .await?;
+        crate::access::require_location(
+            &self.pool,
+            organization_id,
+            user_id,
+            location_id,
+            permission,
+        )
+        .await
     }
 
     pub async fn validate_location(
@@ -138,7 +155,10 @@ impl SettingsRepository {
         .await?)
     }
 
-    pub async fn list_managed_locations(&self, organization_id: Uuid) -> Result<Vec<VenueLocation>, AppError> {
+    pub async fn list_managed_locations(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Vec<VenueLocation>, AppError> {
         Ok(sqlx::query_as::<_, VenueLocation>(r#"SELECT id, "organizationId" AS organization_id, slug, name, timezone, currency, "isActive" AS is_active FROM venue_locations WHERE "organizationId"=$1 ORDER BY name,id"#)
             .bind(organization_id).fetch_all(&self.pool).await?)
     }
@@ -296,7 +316,7 @@ impl SettingsRepository {
         .execute(&mut *tx)
         .await?;
 
-        OutboxService::publish_in_tx(
+        let receipt = OutboxService::publish_in_tx(
             &mut tx,
             "configuration",
             "configuration.changed",
@@ -333,6 +353,7 @@ impl SettingsRepository {
         }
 
         tx.commit().await?;
+        self.outbox.notify_committed(receipt);
         Ok(row)
     }
 
@@ -407,7 +428,7 @@ impl SettingsRepository {
         .bind(request_id)
         .execute(&mut *tx)
         .await?;
-        OutboxService::publish_in_tx(
+        let receipt = OutboxService::publish_in_tx(
             &mut tx,
             "configuration",
             "configuration.changed",
@@ -444,6 +465,7 @@ impl SettingsRepository {
             .await?;
         }
         tx.commit().await?;
+        self.outbox.notify_committed(receipt);
         Ok(true)
     }
 

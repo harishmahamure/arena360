@@ -16,7 +16,7 @@ use crate::config::{create_pool, create_pool_for, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::{auth_middleware, global_rate_limit, request_context, request_deadline};
 use crate::openapi::ApiDoc;
-use crate::realtime::{Dispatcher, OutboxService, RoomService};
+use crate::realtime::{Dispatcher, OutboxService, RealtimeHub, RoomService};
 use crate::services::{
     AuthService, BalanceService, CashDepositService, CashRegisterService, ConfigService,
     CreditService, DeviceService, EventService, ExpenseCategoryService, ExpenseService,
@@ -126,6 +126,7 @@ pub async fn build_state() -> Arc<AppState> {
     load_dotenv();
     let settings = Arc::new(Settings::from_env());
     let pool = create_pool(settings.as_ref()).await;
+    let realtime_hub = RealtimeHub::new(1024);
     let control_db = if let Some(url) = settings.control_database_url.as_deref() {
         let control_pool = create_pool_for(url, settings.as_ref()).await;
         crate::control::migrate(&control_pool)
@@ -164,7 +165,8 @@ pub async fn build_state() -> Arc<AppState> {
                 },
                 leases.clone(),
             )
-            .expect("invalid tenant database configuration"),
+            .expect("invalid tenant database configuration")
+            .with_commit_notifier(Arc::new(realtime_hub.clone())),
         );
         manager.clone().spawn_reaper();
         manager
@@ -210,13 +212,12 @@ pub async fn build_state() -> Arc<AppState> {
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);
 
-    let outbox = OutboxService::new(pool.clone());
-    let config_service = Arc::new(ConfigService::new(
-        pool.clone(),
-        cache.clone(),
-        settings.cafe_timezone.clone(),
-    ));
-    let pricing_rules = PricingPolicyService::new(pool.clone());
+    let outbox = OutboxService::with_hub(pool.clone(), realtime_hub.clone());
+    let config_service = Arc::new(
+        ConfigService::new(pool.clone(), cache.clone(), settings.cafe_timezone.clone())
+            .with_outbox(outbox.clone()),
+    );
+    let pricing_rules = PricingPolicyService::new(pool.clone()).with_outbox(outbox.clone());
     let notifications = NotificationService::new(pool.clone(), outbox.clone(), cache.clone());
     let rooms = RoomService::new(pool.clone());
     let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
@@ -245,7 +246,8 @@ pub async fn build_state() -> Arc<AppState> {
     let dispatcher = Dispatcher::new(
         pool.clone(),
         ws_connections.clone(),
-        settings.database_listener_url.clone(),
+        realtime_hub,
+        tenant_dbs.clone(),
         metrics.clone(),
     );
     tokio::spawn(dispatcher.run());

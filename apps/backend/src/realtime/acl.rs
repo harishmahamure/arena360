@@ -191,6 +191,12 @@ pub async fn is_room_member(
 
 /// Apply audience restrictions to both live delivery and durable replay.
 pub fn event_matches_claims(claims: &JwtUserClaims, row: &super::outbox::OutboxRow) -> bool {
+    if row
+        .source_tenant_id
+        .is_some_and(|tenant_id| claims.tenantId != tenant_id.to_string())
+    {
+        return false;
+    }
     if crate::access::managed(claims)
         && claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string()
         && (matches!(row.channel.as_str(), "admin" | "staff" | "kitchen")
@@ -265,6 +271,7 @@ mod configuration_tests {
             audience_room_id: None,
             durable: true,
             created_at: chrono::Utc::now(),
+            source_tenant_id: None,
         }
     }
     #[test]
@@ -290,6 +297,17 @@ mod configuration_tests {
         assert!(!event_matches_claims(&claims, &row));
         row = event();
         row.payload = serde_json::json!({});
+        assert!(!event_matches_claims(&claims, &row));
+    }
+
+    #[test]
+    fn tenant_sourced_shared_channels_never_cross_tenants() {
+        let claims = claims();
+        let mut row = event();
+        row.channel = "staff".into();
+        row.source_tenant_id = Some(Uuid::new_v4());
+        assert!(!event_matches_claims(&claims, &row));
+        row.channel = "admin".into();
         assert!(!event_matches_claims(&claims, &row));
     }
 }

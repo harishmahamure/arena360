@@ -81,16 +81,23 @@ impl DeliveryService {
 
         Ok(rows
             .into_iter()
-            .map(|r| OutboxRow {
-                id: r.0,
-                channel: r.1,
-                event_type: r.2,
-                payload: r.3,
-                audience_role: r.4,
-                audience_user_id: r.5,
-                audience_room_id: r.6,
-                durable: r.7,
-                created_at: r.8,
+            .map(|r| {
+                let source_tenant_id =
+                    r.3.get("sourceTenantId")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(|id| Uuid::parse_str(id).ok());
+                OutboxRow {
+                    id: r.0,
+                    channel: r.1,
+                    event_type: r.2,
+                    payload: r.3,
+                    audience_role: r.4,
+                    audience_user_id: r.5,
+                    audience_room_id: r.6,
+                    durable: r.7,
+                    created_at: r.8,
+                    source_tenant_id,
+                }
             })
             .collect())
     }

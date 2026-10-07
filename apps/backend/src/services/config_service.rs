@@ -10,6 +10,7 @@ use crate::models::{
     SettingOverride, SettingRevision, UpsertConfigDto, UpsertSettingOverrideDto, VenueLocation,
     DEFAULT_ORGANIZATION_ID,
 };
+use crate::realtime::OutboxService;
 use crate::repositories::{ConfigRepository, SettingsRepository, TenantSettingsRepository};
 use crate::services::settings_catalog;
 use crate::tenancy::TenantDb;
@@ -29,6 +30,11 @@ impl ConfigService {
             cache,
             default_timezone,
         }
+    }
+
+    pub fn with_outbox(mut self, outbox: OutboxService) -> Self {
+        self.settings_repo = self.settings_repo.with_outbox(outbox);
+        self
     }
 
     async fn invalidate_configs(&self, key: Option<&str>) -> Result<(), AppError> {

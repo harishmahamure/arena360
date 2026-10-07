@@ -7,9 +7,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use gaming_cafe_api::error::AppError;
 use gaming_cafe_api::tenancy::{
-    target_schema_version, tenant_path, MigrationContext, MigrationHook, MigrationOrchestrator,
-    MigrationOrchestratorConfig, MigrationState, PendingTenantMigration, TenantDbConfig,
-    TenantDbManager, TenantLease,
+    target_schema_version, tenant_path, write_outbox_event_on_connection, MigrationContext,
+    MigrationHook, MigrationOrchestrator, MigrationOrchestratorConfig, MigrationState,
+    NewOutboxEvent, PendingTenantMigration, TenantCommitNotifier, TenantDbConfig, TenantDbManager,
+    TenantLease,
 };
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Connection, SqliteConnection};
@@ -36,6 +37,28 @@ impl TenantLease for FakeLease {
         } else {
             Err(AppError::Forbidden("tenant lease changed".into()))
         }
+    }
+}
+
+#[derive(Default)]
+struct RecordingNotifier {
+    registered: Mutex<Vec<(Uuid, i64)>>,
+    committed: Mutex<Vec<(Uuid, Vec<i64>)>>,
+}
+
+impl TenantCommitNotifier for RecordingNotifier {
+    fn registered(&self, tenant_id: Uuid, current_sequence: i64) {
+        self.registered
+            .lock()
+            .unwrap()
+            .push((tenant_id, current_sequence));
+    }
+
+    fn committed(&self, tenant_id: Uuid, sequences: &[i64]) {
+        self.committed
+            .lock()
+            .unwrap()
+            .push((tenant_id, sequences.to_vec()));
     }
 }
 
@@ -164,6 +187,7 @@ async fn migrates_fifty_tenants_with_bounded_concurrency_and_resumes_failure() {
         fail_record_tenant,
         failed_record_once: AtomicBool::new(false),
     });
+    let notifier = Arc::new(RecordingNotifier::default());
     let manager = Arc::new(
         TenantDbManager::new(
             TenantDbConfig {
@@ -175,12 +199,13 @@ async fn migrates_fifty_tenants_with_bounded_concurrency_and_resumes_failure() {
             },
             lease,
         )
-        .unwrap(),
+        .unwrap()
+        .with_commit_notifier(notifier.clone()),
     );
     let hook = Arc::new(TrackingHook::new(fail_tenant));
     let orchestrator = MigrationOrchestrator::new(
         Uuid::new_v4(),
-        manager,
+        manager.clone(),
         state.clone(),
         vec![hook.clone()],
         MigrationOrchestratorConfig { max_concurrency: 4 },
@@ -199,6 +224,40 @@ async fn migrates_fifty_tenants_with_bounded_concurrency_and_resumes_failure() {
     );
     assert!(hook.max_active.load(Ordering::SeqCst) > 1);
     assert!(hook.max_active.load(Ordering::SeqCst) <= 4);
+
+    let migrated_tenant = tenant_ids[0];
+    assert!(notifier
+        .registered
+        .lock()
+        .unwrap()
+        .contains(&(migrated_tenant, 0)));
+    let migrated_handle = manager.open(migrated_tenant).await.unwrap();
+    migrated_handle
+        .with_immediate_writer(|connection| {
+            Box::pin(async move {
+                write_outbox_event_on_connection(
+                    connection,
+                    NewOutboxEvent {
+                        location_id: None,
+                        aggregate_type: "device".into(),
+                        aggregate_id: Uuid::new_v4(),
+                        event_type: "device.status_changed".into(),
+                        schema_version: 1,
+                        deleted: false,
+                        payload: serde_json::json!({"status":"available"}),
+                    },
+                )
+                .await?;
+                Ok(())
+            })
+        })
+        .await
+        .unwrap();
+    assert!(notifier
+        .committed
+        .lock()
+        .unwrap()
+        .contains(&(migrated_tenant, vec![1])));
 
     let resumed = orchestrator.run_pending().await.unwrap();
     assert_eq!(resumed.len(), 2);

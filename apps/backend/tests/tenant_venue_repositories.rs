@@ -135,6 +135,21 @@ async fn device_wallet_and_session_mutations_are_atomic_and_idempotent() {
         devices.find_by_id(device.id).await.unwrap().unwrap().status,
         "in_use"
     );
+    let started_payload: String = sqlx::query_scalar(
+        "SELECT payload FROM outbox_events
+         WHERE aggregate_id=? AND event_type='session.started'
+         ORDER BY sequence DESC LIMIT 1",
+    )
+    .bind(started.session.id.to_string())
+    .fetch_one(&fixture.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    let started_payload: serde_json::Value = serde_json::from_str(&started_payload).unwrap();
+    assert_eq!(started_payload["deviceName"], "PC-01");
+    assert_eq!(started_payload["walletMinutesAtStart"], 120);
+    assert_eq!(started_payload["remainingMinutes"], 120);
+    assert_eq!(started_payload["cafeTimezone"], "UTC");
+    assert!(started_payload["deductionProfile"].is_object());
 
     let first = sessions
         .charge(started.session.id, weighted, None, None)
@@ -170,6 +185,21 @@ async fn device_wallet_and_session_mutations_are_atomic_and_idempotent() {
         devices.find_by_id(device.id).await.unwrap().unwrap().status,
         "available"
     );
+    let ended_payload: String = sqlx::query_scalar(
+        "SELECT payload FROM outbox_events
+         WHERE aggregate_id=? AND event_type='session.ended'
+         ORDER BY sequence DESC LIMIT 1",
+    )
+    .bind(started.session.id.to_string())
+    .fetch_one(&fixture.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    let ended_payload: serde_json::Value = serde_json::from_str(&ended_payload).unwrap();
+    assert_eq!(ended_payload["deviceName"], "PC-01");
+    assert_eq!(ended_payload["walletMinutesAtStart"], 120);
+    assert_eq!(ended_payload["remainingMinutes"], 70);
+    assert_eq!(ended_payload["reason"], "voluntary");
+    assert!(ended_payload["deductionProfile"].is_object());
     let outbox: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events WHERE aggregate_id IN (?,?,?)")
             .bind(device.id.to_string())

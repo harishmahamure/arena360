@@ -419,6 +419,16 @@ impl TenantTransactionRepository {
                     if payment.method == "credit" {
                         ensure_credit_headroom(connection, dto.player_id, resolved.total).await?;
                     }
+                    let actor_role: Option<String> = match actor {
+                        Some(actor_id) => sqlx::query_scalar(
+                            "SELECT role FROM users
+                             WHERE id=? AND is_active=1 AND deleted_at IS NULL",
+                        )
+                        .bind(actor_id.to_string())
+                        .fetch_optional(&mut *connection)
+                        .await?,
+                        None => None,
+                    };
                     insert_transaction(
                         connection,
                         id,
@@ -473,7 +483,10 @@ impl TenantTransactionRepository {
                         "transaction.created",
                         Some(venue),
                         json!({"id":id,"playerId":dto.player_id,"amount":money_f64(resolved.total)?,
-                               "paymentStatus":payment.status,"inventoryLocationId":store,
+                               "paymentStatus":payment.status,"paymentMethod":payment.method,
+                               "transactionType":"product_purchase","actorId":actor,
+                               "actorRole":actor_role,
+                               "inventoryLocationId":store,
                                "updatedAt":at_text}),
                     )
                     .await
@@ -2060,8 +2073,8 @@ impl TenantKioskOrderRepository {
             &db,
             Box::new(move |connection| {
                 Box::pin(async move {
-                    let session: (String, String) = sqlx::query_as(
-                        "SELECT s.id,s.location_id FROM usage_sessions s
+                    let session: (String, String, String, String) = sqlx::query_as(
+                        "SELECT s.id,s.location_id,d.name,u.username FROM usage_sessions s
                              JOIN devices d ON d.id=s.device_id
                              JOIN users u ON u.id=s.player_id
                              WHERE s.player_id=? AND s.device_id=? AND s.end_time IS NULL
@@ -2075,6 +2088,8 @@ impl TenantKioskOrderRepository {
                     .ok_or_else(|| AppError::not_found_code("KIOSK_NO_ACTIVE_SESSION"))?;
                     let session_id = parse_uuid(&session.0)?;
                     let venue = parse_uuid(&session.1)?;
+                    let device_name = session.2;
+                    let player_username = session.3;
                     let pricing = pricing_context(connection, venue, timezone).await?;
                     sqlx::query(
                         "INSERT INTO kiosk_orders(id,session_id,player_id,device_id,status,
@@ -2096,6 +2111,7 @@ impl TenantKioskOrderRepository {
                             AppError::from(error)
                         }
                     })?;
+                    let mut item_snapshots = Vec::with_capacity(dto.line_items.len());
                     for item in dto.line_items {
                         if item.quantity <= 0 {
                             return Err(AppError::BadRequest(
@@ -2143,13 +2159,19 @@ impl TenantKioskOrderRepository {
                         .bind(Uuid::now_v7().to_string())
                         .bind(id.to_string())
                         .bind(item.product_id.to_string())
-                        .bind(name)
-                        .bind(sku)
+                        .bind(&name)
+                        .bind(&sku)
                         .bind(item.quantity)
                         .bind(money(price)?)
                         .bind(&at_text)
                         .execute(&mut *connection)
                         .await?;
+                        item_snapshots.push(json!({
+                            "productName": name,
+                            "productSku": sku,
+                            "quantity": item.quantity,
+                            "unitPrice": price,
+                        }));
                     }
                     event(
                         connection,
@@ -2158,7 +2180,9 @@ impl TenantKioskOrderRepository {
                         "kiosk_order.placed",
                         Some(venue),
                         json!({"id":id,"sessionId":session_id,"playerId":player,
-                               "deviceId":device,"updatedAt":at_text}),
+                               "deviceId":device,"deviceName":device_name,
+                               "playerUsername":player_username,"items":item_snapshots,
+                               "updatedAt":at_text}),
                     )
                     .await
                 })

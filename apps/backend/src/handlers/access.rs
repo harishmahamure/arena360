@@ -4,7 +4,7 @@ use crate::{
     dto::{ok, ApiResult, JwtUserClaims},
     error::AppError,
     middleware::AdminOrStaff,
-    realtime::OutboxService,
+    realtime::{OutboxReceipt, OutboxService},
 };
 use axum::{
     extract::{Path, State},
@@ -45,7 +45,7 @@ async fn audit(
     target: &str,
     before: Value,
     after: Value,
-) -> Result<(), AppError> {
+) -> Result<Vec<OutboxReceipt>, AppError> {
     sqlx::query("INSERT INTO access_audit(organization_id,actor_id,action,target_id,before_value,after_value) VALUES($1,$2,$3,$4,$5,$6)")
  .bind(org).bind(claims.user_id_uuid()).bind(action).bind(target).bind(before).bind(after).execute(&mut **tx).await?;
     let users: Vec<Uuid> = sqlx::query_scalar(
@@ -54,20 +54,23 @@ async fn audit(
     .bind(org)
     .fetch_all(&mut **tx)
     .await?;
+    let mut receipts = Vec::with_capacity(users.len());
     for user in users {
-        OutboxService::publish_in_tx(
-            tx,
-            &format!("user:{user}"),
-            "access.changed",
-            json!({"organizationId":org}),
-            None,
-            Some(user),
-            None,
-            true,
-        )
-        .await?;
+        receipts.push(
+            OutboxService::publish_in_tx(
+                tx,
+                &format!("user:{user}"),
+                "access.changed",
+                json!({"organizationId":org}),
+                None,
+                Some(user),
+                None,
+                true,
+            )
+            .await?,
+        );
     }
-    Ok(())
+    Ok(receipts)
 }
 pub async fn self_access(
     AdminOrStaff(c): AdminOrStaff,
@@ -182,7 +185,7 @@ async fn write_role(
     sqlx::query("INSERT INTO access_roles(id,organization_id,name,description,permissions,is_template) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO UPDATE SET name=$3,description=$4,permissions=$5,revision=access_roles.revision+1,updated_at=now()")
  .bind(id).bind(org).bind(dto.name.trim()).bind(dto.description.trim()).bind(json!(permissions)).bind(dto.is_template).execute(&mut *tx).await?;
     keep_administrator(&mut tx, org).await?;
-    audit(
+    let receipts = audit(
         &mut tx,
         org,
         &c,
@@ -193,6 +196,7 @@ async fn write_role(
     )
     .await?;
     tx.commit().await?;
+    s.outbox.notify_all_committed(receipts);
     ok(json!({"id":id}))
 }
 pub async fn create_role(
@@ -256,7 +260,7 @@ pub async fn delete_role(
         .execute(&mut *tx)
         .await?;
     keep_administrator(&mut tx, org).await?;
-    audit(
+    let receipts = audit(
         &mut tx,
         org,
         &c,
@@ -267,6 +271,7 @@ pub async fn delete_role(
     )
     .await?;
     tx.commit().await?;
+    s.outbox.notify_all_committed(receipts);
     ok(json!({"deleted":true}))
 }
 #[derive(Deserialize)]
@@ -463,7 +468,7 @@ pub async fn save_member(
     sqlx::query(r#"UPDATE organization_memberships SET "isActive"=$3 WHERE "organizationId"=$1 AND "userId"=$2"#).bind(org).bind(user).bind(dto.active).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO access_member_versions(organization_id,user_id) VALUES($1,$2) ON CONFLICT(organization_id,user_id) DO UPDATE SET revision=access_member_versions.revision+1").bind(org).bind(user).execute(&mut *tx).await?;
     keep_administrator(&mut tx, org).await?;
-    audit(
+    let receipts = audit(
         &mut tx,
         org,
         &c,
@@ -474,6 +479,7 @@ pub async fn save_member(
     )
     .await?;
     tx.commit().await?;
+    s.outbox.notify_all_committed(receipts);
     ok(json!({"saved":true}))
 }
 #[derive(Deserialize)]
@@ -523,7 +529,7 @@ pub async fn save_module(
         ));
     }
     sqlx::query("INSERT INTO access_modules(organization_id,module,enabled) VALUES($1,$2,$3) ON CONFLICT(organization_id,module) DO UPDATE SET enabled=$3,revision=access_modules.revision+1").bind(org).bind(&module).bind(dto.enabled).execute(&mut *tx).await?;
-    audit(
+    let receipts = audit(
         &mut tx,
         org,
         &c,
@@ -534,6 +540,7 @@ pub async fn save_module(
     )
     .await?;
     tx.commit().await?;
+    s.outbox.notify_all_committed(receipts);
     ok(json!({"saved":true}))
 }
 #[derive(Deserialize)]
@@ -625,7 +632,7 @@ pub async fn create_member(
             .collect()
     });
     assign_location_roles(&mut tx, org, id, &dto.location_ids, &dto.role_ids, &scopes).await?;
-    audit(
+    let receipts = audit(
         &mut tx,
         org,
         &c,
@@ -636,6 +643,7 @@ pub async fn create_member(
     )
     .await?;
     tx.commit().await?;
+    s.outbox.notify_all_committed(receipts);
     ok(json!({"id":id}))
 }
 

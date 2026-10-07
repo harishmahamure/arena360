@@ -233,9 +233,6 @@ impl DeviceService {
     pub(crate) async fn after_tenant_mutation(&self, device: &Device) {
         self.events
             .publish_device_status(&device.id.to_string(), &device.status);
-        // Until API-0032 consumes tenant outboxes directly, mirror the committed
-        // tenant mutation to the existing PostgreSQL realtime channels.
-        self.publish_device_ws(device).await;
         self.invalidate_device_cache(&device.id).await;
     }
 
