@@ -8,7 +8,7 @@ use crate::dto::{
     StaffLoginDto,
 };
 use crate::error::AppError;
-use crate::middleware::{AdminOrStaff, DeviceUser};
+use crate::middleware::{AdminOrStaff, AdminUser, DeviceUser};
 use crate::openapi::responses::{
     AuthResponseEnvelope, ErrorEnvelope, KioskRegisterResponseEnvelope, PanelLoginResponseEnvelope,
     RegisterResponseEnvelope,
@@ -20,6 +20,19 @@ async fn local_auth(state: &AppState, token: &str) -> Result<AuthResponseDto, Ap
     let user = claims
         .user_id_uuid()
         .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    if let Some(router) = &state.routing {
+        let tenant = uuid::Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Unauthorized("Invalid tenant identity".into()))?;
+        if let Some(auth) = router.finish_auth(tenant, token, false).await? {
+            let returned = crate::middleware::auth::decode_token(state, &auth.accessToken)?;
+            if returned.tenantId != claims.tenantId || returned.userId != claims.userId {
+                return Err(AppError::Forbidden(
+                    "Owner authentication changed identity or tenant".into(),
+                ));
+            }
+            return Ok(auth);
+        }
+    }
     state
         .auth
         .issue_tenant_auth_response(state.business_db(&claims).await?, user)
@@ -105,15 +118,65 @@ pub async fn login_admin(
     let control = state.auth.login_admin(dto).await?;
     let result = local_auth(&state, &control.accessToken).await?;
     let claims = crate::middleware::auth::decode_token(&state, &result.accessToken)?;
-    let user_id = claims
-        .user_id_uuid()
-        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
-    let repo = crate::repositories::TenantShiftRepository::new(state.business_db(&claims).await?);
-    if let Some(active) = repo.find_active_by_user(user_id).await? {
-        repo.force_close(active.id, user_id).await?;
+    if let Some(router) = &state.routing {
+        let tenant = uuid::Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Unauthorized("Invalid tenant identity".into()))?;
+        if let Some(auth) = router
+            .finish_admin_login(tenant, &result.accessToken)
+            .await?
+        {
+            let returned = crate::middleware::auth::decode_token(&state, &auth.accessToken)?;
+            if returned.tenantId != claims.tenantId || returned.userId != claims.userId {
+                return Err(AppError::Forbidden(
+                    "Owner authentication changed identity or tenant".into(),
+                ));
+            }
+            return ok(auth);
+        }
     }
-
+    close_local_admin_shift(&state, &claims).await?;
     ok(result)
+}
+async fn close_local_admin_shift(
+    state: &AppState,
+    claims: &crate::dto::JwtUserClaims,
+) -> Result<(), AppError> {
+    let user = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid identity".into()))?;
+    let db = state.business_db(claims).await?;
+    let repo = crate::repositories::TenantShiftRepository::new(db.clone());
+    if let Some(active) = repo.find_active_by_user(user).await? {
+        let location = repo.location_id(active.id).await?;
+        crate::access::scope::LocationScope::resolve_tenant(
+            db,
+            claims,
+            "shifts:force_close",
+            Some(location),
+        )
+        .await?;
+        repo.force_close(active.id, user).await?;
+    }
+    Ok(())
+}
+#[utoipa::path(post,path="/auth/admin-shift-close",responses((status=200,body=AuthResponseEnvelope),(status=403,body=ErrorEnvelope)),security(("bearer_auth"=[])),tag="auth")]
+pub async fn complete_admin_login(
+    AdminUser(claims): AdminUser,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<AuthResponseDto> {
+    let user = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid identity".into()))?;
+    let auth = state
+        .auth
+        .issue_local_tenant_auth_response(
+            state.business_db(&claims).await?,
+            user,
+            &claims.allowedTenants,
+        )
+        .await?;
+    close_local_admin_shift(&state, &claims).await?;
+    ok(auth)
 }
 
 #[utoipa::path(
@@ -133,15 +196,39 @@ pub async fn login_staff(
     Json(dto): Json<StaffLoginDto>,
 ) -> ApiResult<AuthResponseDto> {
     let control = state.auth.login_staff(dto).await?;
-    let mut result = local_auth(&state, &control.accessToken).await?;
+    let result = local_auth(&state, &control.accessToken).await?;
     let claims = crate::middleware::auth::decode_token(&state, &result.accessToken)?;
-    let db = state.business_db(&claims).await?;
-    let user_id = claims
+    if let Some(router) = &state.routing {
+        let tenant = uuid::Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Unauthorized("Invalid tenant identity".into()))?;
+        if let Some(auth) = router
+            .finish_auth(tenant, &result.accessToken, true)
+            .await?
+        {
+            let returned = crate::middleware::auth::decode_token(&state, &auth.accessToken)?;
+            if returned.tenantId != claims.tenantId || returned.userId != claims.userId {
+                return Err(AppError::Forbidden(
+                    "Owner authentication changed identity or tenant".into(),
+                ));
+            }
+            return ok(auth);
+        }
+    }
+    ok(finish_local_staff_login(&state, &claims).await?)
+}
+
+async fn finish_local_staff_login(
+    state: &AppState,
+    claims: &crate::dto::JwtUserClaims,
+) -> Result<AuthResponseDto, AppError> {
+    crate::middleware::auth::require_staff_for_counter(claims)?;
+    let db = state.business_db(claims).await?;
+    let user = claims
         .user_id_uuid()
         .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
     let scope = crate::access::scope::LocationScope::resolve_tenant(
         db.clone(),
-        &claims,
+        claims,
         "shifts:write",
         None,
     )
@@ -150,24 +237,36 @@ pub async fn login_staff(
         return Err(AppError::bad_request_code("LOCATION_REQUIRED", None));
     }
     let venue = scope.locations[0];
+    // Issue the token before opening the register; a signing failure cannot leave
+    // an unreported financial mutation behind.
+    let mut auth = state
+        .auth
+        .issue_local_tenant_auth_response(db.clone(), user, &claims.allowedTenants)
+        .await?;
     let opening = crate::repositories::TenantCashRegisterRepository::new(db.clone())
         .preview_carry_forward_balance_for(venue)
         .await?;
     let started = crate::repositories::TenantShiftRepository::new(db)
         .start_confirmed(
-            user_id,
+            user,
             crate::models::StartShiftDto {
                 opening_balance: opening,
                 opening_denominations: None,
                 notes: None,
                 venue_location_id: Some(venue),
             },
-            user_id,
+            user,
         )
         .await?;
-    result.shiftId = Some(started.shift.id.to_string());
-
-    ok(result)
+    auth.shiftId = Some(started.shift.id.to_string());
+    Ok(auth)
+}
+#[utoipa::path(post,path="/auth/staff-shift",responses((status=200,description="Resume the authenticated staff shift",body=AuthResponseEnvelope),(status=403,description="Shift permission required",body=ErrorEnvelope)),security(("bearer_auth"=[])),tag="auth")]
+pub async fn resume_staff_shift(
+    AdminOrStaff(claims): AdminOrStaff,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<AuthResponseDto> {
+    ok(finish_local_staff_login(&state, &claims).await?)
 }
 
 #[utoipa::path(
@@ -338,6 +437,10 @@ pub async fn refresh_panel_session(
         .ok_or_else(|| AppError::Unauthorized("Invalid session".into()))?;
     ok(state
         .auth
-        .issue_tenant_auth_response(state.business_db(&claims).await?, id)
+        .issue_local_tenant_auth_response(
+            state.business_db(&claims).await?,
+            id,
+            &claims.allowedTenants,
+        )
         .await?)
 }

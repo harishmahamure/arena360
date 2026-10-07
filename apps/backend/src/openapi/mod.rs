@@ -98,6 +98,8 @@ impl Modify for SecurityAddon {
         handlers::auth::login_panel,
         handlers::auth::current_panel_user,
         handlers::auth::refresh_panel_session,
+        handlers::auth::resume_staff_shift,
+        handlers::auth::complete_admin_login,
         handlers::auth::verify_panel_mfa,
         handlers::auth::login_staff,
         handlers::auth::login_player,

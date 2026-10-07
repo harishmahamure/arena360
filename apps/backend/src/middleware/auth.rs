@@ -51,16 +51,44 @@ pub async fn auth_middleware(
     let token = extract_bearer(req.headers())
         .ok_or_else(|| AppError::Unauthorized("Authentication required".to_string()))?;
 
-    let mut claims = decode_token(&state, token)?;
+    let claims = decode_token(&state, token)?;
+    req.extensions_mut().insert(claims);
+    Ok(next.run(req).await)
+}
+
+/// Runs on the owning cell, after signature validation and tenant routing.
+pub async fn authorize_tenant_request(
+    State(state): State<Arc<AppState>>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Result<Response, AppError> {
+    let path = req.uri().path().to_string();
+    if req.method() == axum::http::Method::OPTIONS || is_public(&path) {
+        return Ok(next.run(req).await);
+    }
+    let mut claims = req
+        .extensions()
+        .get::<JwtUserClaims>()
+        .cloned()
+        .ok_or_else(|| AppError::Unauthorized("Authentication required".into()))?;
     if claims.is_admin_or_staff() {
         let db = state.business_db(&claims).await?;
         let user = claims
             .user_id_uuid()
             .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
-        let settings = crate::repositories::TenantSettingsRepository::new(db);
-        let member = settings
-            .membership_context(user)
-            .await?
+        let settings = crate::repositories::TenantSettingsRepository::new(db.clone());
+        let mut member = settings.membership_context(user).await?;
+        if path == "/auth/refresh"
+            && member
+                .as_ref()
+                .is_none_or(|m| !claims.roles.contains(&m.role))
+        {
+            if let Some(control) = &state.control_db {
+                crate::control::staff_projection::sync_user(control, db, user).await?;
+                member = settings.membership_context(user).await?;
+            }
+        }
+        let member = member
             .filter(|m| claims.roles.contains(&m.role))
             .ok_or_else(|| {
                 AppError::Unauthorized("Account or tenant access changed; sign in again".into())
@@ -82,6 +110,7 @@ pub async fn auth_middleware(
                 | "products"
                 | "stats"
                 | "notifications"
+                | "sessions"
                 | "realtime"
                 | "metrics"
                 | "health"

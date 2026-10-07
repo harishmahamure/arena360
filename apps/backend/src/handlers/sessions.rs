@@ -108,6 +108,16 @@ pub async fn get_session(
     Path(id): Path<Uuid>,
 ) -> ApiResult<UsageSessionResponse> {
     let db = state.business_db(&claims).await?;
+    let location = crate::repositories::TenantSessionRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "sessions:read",
+        Some(location),
+    )
+    .await?;
     let timezone = db.timezone().await?;
     let session = state.sessions.get_by_id_tenant(db, id, timezone).await?;
     ok(session)
@@ -151,6 +161,17 @@ pub async fn create_session(
     dto.shift_id = Some(active_shift.id);
 
     let db = state.business_db(&claims).await?;
+    let device = crate::repositories::TenantDeviceRepository::new(db.clone())
+        .find_by_id(dto.device_id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Device not found".into()))?;
+    crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "sessions:write",
+        Some(device.location_id),
+    )
+    .await?;
     let balance = state
         .balances
         .get_raw_tenant(db.clone(), dto.balance_id)
@@ -189,6 +210,17 @@ pub async fn end_session(
         crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
     })?;
 
+    let db = state.business_db(&claims).await?;
+    let location = crate::repositories::TenantSessionRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "sessions:write",
+        Some(location),
+    )
+    .await?;
     if claims.is_staff() {
         state
             .auth
@@ -197,7 +229,7 @@ pub async fn end_session(
     }
     let session = state
         .sessions
-        .end_tenant(state.business_db(&claims).await?, id, dto, Some(actor_id))
+        .end_tenant(db, id, dto, Some(actor_id))
         .await?;
 
     ok(session)

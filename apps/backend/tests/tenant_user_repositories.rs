@@ -230,6 +230,153 @@ async fn control_identity_and_local_membership_commands_recover_and_preserve_gra
         .permissions
         .contains(&gaming_cafe_api::access::MANAGED.into()));
     assert!(!claims.permissions.contains(&"access:manage".into()));
+    // A broken unrelated profile must not prevent this user's fresh login.
+    let collision_name = format!("collision-{manager}");
+    repo.create_player(TenantCreatePlayer {
+        username: collision_name.clone(),
+        password_hash: "local-secret".into(),
+        phone_number: "8888888888".into(),
+        first_name: None,
+        last_name: None,
+        actor_id: None,
+    })
+    .await
+    .unwrap();
+    sqlx::query("UPDATE users SET username=$2 WHERE id=$1")
+        .bind(manager)
+        .bind(&collision_name)
+        .execute(&pool)
+        .await
+        .unwrap();
+    gaming_cafe_api::control::staff_projection::sync_user(&pool, f.db.clone(), user)
+        .await
+        .unwrap();
+    assert!(sync_tenant(&pool, f.db.clone()).await.is_err());
+    auth.issue_tenant_auth_response(f.db.clone(), user)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE users SET username=$2 WHERE id=$1")
+        .bind(manager)
+        .bind(format!("global-{manager}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+
+    // One failed queued command must not block another member's revocation/profile update.
+    sqlx::query("DELETE FROM staff_projection_changes WHERE tenant_id=$1 AND user_id=$2")
+        .bind(f.tenant_id)
+        .bind(manager)
+        .execute(&pool)
+        .await
+        .unwrap();
+    f.db.with_immediate_writer(move |c|Box::pin(async move {
+        sqlx::query("INSERT INTO staff_membership_commands(user_id,desired_active,identity_revision,access_revision) SELECT id,0,identity_revision,access_revision+1 FROM users WHERE id=?")
+            .bind(manager.to_string()).execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    sqlx::query("UPDATE users SET first_name='Healthy projection' WHERE id=$1")
+        .bind(user)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(sync_tenant(&pool, f.db.clone()).await.is_err());
+    assert_eq!(
+        repo.require_active_staff(user)
+            .await
+            .unwrap()
+            .first_name
+            .as_deref(),
+        Some("Healthy projection")
+    );
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("DELETE FROM staff_membership_commands WHERE user_id=?")
+                .bind(manager.to_string())
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE organization_memberships SET updated_at=now() WHERE tenant_id=$1 AND user_id=$2",
+    )
+    .bind(f.tenant_id)
+    .bind(manager)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sync_tenant(&pool, f.db.clone()).await.unwrap();
+
+    // Authentication finalization forwards a proof token to the owner, never credentials.
+    use axum::{
+        http::{header, HeaderMap},
+        routing::post,
+        Json, Router,
+    };
+    let proof = response.accessToken.clone();
+    let payload = serde_json::json!({"data":response});
+    let endpoint = move |headers: HeaderMap| {
+        let proof = proof.clone();
+        let payload = payload.clone();
+        async move {
+            assert_eq!(
+                headers.get(header::AUTHORIZATION).unwrap(),
+                format!("Bearer {proof}").as_str()
+            );
+            assert_eq!(
+                headers
+                    .get(gaming_cafe_api::routing::ROUTED_HEADER)
+                    .unwrap(),
+                "1"
+            );
+            Json(payload)
+        }
+    };
+    let owner = Router::new()
+        .route("/auth/refresh", post(endpoint.clone()))
+        .route("/auth/staff-shift", post(endpoint.clone()))
+        .route("/auth/admin-shift-close", post(endpoint));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, owner).await.unwrap();
+    });
+    sqlx::query("UPDATE cells SET address=$2 WHERE id=$1")
+        .bind(cell)
+        .bind(address)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let cache = Arc::new(gaming_cafe_api::routing::RoutingCache::new(pool.clone()));
+    let remote = gaming_cafe_api::routing::TenantRouter::new(cache.clone(), None).unwrap();
+    for shift in [false, true] {
+        let finalized = remote
+            .finish_auth(f.tenant_id, &response.accessToken, shift)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(finalized.user.id, response.user.id);
+        assert_eq!(finalized.accessToken, response.accessToken);
+    }
+    assert_eq!(
+        remote
+            .finish_admin_login(f.tenant_id, &response.accessToken)
+            .await
+            .unwrap()
+            .unwrap()
+            .accessToken,
+        response.accessToken
+    );
+    let local = gaming_cafe_api::routing::TenantRouter::new(cache, Some(cell)).unwrap();
+    assert!(local
+        .finish_auth(f.tenant_id, &response.accessToken, false)
+        .await
+        .unwrap()
+        .is_none());
+    server.abort();
     access
         .save_member_assignments(user, edit(false, 2), manager)
         .await
@@ -1385,6 +1532,157 @@ async fn staged_services_do_not_connect_to_unreachable_lazy_postgres_and_reject_
 }
 
 #[tokio::test]
+async fn realtime_rooms_are_tenant_local_and_commit_membership_with_outbox() {
+    use gaming_cafe_api::realtime::rooms::{CreateRoomDto, TenantRoomService};
+    let f = Fixture::new().await;
+    TenantUserRepository::new(f.db.clone())
+        .project_staff(projection(
+            f.staff_id,
+            "room-admin",
+            "admin",
+            1,
+            true,
+            false,
+            vec![],
+        ))
+        .await
+        .unwrap();
+    let rooms = TenantRoomService::new(f.db.clone());
+    let room = rooms
+        .create(
+            CreateRoomDto {
+                name: " Support ".into(),
+                description: None,
+            },
+            f.staff_id,
+        )
+        .await
+        .unwrap();
+    assert_eq!(room.name, "Support");
+    assert!(rooms
+        .create(
+            CreateRoomDto {
+                name: "Support".into(),
+                description: None
+            },
+            f.staff_id
+        )
+        .await
+        .is_err());
+    assert!(rooms.add_member(room.id, Uuid::now_v7()).await.is_err());
+    assert!(!rooms.is_member(room.id, f.staff_id).await.unwrap());
+    rooms.add_member(room.id, f.staff_id).await.unwrap();
+    rooms.add_member(room.id, f.staff_id).await.unwrap();
+    assert_eq!(rooms.list_for_user(f.staff_id).await.unwrap().len(), 1);
+    let outbox: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM outbox_events WHERE aggregate_type='realtime_room'",
+    )
+    .fetch_one(&f.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    assert_eq!(outbox, 2);
+    let other = Fixture::new().await;
+    assert!(TenantRoomService::new(other.db.clone())
+        .add_member(room.id, other.staff_id)
+        .await
+        .is_err());
+    f.lease.fail_next_commit();
+    assert!(rooms.remove_member(room.id, f.staff_id).await.is_err());
+    assert!(rooms.is_member(room.id, f.staff_id).await.unwrap());
+    f.lease.generations.write().unwrap().insert(f.tenant_id, 1);
+    rooms.remove_member(room.id, f.staff_id).await.unwrap();
+    assert!(!rooms.is_member(room.id, f.staff_id).await.unwrap());
+    other.close().await;
+    f.close().await;
+}
+
+#[tokio::test]
+async fn local_staff_refresh_survives_control_outage_and_preserves_signed_tenant_bounds() {
+    let f = Fixture::new().await;
+    let repo = TenantUserRepository::new(f.db.clone());
+    repo.project_staff(projection(
+        f.staff_id,
+        "local-staff",
+        "staff",
+        1,
+        true,
+        false,
+        vec![],
+    ))
+    .await
+    .unwrap();
+    let unavailable = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    let cache = create_cache(None).await;
+    let settings = test_settings();
+    let auth = AuthService::new(
+        unavailable.clone(),
+        settings.clone(),
+        Arc::new(BalanceService::new(unavailable.clone(), cache.clone())),
+        Arc::new(UserService::new(unavailable.clone(), cache)),
+    )
+    .with_control_pool(Some(unavailable));
+    let other = Uuid::now_v7().to_string();
+    let allowed = vec![
+        other.clone(),
+        f.tenant_id.to_string(),
+        other.clone(),
+        "invalid".into(),
+    ];
+    let response = auth
+        .issue_local_tenant_auth_response(f.db.clone(), f.staff_id, &allowed)
+        .await
+        .unwrap();
+    let mut validation = jsonwebtoken::Validation::default();
+    validation.set_audience(&["gamezone"]);
+    let claims = jsonwebtoken::decode::<gaming_cafe_api::dto::JwtUserClaims>(
+        &response.accessToken,
+        &jsonwebtoken::DecodingKey::from_secret(settings.jwt_secret.as_bytes()),
+        &validation,
+    )
+    .unwrap()
+    .claims;
+    assert_eq!(claims.tenantId, f.tenant_id.to_string());
+    assert_eq!(claims.allowedTenants, vec![f.tenant_id.to_string(), other]);
+    assert_eq!(claims.roles, vec!["staff"]);
+    assert!(claims.permissions.contains(&"sessions:write".into()));
+    assert!(!claims.permissions.contains(&"access:manage".into()));
+    assert!(auth
+        .issue_local_tenant_auth_response(f.db.clone(), f.staff_id, &[])
+        .await
+        .is_err());
+    repo.project_identity(
+        projection(f.staff_id, "local-staff", "staff", 2, false, false, vec![]),
+        2,
+    )
+    .await
+    .unwrap();
+    assert!(auth
+        .issue_local_tenant_auth_response(f.db.clone(), f.staff_id, &allowed)
+        .await
+        .is_err());
+    f.close().await;
+}
+
+#[tokio::test]
+async fn unchanged_identity_poll_does_not_prevent_idle_handle_eviction() {
+    let f = Fixture::new_with_idle(Duration::from_millis(10)).await;
+    let repo = TenantUserRepository::new(f.db.clone());
+    let p = projection(f.staff_id, "idle-staff", "staff", 1, true, false, vec![]);
+    repo.project_identity(p.clone(), 1).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert_eq!(
+        repo.project_identity(p, 1).await.unwrap(),
+        StaffProjectionResult::Unchanged
+    );
+    assert_eq!(f.manager.reap_idle().await.unwrap(), 1);
+    assert!(f.db.read_pool().is_err());
+    f.close().await;
+}
+
+#[tokio::test]
 async fn staged_tenant_login_authenticates_only_tenant_players() {
     let fixture = Fixture::new().await;
     let repo = TenantUserRepository::new(fixture.db.clone());
@@ -1583,6 +1881,7 @@ struct Fixture {
     tenant_id: Uuid,
     db: Arc<TenantDb>,
     lease: Arc<Lease>,
+    manager: TenantDbManager,
     staff_id: Uuid,
     location_a: Uuid,
     location_b: Uuid,
@@ -1590,6 +1889,9 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with_idle(Duration::from_secs(60)).await
+    }
+    async fn new_with_idle(idle_timeout: Duration) -> Self {
         let root = std::env::temp_dir().join(format!("arena360-user-repo-{}", Uuid::now_v7()));
         let tenant_id = Uuid::now_v7();
         let path = tenant_path(&root, tenant_id);
@@ -1661,7 +1963,7 @@ impl Fixture {
                 root: root.clone(),
                 read_connections: 2,
                 busy_timeout: Duration::from_millis(250),
-                idle_timeout: Duration::from_secs(60),
+                idle_timeout,
                 reaper_interval: Duration::from_secs(1),
             },
             lease.clone(),
@@ -1673,6 +1975,7 @@ impl Fixture {
             tenant_id,
             db,
             lease,
+            manager,
             staff_id: Uuid::now_v7(),
             location_a,
             location_b,

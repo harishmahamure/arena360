@@ -48,6 +48,71 @@ impl TenantRouter {
             })?;
         Ok((Some(target.owner_cell) != self.local_cell).then_some(target.address))
     }
+    /// Finish authentication using the selected tenant's current grants on its owner.
+    pub async fn finish_auth(
+        &self,
+        tenant: Uuid,
+        token: &str,
+        staff_shift: bool,
+    ) -> Result<Option<crate::dto::AuthResponseDto>, AppError> {
+        let Some(address) = self.remote_address(tenant).await? else {
+            return Ok(None);
+        };
+        let path = if staff_shift {
+            "/auth/staff-shift"
+        } else {
+            "/auth/refresh"
+        };
+        self.finish_auth_path(&address, token, path).await.map(Some)
+    }
+    pub async fn finish_admin_login(
+        &self,
+        tenant: Uuid,
+        token: &str,
+    ) -> Result<Option<crate::dto::AuthResponseDto>, AppError> {
+        let Some(address) = self.remote_address(tenant).await? else {
+            return Ok(None);
+        };
+        self.finish_auth_path(&address, token, "/auth/admin-shift-close")
+            .await
+            .map(Some)
+    }
+    async fn finish_auth_path(
+        &self,
+        address: &str,
+        token: &str,
+        path: &str,
+    ) -> Result<crate::dto::AuthResponseDto, AppError> {
+        let response = self
+            .http
+            .post(format!("{}{}", address.trim_end_matches('/'), path))
+            .bearer_auth(token)
+            .header(ROUTED_HEADER, "1")
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|error| AppError::Internal(format!("owner authentication failed: {error}")))?;
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.map_err(|e| {
+            AppError::Internal(format!("invalid owner authentication response: {e}"))
+        })?;
+        if !status.is_success() {
+            return Err(AppError::Api {
+                code: body
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("OWNER_AUTH_FAILED")
+                    .into(),
+                status,
+                details: body.get("details").cloned(),
+            });
+        }
+        let auth = serde_json::from_value(body.get("data").cloned().ok_or_else(|| {
+            AppError::Internal("Owner authentication response missing data".into())
+        })?)
+        .map_err(|e| AppError::Internal(format!("invalid owner authentication payload: {e}")))?;
+        Ok(auth)
+    }
 }
 
 pub async fn route_tenant_request(
@@ -249,12 +314,7 @@ fn is_websocket_upgrade(headers: &HeaderMap) -> bool {
 fn is_control_auth_path(path: &str) -> bool {
     matches!(
         path,
-        "/auth/login/admin"
-            | "/auth/login/staff"
-            | "/auth/login/panel"
-            | "/auth/login/panel/mfa"
-            | "/auth/me"
-            | "/auth/refresh"
+        "/auth/login/admin" | "/auth/login/staff" | "/auth/login/panel" | "/auth/login/panel/mfa"
     )
 }
 

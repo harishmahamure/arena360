@@ -27,6 +27,7 @@ fn identities(
 async fn sync_identity(
     state: &AppState,
     db: Arc<crate::tenancy::TenantDb>,
+    user: Uuid,
 ) -> Result<(), crate::error::AppError> {
     let pool = state
         .control_db
@@ -36,7 +37,7 @@ async fn sync_identity(
             status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
             details: None,
         })?;
-    crate::control::staff_projection::sync_tenant(pool, db).await
+    crate::control::staff_projection::sync_user(pool, db, user).await
 }
 
 #[utoipa::path(
@@ -179,7 +180,7 @@ pub async fn update_user(
         identities(&state)?
             .update_profile(db.tenant_id(), id, dto)
             .await?;
-        sync_identity(&state, db.clone()).await?;
+        sync_identity(&state, db.clone(), id).await?;
         state.users.get_by_id_tenant(db, id).await?
     };
     ok(user)
@@ -361,6 +362,6 @@ pub async fn update_own_avatar(
     identities(&state)?
         .set_avatar(db.tenant_id(), id, url)
         .await?;
-    sync_identity(&state, db.clone()).await?;
+    sync_identity(&state, db.clone(), id).await?;
     ok(state.users.get_by_id_tenant(db, id).await?.to_auth_user())
 }

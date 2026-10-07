@@ -395,6 +395,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/login/staff", post(handlers::auth::login_staff))
         .route("/auth/me", get(handlers::auth::current_panel_user))
         .route("/auth/refresh", post(handlers::auth::refresh_panel_session))
+        .route("/auth/staff-shift", post(handlers::auth::resume_staff_shift))
+        .route(
+            "/auth/admin-shift-close",
+            post(handlers::auth::complete_admin_login),
+        )
         .route("/access", get(handlers::access::snapshot))
         .route("/access/self", get(handlers::access::self_access))
         .route("/access/roles", post(handlers::access::create_role))
@@ -965,6 +970,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/organizations/{org_id}/pricing-rule-sets/{set_id}/versions/{version_id}/rollback",
             post(handlers::pricing_rules::rollback_version),
         )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::auth::authorize_tenant_request,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::routing::route_tenant_request,

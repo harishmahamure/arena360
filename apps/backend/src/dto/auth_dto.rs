@@ -86,7 +86,7 @@ pub enum PanelLoginResponseDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ActiveSessionDto {
     pub id: String,
     pub startTime: DateTime<Utc>,
@@ -104,7 +104,7 @@ pub struct ActiveSessionDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AuthResponseDto {
     pub accessToken: String,
     pub user: AuthUserDto,
@@ -115,7 +115,7 @@ pub struct AuthResponseDto {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AuthUserDto {
     pub id: String,
     pub username: String,

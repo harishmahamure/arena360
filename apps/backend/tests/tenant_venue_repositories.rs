@@ -117,6 +117,55 @@ async fn device_wallet_and_session_mutations_are_atomic_and_idempotent() {
     )
     .ceil() as i32;
     assert_eq!(weighted, 45);
+    // A foreign, absent, or concurrently closed shift cannot be attached to a session.
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events")
+        .fetch_one(&fixture.db.read_pool().unwrap())
+        .await
+        .unwrap();
+    assert!(sessions
+        .start(
+            fixture.player_id,
+            balance.id,
+            device.id,
+            fixture.location_id,
+            Some(Uuid::now_v7()),
+            session_start,
+            Some(fixture.player_id),
+            json!({})
+        )
+        .await
+        .is_err());
+    let closed_shift = Uuid::now_v7();
+    let at = gaming_cafe_api::time::format_sqlite_timestamp(&session_start).unwrap();
+    let owner = fixture.player_id;
+    let location = fixture.location_id;
+    fixture.db.with_immediate_writer(move |c|Box::pin(async move {
+        sqlx::query("INSERT INTO shifts(id,user_id,location_id,clock_in,clock_out,status,created_at,updated_at) VALUES(?,?,?,?,?,'closed',?,?)")
+            .bind(closed_shift.to_string()).bind(owner.to_string()).bind(location.to_string()).bind(&at).bind(&at).bind(&at).bind(&at).execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    assert!(sessions
+        .start(
+            fixture.player_id,
+            balance.id,
+            device.id,
+            fixture.location_id,
+            Some(closed_shift),
+            session_start,
+            Some(fixture.player_id),
+            json!({})
+        )
+        .await
+        .is_err());
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events")
+        .fetch_one(&fixture.db.read_pool().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(
+        devices.find_by_id(device.id).await.unwrap().unwrap().status,
+        "available"
+    );
     let started = sessions
         .start(
             fixture.player_id,

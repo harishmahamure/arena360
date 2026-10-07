@@ -829,13 +829,29 @@ impl AuthService {
             .bind(user_id).fetch_all(pool).await?;
         let role = memberships.iter().find(|m| m.0 == db.tenant_id()).map(|m| m.1.clone())
             .ok_or_else(|| AppError::Forbidden("Active membership required in the selected tenant".into()))?;
-        crate::control::staff_projection::sync_tenant(pool,db.clone()).await?;
+        crate::control::staff_projection::sync_user(pool,db.clone(),user_id).await?;
         let mut user = crate::repositories::TenantUserRepository::new(db.clone()).require_active_staff(user_id).await?;
         user.role = Some(role);
         let grants = crate::repositories::TenantSettingsRepository::new(db.clone()).effective_permissions(user_id).await?;
         let mut scopes = vec![(db.tenant_id(),serde_json::json!(grants))];
         scopes.extend(memberships.into_iter().filter(|m| m.0 != db.tenant_id()).map(|m| (m.0,serde_json::json!([]))));
         Ok(AuthResponseDto { accessToken:self.encode_access_token(&user,&scopes)?,user:user.to_auth_user(),shiftId:None,activeSession:None })
+    }
+
+    /// Renew a valid owning-cell session from the local membership projection.
+    /// Allowed tenant IDs remain bounded by the previously signed token.
+    pub async fn issue_local_tenant_auth_response(&self,db:Arc<crate::tenancy::TenantDb>,user_id:Uuid,allowed:&[String]) -> Result<AuthResponseDto,AppError> {
+        if !allowed.iter().any(|id| id==&db.tenant_id().to_string()) {
+            return Err(AppError::Forbidden("Token does not allow the selected tenant".into()));
+        }
+        let user=crate::repositories::TenantUserRepository::new(db.clone()).require_active_staff(user_id).await?;
+        let grants=crate::repositories::TenantSettingsRepository::new(db.clone()).effective_permissions(user_id).await?;
+        let mut scopes=vec![(db.tenant_id(),serde_json::json!(grants))];
+        let mut seen=std::collections::HashSet::from([db.tenant_id()]);
+        for id in allowed.iter().filter_map(|id|Uuid::parse_str(id).ok()) {
+            if seen.insert(id) {scopes.push((id,serde_json::json!([])));}
+        }
+        Ok(AuthResponseDto {accessToken:self.encode_access_token(&user,&scopes)?,user:user.to_auth_user(),shiftId:None,activeSession:None})
     }
 
     pub async fn issue_auth_response(&self, user: &User) -> Result<AuthResponseDto, AppError> {
@@ -943,9 +959,9 @@ impl AuthService {
                 r#"SELECT m.tenant_id, m.permissions
                        FROM organization_memberships m
                        JOIN tenants t ON t.id = m.tenant_id
-                       WHERE m.user_id = $1 AND m.role = $2 AND m.is_active
+                       WHERE m.user_id = $1 AND m.is_active
                          AND t.state NOT IN ('DELETED', 'FAILED')
-                       ORDER BY m.created_at"#,
+                       ORDER BY (m.role = $2) DESC, m.created_at, m.tenant_id"#,
             )
             .bind(user.id)
             .bind(user.role.as_deref())

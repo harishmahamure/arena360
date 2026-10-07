@@ -126,6 +126,13 @@ impl TenantUserRepository {
                 "Invalid staff identity projection".into(),
             ));
         }
+        // The writer rechecks this state under its transaction. This read only
+        // avoids taking the writer (and renewing activity) for unchanged polls.
+        let current: Option<(String, i64)> = sqlx::query_as("SELECT role,identity_revision FROM users WHERE id=?")
+            .bind(p.user_id.to_string()).fetch_optional(&self.db.background_read_pool()?).await?;
+        if current.as_ref().is_some_and(|v| v.0 != "player" && v.1 >= revision) {
+            return Ok(StaffProjectionResult::Unchanged);
+        }
         write(&self.db, Box::new(move |c| Box::pin(async move {
             let old: Option<(String,i64)> = sqlx::query_as("SELECT role,identity_revision FROM users WHERE id=?")
                 .bind(p.user_id.to_string()).fetch_optional(&mut *c).await?;

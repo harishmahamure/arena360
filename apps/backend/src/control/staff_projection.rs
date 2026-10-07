@@ -25,12 +25,23 @@ struct Identity {
 }
 
 pub async fn sync_tenant(pool: &PgPool, db: Arc<TenantDb>) -> Result<(), AppError> {
-    flush_membership_commands(pool, db.clone()).await?;
+    sync_selected(pool, db, None).await
+}
+pub async fn sync_user(pool: &PgPool, db: Arc<TenantDb>, user: Uuid) -> Result<(), AppError> {
+    sync_selected(pool, db, Some(user)).await
+}
+async fn sync_selected(
+    pool: &PgPool,
+    db: Arc<TenantDb>,
+    user: Option<Uuid>,
+) -> Result<(), AppError> {
+    let mut failure = flush_membership_commands(pool, db.clone(), user)
+        .await
+        .err();
     let rows: Vec<Identity> = sqlx::query_as(
-        "SELECT p.user_id,p.revision,u.email,COALESCE(u.username,'revoked_'||p.user_id::text) AS username,u.first_name,u.last_name,u.phone_number,u.avatar_url,COALESCE(m.role,'staff') AS role,COALESCE(u.is_active AND u.deleted_at IS NULL AND m.is_active AND t.state NOT IN('DELETED','FAILED'),false) AS is_active,(u.id IS NULL OR u.deleted_at IS NOT NULL OR m.id IS NULL) AS deleted FROM staff_projection_changes p JOIN tenants t ON t.id=p.tenant_id LEFT JOIN users u ON u.id=p.user_id LEFT JOIN organization_memberships m ON m.tenant_id=p.tenant_id AND m.user_id=p.user_id WHERE p.tenant_id=$1 ORDER BY p.revision")
-        .bind(db.tenant_id()).fetch_all(pool).await?;
+        "SELECT p.user_id,p.revision,u.email,COALESCE(u.username,'revoked_'||p.user_id::text) AS username,u.first_name,u.last_name,u.phone_number,u.avatar_url,COALESCE(m.role,'staff') AS role,COALESCE(u.is_active AND u.deleted_at IS NULL AND m.is_active AND t.state NOT IN('DELETED','FAILED'),false) AS is_active,(u.id IS NULL OR u.deleted_at IS NOT NULL OR m.id IS NULL) AS deleted FROM staff_projection_changes p JOIN tenants t ON t.id=p.tenant_id LEFT JOIN users u ON u.id=p.user_id LEFT JOIN organization_memberships m ON m.tenant_id=p.tenant_id AND m.user_id=p.user_id WHERE p.tenant_id=$1 AND ($2::uuid IS NULL OR p.user_id=$2) ORDER BY p.revision")
+        .bind(db.tenant_id()).bind(user).fetch_all(pool).await?;
     let repo = TenantUserRepository::new(db);
-    let mut failure = None;
     for row in rows {
         let user_id = row.user_id;
         let result = repo
@@ -67,54 +78,83 @@ pub async fn sync_tenant(pool: &PgPool, db: Arc<TenantDb>) -> Result<(), AppErro
     }
 }
 
-async fn flush_membership_commands(pool: &PgPool, db: Arc<TenantDb>) -> Result<(), AppError> {
-    let commands: Vec<(String,bool,i64,i64)> = sqlx::query_as("SELECT user_id,desired_active,access_revision,identity_revision FROM staff_membership_commands ORDER BY user_id")
-        .fetch_all(&db.read_pool()?).await?;
+async fn flush_membership_commands(
+    pool: &PgPool,
+    db: Arc<TenantDb>,
+    selected: Option<Uuid>,
+) -> Result<(), AppError> {
+    let commands: Vec<(String,bool,i64,i64)> = sqlx::query_as("SELECT user_id,desired_active,access_revision,identity_revision FROM staff_membership_commands WHERE (? IS NULL OR user_id=?) ORDER BY user_id")
+        .bind(selected.map(|v|v.to_string())).bind(selected.map(|v|v.to_string())).fetch_all(&db.background_read_pool()?).await?;
+    let mut failure = None;
     for (user, active, version, expected) in commands {
-        let user_id = Uuid::parse_str(&user)
-            .map_err(|_| AppError::Internal("Invalid membership command identity".into()))?;
-        let mut tx = pool.begin().await?;
-        let owned: Option<Uuid> = sqlx::query_scalar("SELECT t.id FROM tenants t JOIN tenant_leases l ON l.tenant_id=t.id AND l.owner_cell=t.owner_cell AND l.ownership_generation=t.ownership_generation WHERE t.id=$1 AND t.ownership_generation=$2 AND l.expires_at>clock_timestamp() AND t.state='ACTIVE' FOR UPDATE OF t,l")
-            .bind(db.tenant_id()).bind(db.ownership_generation()).fetch_optional(&mut *tx).await?;
-        if owned.is_none() {
-            return Err(AppError::Forbidden(
-                "Membership command requires current tenant ownership".into(),
-            ));
+        if let Err(error) =
+            apply_membership_command(pool, db.clone(), user, active, version, expected).await
+        {
+            if failure.is_none() {
+                failure = Some(error);
+            }
         }
-        let receipt: Option<(i64,bool)> = sqlx::query_as("SELECT control_revision,conflicted FROM staff_membership_command_receipts WHERE tenant_id=$1 AND user_id=$2 AND access_revision=$3 AND ownership_generation=$4")
+    }
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+async fn apply_membership_command(
+    pool: &PgPool,
+    db: Arc<TenantDb>,
+    user: String,
+    active: bool,
+    version: i64,
+    expected: i64,
+) -> Result<(), AppError> {
+    let user_id = Uuid::parse_str(&user)
+        .map_err(|_| AppError::Internal("Invalid membership command identity".into()))?;
+    let mut tx = pool.begin().await?;
+    let owned: Option<Uuid> = sqlx::query_scalar("SELECT t.id FROM tenants t JOIN tenant_leases l ON l.tenant_id=t.id AND l.owner_cell=t.owner_cell AND l.ownership_generation=t.ownership_generation WHERE t.id=$1 AND t.ownership_generation=$2 AND l.expires_at>clock_timestamp() AND t.state='ACTIVE' FOR UPDATE OF t,l")
+            .bind(db.tenant_id()).bind(db.ownership_generation()).fetch_optional(&mut *tx).await?;
+    if owned.is_none() {
+        return Err(AppError::Forbidden(
+            "Membership command requires current tenant ownership".into(),
+        ));
+    }
+    let receipt: Option<(i64,bool)> = sqlx::query_as("SELECT control_revision,conflicted FROM staff_membership_command_receipts WHERE tenant_id=$1 AND user_id=$2 AND access_revision=$3 AND ownership_generation=$4")
             .bind(db.tenant_id()).bind(user_id).bind(version).bind(db.ownership_generation()).fetch_optional(&mut *tx).await?;
-        let (revision, conflicted) = if let Some(receipt) = receipt {
-            receipt
-        } else {
-            let _: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM organization_memberships WHERE tenant_id=$1 AND user_id=$2 FOR UPDATE")
+    let (revision, conflicted) = if let Some(receipt) = receipt {
+        receipt
+    } else {
+        let _: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM organization_memberships WHERE tenant_id=$1 AND user_id=$2 FOR UPDATE")
                 .bind(db.tenant_id()).bind(user_id).fetch_optional(&mut *tx).await?;
-            let (actual,current_active): (i64,bool) = sqlx::query_as("SELECT p.revision,COALESCE(m.is_active,false) FROM staff_projection_changes p LEFT JOIN organization_memberships m ON m.tenant_id=p.tenant_id AND m.user_id=p.user_id WHERE p.tenant_id=$1 AND p.user_id=$2 FOR UPDATE OF p")
+        let (actual,current_active): (i64,bool) = sqlx::query_as("SELECT p.revision,COALESCE(m.is_active,false) FROM staff_projection_changes p LEFT JOIN organization_memberships m ON m.tenant_id=p.tenant_id AND m.user_id=p.user_id WHERE p.tenant_id=$1 AND p.user_id=$2 FOR UPDATE OF p")
                 .bind(db.tenant_id()).bind(user_id).fetch_one(&mut *tx).await?;
-            let conflicted = active && actual != expected && !current_active;
-            // A global revocation/profile change wins over an older local request.
-            let revision = if actual == expected || (!active && current_active) {
-                sqlx::query("UPDATE organization_memberships SET is_active=$3,updated_at=now() WHERE tenant_id=$1 AND user_id=$2")
+        let conflicted = active && actual != expected && !current_active;
+        // A global revocation/profile change wins over an older local request.
+        let revision = if actual == expected || (!active && current_active) {
+            sqlx::query("UPDATE organization_memberships SET is_active=$3,updated_at=now() WHERE tenant_id=$1 AND user_id=$2")
                     .bind(db.tenant_id()).bind(user_id).bind(active).execute(&mut *tx).await?;
-                sqlx::query_scalar("SELECT revision FROM staff_projection_changes WHERE tenant_id=$1 AND user_id=$2")
-                    .bind(db.tenant_id()).bind(user_id).fetch_one(&mut *tx).await?
-            } else {
-                actual
-            };
-            sqlx::query("INSERT INTO staff_membership_command_receipts(tenant_id,user_id,access_revision,ownership_generation,control_revision,conflicted) VALUES($1,$2,$3,$4,$5,$6)")
+            sqlx::query_scalar(
+                "SELECT revision FROM staff_projection_changes WHERE tenant_id=$1 AND user_id=$2",
+            )
+            .bind(db.tenant_id())
+            .bind(user_id)
+            .fetch_one(&mut *tx)
+            .await?
+        } else {
+            actual
+        };
+        sqlx::query("INSERT INTO staff_membership_command_receipts(tenant_id,user_id,access_revision,ownership_generation,control_revision,conflicted) VALUES($1,$2,$3,$4,$5,$6)")
                 .bind(db.tenant_id()).bind(user_id).bind(version).bind(db.ownership_generation()).bind(revision).bind(conflicted).execute(&mut *tx).await?;
-            if active && !conflicted {
-                sqlx::query(
-                    "DELETE FROM pending_staff_creations WHERE tenant_id=$1 AND user_id=$2",
-                )
+        if active && !conflicted {
+            sqlx::query("DELETE FROM pending_staff_creations WHERE tenant_id=$1 AND user_id=$2")
                 .bind(db.tenant_id())
                 .bind(user_id)
                 .execute(&mut *tx)
                 .await?;
-            }
-            (revision, conflicted)
-        };
-        tx.commit().await?;
-        db.with_immediate_writer(move |c| Box::pin(async move {
+        }
+        (revision, conflicted)
+    };
+    tx.commit().await?;
+    db.with_immediate_writer(move |c| Box::pin(async move {
             let current: Option<i64> = sqlx::query_scalar("SELECT access_revision FROM staff_membership_commands WHERE user_id=?")
                 .bind(&user).fetch_optional(&mut *c).await?;
             if current == Some(version) {
@@ -133,7 +173,6 @@ async fn flush_membership_commands(pool: &PgPool, db: Arc<TenantDb>) -> Result<(
             }
             Ok(())
         })).await?;
-    }
     Ok(())
 }
 

@@ -123,6 +123,14 @@ impl TenantDb {
         Ok(self.readers.clone())
     }
 
+    /// Background polling must not keep an otherwise idle tenant handle alive.
+    pub(crate) fn background_read_pool(&self) -> Result<SqlitePool, AppError> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(AppError::Forbidden("Tenant database is closed".into()));
+        }
+        Ok(self.readers.clone())
+    }
+
     pub async fn with_writer<T, F>(&self, operation: F) -> Result<T, AppError>
     where
         F: for<'connection> FnOnce(

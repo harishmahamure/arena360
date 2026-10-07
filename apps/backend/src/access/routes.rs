@@ -19,9 +19,14 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
                 "access:manage"
             }
         }
-        "auth" if path == "/auth/me" || path == "/auth/refresh" => return Some(String::new()),
+        "auth"
+            if matches!(path, "/auth/me" | "/auth/refresh" | "/auth/admin-shift-close") =>
+        {
+            return Some(String::new())
+        }
         "branding" => return Some(String::new()),
         "auth" if path == "/auth/register" => "players:write",
+        "auth" if path == "/auth/staff-shift" => "shifts:write",
         "notifications" => "notifications:read",
         "realtime" if path == "/realtime" => return Some(String::new()),
         "realtime" => "access:manage",

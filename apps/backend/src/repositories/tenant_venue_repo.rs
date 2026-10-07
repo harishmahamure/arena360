@@ -788,6 +788,11 @@ impl TenantSessionRepository {
         .fetch_optional(&self.db.read_pool()?)
         .await?)
     }
+    pub async fn location_id(&self, id: Uuid) -> Result<Uuid, AppError> {
+        sqlx::query_scalar("SELECT unhex(replace(location_id,'-','')) FROM usage_sessions WHERE id=? AND deleted_at IS NULL")
+            .bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?
+            .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
+    }
     pub async fn find_open_for_player(
         &self,
         player: Uuid,
@@ -893,6 +898,11 @@ impl TenantSessionRepository {
             if status!="active"||minutes<=0||expiry<=start_text{return Err(AppError::Forbidden("Balance access denied".into()));}
             let device_name:Option<String>=sqlx::query_scalar("SELECT name FROM devices WHERE id=? AND location_id=? AND deleted_at IS NULL AND status IN ('available','operational')").bind(device.to_string()).bind(location.to_string()).fetch_optional(&mut *connection).await?;
             let Some(device_name)=device_name else{return Err(AppError::BadRequest("Device is not available".into()));};
+            if let Some(shift) = shift {
+                let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shifts WHERE id=? AND location_id=? AND user_id=? AND status='active' AND clock_out IS NULL)")
+                    .bind(shift.to_string()).bind(location.to_string()).bind(actor.map(|id|id.to_string())).fetch_one(&mut *connection).await?;
+                if !valid {return Err(AppError::Forbidden("An active shift at this device's location is required".into()));}
+            }
             sqlx::query("INSERT INTO usage_sessions(id,player_id,balance_id,device_id,location_id,shift_id,start_time,time_credits_consumed,wallet_minutes_at_start,source_plan_id_at_start,deduction_profile_snapshot,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,?,?,?,?,?,?,?)")
                 .bind(id.to_string()).bind(player.to_string()).bind(balance.to_string()).bind(device.to_string()).bind(location.to_string()).bind(shift.map(|v|v.to_string())).bind(&start_text).bind(minutes).bind(source.clone()).bind(&snapshot).bind(actor.map(|v|v.to_string())).bind(actor.map(|v|v.to_string())).bind(&at).bind(&at).execute(&mut *connection).await?;
             sqlx::query("UPDATE devices SET status='in_use',updated_at=? WHERE id=?").bind(&at).bind(device.to_string()).execute(&mut *connection).await?;

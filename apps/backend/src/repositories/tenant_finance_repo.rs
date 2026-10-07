@@ -40,6 +40,11 @@ impl TenantShiftRepository {
             .await?;
         Ok(shift)
     }
+    pub async fn location_id(&self,id:Uuid)->Result<Uuid,AppError> {
+        sqlx::query_scalar("SELECT unhex(replace(location_id,'-','')) FROM shifts WHERE id=?")
+            .bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?
+            .ok_or_else(||AppError::NotFound("Shift not found".into()))
+    }
     pub async fn find_active_by_user(&self, user_id: Uuid) -> Result<Option<Shift>, AppError> {
         let query = format!("{} WHERE user_id = $1 AND status = 'active'", Self::SELECT);
         let shift = sqlx::query_as::<_, Shift>(&query)
