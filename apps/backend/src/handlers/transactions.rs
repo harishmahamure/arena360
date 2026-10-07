@@ -1,10 +1,12 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::access::scope::{requested_location, LocationScope, TransactionReadScope};
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult};
 use crate::middleware::{require_staff_for_counter, AdminOrStaff, AuthUser};
@@ -16,6 +18,7 @@ use crate::openapi::responses::{
     ErrorEnvelope, TransactionEnvelope, TransactionPaginationEnvelope,
     TransactionWithLineItemsEnvelope,
 };
+use crate::repositories::TenantTransactionRepository;
 
 #[utoipa::path(
     get,
@@ -32,13 +35,17 @@ use crate::openapi::responses::{
 pub async fn list_transactions(
     AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
-    Query(filters): Query<TransactionFilterDto>,
+    headers: HeaderMap,
+    Query(mut filters): Query<TransactionFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<crate::models::TransactionResponse>> {
-    let result = state
-        .transactions
-        .list_tenant(state.business_db(&claims).await?, filters)
-        .await?;
-    ok(result)
+    let db = state.business_db(&claims).await?;
+    let scope =
+        TransactionReadScope::resolve_tenant(db.clone(), &claims, requested_location(&headers)?)
+            .await?;
+    scope.apply_player_filter(&mut filters)?;
+    ok(TenantTransactionRepository::new(db)
+        .list_scoped(&filters, scope.locations.as_deref())
+        .await?)
 }
 
 #[utoipa::path(
@@ -61,11 +68,12 @@ pub async fn get_transaction(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<TransactionWithLineItems> {
-    let result = state
-        .transactions
-        .get_by_id_with_items_tenant(state.business_db(&claims).await?, id)
-        .await?;
-    ok(result)
+    let db = state.business_db(&claims).await?;
+    let scope = TransactionReadScope::resolve_tenant(db.clone(), &claims, None).await?;
+    let repo = TenantTransactionRepository::new(db);
+    let (player, venue) = repo.access_context(id).await?;
+    scope.ensure_resource(player, venue)?;
+    ok(repo.get_with_items(id).await?)
 }
 
 #[utoipa::path(
@@ -147,14 +155,14 @@ pub async fn update_transaction(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateTransactionDto>,
 ) -> ApiResult<Transaction> {
+    let db = state.business_db(&claims).await?;
+    let (_, venue) = TenantTransactionRepository::new(db.clone())
+        .access_context(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "transactions:write", Some(venue)).await?;
     let transaction = state
         .transactions
-        .update_tenant(
-            state.business_db(&claims).await?,
-            id,
-            dto,
-            claims.user_id_uuid(),
-        )
+        .update_tenant(db, id, dto, claims.user_id_uuid())
         .await?;
     ok(transaction)
 }

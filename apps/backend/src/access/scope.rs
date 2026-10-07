@@ -191,3 +191,38 @@ pub async fn report_scope(
         },
     })
 }
+
+/// Staff read by venue grant; player proofs only read that player's history.
+#[derive(Debug, Clone)]
+pub struct TransactionReadScope {
+    pub player_id: Option<Uuid>,
+    pub locations: Option<Vec<Uuid>>,
+}
+impl TransactionReadScope {
+    pub async fn resolve_tenant(db: std::sync::Arc<crate::tenancy::TenantDb>, claims: &JwtUserClaims, requested: Option<Uuid>) -> Result<Self, AppError> {
+        if claims.is_admin_or_staff() {
+            let scope = LocationScope::resolve_tenant(db, claims, "transactions:read", requested).await?;
+            Ok(Self { player_id: None, locations: Some(scope.locations) })
+        } else if claims.is_player() {
+            let current = crate::realtime::tenant_transport::current_claims(db, claims).await?;
+            let player = current.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid player identity".into()))?;
+            Ok(Self { player_id: Some(player), locations: requested.map(|id| vec![id]) })
+        } else {
+            Err(AppError::Forbidden("Player or panel identity required".into()))
+        }
+    }
+    pub fn apply_player_filter(&self, filters: &mut crate::models::TransactionFilterDto) -> Result<(), AppError> {
+        if let Some(player) = self.player_id {
+            if filters.player_id.is_some_and(|requested| requested != player) {
+                return Err(AppError::Forbidden("Cannot read another player's transactions".into()));
+            }
+            filters.player_id = Some(player);
+        }
+        Ok(())
+    }
+    pub fn ensure_resource(&self, player: Uuid, venue: Uuid) -> Result<(), AppError> {
+        if self.player_id.is_some_and(|allowed| allowed != player) || self.locations.as_ref().is_some_and(|allowed| !allowed.contains(&venue)) {
+            Err(AppError::Forbidden("Transaction is outside the permitted scope".into()))
+        } else { Ok(()) }
+    }
+}

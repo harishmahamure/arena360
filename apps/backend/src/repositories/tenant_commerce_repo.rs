@@ -138,6 +138,11 @@ impl TenantTransactionRepository {
         self
     }
 
+    pub async fn access_context(&self, id: Uuid) -> Result<(Uuid, Uuid), AppError> {
+        sqlx::query_as("SELECT unhex(replace(player_id,'-','')),unhex(replace(location_id,'-','')) FROM transactions WHERE id=? AND deleted_at IS NULL")
+            .bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?
+            .ok_or_else(|| AppError::NotFound("Transaction not found".into()))
+    }
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, AppError> {
         Ok(sqlx::query_as(&format!(
             "{TRANSACTION_SELECT} WHERE id=? AND deleted_at IS NULL"
@@ -216,11 +221,15 @@ impl TenantTransactionRepository {
         &self,
         filters: &TransactionFilterDto,
     ) -> Result<PaginationResult<TransactionResponse>, AppError> {
+        self.list_scoped(filters, None).await
+    }
+    pub async fn list_scoped(&self, filters: &TransactionFilterDto, locations: Option<&[Uuid]>) -> Result<PaginationResult<TransactionResponse>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let mut query = QueryBuilder::<Sqlite>::new(format!(
             "{TRANSACTION_ROW_SELECT} WHERE t.deleted_at IS NULL"
         ));
+        append_venue_scope(&mut query, "t.location_id", locations);
         transaction_filters(&mut query, filters)?;
         let sort = match filters.sort_by.as_deref() {
             Some("amount") => "t.amount",
@@ -247,6 +256,7 @@ impl TenantTransactionRepository {
         let mut count = QueryBuilder::<Sqlite>::new(
             "SELECT COUNT(*) FROM transactions t WHERE t.deleted_at IS NULL",
         );
+        append_venue_scope(&mut count, "t.location_id", locations);
         transaction_filters(&mut count, filters)?;
         let total = count
             .build_query_scalar()
@@ -1847,6 +1857,14 @@ impl TenantCreditRepository {
         &self,
         filters: &CreditSettlementFilterDto,
     ) -> Result<PaginationResult<CreditSettlementListRow>, AppError> {
+        self.list_settlements_scoped(filters, None).await
+    }
+    pub async fn settlement_location_id(&self, id: Uuid) -> Result<Uuid, AppError> {
+        sqlx::query_scalar("SELECT unhex(replace(s.location_id,'-','')) FROM credit_settlements cs JOIN shifts s ON s.id=cs.shift_id WHERE cs.id=? AND cs.deleted_at IS NULL")
+            .bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?
+            .ok_or_else(|| AppError::NotFound("Credit settlement not found".into()))
+    }
+    pub async fn list_settlements_scoped(&self, filters: &CreditSettlementFilterDto, locations: Option<&[Uuid]>) -> Result<PaginationResult<CreditSettlementListRow>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(20).clamp(1, 100);
         let mut query = QueryBuilder::<Sqlite>::new(
@@ -1862,6 +1880,7 @@ impl TenantCreditRepository {
              FROM credit_settlements cs JOIN users p ON p.id=cs.player_id
              JOIN users a ON a.id=cs.settled_by WHERE cs.deleted_at IS NULL",
         );
+        append_venue_scope(&mut query, "(SELECT s.location_id FROM shifts s WHERE s.id=cs.shift_id)", locations);
         settlement_filters(&mut query, filters);
         let sort = match filters.sort_by.as_deref() {
             Some("amount") => "cs.amount",
@@ -1889,6 +1908,7 @@ impl TenantCreditRepository {
             "SELECT COUNT(*) FROM credit_settlements cs
              JOIN users p ON p.id=cs.player_id WHERE cs.deleted_at IS NULL",
         );
+        append_venue_scope(&mut count, "(SELECT s.location_id FROM shifts s WHERE s.id=cs.shift_id)", locations);
         settlement_filters(&mut count, filters);
         let total = count
             .build_query_scalar()
@@ -2420,5 +2440,17 @@ impl KioskDetailRow {
             self.device_name,
             self.player_username,
         )
+    }
+}
+
+fn append_venue_scope(query: &mut QueryBuilder<Sqlite>, expression: &str, venues: Option<&[Uuid]>) {
+    if let Some(venues) = venues {
+        if venues.is_empty() { query.push(" AND 0"); }
+        else {
+            query.push(" AND ").push(expression).push(" IN (");
+            let mut separated = query.separated(",");
+            for venue in venues { separated.push_bind(venue.to_string()); }
+            separated.push_unseparated(")");
+        }
     }
 }

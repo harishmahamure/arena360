@@ -1283,3 +1283,192 @@ async fn kitchen_queue_is_opt_in_atomic_and_uses_sale_snapshots() {
     );
     f.close().await;
 }
+
+#[tokio::test]
+async fn transaction_read_scopes_limit_staff_venues_and_player_history() {
+    use gaming_cafe_api::{
+        access::scope::TransactionReadScope, dto::JwtUserClaims, models::TransactionFilterDto,
+    };
+    use serde_json::json;
+    let f = Fixture::new().await;
+    let remote = Uuid::now_v7();
+    let other_player = Uuid::now_v7();
+    let role = Uuid::now_v7();
+    let user = f.staff;
+    let venue = f.venue;
+    let device = f.device;
+    f.db.with_immediate_writer(move|c|Box::pin(async move {
+        let at = gaming_cafe_api::tenancy::format_sqlite_timestamp(&Utc::now()).unwrap();
+        sqlx::query("INSERT INTO venue_locations(id,slug,name,created_at,updated_at) VALUES(?,'remote','Remote',?,?)")
+            .bind(remote.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO users(id,username,role,password_hash,created_at,updated_at) VALUES(?,'other-player','player','test-hash',?,?)")
+            .bind(other_player.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        sqlx::query("UPDATE devices SET registration_status='registered' WHERE id=?").bind(device.to_string()).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO access_roles(id,name,permissions,created_at,updated_at) VALUES(?,'Sales reader','[\"transactions:read\",\"transactions:write\",\"credit:read\",\"credit:write\"]',?,?)")
+            .bind(role.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO access_assignments(user_id,role_id,created_at) VALUES(?,?,?)")
+            .bind(user.to_string()).bind(role.to_string()).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO location_role_assignments(user_id,location_id,role_id,created_at) VALUES(?,?,?,?)")
+            .bind(user.to_string()).bind(venue.to_string()).bind(role.to_string()).bind(&at).execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    let claims = |user, role: &str| {
+        serde_json::from_value::<JwtUserClaims>(json!({"sub":user,"userId":user,"tenantId":f.tenant,
+        "roles":[role],"permissions":[],"allowedTenants":[f.tenant],"iss":"gamezone","aud":"gamezone",
+        "appId":"game-zone-kiosk","orgIds":[f.tenant],"deviceId":f.device,"locationId":f.venue,"exp":Utc::now().timestamp()+3600})).unwrap()
+    };
+    let repo = TenantTransactionRepository::new(f.db.clone());
+    let remote_sale = repo
+        .create(f.plan_purchase("pending"), Some(f.staff))
+        .await
+        .unwrap();
+    let remote_id = remote_sale.id;
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("UPDATE transactions SET location_id=? WHERE id=?")
+                .bind(remote.to_string())
+                .bind(remote_id.to_string())
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    let own_sale = repo
+        .create(f.plan_purchase("pending"), Some(f.staff))
+        .await
+        .unwrap();
+    let mut foreign = f.plan_purchase("pending");
+    foreign.player_id = other_player;
+    let foreign_sale = repo.create(foreign, Some(f.staff)).await.unwrap();
+    let mut staff_claims = claims(f.staff, "staff");
+    staff_claims.appId = "admin".into();
+    staff_claims.deviceId = None;
+    let staff = TransactionReadScope::resolve_tenant(f.db.clone(), &staff_claims, None)
+        .await
+        .unwrap();
+    let page = repo
+        .list_scoped(
+            &serde_json::from_value(json!({"limit":1})).unwrap(),
+            staff.locations.as_deref(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.total, 2);
+    assert_eq!(page.data.len(), 1);
+    let (player, venue) = repo.access_context(remote_sale.id).await.unwrap();
+    assert!(staff.ensure_resource(player, venue).is_err());
+    assert!(
+        TransactionReadScope::resolve_tenant(f.db.clone(), &staff_claims, Some(remote))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        repo.list_scoped(&TransactionFilterDto::default(), Some(&[]))
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    let player_claims = claims(f.player, "player");
+    let player_scope = TransactionReadScope::resolve_tenant(f.db.clone(), &player_claims, None)
+        .await
+        .unwrap();
+    let mut filters = TransactionFilterDto::default();
+    player_scope.apply_player_filter(&mut filters).unwrap();
+    let page = repo
+        .list_scoped(&filters, player_scope.locations.as_deref())
+        .await
+        .unwrap();
+    assert_eq!(page.total, 2);
+    assert!(page.data.iter().all(|row| row.player_id == f.player));
+    assert!(player_scope.ensure_resource(f.player, remote).is_ok());
+    let (player, venue) = repo.access_context(foreign_sale.id).await.unwrap();
+    assert!(player_scope.ensure_resource(player, venue).is_err());
+    filters.player_id = Some(other_player);
+    assert!(player_scope.apply_player_filter(&mut filters).is_err());
+    let (player, venue) = repo.access_context(own_sale.id).await.unwrap();
+    assert!(player_scope.ensure_resource(player, venue).is_ok());
+    assert!(
+        TransactionReadScope::resolve_tenant(f.db.clone(), &claims(f.player, "device"), None)
+            .await
+            .is_err()
+    );
+    let id = f.player;
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("UPDATE users SET is_active=0 WHERE id=?")
+                .bind(id.to_string())
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert!(
+        TransactionReadScope::resolve_tenant(f.db.clone(), &player_claims, None)
+            .await
+            .is_err()
+    );
+    f.close().await;
+}
+
+#[tokio::test]
+async fn settlement_scope_uses_the_collecting_shift_venue_before_pagination() {
+    let f = Fixture::new().await;
+    let repo = TenantTransactionRepository::new(f.db.clone());
+    let sale = repo
+        .create(f.sale("credit", "credit", 2, None), None)
+        .await
+        .unwrap();
+    let credits = TenantCreditRepository::new(f.db.clone());
+    let first = credits
+        .settle(f.settlement(sale.id, 5.0), f.shift, f.staff)
+        .await
+        .unwrap();
+    let remote = Uuid::now_v7();
+    let actor = Uuid::now_v7();
+    let shift = Uuid::now_v7();
+    f.db.with_immediate_writer(move |c| Box::pin(async move {
+        let at = gaming_cafe_api::tenancy::format_sqlite_timestamp(&Utc::now()).unwrap();
+        sqlx::query("INSERT INTO venue_locations(id,slug,name,created_at,updated_at) VALUES(?,'remote','Remote',?,?)").bind(remote.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO users(id,username,role,created_at,updated_at) VALUES(?,'remote-staff','staff',?,?)").bind(actor.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO shifts(id,user_id,location_id,clock_in,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?)").bind(shift.to_string()).bind(actor.to_string()).bind(remote.to_string()).bind(&at).bind(&at).bind(&at).execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    let mut tender = f.settlement(sale.id, 5.0);
+    tender.payment_method = "online".into();
+    tender.cash_amount = None;
+    tender.online_amount = Some(5.0);
+    tender.online_payment_ref_last4 = Some("1234".into());
+    let second = credits.settle(tender, shift, actor).await.unwrap();
+    let filter = serde_json::from_value(serde_json::json!({"limit":1})).unwrap();
+    let local = credits
+        .list_settlements_scoped(&filter, Some(&[f.venue]))
+        .await
+        .unwrap();
+    assert_eq!(local.total, 1);
+    assert_eq!(local.data[0].id, first.id);
+    let remote_page = credits
+        .list_settlements_scoped(&filter, Some(&[remote]))
+        .await
+        .unwrap();
+    assert_eq!(remote_page.total, 1);
+    assert_eq!(remote_page.data[0].id, second.id);
+    assert_eq!(
+        credits.settlement_location_id(second.id).await.unwrap(),
+        remote
+    );
+    assert_eq!(
+        credits
+            .list_settlements_scoped(&filter, Some(&[]))
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(credits.list_settlements(&filter).await.unwrap().total, 2);
+    f.close().await;
+}

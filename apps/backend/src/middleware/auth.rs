@@ -123,6 +123,8 @@ pub async fn authorize_tenant_request(
                 | "expenses"
                 | "shifts"
                 | "inventory"
+                | "transactions"
+                | "credit"
                 | "realtime"
                 | "metrics"
                 | "health"
