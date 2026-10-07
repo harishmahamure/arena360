@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through OPS-0010
+## Completed through TEST-0020
 
 - M0–M4 are complete; operational API cutover is verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `TEST-0020` — Run integration tests against temporary tenant files and an isolated control database.
+- [ ] `OPS-0011` — Retire operational PostgreSQL migrations/schema and merge the cutover.
 
 ### API-0033 completed
 
@@ -79,6 +79,13 @@
 - Six Node tests and three provisioning/schema tests pass. The actual `pnpm` dry-run path is checked.
 - M0 deterministic report generator is retained; operational v2 report parity remains an M7 gate.
 
+### TEST-0020 completed
+
+- `pnpm backend:test:integration` and backend CI run 360 normal tests plus all eight control-backed checks against temporary tenant files and a disposable control database.
+- Local server discovery/startup, explicit admin server targeting, cleanup on interruption and missing Cargo, and removal of all temporary roots are verified.
+- Obsolete operational PostgreSQL trigger tests are retired; all nine live report routes are tested for 503 and current local access revocation for 403.
+- Five optional external ClickHouse/Redis gates remain. JetStream and report parity suites are rebuilt in M6/M7.
+
 ## M5 queue
 
 - [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).
@@ -87,7 +94,7 @@
 - [x] `API-0031` — Settings, notifications, access locks, and kitchen (`379a8cc`).
 - [x] `API-0033` — Operational cutover and shared-table compatibility removal.
 - [x] `OPS-0010` — Tenant service demo seed.
-- [ ] `TEST-0020` — SQLite/control-plane integration harnesses.
+- [x] `TEST-0020` — SQLite/control-plane integration harnesses.
 - [ ] `OPS-0011` — Retire operational PostgreSQL and merge.
 
 ## M4 queue
@@ -111,7 +118,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed implementation commit: `4c3f880` (`API-0033`); OPS-0010 is verified and ready to commit.
+- Latest completed implementation commit: `2907867` (`OPS-0010`).
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

@@ -88,8 +88,17 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm backend:test
+pnpm backend:test:integration
 pnpm backend:clippy
 ```
+
+`backend:test:integration` runs the SQLite suite and all control-plane integration tests.
+It creates and removes a disposable control database and a temporary directory for tenant files. By default it starts a temporary
+local PostgreSQL server (`initdb`/`pg_ctl` discovered via `pg_config`, or `PG_BINDIR`).
+Alternatively, set `CONTROL_TEST_ADMIN_DATABASE_URL` to a server with database-creation
+permission. Application database settings are not used as test targets. Use
+`--control-only` for the gated control/ownership/staff/demo checks. External reporting
+and Redis tests keep their separate infrastructure requirements until M6/M7.
 
 See [local development](docs/DEVELOPMENT.md) for the complete command matrix,
 database workflow, and client-specific setup.

@@ -30,6 +30,7 @@ async fn provisions_tenant_and_uses_entitlement_after_postgres_stops() {
         )
         .await
         .unwrap();
+    gaming_cafe_api::control::migrate(&pool).await.unwrap();
     let repository = Repository::new(pool.clone());
     let now = Utc::now();
     let suffix = uuid::Uuid::new_v4().simple().to_string();
