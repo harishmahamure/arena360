@@ -7,7 +7,6 @@ use std::time::Duration;
 use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Utc;
 use futures::future::BoxFuture;
-use gaming_cafe_api::cache::create_cache;
 use gaming_cafe_api::config::{Roles, Settings};
 use gaming_cafe_api::dto::{KioskRegisterDto, LoginDto};
 use gaming_cafe_api::error::AppError;
@@ -1411,12 +1410,9 @@ async fn user_outbox_is_secret_free_and_lease_fencing_rolls_back_everything() {
 }
 
 #[tokio::test]
-async fn staged_services_do_not_connect_to_unreachable_lazy_postgres_and_reject_staff_plans() {
+async fn tenant_services_need_only_sqlite_and_reject_staff_player_plans() {
     let fixture = Fixture::new().await;
-    let postgres = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    let users = UserService::new(postgres.clone(), create_cache(None).await);
+    let users = UserService::new();
     let registered = users
         .register_from_kiosk_tenant(
             fixture.db.clone(),

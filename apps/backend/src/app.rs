@@ -270,7 +270,7 @@ pub async fn build_state() -> Arc<AppState> {
         });
     }
 
-    let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
+    let users = Arc::new(UserService::new());
 
     let mut shifts = ShiftService::new(pool.clone());
     shifts.set_cash_registers(cash_registers.clone());

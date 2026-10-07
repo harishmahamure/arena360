@@ -103,7 +103,7 @@ async fn second_device_start_returns_409() {
         .expect("register device");
     }
 
-    let player_row = state.users.get_by_id(player_id).await.expect("load player");
+    let player_row = gaming_cafe_api::repositories::UserRepository::new(state.db.clone()).find_by_id(player_id).await.unwrap().unwrap();
     let token_device_a = gaming_cafe_api::repositories::DeviceRepository::new(state.db.clone())
         .find_by_id(device_a)
         .await
