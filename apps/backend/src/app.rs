@@ -226,7 +226,6 @@ pub async fn build_state() -> Arc<AppState> {
 
     // Spawn the realtime dispatcher
     let dispatcher = Dispatcher::new(
-        pool.clone(),
         ws_connections.clone(),
         realtime_hub,
         tenant_dbs.clone(),

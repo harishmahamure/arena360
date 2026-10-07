@@ -123,6 +123,13 @@ impl TenantDb {
         Ok(self.readers.clone())
     }
 
+    pub(crate) fn ensure_current_owner(&self) -> Result<(), AppError> {
+        if self.closed.load(Ordering::Acquire) {
+            return Err(AppError::Forbidden("Tenant database is closed".into()));
+        }
+        self.lease.ensure_writable(self.tenant_id,self.ownership_generation)
+    }
+
     /// Background polling must not keep an otherwise idle tenant handle alive.
     pub(crate) fn background_read_pool(&self) -> Result<SqlitePool, AppError> {
         if self.closed.load(Ordering::Acquire) {

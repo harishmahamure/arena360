@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+#[cfg(test)]
 use uuid::Uuid;
 
 use super::channel::ChannelId;
@@ -7,22 +7,9 @@ use crate::error::AppError;
 
 pub fn can_subscribe(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), AppError> {
     if crate::access::managed(claims) {
-        if claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string()
-            && matches!(
-                channel,
-                ChannelId::Admin | ChannelId::Staff | ChannelId::Kitchen | ChannelId::Device(_)
-            )
-        {
-            return Err(AppError::Forbidden(
-                "Operational events are limited to their owning venue".into(),
-            ));
-        }
         let allowed = match channel {
             ChannelId::Public => true,
-            ChannelId::Kitchen => {
-                crate::access::has(claims, "kitchen:read")
-                    && claims.tenantId == crate::models::DEFAULT_ORGANIZATION_ID.to_string()
-            }
+            ChannelId::Kitchen => crate::access::has(claims, "kitchen:read"),
             ChannelId::Configuration => {
                 crate::access::has(claims, "settings:read")
                     || crate::access::has(claims, "rules:read")
@@ -146,49 +133,6 @@ pub fn can_publish(claims: &JwtUserClaims, channel: &ChannelId) -> Result<(), Ap
     }
 }
 
-pub async fn device_has_player_session(
-    pool: &PgPool,
-    device_id: Uuid,
-    player_id: Uuid,
-) -> Result<bool, AppError> {
-    let row: Option<(i64,)> = sqlx::query_as(
-        r#"
-        SELECT 1::bigint
-        FROM usage_sessions s
-        INNER JOIN player_plan_balances b ON b.id = s."balanceId" AND b."deletedAt" IS NULL
-        WHERE s."deviceId" = $1
-          AND b."playerId" = $2
-          AND s."endTime" IS NULL
-          AND s."deletedAt" IS NULL
-        LIMIT 1
-        "#,
-    )
-    .bind(device_id)
-    .bind(player_id)
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(row.is_some())
-}
-
-pub async fn is_room_member(
-    pool: &PgPool,
-    room_name: &str,
-    user_id: Uuid,
-) -> Result<bool, AppError> {
-    let row: Option<(i64,)> = sqlx::query_as(
-        r#"SELECT 1::bigint FROM realtime_room_members rm
-           JOIN realtime_rooms r ON r.id = rm.room_id
-           WHERE r.name = $1 AND rm.user_id = $2"#,
-    )
-    .bind(room_name)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(row.is_some())
-}
-
 /// Apply audience restrictions to both live delivery and durable replay.
 pub fn event_matches_claims(claims: &JwtUserClaims, row: &super::outbox::OutboxRow) -> bool {
     if row
@@ -197,17 +141,7 @@ pub fn event_matches_claims(claims: &JwtUserClaims, row: &super::outbox::OutboxR
     {
         return false;
     }
-    if crate::access::managed(claims)
-        && claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string()
-        && (matches!(row.channel.as_str(), "admin" | "staff" | "kitchen")
-            || row.channel.starts_with("device:"))
-    {
-        return false;
-    }
-    if row.channel == "kitchen"
-        && (!crate::access::has(claims, "kitchen:read")
-            || claims.tenantId != crate::models::DEFAULT_ORGANIZATION_ID.to_string())
-    {
+    if row.channel == "kitchen" && !crate::access::has(claims, "kitchen:read") {
         return false;
     }
     if crate::access::managed(claims)
@@ -316,7 +250,7 @@ mod configuration_tests {
 mod managed_tests {
     use super::*;
     #[test]
-    fn legacy_operational_channels_cannot_cross_venue_boundaries() {
+    fn tenant_local_operational_channels_require_current_grants() {
         let mut claims: JwtUserClaims = serde_json::from_value(serde_json::json!({
             "sub": Uuid::new_v4(), "userId": Uuid::new_v4(), "roles": ["staff"],
             "tenantId": Uuid::new_v4(), "permissions": [crate::access::MANAGED, "events:admin", "events:staff", "kitchen:read", "devices:read"],
@@ -328,7 +262,7 @@ mod managed_tests {
             ChannelId::Kitchen,
             ChannelId::Device(Uuid::new_v4()),
         ] {
-            assert!(can_subscribe(&claims, &channel).is_err());
+            assert!(can_subscribe(&claims, &channel).is_ok());
         }
         claims.tenantId = crate::models::DEFAULT_ORGANIZATION_ID.to_string();
         assert!(can_subscribe(&claims, &ChannelId::Admin).is_ok());

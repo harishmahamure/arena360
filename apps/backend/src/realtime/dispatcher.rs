@@ -1,276 +1,215 @@
-use sqlx::PgPool;
+use super::{
+    frame::ServerFrame,
+    registry::ConnectionRegistry,
+    tenant_transport::{can_receive, TenantTransport},
+    wake::RealtimeHub,
+};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use super::connection::Connection;
-use super::deliveries::DeliveryService;
-use super::frame::ServerFrame;
-use super::outbox::OutboxService;
-use super::registry::ConnectionRegistry;
-use super::wake::RealtimeHub;
-
 pub struct Dispatcher {
-    pool: PgPool,
     registry: Arc<ConnectionRegistry>,
     hub: RealtimeHub,
     tenant_dbs: Option<Arc<crate::tenancy::TenantDbManager>>,
     metrics: Arc<crate::metrics::Metrics>,
 }
-
 impl Dispatcher {
     pub fn new(
-        pool: PgPool,
         registry: Arc<ConnectionRegistry>,
         hub: RealtimeHub,
         tenant_dbs: Option<Arc<crate::tenancy::TenantDbManager>>,
         metrics: Arc<crate::metrics::Metrics>,
     ) -> Self {
         Self {
-            pool,
             registry,
             hub,
             tenant_dbs,
             metrics,
         }
     }
-
-    /// Start the in-process committed-event loop. Runs until the hub closes.
     pub async fn run(self) {
         let mut receiver = self.hub.subscribe();
-        let mut retry = tokio::time::interval(tokio::time::Duration::from_secs(1));
-        tracing::info!("Realtime dispatcher listening for committed event wakes");
-
-        // Also run periodic retention cleanup
-        let pool_for_cleanup = self.pool.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                match DeliveryService::cleanup(&pool_for_cleanup, 7).await {
-                    Ok(count) if count > 0 => {
-                        tracing::info!("Realtime retention cleanup: removed {count} rows");
-                    }
-                    Err(e) => {
-                        tracing::warn!("Realtime retention cleanup failed: {e}");
-                    }
-                    _ => {}
-                }
-            }
-        });
-
-        self.drain_pending().await;
+        let mut retry = tokio::time::interval(std::time::Duration::from_secs(1));
+        let mut cleanup = tokio::time::interval(std::time::Duration::from_secs(3600));
         loop {
             tokio::select! {
-                received = receiver.recv() => match received {
-                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => self.drain_pending().await,
-                    Err(broadcast::error::RecvError::Closed) => return,
+                received=receiver.recv()=>match received {
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_))=>self.drain_pending().await,
+                    Err(broadcast::error::RecvError::Closed)=>return,
                 },
-                _ = retry.tick() => self.drain_pending().await,
+                _=retry.tick()=>self.drain_pending().await,
+                _=cleanup.tick()=>{
+                    if let Some(manager)=&self.tenant_dbs {
+                        for db in manager.open_handles().await {
+                            if let Err(error)=TenantTransport::new(db).cleanup(7).await {tracing::warn!(%error,"Tenant realtime cleanup delayed");}
+                        }
+                    }
+                }
             }
         }
     }
-
     async fn drain_pending(&self) {
-        let (postgres, tenants) = self.hub.pending_snapshot();
-        for id in postgres {
-            if self.dispatch(id).await {
-                self.hub.complete_postgres(id);
-            }
-        }
-        for (tenant_id, sequences) in tenants {
-            for sequence in sequences {
-                if self.project_tenant_event(tenant_id, sequence).await {
-                    self.hub.complete_tenant(tenant_id, sequence);
-                }
-            }
-        }
-    }
-
-    async fn dispatch(&self, outbox_id: i64) -> bool {
-        let row = match OutboxService::fetch_row(&self.pool, outbox_id).await {
-            Ok(Some(r)) => r,
-            Ok(None) => return true,
-            Err(e) => {
-                tracing::warn!("Failed to fetch outbox row {outbox_id}: {e}");
-                return false;
-            }
-        };
-
-        let event_frame = ServerFrame::Event {
-            msg_id: row.id,
-            channel: row.channel.clone(),
-            event_type: row.event_type.clone(),
-            payload: row.payload.clone(),
-            ts: row.created_at,
-        };
-        self.metrics.set_outbox_lag(
-            chrono::Utc::now()
-                .signed_duration_since(row.created_at)
-                .num_milliseconds()
-                .max(0) as u64,
-        );
-
-        let conns = self.registry.subscribers(&row.channel).await;
-        let mut recipients = Vec::new();
-        let mut durable_recipients = Vec::new();
-        for conn_lock in conns {
-            let conn = conn_lock.read().await;
-            if conn.claims.is_admin_or_staff()
-                && !matches!(
-                    crate::middleware::auth::panel_session_active(&self.pool, &conn.claims).await,
-                    Ok(true)
-                )
-            {
-                continue;
-            }
-            if !self.passes_audience_filter(&conn, &row) {
-                continue;
-            }
-            if row.durable {
-                durable_recipients.push(conn.user_id);
-            }
-            recipients.push((conn.outgoing_tx.clone(), conn.slow_consumer.clone()));
-        }
-        // Persist delivery before exposing a message to clients, otherwise a fast
-        // ACK can arrive before its delivery row exists and be silently lost.
-        if row.durable {
-            if let Err(error) =
-                DeliveryService::insert_deliveries(&self.pool, row.id, &durable_recipients).await
-            {
-                tracing::warn!(%error, outbox_id = row.id, "failed to batch durable deliveries");
-                return false;
-            }
-        }
-        for (sender, slow_consumer) in recipients {
-            if matches!(
-                sender.try_send(event_frame.clone()),
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_))
-            ) {
-                slow_consumer.notify_one();
-                self.metrics.slow_consumer_dropped();
-            }
-        }
-        true
-    }
-
-    async fn project_tenant_event(&self, tenant_id: Uuid, sequence: i64) -> bool {
         let Some(manager) = &self.tenant_dbs else {
-            return true;
+            return;
         };
-        let db = match manager.open(tenant_id).await {
-            Ok(db) => db,
-            Err(error) => {
-                tracing::warn!(%error, %tenant_id, sequence, "failed to open tenant event source");
-                return false;
-            }
-        };
-        let read_pool = match db.read_pool() {
-            Ok(pool) => pool,
-            Err(error) => {
-                tracing::warn!(%error, %tenant_id, sequence, "tenant event source closed");
-                return false;
-            }
-        };
-        let row: Option<(String, String)> = match sqlx::query_as(
-            "SELECT event_type, payload FROM outbox_events WHERE sequence = ?",
-        )
-        .bind(sequence)
-        .fetch_optional(&read_pool)
-        .await
-        {
-            Ok(row) => row,
-            Err(error) => {
-                tracing::warn!(%error, %tenant_id, sequence, "failed to fetch tenant event");
-                return false;
-            }
-        };
-        let Some((event_type, payload)) = row else {
-            return true;
-        };
-        let payload: serde_json::Value = match serde_json::from_str(&payload) {
-            Ok(payload) => payload,
-            Err(error) => {
-                tracing::warn!(%error, %tenant_id, sequence, "invalid tenant event payload");
-                return true;
-            }
-        };
-        let projections =
-            tenant_projections(tenant_id, &event_type, payload, Some(read_pool)).await;
-        if projections.is_empty() {
-            return true;
+        let (legacy, wakes) = self.hub.pending_snapshot();
+        // All live transport now comes from committed tenant events.
+        for id in legacy {
+            self.hub.complete_postgres(id);
         }
-        let mut tx = match self.pool.begin().await {
-            Ok(tx) => tx,
-            Err(error) => {
-                tracing::warn!(%error, %tenant_id, sequence, "failed to begin tenant projection");
-                return false;
+        for (tenant, _) in &wakes {
+            if let Err(error) = manager.open(*tenant).await {
+                tracing::warn!(%tenant,%error,"Tenant realtime owner unavailable");
             }
-        };
-        let mut ids = Vec::with_capacity(projections.len());
-        for projection in projections {
-            match OutboxService::publish_in_tx(
-                &mut tx,
-                &projection.channel,
-                projection.event_type.as_deref().unwrap_or(&event_type),
-                projection.payload,
-                projection.audience_role.as_deref(),
-                projection.audience_user_id,
-                None,
-                projection.durable,
-            )
-            .await
-            {
-                Ok(receipt) => ids.push(receipt.id()),
+        }
+        for db in manager.open_handles().await {
+            let tenant = db.tenant_id();
+            let transport = TenantTransport::new(db.clone());
+            if let Err(error) = transport.project_pending().await {
+                tracing::warn!(%tenant,%error,"Tenant realtime projection delayed");
+                continue;
+            }
+            // Persistent projection state, rather than wake receipt, defines completion.
+            if let Ok(pool) = db.background_read_pool() {
+                if let Ok(cursor) = sqlx::query_scalar::<_, i64>(
+                    "SELECT sequence FROM realtime_projection_cursor WHERE singleton=1",
+                )
+                .fetch_one(&pool)
+                .await
+                {
+                    if let Some((_, sequences)) = wakes.iter().find(|v| v.0 == tenant) {
+                        for sequence in sequences.iter().filter(|s| **s <= cursor) {
+                            self.hub.complete_tenant(tenant, *sequence);
+                        }
+                    }
+                }
+            }
+            let rows = match transport.pending().await {
+                Ok(rows) => rows,
                 Err(error) => {
-                    tracing::warn!(%error, %tenant_id, sequence, "failed tenant realtime projection");
-                    return false;
+                    tracing::warn!(%tenant,%error,"Tenant realtime read delayed");
+                    continue;
+                }
+            };
+            for row in rows {
+                let mut recipients = Vec::new();
+                let mut users = Vec::new();
+                let mut verification_failed = false;
+                for conn in self
+                    .registry
+                    .subscribers_for_tenant(tenant, &row.event.channel)
+                    .await
+                {
+                    let conn = conn.read().await;
+                    match can_receive(db.clone(), &conn.claims, &row).await {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(error) => {
+                            tracing::warn!(%tenant,%error,"Tenant delivery authorization delayed");
+                            verification_failed = true;
+                            break;
+                        }
+                    }
+                    if row.event.durable {
+                        users.push(conn.user_id);
+                    }
+                    recipients.push((conn.outgoing_tx.clone(), conn.slow_consumer.clone()));
+                }
+                if verification_failed {
+                    break;
+                }
+                if row.event.durable {
+                    if let Err(error) = transport.record_deliveries(row.event.id, users).await {
+                        tracing::warn!(%tenant,%error,"Tenant durable delivery delayed");
+                        break;
+                    }
+                }
+                if let Err(error) = transport.mark_dispatched(row.event.id).await {
+                    tracing::warn!(%tenant,%error,"Tenant delivery checkpoint delayed");
+                    break;
+                }
+                self.metrics.set_outbox_lag(
+                    Utc::now()
+                        .signed_duration_since(row.event.created_at)
+                        .num_milliseconds()
+                        .max(0) as u64,
+                );
+                let frame = ServerFrame::Event {
+                    msg_id: row.event.id,
+                    channel: row.event.channel,
+                    event_type: row.event.event_type,
+                    payload: row.event.payload,
+                    ts: row.event.created_at,
+                };
+                for (sender, slow) in recipients {
+                    if matches!(
+                        sender.try_send(frame.clone()),
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_))
+                    ) {
+                        slow.notify_one();
+                        self.metrics.slow_consumer_dropped();
+                    }
                 }
             }
         }
-        if let Err(error) = tx.commit().await {
-            tracing::warn!(%error, %tenant_id, sequence, "failed to commit tenant projection");
-            return false;
-        }
-        for id in ids {
-            self.hub.wake_postgres(id);
-        }
-        true
-    }
-
-    fn passes_audience_filter(&self, conn: &Connection, row: &super::outbox::OutboxRow) -> bool {
-        super::acl::event_matches_claims(&conn.claims, row)
     }
 }
+use chrono::Utc;
 
-struct TenantProjection {
-    channel: String,
-    event_type: Option<String>,
-    payload: serde_json::Value,
-    audience_role: Option<String>,
-    audience_user_id: Option<Uuid>,
-    durable: bool,
+pub(crate) struct TenantProjection {
+    pub(crate) channel: String,
+    pub(crate) event_type: Option<String>,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) audience_role: Option<String>,
+    pub(crate) audience_user_id: Option<Uuid>,
+    pub(crate) durable: bool,
 }
 
-async fn tenant_projections(
+pub(crate) async fn tenant_projections(
     tenant_id: Uuid,
     event_type: &str,
     mut payload: serde_json::Value,
     read_pool: Option<sqlx::SqlitePool>,
-) -> Vec<TenantProjection> {
+) -> Result<Vec<TenantProjection>, crate::error::AppError> {
     let Some(fields) = payload.as_object_mut() else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     fields.insert(
         "sourceTenantId".into(),
         serde_json::Value::String(tenant_id.to_string()),
     );
     let id = string_field(fields, "id");
-    match event_type {
+    Ok(match event_type {
+        "realtime.chat_message" => {
+            let Some(channel) = string_field(fields, "channel") else {
+                return Ok(Vec::new());
+            };
+            let Some(mut message) = fields.get("message").cloned() else {
+                return Ok(Vec::new());
+            };
+            let Some(message_fields) = message.as_object_mut() else {
+                return Ok(Vec::new());
+            };
+            message_fields.insert("sourceTenantId".into(), serde_json::json!(tenant_id));
+            let target = match super::channel::ChannelId::parse(&channel) {
+                Some(super::channel::ChannelId::User(id)) => Some(id),
+                Some(super::channel::ChannelId::Room(_)) => None,
+                _ => return Ok(Vec::new()),
+            };
+            vec![TenantProjection {
+                channel,
+                event_type: Some("chat.message".into()),
+                payload: message,
+                audience_role: None,
+                audience_user_id: target,
+                durable: true,
+            }]
+        }
         "session.started" => {
             rename_id(fields, "sessionId");
             let Some(device_id) = string_field(fields, "deviceId") else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             vec![
                 projection("staff", payload.clone(), None, true),
@@ -283,7 +222,7 @@ async fn tenant_projections(
                 string_field(fields, "deviceId"),
                 uuid_field(fields, "playerId"),
             ) else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             vec![
                 projection("staff", payload.clone(), None, true),
@@ -293,7 +232,7 @@ async fn tenant_projections(
         }
         "device.status_changed" => {
             let Some(device_id) = id else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             fields.insert(
                 "deviceId".into(),
@@ -307,7 +246,7 @@ async fn tenant_projections(
         "balance.updated" => {
             rename_id(fields, "balanceId");
             let Some(player_id) = uuid_field(fields, "playerId") else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             let session_id = uuid_field(fields, "sessionId");
             let resolved = if let (Some(session_id), Some(device_id)) =
@@ -315,10 +254,10 @@ async fn tenant_projections(
             {
                 Some((session_id, device_id))
             } else {
-                balance_session(read_pool, player_id, session_id).await
+                balance_session(read_pool, player_id, session_id).await?
             };
             let Some((session_id, device_id)) = resolved else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             fields.insert(
                 "sessionId".into(),
@@ -360,7 +299,7 @@ async fn tenant_projections(
         }
         "notification.created" => {
             let Some(user) = uuid_field(fields, "userId") else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             vec![projection(
                 format!("user:{user}"),
@@ -421,16 +360,16 @@ async fn tenant_projections(
                     .is_some_and(|status| matches!(status, "completed" | "credit")) =>
         {
             let Some(transaction_id) = id else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             let (Some(_actor_id), Some(payment_method)) = (
                 uuid_field(fields, "actorId"),
                 string_field(fields, "paymentMethod"),
             ) else {
-                return Vec::new();
+                return Ok(Vec::new());
             };
             if string_field(fields, "actorRole").as_deref() != Some("staff") {
-                return Vec::new();
+                return Ok(Vec::new());
             }
             let sale_payload = serde_json::json!({
                 "transaction_id": transaction_id,
@@ -450,7 +389,7 @@ async fn tenant_projections(
             }]
         }
         _ => Vec::new(),
-    }
+    })
 }
 
 fn projection(
@@ -490,18 +429,19 @@ async fn balance_session(
     pool: Option<sqlx::SqlitePool>,
     player_id: Uuid,
     session_id: Option<Uuid>,
-) -> Option<(Uuid, Uuid)> {
-    let pool = pool?;
+) -> Result<Option<(Uuid, Uuid)>, crate::error::AppError> {
+    let Some(pool) = pool else {
+        return Ok(None);
+    };
     if let Some(session_id) = session_id {
         let device: Option<String> =
             sqlx::query_scalar("SELECT device_id FROM usage_sessions WHERE id = ?")
                 .bind(session_id.to_string())
                 .fetch_optional(&pool)
-                .await
-                .ok()?;
-        return device
+                .await?;
+        return Ok(device
             .and_then(|id| Uuid::parse_str(&id).ok())
-            .map(|device_id| (session_id, device_id));
+            .map(|device_id| (session_id, device_id)));
     }
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT id, device_id FROM usage_sessions
@@ -510,28 +450,13 @@ async fn balance_session(
     )
     .bind(player_id.to_string())
     .fetch_optional(&pool)
-    .await
-    .ok()?;
-    row.and_then(|(session, device)| {
+    .await?;
+    Ok(row.and_then(|(session, device)| {
         Some((
             Uuid::parse_str(&session).ok()?,
             Uuid::parse_str(&device).ok()?,
         ))
-    })
-}
-
-/// Compute which user IDs should receive a room-targeted event.
-/// Not used in hot path — rooms go through channel subscription matching.
-pub async fn _room_members(
-    pool: &PgPool,
-    room_id: Uuid,
-) -> Result<Vec<Uuid>, crate::error::AppError> {
-    let rows: Vec<(Uuid,)> =
-        sqlx::query_as(r#"SELECT user_id FROM realtime_room_members WHERE room_id = $1"#)
-            .bind(room_id)
-            .fetch_all(pool)
-            .await?;
-    Ok(rows.into_iter().map(|r| r.0).collect())
+    }))
 }
 
 #[cfg(test)]
@@ -539,6 +464,16 @@ mod tests {
     use super::*;
     use crate::tenancy::{write_outbox_event_on_connection, NewOutboxEvent};
     use serde_json::json;
+    async fn tenant_projections(
+        tenant: Uuid,
+        kind: &str,
+        payload: serde_json::Value,
+        pool: Option<sqlx::SqlitePool>,
+    ) -> Vec<TenantProjection> {
+        super::tenant_projections(tenant, kind, payload, pool)
+            .await
+            .unwrap()
+    }
 
     #[tokio::test]
     async fn tenant_projection_preserves_channels_durability_and_allowlist() {

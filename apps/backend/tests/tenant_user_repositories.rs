@@ -1532,6 +1532,484 @@ async fn staged_services_do_not_connect_to_unreachable_lazy_postgres_and_reject_
 }
 
 #[tokio::test]
+async fn owning_cell_realtime_websocket_delivers_acks_and_replays_without_operational_postgres() {
+    use axum::{
+        extract::{ws::WebSocketUpgrade, State},
+        response::IntoResponse,
+        routing::get,
+        Router,
+    };
+    use futures::{SinkExt, StreamExt};
+    use gaming_cafe_api::{
+        metrics::Metrics,
+        proto::arena360::v1 as pb,
+        realtime::{registry::ConnectionRegistry, Dispatcher, RealtimeHub},
+        tenancy::{write_outbox_event_on_connection, NewOutboxEvent},
+    };
+    use prost::Message;
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message as WsMessage};
+    type WsState = (
+        Arc<TenantDb>,
+        gaming_cafe_api::dto::JwtUserClaims,
+        Arc<ConnectionRegistry>,
+        Arc<Metrics>,
+    );
+    async fn upgrade(
+        State((db, claims, registry, metrics)): State<WsState>,
+        ws: WebSocketUpgrade,
+    ) -> axum::response::Response {
+        ws.protocols(["arena360.protobuf.v1"])
+            .on_upgrade(move |socket| {
+                gaming_cafe_api::realtime::connection::run(socket, claims, db, registry, metrics)
+            })
+            .into_response()
+    }
+    async fn receive(
+        socket: &mut tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    ) -> pb::server_frame::Frame {
+        let message = tokio::time::timeout(Duration::from_secs(5), socket.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let WsMessage::Binary(bytes) = message else {
+            panic!("Expected binary server frame: {message:?}");
+        };
+        pb::ServerFrame::decode(bytes).unwrap().frame.unwrap()
+    }
+    async fn commit_event(db: Arc<TenantDb>, location: Uuid) {
+        db.with_immediate_writer(move |c| {
+            Box::pin(async move {
+                write_outbox_event_on_connection(
+                    c,
+                    NewOutboxEvent {
+                        aggregate_type: "session".into(),
+                        aggregate_id: Uuid::now_v7(),
+                        event_type: "session.started".into(),
+                        payload: serde_json::json!({"id":Uuid::now_v7(),"deviceId":Uuid::now_v7()}),
+                        location_id: Some(location),
+                        schema_version: 1,
+                        deleted: false,
+                    },
+                )
+                .await?;
+                Ok(())
+            })
+        })
+        .await
+        .unwrap();
+    }
+    let f = Fixture::new().await;
+    TenantUserRepository::new(f.db.clone())
+        .project_staff(projection(
+            f.staff_id,
+            "websocket-admin",
+            "admin",
+            1,
+            true,
+            false,
+            vec![],
+        ))
+        .await
+        .unwrap();
+    f.db.with_immediate_writer(|c|Box::pin(async move {
+        sqlx::query("UPDATE access_roles SET permissions='[\"events:staff\",\"access:manage\"]' WHERE system_key='admin'").execute(c).await?;Ok(())
+    })).await.unwrap();
+    let claims:gaming_cafe_api::dto::JwtUserClaims=serde_json::from_value(serde_json::json!({
+        "sub":f.staff_id,"userId":f.staff_id,"tenantId":f.tenant_id,"allowedTenants":[f.tenant_id],"orgIds":[f.tenant_id],
+        "roles":["admin"],"permissions":[],"iss":"gamezone","aud":"gamezone","appId":"test","exp":Utc::now().timestamp()+300
+    })).unwrap();
+    let registry = Arc::new(ConnectionRegistry::default());
+    let metrics = Arc::new(Metrics::default());
+    let dispatcher = tokio::spawn(
+        Dispatcher::new(
+            registry.clone(),
+            RealtimeHub::new(8),
+            Some(f.manager.clone()),
+            metrics.clone(),
+        )
+        .run(),
+    );
+    let app = Router::new().route("/realtime", get(upgrade)).with_state((
+        f.db.clone(),
+        claims,
+        registry,
+        metrics,
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}/realtime", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let mut request = url.clone().into_client_request().unwrap();
+    request.headers_mut().insert(
+        "sec-websocket-protocol",
+        "arena360.protobuf.v1".parse().unwrap(),
+    );
+    let (mut socket, _) = tokio_tungstenite::connect_async(request.clone())
+        .await
+        .unwrap();
+    assert!(matches!(
+        receive(&mut socket).await,
+        pb::server_frame::Frame::Welcome(_)
+    ));
+    let subscribe = pb::ClientFrame {
+        frame: Some(pb::client_frame::Frame::Subscribe(pb::Subscribe {
+            channels: vec!["staff".into()],
+        })),
+    }
+    .encode_to_vec();
+    socket
+        .send(WsMessage::Binary(subscribe.clone().into()))
+        .await
+        .unwrap();
+    assert!(matches!(
+        receive(&mut socket).await,
+        pb::server_frame::Frame::Subscribed(_)
+    ));
+    commit_event(f.db.clone(), f.location_a).await;
+    let pb::server_frame::Frame::Event(first) = receive(&mut socket).await else {
+        panic!("Expected live event");
+    };
+    assert_eq!(first.channel, "staff");
+    let ack = pb::ClientFrame {
+        frame: Some(pb::client_frame::Frame::Ack(pb::Ack {
+            msg_id: first.msg_id,
+        })),
+    }
+    .encode_to_vec();
+    socket.send(WsMessage::Binary(ack.into())).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2),async {
+        loop {
+            let acked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM realtime_deliveries WHERE outbox_id=? AND ack_at IS NOT NULL)").bind(first.msg_id).fetch_one(&f.db.read_pool().unwrap()).await.unwrap();
+            if acked {break;} tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    // An authorization read failure is retryable; it must not discard the durable event.
+    let location = f.location_a;
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("ALTER TABLE access_roles RENAME TO temporarily_unavailable_roles")
+                .execute(&mut *c)
+                .await?;
+            write_outbox_event_on_connection(
+                c,
+                NewOutboxEvent {
+                    aggregate_type: "session".into(),
+                    aggregate_id: Uuid::now_v7(),
+                    event_type: "session.started".into(),
+                    payload: serde_json::json!({"id":Uuid::now_v7(),"deviceId":Uuid::now_v7()}),
+                    location_id: Some(location),
+                    schema_version: 1,
+                    deleted: false,
+                },
+            )
+            .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1500), socket.next())
+            .await
+            .is_err()
+    );
+    let pending: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM realtime_outbox WHERE channel='staff' AND dispatched_at IS NULL",
+    )
+    .fetch_one(&f.db.read_pool().unwrap())
+    .await
+    .unwrap();
+    assert!(pending > 0);
+    f.db.with_immediate_writer(|c| {
+        Box::pin(async move {
+            sqlx::query("ALTER TABLE temporarily_unavailable_roles RENAME TO access_roles")
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    let pb::server_frame::Frame::Event(second) = receive(&mut socket).await else {
+        panic!("Expected second event");
+    };
+    socket.close(None).await.unwrap();
+    let (mut reconnected, _) = tokio_tungstenite::connect_async(request.clone())
+        .await
+        .unwrap();
+    assert!(matches!(
+        receive(&mut reconnected).await,
+        pb::server_frame::Frame::Welcome(_)
+    ));
+    let pb::server_frame::Frame::Event(replayed) = receive(&mut reconnected).await else {
+        panic!("Expected durable replay");
+    };
+    assert_eq!(replayed.msg_id, second.msg_id);
+    reconnected.close(None).await.unwrap();
+    f.db.with_immediate_writer(|c| {
+        Box::pin(async move {
+            sqlx::query("UPDATE access_roles SET permissions='[]' WHERE system_key='admin'")
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    let (mut revoked, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    assert!(matches!(
+        receive(&mut revoked).await,
+        pb::server_frame::Frame::Welcome(_)
+    ));
+    revoked
+        .send(WsMessage::Binary(subscribe.into()))
+        .await
+        .unwrap();
+    let pb::server_frame::Frame::Error(error) = receive(&mut revoked).await else {
+        panic!("Revoked access must deny replay and subscription");
+    };
+    assert_eq!(error.code, "FORBIDDEN_CHANNEL");
+    revoked.close(None).await.unwrap();
+    // More than one replay page of revoked deliveries must not hide a newer personal event.
+    let subscriber = f.staff_id;
+    let template = second.msg_id;
+    f.db.with_immediate_writer(move |c|Box::pin(async move {
+        sqlx::query("WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<500) INSERT INTO realtime_outbox(source_sequence,projection_index,channel,event_type,payload,durable,created_at,dispatched_at) SELECT 100000+n.value,0,o.channel,o.event_type,o.payload,1,o.created_at,o.dispatched_at FROM n CROSS JOIN realtime_outbox o WHERE o.id=?")
+            .bind(template).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO realtime_deliveries(outbox_id,subscriber_id,delivered_at) SELECT id,?,created_at FROM realtime_outbox WHERE source_sequence BETWEEN 100001 AND 100500")
+            .bind(subscriber.to_string()).execute(&mut *c).await?;
+        write_outbox_event_on_connection(c,NewOutboxEvent{aggregate_type:"notification".into(),aggregate_id:Uuid::now_v7(),event_type:"notification.created".into(),
+            payload:serde_json::json!({"userId":subscriber,"text":"personal message after revoked deliveries"}),location_id:None,schema_version:1,deleted:false}).await?;
+        Ok(())
+    })).await.unwrap();
+    let transport = gaming_cafe_api::realtime::tenant_transport::TenantTransport::new(f.db.clone());
+    transport.project_pending().await.unwrap();
+    let personal = transport
+        .pending()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.event.channel == format!("user:{}", f.staff_id))
+        .unwrap();
+    transport
+        .record_deliveries(personal.event.id, vec![f.staff_id])
+        .await
+        .unwrap();
+    transport.mark_dispatched(personal.event.id).await.unwrap();
+    let mut request = url.into_client_request().unwrap();
+    request.headers_mut().insert(
+        "sec-websocket-protocol",
+        "arena360.protobuf.v1".parse().unwrap(),
+    );
+    let (mut paged, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    assert!(matches!(
+        receive(&mut paged).await,
+        pb::server_frame::Frame::Welcome(_)
+    ));
+    let pb::server_frame::Frame::Event(allowed) = receive(&mut paged).await else {
+        panic!("Allowed personal event must survive revoked replay pages");
+    };
+    assert_eq!(allowed.msg_id, personal.event.id);
+    paged.close(None).await.unwrap();
+    dispatcher.abort();
+    let _ = dispatcher.await;
+    server.abort();
+    let _ = server.await;
+    f.close().await;
+}
+
+#[tokio::test]
+async fn tenant_realtime_recovers_projection_and_rechecks_venue_room_and_account_access() {
+    use gaming_cafe_api::{
+        realtime::{
+            rooms::{CreateRoomDto, TenantRoomService},
+            tenant_transport::{can_receive, current_claims, TenantTransport},
+        },
+        tenancy::{write_outbox_event_on_connection, NewOutboxEvent},
+    };
+    let f = Fixture::new().await;
+    let repo = TenantUserRepository::new(f.db.clone());
+    f.db.with_immediate_writer(|c|Box::pin(async move {
+        sqlx::query("UPDATE access_roles SET permissions='[\"sessions:read\",\"sessions:write\",\"events:staff\"]' WHERE system_key='staff'").execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    repo.project_staff(projection(
+        f.staff_id,
+        "realtime-staff",
+        "staff",
+        1,
+        true,
+        false,
+        vec![TenantLocationRoleGrant {
+            system_key: "staff".into(),
+            location_id: f.location_a,
+        }],
+    ))
+    .await
+    .unwrap();
+    let claims:gaming_cafe_api::dto::JwtUserClaims=serde_json::from_value(serde_json::json!({
+        "sub":f.staff_id,"userId":f.staff_id,"tenantId":f.tenant_id,"allowedTenants":[f.tenant_id],"orgIds":[f.tenant_id],
+        "roles":["staff"],"permissions":[],"iss":"gamezone","aud":"gamezone","appId":"test","exp":Utc::now().timestamp()+300
+    })).unwrap();
+    let locations = [f.location_a, f.location_b];
+    f.db.with_immediate_writer(move |c|Box::pin(async move {
+        for location in locations {
+            write_outbox_event_on_connection(c,NewOutboxEvent{aggregate_type:"session".into(),aggregate_id:Uuid::now_v7(),
+                event_type:"session.started".into(),payload:serde_json::json!({"id":Uuid::now_v7(),"deviceId":Uuid::now_v7(),"sourceTenantId":Uuid::now_v7()}),
+                location_id:Some(location),schema_version:1,deleted:false}).await?;
+        }
+        Ok(())
+    })).await.unwrap();
+    let transport = TenantTransport::new(f.db.clone());
+    transport.project_pending().await.unwrap();
+    let pending = transport.pending().await.unwrap();
+    assert_eq!(pending.len(), 4);
+    let row = pending
+        .iter()
+        .find(|r| r.event.channel == "staff" && r.location_id == Some(f.location_a))
+        .unwrap()
+        .clone();
+    let other_venue = pending
+        .iter()
+        .find(|r| r.event.channel == "staff" && r.location_id == Some(f.location_b))
+        .unwrap();
+    assert!(can_receive(f.db.clone(), &claims, &row).await.unwrap());
+    assert!(!can_receive(f.db.clone(), &claims, other_venue)
+        .await
+        .unwrap());
+    assert_eq!(row.event.payload["sourceTenantId"], f.tenant_id.to_string());
+    let mut foreign = claims.clone();
+    foreign.tenantId = Uuid::now_v7().to_string();
+    assert!(!can_receive(f.db.clone(), &foreign, &row).await.unwrap());
+    let restarted = TenantTransport::new(f.db.clone());
+    restarted.project_pending().await.unwrap();
+    assert_eq!(restarted.pending().await.unwrap().len(), 4);
+    restarted
+        .record_deliveries(row.event.id, vec![f.staff_id, f.staff_id])
+        .await
+        .unwrap();
+    restarted.mark_dispatched(row.event.id).await.unwrap();
+    assert_eq!(restarted.replay(f.staff_id).await.unwrap().len(), 1);
+    restarted.ack(row.event.id, Uuid::now_v7()).await.unwrap();
+    assert_eq!(restarted.replay(f.staff_id).await.unwrap().len(), 1);
+    restarted.ack(row.event.id, f.staff_id).await.unwrap();
+    assert!(restarted.replay(f.staff_id).await.unwrap().is_empty());
+
+    let rooms = TenantRoomService::new(f.db.clone());
+    let room = rooms
+        .create(
+            CreateRoomDto {
+                name: "Local chat".into(),
+                description: None,
+            },
+            f.staff_id,
+        )
+        .await
+        .unwrap();
+    rooms.add_member(room.id, f.staff_id).await.unwrap();
+    let channel = "room:Local chat".to_string();
+    assert!(restarted
+        .publish_chat(&claims, channel.clone(), serde_json::json!(5))
+        .await
+        .is_err());
+    restarted
+        .publish_chat(
+            &claims,
+            channel.clone(),
+            serde_json::json!({"text":"hello","sender_id":"forged","sourceTenantId":"forged"}),
+        )
+        .await
+        .unwrap();
+    // Losing ownership at commit leaves both projection rows and cursor unchanged.
+    let cursor: i64 = sqlx::query_scalar("SELECT sequence FROM realtime_projection_cursor")
+        .fetch_one(&f.db.read_pool().unwrap())
+        .await
+        .unwrap();
+    f.lease.fail_next_commit();
+    assert!(restarted.project_pending().await.is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT sequence FROM realtime_projection_cursor")
+            .fetch_one(&f.db.read_pool().unwrap())
+            .await
+            .unwrap(),
+        cursor
+    );
+    assert!(current_claims(f.db.clone(), &claims).await.is_err());
+    f.lease.generations.write().unwrap().insert(f.tenant_id, 1);
+    restarted.project_pending().await.unwrap();
+    let chat = restarted
+        .pending()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.event.channel == channel)
+        .unwrap();
+    assert_eq!(chat.event.event_type, "chat.message");
+    assert_eq!(chat.event.payload["sender_id"], f.staff_id.to_string());
+    assert!(can_receive(f.db.clone(), &claims, &chat).await.unwrap());
+    rooms.remove_member(room.id, f.staff_id).await.unwrap();
+    assert!(!can_receive(f.db.clone(), &claims, &chat).await.unwrap());
+    assert!(restarted
+        .publish_chat(&claims, channel, serde_json::json!({"text":"forbidden"}))
+        .await
+        .is_err());
+    repo.project_staff(projection(
+        f.staff_id,
+        "realtime-staff",
+        "staff",
+        2,
+        true,
+        false,
+        vec![],
+    ))
+    .await
+    .unwrap();
+    assert!(!can_receive(f.db.clone(), &claims, &row).await.unwrap());
+    repo.project_identity(
+        projection(
+            f.staff_id,
+            "realtime-staff",
+            "staff",
+            3,
+            false,
+            false,
+            vec![],
+        ),
+        3,
+    )
+    .await
+    .unwrap();
+    assert!(!can_receive(f.db.clone(), &claims, &row).await.unwrap());
+    let canonical: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM outbox_events")
+        .fetch_one(&f.db.read_pool().unwrap())
+        .await
+        .unwrap();
+    f.db.with_immediate_writer(|c| {
+        Box::pin(async move {
+            sqlx::query("UPDATE realtime_outbox SET created_at='2000-01-01T00:00:00.000000Z'")
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert!(restarted.cleanup(7).await.unwrap() > 0);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM outbox_events")
+            .fetch_one(&f.db.read_pool().unwrap())
+            .await
+            .unwrap(),
+        canonical
+    );
+    f.close().await;
+}
+
+#[tokio::test]
 async fn realtime_rooms_are_tenant_local_and_commit_membership_with_outbox() {
     use gaming_cafe_api::realtime::rooms::{CreateRoomDto, TenantRoomService};
     let f = Fixture::new().await;
@@ -1881,7 +2359,7 @@ struct Fixture {
     tenant_id: Uuid,
     db: Arc<TenantDb>,
     lease: Arc<Lease>,
-    manager: TenantDbManager,
+    manager: Arc<TenantDbManager>,
     staff_id: Uuid,
     location_a: Uuid,
     location_b: Uuid,
@@ -1975,7 +2453,7 @@ impl Fixture {
             tenant_id,
             db,
             lease,
-            manager,
+            manager: Arc::new(manager),
             staff_id: Uuid::now_v7(),
             location_a,
             location_b,

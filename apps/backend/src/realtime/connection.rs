@@ -1,17 +1,14 @@
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, StreamExt};
-use sqlx::PgPool;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Notify};
 use uuid::Uuid;
 
-use super::acl;
 use super::channel::ChannelId;
-use super::deliveries::DeliveryService;
 use super::frame::{ClientFrame, ServerFrame};
-use super::outbox::OutboxService;
 use super::registry::ConnectionRegistry;
+use super::tenant_transport::{can_receive, check_channel, current_claims, TenantTransport};
 use crate::dto::JwtUserClaims;
 
 const OUTGOING_QUEUE_CAPACITY: usize = 256;
@@ -38,9 +35,8 @@ impl Connection {
 pub async fn run(
     socket: WebSocket,
     claims: JwtUserClaims,
-    pool: PgPool,
+    db: Arc<crate::tenancy::TenantDb>,
     registry: Arc<ConnectionRegistry>,
-    outbox: OutboxService,
     metrics: Arc<crate::metrics::Metrics>,
 ) {
     let user_id = match claims.user_id_uuid() {
@@ -70,7 +66,7 @@ pub async fn run(
     // pending deliveries than the bounded queue can hold, so the queue must be
     // drained while the replay is being populated.
     let write_slow_consumer = slow_consumer.clone();
-    let session_pool = pool.clone();
+    let session_db = db.clone();
     let session_claims = claims.clone();
     let mut write_handle = tokio::spawn(async move {
         let seconds_left = session_claims
@@ -90,9 +86,9 @@ pub async fn run(
                     }))).await;
                     break;
                 }
-                _ = recheck.tick(), if session_claims.is_admin_or_staff() => {
-                    let result = crate::middleware::auth::panel_session_active(&session_pool, &session_claims).await;
-                    if !matches!(result, Ok(true)) {
+                _ = recheck.tick() => {
+                    let result = current_claims(session_db.clone(), &session_claims).await;
+                    if result.is_err() {
                         let code = if result.is_err() { 1013 } else { 4001 };
                         let _ = ws_sink.send(Message::Close(Some(axum::extract::ws::CloseFrame {
                             code, reason: "Session verification required".into(),
@@ -121,12 +117,41 @@ pub async fn run(
     };
     send_frame(&outgoing_tx, &slow_consumer, welcome);
 
-    // Replay unacked durable messages
-    if let Ok(pending) = DeliveryService::replay_pending(&pool, user_id).await {
-        for row in pending {
-            if !acl::event_matches_claims(&claims, &row) {
-                continue;
+    // Skip revoked deliveries while paging, so they cannot starve newer allowed messages.
+    // Backpressure keeps the replay inside the bounded outgoing queue.
+    let transport = TenantTransport::new(db.clone());
+    let mut after = 0;
+    let mut sent = 0;
+    'replay: loop {
+        let pending = match transport.replay_after(user_id, after).await {
+            Ok(rows) => rows,
+            Err(error) => {
+                send_frame(
+                    &outgoing_tx,
+                    &slow_consumer,
+                    ServerFrame::error("REPLAY_UNAVAILABLE", error.to_string()),
+                );
+                slow_consumer.notify_one();
+                break;
             }
+        };
+        let count = pending.len();
+        for pending in pending {
+            after = pending.event.id;
+            match can_receive(db.clone(), &claims, &pending).await {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(error) => {
+                    send_frame(
+                        &outgoing_tx,
+                        &slow_consumer,
+                        ServerFrame::error("REPLAY_UNAVAILABLE", error.to_string()),
+                    );
+                    slow_consumer.notify_one();
+                    break 'replay;
+                }
+            }
+            let row = pending.event;
             let event = ServerFrame::Event {
                 msg_id: row.id,
                 channel: row.channel,
@@ -134,12 +159,26 @@ pub async fn run(
                 payload: row.payload,
                 ts: row.created_at,
             };
-            send_frame(&outgoing_tx, &slow_consumer, event);
+            if !matches!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), outgoing_tx.send(event))
+                    .await,
+                Ok(Ok(()))
+            ) {
+                slow_consumer.notify_one();
+                break 'replay;
+            }
+            sent += 1;
+            if sent >= 500 {
+                break 'replay;
+            }
+        }
+        if count < 500 {
+            break;
         }
     }
 
     // Read loop: websocket -> process frames
-    let pool_clone = pool.clone();
+    let db_clone = db.clone();
     let conn_clone = conn.clone();
     let read_registry = registry.clone();
     let read_slow_consumer = slow_consumer.clone();
@@ -173,8 +212,7 @@ pub async fn run(
                         frame,
                         &conn_clone,
                         &outgoing_tx,
-                        &pool_clone,
-                        &outbox,
+                        &db_clone,
                         &read_registry,
                         &read_slow_consumer,
                     )
@@ -231,230 +269,112 @@ async fn handle_client_frame(
     frame: ClientFrame,
     conn: &Arc<tokio::sync::RwLock<Connection>>,
     tx: &mpsc::Sender<ServerFrame>,
-    pool: &PgPool,
-    outbox: &OutboxService,
+    db: &Arc<crate::tenancy::TenantDb>,
     registry: &ConnectionRegistry,
     slow_consumer: &Notify,
 ) {
+    let original = conn.read().await.claims.clone();
+    let claims = match current_claims(db.clone(), &original).await {
+        Ok(claims) => claims,
+        Err(error) => {
+            send_frame(
+                tx,
+                slow_consumer,
+                ServerFrame::error("SESSION_INVALID", error.to_string()),
+            );
+            slow_consumer.notify_one();
+            return;
+        }
+    };
+    let transport = TenantTransport::new(db.clone());
     match frame {
         ClientFrame::Subscribe { channels } => {
             let mut subscribed = Vec::new();
-            let conn_read = conn.read().await;
-
-            for ch_raw in &channels {
-                let channel = match ChannelId::parse(ch_raw) {
-                    Some(c) => c,
-                    None => {
-                        send_frame(
-                            tx,
-                            slow_consumer,
-                            ServerFrame::error(
-                                "UNKNOWN_CHANNEL",
-                                format!("Unknown channel: {ch_raw}"),
-                            ),
-                        );
-                        continue;
-                    }
-                };
-
-                if let Err(e) = acl::can_subscribe(&conn_read.claims, &channel) {
+            for raw in channels {
+                let Some(channel) = ChannelId::parse(&raw) else {
                     send_frame(
                         tx,
                         slow_consumer,
-                        ServerFrame::error("FORBIDDEN_CHANNEL", e.to_string()),
+                        ServerFrame::error("UNKNOWN_CHANNEL", format!("Unknown channel: {raw}")),
                     );
                     continue;
-                }
-
-                if let ChannelId::User(player_id) = channel {
-                    if conn_read.claims.is_device() {
-                        let device_id = conn_read.user_id;
-                        match acl::device_has_player_session(pool, device_id, player_id).await {
-                            Ok(true) => {}
-                            Ok(false) => {
-                                send_frame(
-                                    tx,
-                                    slow_consumer,
-                                    ServerFrame::error(
-                                        "FORBIDDEN_CHANNEL",
-                                        "No active session for player on this device".to_string(),
-                                    ),
-                                );
-                                continue;
-                            }
-                            Err(_) => {
-                                send_frame(
-                                    tx,
-                                    slow_consumer,
-                                    ServerFrame::error(
-                                        "INTERNAL_ERROR",
-                                        "Failed to verify player session",
-                                    ),
-                                );
-                                continue;
-                            }
-                        }
-                    }
-                }
-
-                if let ChannelId::Room(ref name) = channel {
-                    match acl::is_room_member(pool, name, conn_read.user_id).await {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            send_frame(
-                                tx,
-                                slow_consumer,
-                                ServerFrame::error(
-                                    "NOT_MEMBER",
-                                    format!("Not a member of room:{name}"),
-                                ),
-                            );
-                            continue;
-                        }
-                        Err(_) => {
-                            send_frame(
-                                tx,
-                                slow_consumer,
-                                ServerFrame::error(
-                                    "INTERNAL_ERROR",
-                                    "Failed to check room membership",
-                                ),
-                            );
-                            continue;
-                        }
-                    }
-                }
-
-                subscribed.push(ch_raw.clone());
-            }
-
-            drop(conn_read);
-
-            if !subscribed.is_empty() {
-                let mut conn_write = conn.write().await;
-                let available = MAX_SUBSCRIPTIONS.saturating_sub(conn_write.subscriptions.len());
-                subscribed.truncate(available);
-                for ch in &subscribed {
-                    conn_write.subscriptions.insert(ch.clone());
-                }
-                let connection_id = conn_write.id;
-                drop(conn_write);
-                registry.subscribe(connection_id, &subscribed).await;
-                send_frame(
-                    tx,
-                    slow_consumer,
-                    ServerFrame::Subscribed {
-                        channels: subscribed,
-                    },
-                );
-            }
-        }
-
-        ClientFrame::Unsubscribe { channels } => {
-            let mut unsubscribed = Vec::new();
-            let mut conn_write = conn.write().await;
-            for ch in &channels {
-                if conn_write.subscriptions.remove(ch) {
-                    unsubscribed.push(ch.clone());
-                }
-            }
-            drop(conn_write);
-
-            if !unsubscribed.is_empty() {
-                let connection_id = conn.read().await.id;
-                registry.unsubscribe(connection_id, &unsubscribed).await;
-                send_frame(
-                    tx,
-                    slow_consumer,
-                    ServerFrame::Unsubscribed {
-                        channels: unsubscribed,
-                    },
-                );
-            }
-        }
-
-        ClientFrame::Ack { msg_id } => {
-            let conn_read = conn.read().await;
-            let _ = DeliveryService::mark_acked(pool, msg_id, conn_read.user_id).await;
-        }
-
-        ClientFrame::Publish { channel, payload } => {
-            let conn_read = conn.read().await;
-            let ch = match ChannelId::parse(&channel) {
-                Some(c) => c,
-                None => {
-                    send_frame(
+                };
+                match check_channel(db.clone(), &claims, &channel).await {
+                    Ok(()) => subscribed.push(channel.as_string()),
+                    Err(error) => send_frame(
                         tx,
                         slow_consumer,
-                        ServerFrame::error(
-                            "UNKNOWN_CHANNEL",
-                            format!("Unknown channel: {channel}"),
-                        ),
-                    );
-                    return;
-                }
-            };
-
-            if let Err(e) = acl::can_publish(&conn_read.claims, &ch) {
-                send_frame(
-                    tx,
-                    slow_consumer,
-                    ServerFrame::error("FORBIDDEN_CHANNEL", e.to_string()),
-                );
-                return;
-            }
-
-            if let ChannelId::Room(ref name) = ch {
-                match acl::is_room_member(pool, name, conn_read.user_id).await {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        send_frame(
-                            tx,
-                            slow_consumer,
-                            ServerFrame::error(
-                                "NOT_MEMBER",
-                                format!("Not a member of room:{name}"),
-                            ),
-                        );
-                        return;
-                    }
-                    Err(_) => {
-                        send_frame(
-                            tx,
-                            slow_consumer,
-                            ServerFrame::error("INTERNAL_ERROR", "Failed to check room membership"),
-                        );
-                        return;
-                    }
-                }
-            }
-
-            if !conn_read.subscriptions.contains(&channel) {
-                send_frame(
-                    tx,
-                    slow_consumer,
-                    ServerFrame::error(
-                        "NOT_SUBSCRIBED",
-                        "Subscribe to a channel before publishing",
+                        ServerFrame::error("FORBIDDEN_CHANNEL", error.to_string()),
                     ),
+                }
+            }
+            let mut connection = conn.write().await;
+            subscribed.retain(|ch| !connection.subscriptions.contains(ch));
+            subscribed.sort();
+            subscribed.dedup();
+            subscribed.truncate(MAX_SUBSCRIPTIONS.saturating_sub(connection.subscriptions.len()));
+            for channel in &subscribed {
+                connection.subscriptions.insert(channel.clone());
+            }
+            let id = connection.id;
+            drop(connection);
+            registry.subscribe(id, &subscribed).await;
+            send_frame(
+                tx,
+                slow_consumer,
+                ServerFrame::Subscribed {
+                    channels: subscribed,
+                },
+            );
+        }
+        ClientFrame::Unsubscribe { channels } => {
+            let mut connection = conn.write().await;
+            let channels: Vec<_> = channels
+                .into_iter()
+                .filter_map(|raw| ChannelId::parse(&raw).map(|ch| ch.as_string()))
+                .filter(|ch| connection.subscriptions.remove(ch))
+                .collect();
+            let id = connection.id;
+            drop(connection);
+            registry.unsubscribe(id, &channels).await;
+            send_frame(tx, slow_consumer, ServerFrame::Unsubscribed { channels });
+        }
+        ClientFrame::Ack { msg_id } => {
+            if let Err(error) = transport.ack(msg_id, claims.user_id_uuid().unwrap()).await {
+                send_frame(
+                    tx,
+                    slow_consumer,
+                    ServerFrame::error("ACK_FAILED", error.to_string()),
+                );
+            }
+        }
+        ClientFrame::Publish { channel, payload } => {
+            let Some(parsed) = ChannelId::parse(&channel) else {
+                send_frame(
+                    tx,
+                    slow_consumer,
+                    ServerFrame::error("UNKNOWN_CHANNEL", "Unknown channel"),
+                );
+                return;
+            };
+            let channel = parsed.as_string();
+            if !conn.read().await.subscriptions.contains(&channel) {
+                send_frame(
+                    tx,
+                    slow_consumer,
+                    ServerFrame::error("NOT_SUBSCRIBED", "Subscribe before publishing"),
                 );
                 return;
             }
-
-            let user_id = conn_read.user_id;
-            let mut chat_payload = payload;
-            chat_payload["sender_id"] = serde_json::json!(user_id.to_string());
-
-            drop(conn_read);
-
-            let _ = outbox
-                .publish(&channel, "chat.message", chat_payload, None, None, true)
-                .await;
+            if let Err(error) = transport.publish_chat(&claims, channel, payload).await {
+                send_frame(
+                    tx,
+                    slow_consumer,
+                    ServerFrame::error("PUBLISH_FAILED", error.to_string()),
+                );
+            }
         }
-
-        ClientFrame::Ping => {
-            send_frame(tx, slow_consumer, ServerFrame::Pong);
-        }
+        ClientFrame::Ping => send_frame(tx, slow_consumer, ServerFrame::Pong),
     }
 }
 

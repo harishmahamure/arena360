@@ -40,6 +40,19 @@ impl ConnectionRegistry {
         }
         index.retain(|_, subscribers| !subscribers.is_empty());
     }
+    pub async fn subscribers_for_tenant(
+        &self,
+        tenant: Uuid,
+        channel: &str,
+    ) -> Vec<Arc<RwLock<Connection>>> {
+        let mut selected = Vec::new();
+        for connection in self.subscribers(channel).await {
+            if connection.read().await.claims.tenantId == tenant.to_string() {
+                selected.push(connection);
+            }
+        }
+        selected
+    }
     pub async fn subscribers(&self, channel: &str) -> Vec<Arc<RwLock<Connection>>> {
         let ids = self
             .channels
