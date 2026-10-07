@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0040
+## Completed through OPS-0020
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `OPS-0020` — Provision the tenant JetStream stream with seven-day limits retention.
+- [ ] `DB-0020` — Tenant DuckDB schema v1 and migration runner.
 
 ### API-0033 completed
 
@@ -99,6 +99,13 @@
 - Pending tenants survive handle eviction; empty polling permits eviction and no publisher acquires ownership. Backlog and publication metrics are available.
 - 373 backend checks and a separate real JetStream check pass (374 total). Missing-stream retention, replay deduplication, partial failure/recovery, fencing, gaps, exact JSON numbers, tombstones and writer availability are verified.
 - Rebuild boundary documentation uses the committed AUTOINCREMENT watermark after source cleanup.
+
+### OPS-0020 completed
+
+- Idempotent native stream setup, seven-day file/limits replay retention, explicit NATS deployment configuration and read-only checks. Existing incompatible streams/messages remain unchanged.
+- Three configuration tests and the actual native setup/server test pass. Consumer ACKs retain history. The actual pnpm check command and production Helm/YAML checks pass.
+- The runner/CI exercise both gates against fresh disposable servers. Success, missing Cargo and interruption cleanup are verified. The normal/control suite (373), setup unit checks (3) and two live gates total 378 passing checks across the recorded runs.
+- API-0040 implementation: `497c3e2`.
 
 ## M5 queue
 

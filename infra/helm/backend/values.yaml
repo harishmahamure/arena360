@@ -118,6 +118,9 @@ envFromSecrets:
   - envName: ARENA_CELL_ID
     name: arena360-backend-secrets
     key: ARENA_CELL_ID
+  - envName: NATS_URL
+    name: arena360-backend-secrets
+    key: NATS_URL
   - envName: REDIS_URL
     name: arena360-redis-secrets
     key: REDIS_URL

@@ -19,7 +19,7 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/gaming-cafe-api /app/target/release/demo_seed /usr/local/bin/
+COPY --from=builder /app/target/release/gaming-cafe-api /app/target/release/demo_seed /app/target/release/tenant_events_setup /usr/local/bin/
 
 EXPOSE 3000
 

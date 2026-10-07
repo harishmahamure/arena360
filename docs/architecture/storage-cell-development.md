@@ -110,3 +110,34 @@ retained event age, publication acknowledgement count and publication failures.
 Counts aggregate locally owned tenants; they include acknowledged rows waiting for
 realtime. Reopening a pending tenant requires an existing valid lease. Empty polls
 allow idle eviction. Publishers do not provision tenants or acquire ownership.
+
+### Provision the replay stream
+
+Start the Compose NATS service, then run:
+
+```sh
+NATS_URL=nats://127.0.0.1:4222 pnpm analytics:stream:init
+NATS_URL=nats://127.0.0.1:4222 pnpm analytics:stream:init -- --check
+```
+
+The native `tenant_events_setup` command creates `ARENA_TENANT_EVENTS` on
+`arena.tenant.*.events.v1` with file storage, limits retention of seven days,
+unlimited message/byte counts and a two-minute message-ID deduplication window.
+Consumer acknowledgements retain replay history. New streams prohibit individual
+message deletion and purging. Repeating setup verifies the existing stream without
+changing its configuration or messages; incompatible retention, storage, subjects,
+count/byte limits, replica settings, sealing or disabled acknowledgements fail.
+Reconcile incompatible streams explicitly before publication.
+
+`NATS_STREAM_REPLICAS` defaults to 1 for the standalone development server; use
+3 or 5 only with a suitably sized NATS cluster. Production deployment requires
+`NATS_URL`; provision the stream with the native command in the backend image from
+a network that can reach NATS. Setup is separate from API startup, so a NATS outage
+does not prevent operational startup. The publisher retains failed publications.
+
+The integration runner starts and removes a fresh, empty JetStream server per gate
+when `nats-server` is installed or `NATS_SERVER_BIN` points to it. CI uses a pinned,
+checksum-verified server runtime. Without a local runtime the two JetStream gates
+are explicitly reported as skipped; the SQLite/control checks still run.
+
+Run only the two disposable JetStream checks with `pnpm backend:test:integration --jetstream-only`; this mode requires a local server runtime and does not create a control database.
