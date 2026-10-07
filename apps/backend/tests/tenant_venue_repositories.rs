@@ -417,8 +417,30 @@ async fn session_service_activity_commits_locally_and_failure_rolls_back_the_ses
     fixture.close().await;
 }
 
+struct UnavailableCache;
+#[async_trait::async_trait]
+impl gaming_cafe_api::cache::CacheService for UnavailableCache {
+    async fn get_value(&self, _: &str) -> Result<Option<serde_json::Value>, AppError> {
+        Err(AppError::Internal("cache unavailable".into()))
+    }
+    async fn set_value(&self, _: &str, _: &serde_json::Value, _: Duration) -> Result<(), AppError> {
+        Err(AppError::Internal("cache unavailable".into()))
+    }
+    async fn delete(&self, _: &[&str]) -> Result<(), AppError> {
+        Err(AppError::Internal("cache unavailable".into()))
+    }
+    async fn invalidate_prefix(&self, _: &str) -> Result<(), AppError> {
+        Err(AppError::Internal("cache unavailable".into()))
+    }
+    async fn publish_invalidation(&self, _: &[String]) -> Result<(), AppError> {
+        Err(AppError::Internal("cache unavailable".into()))
+    }
+    async fn consume_ip_token(&self, _: &str, _: u32, _: Duration) -> Result<Option<gaming_cafe_api::cache::RateLimitDecision>, AppError> { Ok(None) }
+    fn is_available(&self) -> bool { true }
+}
+
 #[tokio::test]
-async fn staff_allowance_renewal_preserves_ledger_and_recovers_atomically_without_postgres() {
+async fn staff_allowance_renewal_preserves_ledger_and_recovers_without_postgres_or_cache() {
     use gaming_cafe_api::models::{SetStaffGamingAllowanceDto, StaffGamingAllowanceStatus};
     let f = Fixture::new().await;
     let staff = Uuid::now_v7();
@@ -433,15 +455,9 @@ async fn staff_allowance_renewal_preserves_ledger_and_recovers_atomically_withou
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
         .unwrap();
     pg.close().await;
-    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let cache: Arc<dyn gaming_cafe_api::cache::CacheService> = Arc::new(UnavailableCache);
     let service = gaming_cafe_api::services::StaffGamingAllowanceService::new(
-        pg.clone(),
-        Arc::new(gaming_cafe_api::services::UserService::new(
-            pg.clone(),
-            cache.clone(),
-        )),
         Arc::new(BalanceService::new(pg.clone(), cache.clone())),
-        cache.clone(),
         Arc::new(gaming_cafe_api::services::ConfigService::new(
             pg,
             cache,

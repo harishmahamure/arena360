@@ -307,11 +307,7 @@ pub async fn build_state() -> Arc<AppState> {
         transactions: TransactionService::new(),
         credit,
         staff_gaming_allowances: StaffGamingAllowanceService::new(
-            pool.clone(),
-            users.clone(),
-            balances.clone(),
-            cache.clone(),
-            config_service.clone(),
+            balances.clone(), config_service.clone(),
         ),
         products: ProductService::new(),
         product_recipes: ProductRecipeService::new(),
