@@ -11,7 +11,7 @@
 - [x] M1 — Control plane
 - [x] M2 — Ownership and routing
 - [x] M3 — Tenant storage foundation
-- [ ] M4 — Core venue operations on SQLite
+- [x] M4 — Core venue operations on SQLite
 - [ ] M5 — Back office on SQLite
 - [ ] M6 — Analytics ingestion
 - [ ] M7 — Reports on DuckDB
@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0028
+## Completed through API-0032
 
-- 24 planned tasks completed.
+- 25 planned tasks completed.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -48,10 +48,13 @@
 - Tenant SQLite player lifecycle and kiosk authentication, plus a credential-free, revisioned
   global staff membership projection with exact role and location scope, atomic revocation,
   idempotent tombstones, and secret-free outbox events.
+- In-process owning-cell realtime dispatch with commit-only PostgreSQL and tenant SQLite wakes,
+  runtime lag deduplication, source-tenant ACL enforcement, immutable event snapshots, and
+  durable-delivery-before-send ordering.
 
 ## Current task
 
-- [ ] `API-0032` — Replace PostgreSQL realtime listening with in-process tenant-cell dispatch.
+- [ ] `DB-0010c` — Add the remaining tenant back-office SQLite schema.
 
 ## M4 queue
 
@@ -60,7 +63,7 @@
 - [x] `API-0026` — Devices, sessions, and wallets.
 - [x] `API-0027` — Transactions, ledger, credit, kiosk orders, and checkout stock deduction.
 - [x] `API-0028` — Players and staff membership projection.
-- [ ] `API-0032` — In-process realtime dispatch.
+- [x] `API-0032` — In-process realtime dispatch.
 
 ## Accepted architecture decisions
 
@@ -72,9 +75,9 @@
 ## Verification
 
 - Full backend test suite passes.
-- Tenant venue, catalog, commerce, identity, schema, provisioning, migration, and lease regression
-  tests pass.
-- Latest completed implementation commit: `48ba2a8` (`API-0028`).
+- Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
+  regression tests pass.
+- Latest completed implementation commit: `246d5b4` (`API-0032`).
 
 ## Update rule
 
