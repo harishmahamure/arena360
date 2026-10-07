@@ -4,10 +4,6 @@ use tracing::info;
 
 use super::Settings;
 
-pub async fn create_pool(settings: &Settings) -> PgPool {
-    create_pool_for(&settings.database_url, settings).await
-}
-
 pub async fn create_pool_for(database_url: &str, settings: &Settings) -> PgPool {
     let connect_options: PgConnectOptions = database_url
         .parse::<PgConnectOptions>()

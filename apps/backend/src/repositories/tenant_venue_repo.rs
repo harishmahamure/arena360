@@ -1,3 +1,14 @@
+#[derive(Debug, Clone)]
+pub struct PlayerOpenSession {
+    pub session_id: Uuid,
+    pub device_id: Uuid,
+    pub device_name: String,
+    pub start_time: DateTime<Utc>,
+    pub balance_id: Uuid,
+    pub remaining_minutes: i32,
+}
+
+
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
@@ -849,11 +860,11 @@ impl TenantSessionRepository {
     pub async fn find_open_for_player(
         &self,
         player: Uuid,
-    ) -> Result<Option<super::session_repo::PlayerOpenSession>, AppError> {
+    ) -> Result<Option<PlayerOpenSession>, AppError> {
         let row:Option<(Uuid,Uuid,String,DateTime<Utc>,Uuid,i32)>=sqlx::query_as("SELECT unhex(replace(s.id,'-','')),unhex(replace(s.device_id,'-','')),d.name,s.start_time,unhex(replace(s.balance_id,'-','')),b.remaining_minutes FROM usage_sessions s JOIN player_plan_balances b ON b.id=s.balance_id JOIN devices d ON d.id=s.device_id WHERE s.player_id=? AND s.end_time IS NULL AND s.deleted_at IS NULL ORDER BY s.start_time DESC,s.id DESC LIMIT 1").bind(player.to_string()).fetch_optional(&self.db.read_pool()?).await?;
         Ok(row.map(
             |(session_id, device_id, device_name, start_time, balance_id, remaining_minutes)| {
-                super::session_repo::PlayerOpenSession {
+                PlayerOpenSession {
                     session_id,
                     device_id,
                     device_name,

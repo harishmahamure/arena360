@@ -6,7 +6,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RealtimeWake {
-    Postgres(i64),
     Tenant {
         tenant_id: Uuid,
         sequences: Vec<i64>,
@@ -17,7 +16,6 @@ pub enum RealtimeWake {
 struct Pending {
     // Pending work is process-local by design. It survives broadcast lag and handle
     // eviction, but not process restart, matching the former LISTEN/NOTIFY gap.
-    postgres: BTreeSet<i64>,
     tenants: HashMap<Uuid, BTreeSet<i64>>,
     tenant_cursors: HashMap<Uuid, i64>,
 }
@@ -39,15 +37,6 @@ impl RealtimeHub {
 
     pub fn subscribe(&self) -> broadcast::Receiver<RealtimeWake> {
         self.sender.subscribe()
-    }
-
-    pub fn wake_postgres(&self, id: i64) {
-        self.pending
-            .lock()
-            .expect("realtime pending lock")
-            .postgres
-            .insert(id);
-        let _ = self.sender.send(RealtimeWake::Postgres(id));
     }
 
     pub fn register_tenant(&self, tenant_id: Uuid, current_sequence: i64) {
@@ -86,28 +75,10 @@ impl RealtimeHub {
         }
     }
 
-    pub fn pending_snapshot(&self) -> (Vec<i64>, Vec<(Uuid, Vec<i64>)>) {
-        // The dispatcher drains these sets after every wake, on Lagged, and on its
-        // retry tick. A dropped broadcast signal therefore cannot drop runtime work.
+    pub fn pending_snapshot(&self) -> Vec<(Uuid, Vec<i64>)> {
+        // Broadcast is only a wake hint: this set survives lag until projection commits.
         let pending = self.pending.lock().expect("realtime pending lock");
-        (
-            pending.postgres.iter().copied().collect(),
-            pending
-                .tenants
-                .iter()
-                .map(|(tenant_id, sequences)| {
-                    (*tenant_id, sequences.iter().copied().collect::<Vec<_>>())
-                })
-                .collect(),
-        )
-    }
-
-    pub fn complete_postgres(&self, id: i64) {
-        self.pending
-            .lock()
-            .expect("realtime pending lock")
-            .postgres
-            .remove(&id);
+        pending.tenants.iter().map(|(tenant, sequences)| (*tenant, sequences.iter().copied().collect())).collect()
     }
 
     pub fn complete_tenant(&self, tenant_id: Uuid, sequence: i64) {
@@ -147,7 +118,7 @@ mod tests {
         hub.register_tenant(tenant_id, 7);
         hub.wake_tenant(tenant_id, &[6, 8, 8, 9]);
         hub.wake_tenant(tenant_id, &[8, 9]);
-        let (_, tenants) = hub.pending_snapshot();
+        let tenants = hub.pending_snapshot();
         assert_eq!(tenants, vec![(tenant_id, vec![8, 9])]);
     }
 
@@ -155,14 +126,15 @@ mod tests {
     async fn broadcast_lag_does_not_drop_process_local_pending_work() {
         let hub = RealtimeHub::new(1);
         let mut receiver = hub.subscribe();
-        hub.wake_postgres(10);
-        hub.wake_postgres(11);
+        let tenant = Uuid::new_v4();
+        hub.wake_tenant(tenant, &[10]);
+        hub.wake_tenant(tenant, &[11]);
         assert!(matches!(
             receiver.recv().await,
             Err(broadcast::error::RecvError::Lagged(_))
         ));
-        assert_eq!(hub.pending_snapshot().0, vec![10, 11]);
-        hub.complete_postgres(10);
-        assert_eq!(hub.pending_snapshot().0, vec![11]);
+        assert_eq!(hub.pending_snapshot(), vec![(tenant, vec![10, 11])]);
+        hub.complete_tenant(tenant, 10);
+        assert_eq!(hub.pending_snapshot(), vec![(tenant, vec![11])]);
     }
 }

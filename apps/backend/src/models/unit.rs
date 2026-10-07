@@ -43,8 +43,6 @@ pub struct UpdateUnitDto {
 #[derive(Debug, Deserialize, Serialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct UnitFilterDto {
-    #[serde(skip_deserializing)]
-    pub organization_id: Option<Uuid>,
     pub name: Option<String>,
     pub r#type: Option<String>,
     pub is_active: Option<bool>,

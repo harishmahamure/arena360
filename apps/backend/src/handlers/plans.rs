@@ -120,7 +120,6 @@ pub async fn list_plans(
         .location_id
         .or(requested_location(&headers)?)
         .or_else(|| (scope.locations.len() == 1).then(|| scope.locations[0]));
-    filters.organization_id = Some(scope.organization_id);
     filters.allowed_location_ids = Some(scope.locations);
     let result = {
         let db = state.business_db(&claims).await?;

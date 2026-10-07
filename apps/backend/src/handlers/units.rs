@@ -27,10 +27,8 @@ use crate::openapi::responses::{ErrorEnvelope, UnitEnvelope, UnitPaginationEnvel
 pub async fn list_units(
     AuthUser(claims): AuthUser,
     State(state): State<Arc<AppState>>,
-    Query(mut filters): Query<UnitFilterDto>,
+    Query(filters): Query<UnitFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<Unit>> {
-    let tenant_id = tenant_id(&claims)?;
-    filters.organization_id = Some(tenant_id);
     let result = {
         let db = state.business_db(&claims).await?;
         state.units.list_tenant(db, filters).await?
@@ -154,9 +152,4 @@ pub async fn delete_unit(
         state.units.delete_tenant(db, id).await?;
     }
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn tenant_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, crate::error::AppError> {
-    Uuid::parse_str(&claims.tenantId)
-        .map_err(|_| crate::error::AppError::Forbidden("Select an organization".into()))
 }

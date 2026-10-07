@@ -264,7 +264,7 @@ mod managed_tests {
         ] {
             assert!(can_subscribe(&claims, &channel).is_ok());
         }
-        claims.tenantId = crate::models::DEFAULT_ORGANIZATION_ID.to_string();
+        claims.tenantId = Uuid::new_v4().to_string();
         assert!(can_subscribe(&claims, &ChannelId::Admin).is_ok());
         assert!(can_subscribe(&claims, &ChannelId::Kitchen).is_ok());
     }

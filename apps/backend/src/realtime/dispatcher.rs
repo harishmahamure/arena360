@@ -53,11 +53,7 @@ impl Dispatcher {
         let Some(manager) = &self.tenant_dbs else {
             return;
         };
-        let (legacy, wakes) = self.hub.pending_snapshot();
-        // All live transport now comes from committed tenant events.
-        for id in legacy {
-            self.hub.complete_postgres(id);
-        }
+        let wakes = self.hub.pending_snapshot();
         for (tenant, _) in &wakes {
             if let Err(error) = manager.open(*tenant).await {
                 tracing::warn!(%tenant,%error,"Tenant realtime owner unavailable");

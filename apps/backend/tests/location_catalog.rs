@@ -129,7 +129,6 @@ async fn location_grants_catalog_visibility_prices_and_shared_write_boundary() {
     let result = TenantProductRepository::new(db.clone())
         .with_locations(vec![b])
         .list(&ProductFilterDto {
-            organization_id: Some(org),
             allowed_location_ids: Some(vec![b]),
             ..Default::default()
         })
@@ -151,7 +150,6 @@ async fn location_grants_catalog_visibility_prices_and_shared_write_boundary() {
     let result = TenantProductRepository::new(db.clone())
         .with_locations(vec![b])
         .list(&ProductFilterDto {
-            organization_id: Some(org),
             allowed_location_ids: Some(vec![b]),
             ..Default::default()
         })
@@ -331,9 +329,9 @@ async fn location_grants_catalog_visibility_prices_and_shared_write_boundary() {
     let parsed: ProductFilterDto =
         serde_json::from_value(json!({"organizationId":Uuid::new_v4(),"allowedLocationIds":[b]}))
             .unwrap();
-    assert!(parsed.organization_id.is_none() && parsed.allowed_location_ids.is_none());
+    assert!(parsed.allowed_location_ids.is_none());
+    assert!(serde_json::to_value(&parsed).unwrap().get("organizationId").is_none());
     let scoped = ProductFilterDto {
-        organization_id: Some(org),
         allowed_location_ids: Some(vec![a]),
         ..Default::default()
     };

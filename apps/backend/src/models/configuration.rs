@@ -4,8 +4,6 @@ use sqlx::FromRow;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-pub const DEFAULT_ORGANIZATION_ID: Uuid = Uuid::from_u128(0x00000000_0000_4000_8000_000000000001);
-pub const DEFAULT_VENUE_LOCATION_ID: Uuid = Uuid::from_u128(0x00000000_0000_4000_8000_000000000002);
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]

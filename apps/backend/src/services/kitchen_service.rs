@@ -1,11 +1,4 @@
-use crate::{
-    error::AppError,
-    realtime::{OutboxReceipt, OutboxService},
-};
-use serde_json::json;
-use sqlx::{Postgres, Transaction};
-use uuid::Uuid;
-
+//! Shared pure kitchen transition policy used by tenant workflows.
 pub fn valid_transition(from: &str, to: &str) -> bool {
     matches!(
         (from, to),
@@ -14,78 +7,6 @@ pub fn valid_transition(from: &str, to: &str) -> bool {
             | ("ready", "served")
             | ("queued" | "preparing" | "ready", "cancelled")
     )
-}
-
-pub async fn publish(
-    tx: &mut Transaction<'_, Postgres>,
-    id: Uuid,
-) -> Result<Vec<OutboxReceipt>, AppError> {
-    let mut receipts = vec![
-        OutboxService::publish_in_tx(
-            tx,
-            "kitchen",
-            "kitchen.changed",
-            json!({"ticketId": id}),
-            None,
-            None,
-            None,
-            true,
-        )
-        .await?,
-    ];
-    for role in ["admin", "staff"] {
-        receipts.push(
-            OutboxService::publish_in_tx(
-                tx,
-                role,
-                "kitchen.changed",
-                json!({"ticketId": id}),
-                Some(role),
-                None,
-                None,
-                true,
-            )
-            .await?,
-        );
-    }
-    Ok(receipts)
-}
-
-/// Called inside the sale transaction, after its line items exist. Unique transaction_id
-/// prevents duplicate preparation when a payment is retried or credit is settled later.
-pub async fn enqueue(
-    tx: &mut Transaction<'_, Postgres>,
-    transaction_id: Uuid,
-    actor: Option<Uuid>,
-) -> Result<Vec<OutboxReceipt>, AppError> {
-    let mut receipts = Vec::new();
-    let id: Option<Uuid> = sqlx::query_scalar(r#"
-        INSERT INTO kitchen_tickets (transaction_id, items, customer, notes, due_at)
-        SELECT t.id, jsonb_agg(jsonb_build_object('productId',p.id,'name',p.name,
-            'quantity',tp.quantity,'station',m.station,
-            'options',(SELECT coalesce(jsonb_agg(o.name ORDER BY o.id),'[]'::jsonb)
-                       FROM transaction_product_options o WHERE o."transactionProductId"=tp.id))
-            ORDER BY p.name), u.username, t.notes,
-            now() + make_interval(mins => max(m.prep_minutes))
-        FROM transactions t JOIN users u ON u.id=t."playerId"
-        JOIN transaction_products tp ON tp."transactionId"=t.id
-        JOIN products p ON p.id=tp."productId"
-        JOIN kitchen_menu_settings m ON m.product_id=p.id AND m.enabled
-        WHERE t.id=$1 AND t."deletedAt" IS NULL AND t."paymentStatus"::text IN ('completed','credit')
-        GROUP BY t.id,u.username HAVING count(*) > 0
-        ON CONFLICT (transaction_id) DO NOTHING RETURNING id
-    "#).bind(transaction_id).fetch_optional(&mut **tx).await?;
-    if let Some(id) = id {
-        sqlx::query(
-            "INSERT INTO kitchen_ticket_events(ticket_id,status,actor_id) VALUES($1,'queued',$2)",
-        )
-        .bind(id)
-        .bind(actor)
-        .execute(&mut **tx)
-        .await?;
-        receipts = publish(tx, id).await?;
-    }
-    Ok(receipts)
 }
 
 #[cfg(test)]

@@ -199,7 +199,7 @@ impl JwtUserClaims {
 #[cfg(test)]
 mod jwt_tests {
     use super::*;
-    use crate::models::DEFAULT_ORGANIZATION_ID;
+    const TEST_TENANT: uuid::Uuid = uuid::Uuid::from_u128(0x00000000_0000_4000_8000_000000000099);
     use chrono::{Duration, Utc};
     use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 
@@ -207,17 +207,17 @@ mod jwt_tests {
         JwtUserClaims {
             sub: "user-id".to_string(),
             permissions: vec![],
-            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            allowedTenants: vec![TEST_TENANT.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(iat),
             exp: Some((now + Duration::minutes(15)).timestamp()),
             userId: "user-id".to_string(),
-            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
+            tenantId: TEST_TENANT.to_string(),
             roles: vec!["admin".to_string()],
             appId: "game-zone-backend".to_string(),
-            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            orgIds: vec![TEST_TENANT.to_string()],
             deviceId: None,
             locationId: None,
         }
@@ -227,17 +227,17 @@ mod jwt_tests {
         JwtUserClaims {
             sub: "player-id".to_string(),
             permissions: vec![],
-            allowedTenants: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            allowedTenants: vec![TEST_TENANT.to_string()],
             rateLimit: Some(RateLimitClaims { qps: 100 }),
             iss: "gamezone".to_string(),
             aud: serde_json::json!("gamezone"),
             iat: Some(now.timestamp()),
             exp: Some((now + Duration::hours(24)).timestamp()),
             userId: "player-id".to_string(),
-            tenantId: DEFAULT_ORGANIZATION_ID.to_string(),
+            tenantId: TEST_TENANT.to_string(),
             roles: vec!["player".to_string()],
             appId: "game-zone-kiosk".to_string(),
-            orgIds: vec![DEFAULT_ORGANIZATION_ID.to_string()],
+            orgIds: vec![TEST_TENANT.to_string()],
             deviceId: Some(device_id.to_string()),
             locationId: None,
         }

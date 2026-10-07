@@ -617,6 +617,9 @@ impl TenantTransactionRepository {
                             connection, shift.as_deref().map(parse_uuid).transpose()?, actor, cash, id, "transaction",
                         ).await?;
                     }
+                    if old != "completed" && next == "completed" && kind == "product_purchase" {
+                        crate::services::TenantKitchenService::enqueue_on(connection, id, actor).await?;
+                    }
                     if old != "completed" && next == "completed" && kind == "plan_purchase" {
                         let plan = plan.ok_or_else(|| {
                             AppError::Internal("Plan purchase has no plan".into())

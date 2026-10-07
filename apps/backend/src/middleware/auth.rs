@@ -110,44 +110,6 @@ pub async fn authorize_tenant_request(
     Ok(next.run(req).await)
 }
 
-/// Panel access is checked against current account and membership state, not only JWT age.
-pub async fn panel_session_active(
-    pool: &sqlx::PgPool,
-    claims: &JwtUserClaims,
-) -> Result<bool, sqlx::Error> {
-    if !claims.is_admin_or_staff() {
-        return Ok(true);
-    }
-    let Some(user_id) = claims.user_id_uuid() else {
-        return Ok(false);
-    };
-    let Ok(organization_id) = Uuid::parse_str(&claims.tenantId) else {
-        return Ok(false);
-    };
-    let active = sqlx::query_scalar::<_, bool>(
-        r#"SELECT EXISTS (
-            SELECT 1 FROM users u
-            JOIN organization_memberships m ON m."userId" = u.id
-            JOIN organizations o ON o.id=m."organizationId" AND o."isActive"
-            WHERE u.id = $1 AND u."isActive" = TRUE AND u."deletedAt" IS NULL
-              AND u.role = ANY($2) AND m."organizationId" = $3 AND m."isActive" = TRUE
-        )"#,
-    )
-    .bind(user_id)
-    .bind(&claims.roles)
-    .bind(organization_id)
-    .fetch_one(pool)
-    .await?;
-    if !active {
-        return Ok(false);
-    }
-    let current = crate::access::effective(pool, organization_id, user_id).await?;
-    let mut issued = claims.permissions.clone();
-    issued.sort();
-    issued.dedup();
-    Ok(current == issued)
-}
-
 pub async fn control_panel_session_active(
     pool: &sqlx::PgPool,
     claims: &JwtUserClaims,

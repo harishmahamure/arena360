@@ -13,7 +13,7 @@ fn claims(kind: &str, permissions: &[&str]) -> JwtUserClaims {
         userId: id,
         roles: vec![kind.into()],
         permissions: permissions.iter().map(|p| (*p).into()).collect(),
-        tenantId: gaming_cafe_api::models::DEFAULT_ORGANIZATION_ID.to_string(),
+        tenantId: Uuid::new_v4().to_string(),
         orgIds: vec![],
         allowedTenants: vec![],
         rateLimit: None,

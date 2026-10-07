@@ -1,5 +1,4 @@
 mod acl;
-pub mod balance_events;
 pub mod channel;
 pub mod connection;
 mod dispatcher;
@@ -11,8 +10,5 @@ pub mod rooms;
 pub mod tenant_transport;
 pub mod wake;
 
-pub use balance_events::{publish_balance_updated_for_player, publish_balance_updated_for_session};
 pub use dispatcher::Dispatcher;
-pub use outbox::{OutboxReceipt, OutboxService};
-pub use rooms::RoomService;
 pub use wake::RealtimeHub;

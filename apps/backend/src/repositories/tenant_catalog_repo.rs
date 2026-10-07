@@ -24,6 +24,16 @@ use crate::tenancy::{
     write_outbox_event_on_connection, NewOutboxEvent, TenantDb,
 };
 
+/// An ingredient candidate as seen when validating a recipe.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct IngredientInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub is_raw_material: bool,
+    pub has_recipe: bool,
+}
+
+
 type WriteOperation<T> = Box<
     dyn for<'connection> FnOnce(
             &'connection mut SqliteConnection,
@@ -1444,7 +1454,7 @@ impl TenantProductRecipeRepository {
     pub async fn ingredient_info(
         &self,
         ids: &[Uuid],
-    ) -> Result<Vec<super::product_recipe_repo::IngredientInfo>, AppError> {
+    ) -> Result<Vec<IngredientInfo>, AppError> {
         if ids.is_empty() {
             return Ok(Vec::new());
         }

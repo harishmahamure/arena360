@@ -65,7 +65,6 @@ pub async fn list_products(
         requested,
     )
     .await?;
-    filters.organization_id = Some(scope.organization_id);
     filters.allowed_location_ids = Some(scope.locations.clone());
     let result = {
         let db = state.business_db(&claims).await?;
