@@ -97,6 +97,8 @@ impl AppState {
         // cell is not the current writer (or has fenced itself); only provisioning
         // and ownership orchestration may acquire a lease.
         let db = manager.open(tenant_id).await?;
+        // A tenant may have been idle when its scheduled policy became due.
+        crate::repositories::TenantPricingPolicyRepository::new(db.clone()).activate_due().await?;
         Ok(Some(db))
     }
 }
@@ -150,6 +152,10 @@ pub async fn build_state() -> Arc<AppState> {
         manager.clone().spawn_reaper();
         manager
     });
+    if let (Some(control), Some(client), Some(manager)) = (control_db.as_ref(), leases.as_ref(), tenant_dbs.as_ref()) {
+        let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");
+        tracing::info!(recovered, "Recovered assigned tenant databases");
+    }
     if let (Some(control), Some(manager)) = (control_db.clone(), tenant_dbs.clone()) {
         crate::control::staff_projection::spawn(control, manager);
     }
@@ -233,17 +239,6 @@ pub async fn build_state() -> Arc<AppState> {
     );
     tokio::spawn(dispatcher.run());
 
-    let scheduled_pricing = pricing_rules.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
-        loop {
-            interval.tick().await;
-            if let Err(error) = scheduled_pricing.activate_due().await {
-                tracing::warn!(%error, "Scheduled pricing activation failed");
-            }
-        }
-    });
-
     if let Some(manager) = tenant_dbs.clone() {
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
@@ -262,22 +257,21 @@ pub async fn build_state() -> Arc<AppState> {
         });
     }
 
-    let notifications_for_cleanup = notifications.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
-        loop {
-            interval.tick().await;
-            match notifications_for_cleanup.cleanup(7).await {
-                Ok(count) if count > 0 => {
-                    tracing::info!("Notification retention cleanup: removed {count} rows");
+    if let Some(manager) = tenant_dbs.clone() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                for db in manager.open_handles().await {
+                    match crate::repositories::TenantNotificationRepository::new(db).cleanup_notifications(7).await {
+                        Ok(count) if count > 0 => tracing::info!(count, "Tenant notification retention cleanup"),
+                        Err(error) => tracing::warn!(%error, "Tenant notification retention cleanup failed"),
+                        _ => {}
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("Notification retention cleanup failed: {e}");
-                }
-                _ => {}
             }
-        }
-    });
+        });
+    }
 
     let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
 

@@ -2155,6 +2155,13 @@ async fn unchanged_identity_poll_does_not_prevent_idle_handle_eviction() {
         repo.project_identity(p, 1).await.unwrap(),
         StaffProjectionResult::Unchanged
     );
+    assert!(
+        gaming_cafe_api::repositories::TenantPricingPolicyRepository::new(f.db.clone())
+            .activate_due()
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(f.manager.reap_idle().await.unwrap(), 1);
     assert!(f.db.read_pool().is_err());
     f.close().await;

@@ -87,7 +87,7 @@ impl LeaseRepository {
         cell_id: Uuid,
         config: LeaseConfig,
     ) -> Result<LeaseGrant, AppError> {
-        self.acquire_with_activation(tenant_id, cell_id, config, true)
+        self.acquire_with_activation(tenant_id, cell_id, config, true, false)
             .await
     }
 
@@ -97,7 +97,18 @@ impl LeaseRepository {
         cell_id: Uuid,
         config: LeaseConfig,
     ) -> Result<LeaseGrant, AppError> {
-        self.acquire_with_activation(tenant_id, cell_id, config, false)
+        self.acquire_with_activation(tenant_id, cell_id, config, false, false)
+            .await
+    }
+
+    /// Restart recovery may only renew the currently assigned, active tenant.
+    pub async fn acquire_assigned(
+        &self,
+        tenant_id: Uuid,
+        cell_id: Uuid,
+        config: LeaseConfig,
+    ) -> Result<LeaseGrant, AppError> {
+        self.acquire_with_activation(tenant_id, cell_id, config, false, true)
             .await
     }
 
@@ -107,6 +118,7 @@ impl LeaseRepository {
         cell_id: Uuid,
         config: LeaseConfig,
         activate: bool,
+        require_assignment: bool,
     ) -> Result<LeaseGrant, AppError> {
         let config = config.validate()?;
         let mut tx = self.pool.begin().await?;
@@ -128,6 +140,11 @@ impl LeaseRepository {
         let Some((current_owner, current_generation, tenant_state)) = tenant else {
             return Err(AppError::NotFound("Tenant not found".into()));
         };
+        if require_assignment && (current_owner != Some(cell_id) || tenant_state != "ACTIVE") {
+            return Err(AppError::Forbidden(
+                "Tenant is not active on this cell".into(),
+            ));
+        }
         if matches!(tenant_state.as_str(), "DELETED" | "FAILED") {
             return Err(AppError::Forbidden(
                 "Tenant cannot acquire an ownership lease".into(),
@@ -203,7 +220,7 @@ impl LeaseRepository {
         .bind(activate)
         .execute(&mut *tx)
         .await?;
-        if taking_ownership && activate {
+        if taking_ownership && (activate || require_assignment) {
             sqlx::query("SELECT pg_notify($1, $2)")
                 .bind(crate::routing::ROUTING_CHANGED_CHANNEL)
                 .bind(tenant_id.to_string())
@@ -374,6 +391,17 @@ impl LeaseClient {
         let grant = self
             .repository
             .acquire(tenant_id, self.cell_id, self.config)
+            .await?;
+        self.store_acquired(grant.clone(), request_sent_at)?;
+        Ok(grant)
+    }
+
+    /// Called by cell startup, never by business request handling.
+    pub async fn acquire_assigned(&self, tenant_id: Uuid) -> Result<LeaseGrant, AppError> {
+        let request_sent_at = Instant::now();
+        let grant = self
+            .repository
+            .acquire_assigned(tenant_id, self.cell_id, self.config)
             .await?;
         self.store_acquired(grant.clone(), request_sent_at)?;
         Ok(grant)

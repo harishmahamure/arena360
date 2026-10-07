@@ -1724,7 +1724,7 @@ impl TenantPricingPolicyRepository {
     }
     pub async fn activate_due(&self) -> Result<Vec<(Uuid, Uuid, Uuid, i32)>, AppError> {
         let timestamp = now()?;
-        let due:Vec<(Uuid,Uuid,i32)>=sqlx::query_as("SELECT unhex(replace(id,'-','')),unhex(replace(rule_set_id,'-','')),version FROM pricing_rule_versions WHERE status='scheduled' AND effective_at<=? ORDER BY effective_at,version,id LIMIT 100").bind(&timestamp).fetch_all(&self.db.read_pool()?).await?;
+        let due:Vec<(Uuid,Uuid,i32)>=sqlx::query_as("SELECT unhex(replace(id,'-','')),unhex(replace(rule_set_id,'-','')),version FROM pricing_rule_versions WHERE status='scheduled' AND effective_at<=? ORDER BY effective_at,version,id LIMIT 100").bind(&timestamp).fetch_all(&self.db.background_read_pool()?).await?;
         let mut activated = Vec::new();
         for (version, set, number) in due {
             let event_time = timestamp.clone();

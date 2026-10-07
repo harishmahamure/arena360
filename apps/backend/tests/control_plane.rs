@@ -228,8 +228,29 @@ async fn ownership_lease_fences_competing_cells_and_advances_generation() {
         reassignment_skew: StdDuration::from_secs(1),
     };
     let first_client = LeaseClient::new(pool.clone(), first_cell, config).unwrap();
+    assert!(
+        first_client.acquire_assigned(tenant.id).await.is_err(),
+        "restart recovery must not activate provisioning tenants"
+    );
     let first_grant = first_client.acquire(tenant.id).await.unwrap();
     assert_eq!(first_grant.ownership_generation, 1);
+    let restarted = LeaseClient::new(pool.clone(), first_cell, config).unwrap();
+    assert_eq!(
+        restarted
+            .acquire_assigned(tenant.id)
+            .await
+            .unwrap()
+            .ownership_generation,
+        1
+    );
+    assert!(
+        LeaseRepository::new(pool.clone())
+            .acquire_assigned(tenant.id, second_cell, config)
+            .await
+            .is_err(),
+        "startup must never take another cell's tenant"
+    );
+
     assert_eq!(first_client.writable_generation(tenant.id).unwrap(), 1);
     assert!(first_client.ensure_writable(tenant.id, 2).is_err());
 

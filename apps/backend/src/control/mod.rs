@@ -18,3 +18,5 @@ static MIGRATOR: Migrator = sqlx::migrate!("migrations/control");
 pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     MIGRATOR.run(pool).await
 }
+
+pub mod bootstrap;

@@ -193,7 +193,7 @@ pub(crate) async fn record_canonical_on(
             )
             .await?;
         }
-        "device.status_changed" => {
+        "device.status_changed" | "device.created" | "device.updated" | "device.provisioned" => {
             let (name, status): (String, String) =
                 sqlx::query_as("SELECT name,status FROM devices WHERE id=?")
                     .bind(id.to_string())
