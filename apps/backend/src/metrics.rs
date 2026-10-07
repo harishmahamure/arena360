@@ -21,6 +21,9 @@ pub struct Metrics {
     publish_oldest_millis: AtomicU64,
     publish_failures: AtomicU64,
     published: AtomicU64,
+    analytics_events: AtomicU64,
+    analytics_gaps: AtomicU64,
+    analytics_failures: AtomicU64,
 }
 
 impl Metrics {
@@ -78,6 +81,9 @@ impl Metrics {
         self.publish_oldest_millis
             .store(oldest_millis, Ordering::Relaxed);
     }
+    pub fn analytics_ingested(&self, events: u64) { self.analytics_events.fetch_add(events, Ordering::Relaxed); }
+    pub fn analytics_gap(&self) { self.analytics_gaps.fetch_add(1, Ordering::Relaxed); }
+    pub fn analytics_failed(&self) { self.analytics_failures.fetch_add(1, Ordering::Relaxed); }
     pub fn render(&self) -> String {
         format!(
             concat!(
@@ -109,7 +115,13 @@ impl Metrics {
                 "# TYPE arena360_outbox_publish_failures_total counter\n",
                 "arena360_outbox_publish_failures_total {}\n",
                 "# TYPE arena360_outbox_published_total counter\n",
-                "arena360_outbox_published_total {}\n"
+                "arena360_outbox_published_total {}\n",
+                "# TYPE arena360_analytics_ingested_events_total counter\n",
+                "arena360_analytics_ingested_events_total {}\n",
+                "# TYPE arena360_analytics_sequence_gaps_total counter\n",
+                "arena360_analytics_sequence_gaps_total {}\n",
+                "# TYPE arena360_analytics_failures_total counter\n",
+                "arena360_analytics_failures_total {}\n"
             ),
             self.rate_limit_allowed.load(Ordering::Relaxed),
             self.rate_limit_rejected.load(Ordering::Relaxed),
@@ -129,6 +141,9 @@ impl Metrics {
             self.publish_oldest_millis.load(Ordering::Relaxed),
             self.publish_failures.load(Ordering::Relaxed),
             self.published.load(Ordering::Relaxed),
+            self.analytics_events.load(Ordering::Relaxed),
+            self.analytics_gaps.load(Ordering::Relaxed),
+            self.analytics_failures.load(Ordering::Relaxed),
         )
     }
 }

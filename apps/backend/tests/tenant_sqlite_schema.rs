@@ -35,6 +35,7 @@ async fn tenant_baseline_has_isolated_strict_outbox_schema() {
             "schema_version",
             "deleted",
             "payload",
+            "analytics_snapshot",
         ]
     );
     assert!(!table_sql.to_ascii_lowercase().contains("organizationid"));

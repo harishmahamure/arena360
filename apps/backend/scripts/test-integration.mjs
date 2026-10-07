@@ -211,7 +211,9 @@ async function localNats(bin) {
 async function runJetstream(env, required = false) {
   const bin = await natsBinary();
   if (bin) {
-    for (const target of ['outbox_publisher', 'tenant_event_stream']) {
+    const targets = ['outbox_publisher', 'tenant_event_stream'];
+    if (process.env.DUCKDB_LIB_DIR) targets.push('tenant_analytics_consumer');
+    for (const target of targets) {
       const nats = await localNats(bin);
       try {
         await command(

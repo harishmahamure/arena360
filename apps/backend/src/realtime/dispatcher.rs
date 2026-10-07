@@ -710,19 +710,7 @@ mod tests {
     #[tokio::test]
     async fn committed_sqlite_outbox_row_projects_with_realtime_semantics() {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::query(
-            "CREATE TABLE outbox_events(
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id TEXT NOT NULL, location_id TEXT,
-                aggregate_type TEXT NOT NULL, aggregate_id TEXT NOT NULL,
-                event_type TEXT NOT NULL, occurred_at TEXT NOT NULL,
-                schema_version INTEGER NOT NULL, deleted INTEGER NOT NULL,
-                payload TEXT NOT NULL
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+        crate::tenancy::migrate(&pool).await.unwrap();
         let tenant_id = Uuid::new_v4();
         let session_id = Uuid::new_v4();
         let player_id = Uuid::new_v4();

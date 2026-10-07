@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through DB-0020
+## Completed through API-0041
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `API-0041` — Tenant analytics consumer, batching, idempotency and gap recovery.
+- [ ] `API-0042` — Consistent snapshot rebuild, derived summaries and replay after T0.
 
 ### API-0033 completed
 
@@ -113,6 +113,12 @@
 - Six schema/rollback/fencing/timezone tests pass, and the complete SQLite/DuckDB/control/JetStream run passes 384 checks. Native SDK versions/checksums are pinned in CI, and loader paths are assigned in Cargo test runners.
 - OPS-0020 implementation: `a46c943`. DB-0020 implementation: `da6379c`. Next: `API-0041` analytics consumer.
 
+### API-0041 completed
+
+- Exact canonical snapshots commit with operational writes; per-tenant consumers collapse batches, atomically update facts, session hours and checkpoints, then ACK. Persistent gaps request rebuilds. Lease fencing and idle eviction remain effective.
+- All 394 regular/control/live checks pass, including replay after commit-before-ACK, parent collections, stock history, exact decimals, timezone hour splits and invalid events.
+- Next: `API-0042` consistent rebuild and production activation.
+
 ## M5 queue
 
 - [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).
@@ -145,7 +151,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed item: `DB-0020`; 384 backend checks pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
+- Latest completed item: `API-0041`; 394 backend checks pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

@@ -11,3 +11,8 @@ pub mod publisher;
 
 #[cfg(feature = "duckdb-analytics")]
 pub mod tenant_db;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod consumer;
+#[cfg(feature = "duckdb-analytics")]
+pub mod session_hours;

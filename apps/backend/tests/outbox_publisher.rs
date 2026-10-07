@@ -285,7 +285,7 @@ async fn jetstream_ack_deduplicates_lost_checkpoints_and_rejects_missing_stream(
         .unwrap();
     // Simulate a crash after server ACK but before the SQLite checkpoint.
     let pool = f.db.read_pool().unwrap();
-    let mut event:TenantEvent=sqlx::query_as("SELECT sequence,event_id,location_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,deleted,payload FROM outbox_events WHERE sequence=1").fetch_one(&pool).await.unwrap();
+    let mut event:TenantEvent=sqlx::query_as("SELECT sequence,event_id,location_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,deleted,payload,analytics_snapshot FROM outbox_events WHERE sequence=1").fetch_one(&pool).await.unwrap();
     event.tenant_id = f.db.tenant_id();
     sink.publish(&event).await.unwrap();
     publish_batch(f.db.clone(), &sink, &metrics).await.unwrap();

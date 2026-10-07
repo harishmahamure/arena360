@@ -48,13 +48,16 @@ pub async fn write_outbox_event_on_connection(
         .map_err(|error| AppError::Internal(format!("format outbox timestamp: {error}")))?;
     let occurred_at = parse_sqlite_timestamp(&occurred_at_text)
         .map_err(|error| AppError::Internal(format!("parse outbox timestamp: {error}")))?;
+    let analytics_snapshot = super::analytics_snapshot::capture(connection, &event.aggregate_type, event.aggregate_id, event.deleted).await?
+        .map(|snapshot| serde_json::to_string(&snapshot)).transpose()
+        .map_err(|error| AppError::Internal(format!("serialize analytics snapshot: {error}")))?;
     let payload = serde_json::to_string(&event.payload)
         .map_err(|error| AppError::Internal(format!("serialize outbox payload: {error}")))?;
     let sequence: i64 = sqlx::query_scalar(
         r#"INSERT INTO outbox_events
              (event_id, location_id, aggregate_type, aggregate_id, event_type,
-              occurred_at, schema_version, deleted, payload)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              occurred_at, schema_version, deleted, payload, analytics_snapshot)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            RETURNING sequence"#,
     )
     .bind(event_id.to_string())
@@ -66,6 +69,7 @@ pub async fn write_outbox_event_on_connection(
     .bind(i64::from(event.schema_version))
     .bind(event.deleted)
     .bind(payload)
+    .bind(analytics_snapshot)
     .fetch_one(&mut *connection)
     .await?;
 

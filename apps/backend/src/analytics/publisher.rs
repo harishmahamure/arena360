@@ -5,7 +5,7 @@ use crate::{
     tenancy::{TenantDb, TenantDbManager},
 };
 use futures::future::BoxFuture;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use sqlx::FromRow;
 use std::{collections::HashSet, sync::Arc, time::Duration};
@@ -14,7 +14,7 @@ use uuid::Uuid;
 pub const TENANT_EVENT_STREAM: &str = "ARENA_TENANT_EVENTS";
 const BATCH_SIZE: i64 = 250;
 
-#[derive(Debug, Serialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TenantEvent {
     pub sequence: i64,
     pub event_id: String,
@@ -29,6 +29,9 @@ pub struct TenantEvent {
     pub deleted: bool,
     #[sqlx(json)]
     pub payload: Value,
+    #[serde(default)]
+    #[sqlx(json(nullable))]
+    pub analytics_snapshot: Option<crate::tenancy::analytics_snapshot::AnalyticsSnapshot>,
 }
 
 /// Returning Ok means the named stream durably acknowledged the message.
@@ -90,7 +93,7 @@ pub struct Backlog {
 pub async fn backlog(db: &TenantDb) -> Result<Backlog, AppError> {
     db.ensure_current_owner()?;
     let row: (i64, i64, Option<String>) = sqlx::query_as(
-        "SELECT COUNT(*),COALESCE(SUM(length(CAST(payload AS BLOB))+length(event_id)+length(aggregate_id)+length(aggregate_type)+length(event_type)+length(occurred_at)+COALESCE(length(location_id),0)+25),0),MIN(occurred_at) FROM outbox_events"
+        "SELECT COUNT(*),COALESCE(SUM(length(CAST(payload AS BLOB))+COALESCE(length(CAST(analytics_snapshot AS BLOB)),0)+length(event_id)+length(aggregate_id)+length(aggregate_type)+length(event_type)+length(occurred_at)+COALESCE(length(location_id),0)+25),0),MIN(occurred_at) FROM outbox_events"
     ).fetch_one(&db.background_read_pool()?).await?;
     let oldest_millis = row
         .2
@@ -127,7 +130,7 @@ pub async fn publish_batch(
     .fetch_one(&pool)
     .await?;
     let rows: Vec<TenantEvent> = sqlx::query_as(
-        "SELECT sequence,event_id,location_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,deleted,payload FROM outbox_events WHERE sequence>? ORDER BY sequence LIMIT ?"
+        "SELECT sequence,event_id,location_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,deleted,payload,analytics_snapshot FROM outbox_events WHERE sequence>? ORDER BY sequence LIMIT ?"
     ).bind(initial).bind(BATCH_SIZE).fetch_all(&pool).await?;
     let mut acknowledged = initial;
     let mut failure = None;
