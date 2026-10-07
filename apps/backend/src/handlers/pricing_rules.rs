@@ -111,8 +111,9 @@ pub async fn list_rule_sets(
             .await?
     };
     if query.location_id.is_none() {
-        let assigned_locations: HashSet<Uuid> = state
-            .config
+        let assigned_locations: HashSet<Uuid> = crate::repositories::TenantSettingsRepository::new(
+            state.business_db(&claims).await?,
+        )
             .list_locations(org_id, actor_id)
             .await?
             .into_iter()

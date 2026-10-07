@@ -201,11 +201,8 @@ pub async fn build_state() -> Arc<AppState> {
     let events = EventService::new(broadcaster);
 
     let outbox = OutboxService::with_hub(pool.clone(), realtime_hub.clone());
-    let config_service = Arc::new(
-        ConfigService::new(pool.clone(), cache.clone(), settings.cafe_timezone.clone())
-            .with_outbox(outbox.clone()),
-    );
-    let pricing_rules = PricingPolicyService::new(pool.clone()).with_outbox(outbox.clone());
+    let config_service = Arc::new(ConfigService::new(cache.clone(), settings.cafe_timezone.clone()));
+    let pricing_rules = PricingPolicyService::new();
     let notifications = NotificationService::new(pool.clone(), outbox.clone(), cache.clone());
     let rooms = RoomService::new(pool.clone());
     let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
@@ -285,7 +282,7 @@ pub async fn build_state() -> Arc<AppState> {
             balances.clone(),
             events.clone(),
             config_service.clone(),
-            PricingPolicyService::new(pool.clone()),
+            PricingPolicyService::new(),
             cache.clone(),
         ),
         shifts,

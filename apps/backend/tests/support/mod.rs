@@ -160,8 +160,8 @@ impl SessionFixture {
             models::PurchaseBalanceDto,
             repositories::TenantDeviceRepository,
             services::{
-                BalanceService, ConfigService, DeviceService, EventService,
-                PlanService, PricingPolicyService,
+                BalanceService, ConfigService, DeviceService, EventService, PlanService,
+                PricingPolicyService,
             },
             sse::Broadcaster,
         };
@@ -173,13 +173,8 @@ impl SessionFixture {
                 .bind(venue.to_string()).bind(&at).bind(&at).execute(c).await?; Ok(())
         })).await.unwrap();
         let player = tenant.player("session-player").await;
-        // A closed pool makes any remaining accidental shared-store read fail immediately.
-        let pg = sqlx::postgres::PgPoolOptions::new()
-            .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-            .unwrap();
-        pg.close().await;
         let cache = Arc::new(MemoryCache::default());
-        let settings = Arc::new(ConfigService::new(pg.clone(), cache.clone(), "UTC".into()));
+        let settings = Arc::new(ConfigService::new(cache.clone(), "UTC".into()));
         let plan = PlanService::new(settings.clone()).create_tenant(tenant.db.clone(), vec![venue],
             serde_json::from_value(serde_json::json!({"name":"Two hours","price":100,"planType":"time_based","validityDays":30,"timeCredits":120,"deviceType":"PC","deviceSubType":"HIGH_END_PCS"})).unwrap(),None).await.unwrap().id;
         let balances = Arc::new(BalanceService::new(cache.clone()));
@@ -205,7 +200,7 @@ impl SessionFixture {
             balances.clone(),
             events,
             settings,
-            PricingPolicyService::new(pg),
+            PricingPolicyService::new(),
             cache.clone(),
         );
         // Fixture setup can populate raw wallet caches; each assertion starts deliberately.

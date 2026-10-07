@@ -22,7 +22,6 @@ use gaming_cafe_api::tenancy::{
     tenant_path, TenantDb, TenantDbConfig, TenantDbManager, TenantLease,
 };
 use serde_json::json;
-use sqlx::postgres::PgPoolOptions;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use uuid::Uuid;
 
@@ -283,11 +282,6 @@ async fn session_service_activity_commits_locally_and_failure_rolls_back_the_ses
         )
         .await
         .unwrap();
-    // A closed pool fails immediately if the tenant service accidentally reaches PostgreSQL.
-    let postgres = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    postgres.close().await;
     let cache = gaming_cafe_api::cache::create_cache(None).await;
     let events = EventService::new(Broadcaster::new(16));
     let devices = DeviceService::new(events.clone(), cache.clone());
@@ -295,8 +289,8 @@ async fn session_service_activity_commits_locally_and_failure_rolls_back_the_ses
         devices,
         Arc::new(BalanceService::new(cache.clone())),
         events,
-        Arc::new(gaming_cafe_api::services::ConfigService::new(postgres.clone(), cache.clone(), "UTC".into())),
-        gaming_cafe_api::services::PricingPolicyService::new(postgres),
+        Arc::new(gaming_cafe_api::services::ConfigService::new(cache.clone(), "UTC".into())),
+        gaming_cafe_api::services::PricingPolicyService::new(),
         cache,
     );
     // Use unrestricted wallet calendar to exercise the service on any test date.
@@ -440,18 +434,10 @@ async fn staff_allowance_renewal_preserves_ledger_and_recovers_without_postgres_
         sqlx::query("INSERT INTO setting_overrides(id,key,value,created_at,updated_at) VALUES(?,'staff.allowance_period_days','7',?,?)")
             .bind(Uuid::now_v7().to_string()).bind(&ts).bind(&ts).execute(c).await?; Ok(())
     })).await.unwrap();
-    let pg = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    pg.close().await;
     let cache: Arc<dyn gaming_cafe_api::cache::CacheService> = Arc::new(UnavailableCache);
     let service = gaming_cafe_api::services::StaffGamingAllowanceService::new(
         Arc::new(BalanceService::new(cache.clone())),
-        Arc::new(gaming_cafe_api::services::ConfigService::new(
-            pg,
-            cache,
-            "UTC".into(),
-        )),
+        Arc::new(gaming_cafe_api::services::ConfigService::new(cache, "UTC".into())),
     );
     assert_eq!(
         service

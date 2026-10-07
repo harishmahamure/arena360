@@ -1,131 +1,172 @@
-//! Uses connection-local temporary tables; leaves all permanent records untouched.
-use chrono::{Duration, TimeZone, Utc};
-use gaming_cafe_api::config::load_dotenv;
-use gaming_cafe_api::models::{
-    deduction_profile::DeductionProfile, CreateSessionDto, PricingTarget, DEFAULT_ORGANIZATION_ID,
-    DEFAULT_VENUE_LOCATION_ID,
-};
-use gaming_cafe_api::repositories::SessionRepository;
-use gaming_cafe_api::services::{
-    deduction_profile::weighted_minutes_between, PricingPolicyService,
+//! Published plan prices and captured session deduction rules remain independent.
+mod support;
+use chrono::{Duration, Timelike, Utc};
+use gaming_cafe_api::{
+    cache::NoopCache,
+    models::PricingTarget,
+    services::{ConfigService, PlanService, PricingPolicyService},
 };
 use serde_json::json;
-use sqlx::postgres::PgPoolOptions;
-use uuid::Uuid;
+use std::sync::Arc;
+use support::SessionFixture;
 
 #[tokio::test]
-#[ignore = "requires PostgreSQL; fixtures are temporary tables"]
 async fn published_choices_price_plans_and_persist_session_speed_independently() {
-    load_dotenv();
-    let pool = PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&std::env::var("DATABASE_URL").expect("DATABASE_URL"))
-        .await
-        .unwrap();
-    for table in [
-        "pricing_rule_sets",
-        "pricing_rule_versions",
-        "usage_sessions",
-    ] {
-        sqlx::query(&format!(
-            "CREATE TEMP TABLE {table} (LIKE public.{table} INCLUDING ALL)"
-        ))
-        .execute(&pool)
-        .await
-        .unwrap();
-    }
-    sqlx::raw_sql(include_str!(
-        "../migrations/20261003090000_session_deduction_policy_snapshot.sql"
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
-    let policy = json!({"baseRate": "60", "roundingScale": 2, "maximumPrice": "230", "rules": [
-        {"id":"price", "name":"Plan price", "priority":100, "deviceTypes":["PC","PS5"], "weekdays":[], "action":{"type":"multiplier","value":"1.25"}},
-        {"id":"speed", "name":"Credit speed", "target":"deduction", "priority":100, "deviceTypes":[], "weekdays":[], "action":{"type":"multiplier","value":"1.25"}}
+    let f = SessionFixture::new().await;
+    let db = f.tenant.db.clone();
+    let org = db.tenant_id();
+    let pricing = PricingPolicyService::new();
+    let policy = json!({"baseRate":"60","roundingScale":2,"maximumPrice":"230","rules":[
+        {"id":"price","name":"Plan price","priority":100,"deviceTypes":["PC","PS5"],"weekdays":[],"action":{"type":"multiplier","value":"1.25"}},
+        {"id":"speed","name":"Credit speed","target":"deduction","priority":100,"deviceTypes":[],"weekdays":[],"action":{"type":"multiplier","value":"1.25"}}
     ]});
-    for (org, location, status) in [
-        (
-            DEFAULT_ORGANIZATION_ID,
-            Some(DEFAULT_VENUE_LOCATION_ID),
-            "published",
-        ),
-        (DEFAULT_ORGANIZATION_ID, None, "draft"),
-        (Uuid::new_v4(), None, "published"),
-        (DEFAULT_ORGANIZATION_ID, Some(Uuid::new_v4()), "published"),
-    ] {
-        let set_id = Uuid::new_v4();
-        let version_id = Uuid::new_v4();
-        sqlx::query(r#"INSERT INTO pricing_rule_sets(id,"organizationId","locationId",name,"activeVersionId") VALUES($1,$2,$3,'Fixture',$4)"#)
-            .bind(set_id).bind(org).bind(location).bind(version_id).execute(&pool).await.unwrap();
-        sqlx::query(r#"INSERT INTO pricing_rule_versions(id,"ruleSetId",version,status,policy) VALUES($1,$2,1,$3::pricing_rule_version_status,$4)"#)
-            .bind(version_id).bind(set_id).bind(status).bind(&policy).execute(&pool).await.unwrap();
-    }
-    let pricing = PricingPolicyService::new(pool.clone());
-    let live = pricing.active_plan_policy().await.unwrap();
-    assert_eq!(
-        live.rules.len(),
-        1,
-        "draft and unrelated scopes cannot affect a purchase"
-    );
-    let at = Utc.with_ymd_and_hms(2026, 10, 3, 12, 0, 0).unwrap();
-    assert_eq!(
-        PricingPolicyService::evaluate_plan_price(200.0, Some("PS5"), &live, at, "Asia/Kolkata")
+    let (set, version) = pricing
+        .create_tenant(
+            db.clone(),
+            org,
+            serde_json::from_value(
+                json!({"name":"Published choices","locationIds":[f.venue],"policy":policy}),
+            )
             .unwrap(),
-        230.0
-    );
-    assert_eq!(
-        PricingPolicyService::evaluate_plan_price(200.0, Some("OTHER"), &live, at, "Asia/Kolkata")
-            .unwrap(),
-        200.0
-    );
-    let mut profile = DeductionProfile::normal();
-    profile.policy_rules = pricing
-        .active_rules(
-            DEFAULT_ORGANIZATION_ID,
-            Some(DEFAULT_VENUE_LOCATION_ID),
-            PricingTarget::Deduction,
+            f.player,
         )
         .await
         .unwrap();
-    assert_eq!(profile.policy_rules.len(), 1);
-    let snapshot = serde_json::to_value(&profile).unwrap();
-    let sessions = SessionRepository::new(pool.clone());
-    let created = sessions
-        .create(
-            &CreateSessionDto {
-                balance_id: Uuid::new_v4(),
-                device_id: Uuid::new_v4(),
-                shift_id: None,
-                start_time: Some(at),
-            },
+    // A draft with different rules cannot affect a purchase or login.
+    pricing.create_tenant(db.clone(),org,serde_json::from_value(json!({"name":"Unpublished choices","policy":{"baseRate":"60","rules":[],"maximumPrice":"1"}})).unwrap(),f.player).await.unwrap();
+    pricing
+        .validate_tenant(db.clone(), org, set.id, version.id)
+        .await
+        .unwrap();
+    pricing
+        .simulate_tenant(
+            db.clone(),
+            org,
+            set.id,
+            version.id,
+            serde_json::from_value(json!({"locationId":f.venue,"at":Utc::now(),"deviceType":"PC"}))
+                .unwrap(),
+            "UTC",
+            "INR",
+        )
+        .await
+        .unwrap();
+    pricing
+        .publish_tenant(
+            db.clone(),
+            org,
+            set.id,
+            version.id,
+            serde_json::from_value(json!({})).unwrap(),
+            f.player,
+        )
+        .await
+        .unwrap();
+    let plans = PlanService::new(Arc::new(ConfigService::new(
+        Arc::new(NoopCache),
+        "UTC".into(),
+    )));
+    plans
+        .update_tenant(
+            db.clone(),
+            f.plan,
+            serde_json::from_value(json!({"price":200})).unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        plans
+            .get_tenant(db.clone(), f.plan, Some(f.venue))
+            .await
+            .unwrap()
+            .current_price,
+        Some(230.0)
+    );
+    assert_eq!(
+        pricing
+            .active_rules_tenant(db.clone(), org, Some(f.venue), PricingTarget::Deduction)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(pricing
+        .active_rules_tenant(
+            db.clone(),
+            uuid::Uuid::now_v7(),
+            Some(f.venue),
+            PricingTarget::Deduction
+        )
+        .await
+        .is_err());
+    let at = Utc::now().with_nanosecond(0).unwrap() - Duration::minutes(60);
+    let session = f.start(Some(at)).await;
+    let snapshot = session.deduction_profile_snapshot.clone().unwrap();
+    let profile: gaming_cafe_api::models::deduction_profile::DeductionProfile =
+        serde_json::from_value(snapshot.clone()).unwrap();
+    assert_eq!(
+        gaming_cafe_api::services::deduction_profile::weighted_minutes_between(
             at,
-            None,
-            120,
-            None,
-            &snapshot,
+            at + Duration::minutes(60),
+            &profile,
+            "UTC"
+        ),
+        75.0
+    );
+    let mut changed = policy.clone();
+    changed["rules"][1]["action"]["value"] = json!("5");
+    let version2 = pricing
+        .create_version_tenant(
+            db.clone(),
+            org,
+            set.id,
+            serde_json::from_value(json!({"policy":changed})).unwrap(),
+            f.player,
         )
         .await
         .unwrap();
-    // Editing the published policy must not recalculate an already-started session.
-    sqlx::query("UPDATE pricing_rule_versions SET policy = jsonb_set(policy, '{rules,1,action,value}', '\"5\"')").execute(&pool).await.unwrap();
-    let stored = sessions.find_by_id(created.id).await.unwrap().unwrap();
-    assert_eq!(stored.deduction_profile_snapshot.as_ref(), Some(&snapshot));
-    let preserved: DeductionProfile =
-        serde_json::from_value(stored.deduction_profile_snapshot.unwrap()).unwrap();
-    let consumed =
-        weighted_minutes_between(at, at + Duration::minutes(60), &preserved, "Asia/Kolkata");
-    assert_eq!(consumed, 75.0);
-    let ended = sessions
-        .end(
-            created.id,
-            at + Duration::minutes(60),
-            60,
-            Some(consumed as i32),
+    pricing
+        .validate_tenant(db.clone(), org, set.id, version2.id)
+        .await
+        .unwrap();
+    pricing
+        .simulate_tenant(
+            db.clone(),
+            org,
+            set.id,
+            version2.id,
+            serde_json::from_value(json!({"locationId":f.venue,"at":Utc::now()})).unwrap(),
+            "UTC",
+            "INR",
+        )
+        .await
+        .unwrap();
+    pricing
+        .publish_tenant(
+            db.clone(),
+            org,
+            set.id,
+            version2.id,
+            serde_json::from_value(json!({})).unwrap(),
+            f.player,
+        )
+        .await
+        .unwrap();
+    let ended = f
+        .sessions
+        .end_tenant(
+            db.clone(),
+            session.id,
+            serde_json::from_value(
+                json!({"reason":"voluntary","endTime":at+Duration::minutes(60)}),
+            )
+            .unwrap(),
             None,
         )
         .await
         .unwrap();
     assert_eq!(ended.time_credits_consumed, Some(75));
     assert_eq!(ended.deduction_profile_snapshot, Some(snapshot));
+    f.close().await;
 }

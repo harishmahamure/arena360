@@ -5,7 +5,6 @@ use chrono::{Datelike, Utc};
 use chrono_tz::Tz;
 use rust_decimal::Decimal;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AppError;
@@ -14,203 +13,18 @@ use crate::models::{
     PricingRule, PricingRuleSet, PricingRuleVersion, PricingSimulationDto, PricingSimulationResult,
     PricingTarget, PricingTraceStep, PublishPricingRuleVersionDto,
 };
-use crate::realtime::OutboxService;
-use crate::repositories::{PricingPolicyRepository, TenantPricingPolicyRepository};
+use crate::repositories::TenantPricingPolicyRepository;
 use crate::tenancy::TenantDb;
 
 /// Values of the `products_category_enum` database type.
 const PRODUCT_CATEGORIES: [&str; 4] = ["beverage", "snack", "meal", "other"];
 
-#[derive(Clone)]
-pub struct PricingPolicyService {
-    repo: PricingPolicyRepository,
-}
+#[derive(Clone, Default)]
+pub struct PricingPolicyService;
 
 impl PricingPolicyService {
-    pub fn new(pool: PgPool) -> Self {
-        Self {
-            repo: PricingPolicyRepository::new(pool),
-        }
-    }
-
-    pub fn with_outbox(mut self, outbox: OutboxService) -> Self {
-        self.repo = self.repo.with_outbox(outbox);
-        self
-    }
-
-    pub async fn list(
-        &self,
-        organization_id: Uuid,
-        location_id: Option<Uuid>,
-    ) -> Result<Vec<PricingRuleSet>, AppError> {
-        self.repo.list_sets(organization_id, location_id).await
-    }
-
-    pub async fn get_set(
-        &self,
-        organization_id: Uuid,
-        set_id: Uuid,
-    ) -> Result<PricingRuleSet, AppError> {
-        self.repo.get_set(organization_id, set_id).await
-    }
-
-    pub async fn create(
-        &self,
-        organization_id: Uuid,
-        mut dto: CreatePricingRuleSetDto,
-        actor_id: Uuid,
-    ) -> Result<(PricingRuleSet, PricingRuleVersion), AppError> {
-        if let Some(id) = dto.location_id {
-            if !dto.location_ids.contains(&id) {
-                dto.location_ids.push(id);
-            }
-        }
-        if dto.name.trim().len() < 3 {
-            return Err(AppError::BadRequest(
-                "Pricing rule set name must contain at least 3 characters".to_string(),
-            ));
-        }
-        Self::validate_policy(&dto.policy)?;
-        let policy = serde_json::to_value(&dto.policy)
-            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
-        self.repo
-            .create_set(
-                organization_id,
-                dto.location_ids.first().copied().or(dto.location_id),
-                &dto.location_ids,
-                dto.name.trim(),
-                dto.description.as_deref(),
-                &policy,
-                actor_id,
-            )
-            .await
-    }
-
-    pub async fn create_version(
-        &self,
-        organization_id: Uuid,
-        set_id: Uuid,
-        dto: CreatePricingRuleVersionDto,
-        actor_id: Uuid,
-    ) -> Result<PricingRuleVersion, AppError> {
-        Self::validate_policy(&dto.policy)?;
-        let policy = serde_json::to_value(dto.policy)
-            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
-        self.repo
-            .create_version(organization_id, set_id, &policy, actor_id)
-            .await
-    }
-
-    pub async fn versions(
-        &self,
-        organization_id: Uuid,
-        set_id: Uuid,
-    ) -> Result<Vec<PricingRuleVersion>, AppError> {
-        self.repo.versions(organization_id, set_id).await
-    }
-
-    pub async fn validate(
-        &self,
-        organization_id: Uuid,
-        set_id: Uuid,
-        version_id: Uuid,
-    ) -> Result<PricingRuleVersion, AppError> {
-        let version = self
-            .repo
-            .get_version(organization_id, set_id, version_id)
-            .await?;
-        let policy: PricingPolicy = serde_json::from_value(version.policy.clone())
-            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
-        Self::validate_policy(&policy)?;
-        self.repo
-            .mark_validated(organization_id, set_id, version_id)
-            .await
-    }
-
-    pub async fn simulate(
-        &self,
-        organization_id: Uuid,
-        set_id: Uuid,
-        version_id: Uuid,
-        input: PricingSimulationDto,
-        timezone: &str,
-        currency: &str,
-    ) -> Result<PricingSimulationResult, AppError> {
-        let rule_set = self.repo.get_set(organization_id, set_id).await?;
-        if let Some(requested) = input.location_id {
-            if !rule_set.location_ids.is_empty() && !rule_set.location_ids.contains(&requested) {
-                return Err(AppError::BadRequest(
-                    "Pricing rule set is not available for the requested location".to_string(),
-                ));
-            }
-        }
-        let version = self
-            .repo
-            .get_version(organization_id, set_id, version_id)
-            .await?;
-        let policy: PricingPolicy = serde_json::from_value(version.policy.clone())
-            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
-        Self::validate_policy(&policy)?;
-        let result = Self::evaluate(&policy, &input, timezone, currency)?;
-        self.repo
-            .record_simulation(organization_id, set_id, version_id, &result.simulation_hash)
-            .await?;
-        Ok(result)
-    }
-
-    pub async fn publish(
-        &self,
-        organization_id: Uuid,
-        set_id: Uuid,
-        version_id: Uuid,
-        dto: PublishPricingRuleVersionDto,
-        actor_id: Uuid,
-    ) -> Result<PricingRuleVersion, AppError> {
-        let effective_at = dto.effective_at.unwrap_or_else(Utc::now);
-        let version = self
-            .repo
-            .publish(organization_id, set_id, version_id, effective_at, actor_id)
-            .await?;
-        Ok(version)
-    }
-
-    pub async fn rollback(
-        &self,
-        organization_id: Uuid,
-        set_id: Uuid,
-        target_version_id: Uuid,
-        actor_id: Uuid,
-    ) -> Result<PricingRuleVersion, AppError> {
-        let target = self
-            .repo
-            .get_version(organization_id, set_id, target_version_id)
-            .await?;
-        let policy: PricingPolicy = serde_json::from_value(target.policy.clone())
-            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
-        Self::validate_policy(&policy)?;
-        let draft = self
-            .repo
-            .create_version(organization_id, set_id, &target.policy, actor_id)
-            .await?;
-        self.repo
-            .mark_validated(organization_id, set_id, draft.id)
-            .await?;
-        let previous_hash = target.simulation_hash.ok_or_else(|| {
-            AppError::Conflict("The target version has no successful simulation".to_string())
-        })?;
-        self.repo
-            .record_simulation(organization_id, set_id, draft.id, &previous_hash)
-            .await?;
-        let published = self
-            .repo
-            .publish(organization_id, set_id, draft.id, Utc::now(), actor_id)
-            .await?;
-        Ok(published)
-    }
-
-    pub async fn activate_due(&self) -> Result<u64, AppError> {
-        let activated = self.repo.activate_due().await?;
-        Ok(activated.len() as u64)
+    pub fn new() -> Self {
+        Self
     }
 
     pub async fn list_tenant(
@@ -219,6 +33,11 @@ impl PricingPolicyService {
         organization_id: Uuid,
         location_id: Option<Uuid>,
     ) -> Result<Vec<PricingRuleSet>, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         TenantPricingPolicyRepository::new(db)
             .list_sets(organization_id, location_id)
             .await
@@ -230,6 +49,11 @@ impl PricingPolicyService {
         organization_id: Uuid,
         set_id: Uuid,
     ) -> Result<PricingRuleSet, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         TenantPricingPolicyRepository::new(db)
             .get_set(organization_id, set_id)
             .await
@@ -242,6 +66,11 @@ impl PricingPolicyService {
         mut dto: CreatePricingRuleSetDto,
         actor_id: Uuid,
     ) -> Result<(PricingRuleSet, PricingRuleVersion), AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         if let Some(id) = dto.location_id {
             if !dto.location_ids.contains(&id) {
                 dto.location_ids.push(id);
@@ -276,6 +105,11 @@ impl PricingPolicyService {
         dto: CreatePricingRuleVersionDto,
         actor_id: Uuid,
     ) -> Result<PricingRuleVersion, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         Self::validate_policy(&dto.policy)?;
         let policy = serde_json::to_value(dto.policy)
             .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
@@ -290,6 +124,11 @@ impl PricingPolicyService {
         organization_id: Uuid,
         set_id: Uuid,
     ) -> Result<Vec<PricingRuleVersion>, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         TenantPricingPolicyRepository::new(db)
             .versions(organization_id, set_id)
             .await
@@ -302,6 +141,11 @@ impl PricingPolicyService {
         set_id: Uuid,
         version_id: Uuid,
     ) -> Result<PricingRuleVersion, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         let repo = TenantPricingPolicyRepository::new(db);
         let version = repo
             .get_version(organization_id, set_id, version_id)
@@ -324,6 +168,11 @@ impl PricingPolicyService {
         timezone: &str,
         currency: &str,
     ) -> Result<PricingSimulationResult, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         let repo = TenantPricingPolicyRepository::new(db);
         let rule_set = repo.get_set(organization_id, set_id).await?;
         if let Some(requested) = input.location_id {
@@ -354,6 +203,11 @@ impl PricingPolicyService {
         dto: PublishPricingRuleVersionDto,
         actor_id: Uuid,
     ) -> Result<PricingRuleVersion, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         TenantPricingPolicyRepository::new(db)
             .publish(
                 organization_id,
@@ -373,6 +227,11 @@ impl PricingPolicyService {
         target_version_id: Uuid,
         actor_id: Uuid,
     ) -> Result<PricingRuleVersion, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         let repo = TenantPricingPolicyRepository::new(db);
         let target = repo
             .get_version(organization_id, set_id, target_version_id)
@@ -691,41 +550,6 @@ impl PricingPolicyService {
 
     /// Product rules from every published rule set that covers the venue:
     /// organization-wide sets plus sets scoped to `location_id`.
-    pub async fn active_product_rules(
-        &self,
-        organization_id: Uuid,
-        location_id: Option<Uuid>,
-    ) -> Result<Vec<PricingRule>, AppError> {
-        self.active_rules(organization_id, location_id, PricingTarget::Products)
-            .await
-    }
-
-    pub async fn active_rules(
-        &self,
-        organization_id: Uuid,
-        location_id: Option<Uuid>,
-        target: PricingTarget,
-    ) -> Result<Vec<PricingRule>, AppError> {
-        let mut rules = Vec::new();
-        for value in self
-            .repo
-            .active_policies(organization_id, location_id)
-            .await?
-        {
-            let policy: PricingPolicy = serde_json::from_value(value).map_err(|error| {
-                AppError::Internal(format!("Published pricing policy is invalid: {error}"))
-            })?;
-            Self::validate_policy(&policy)?;
-            rules.extend(
-                policy
-                    .rules
-                    .into_iter()
-                    .filter(|rule| rule.target == target),
-            );
-        }
-        Ok(rules)
-    }
-
     pub async fn active_rules_tenant(
         &self,
         db: Arc<TenantDb>,
@@ -733,6 +557,11 @@ impl PricingPolicyService {
         location_id: Option<Uuid>,
         target: PricingTarget,
     ) -> Result<Vec<PricingRule>, AppError> {
+        if db.tenant_id() != organization_id {
+            return Err(AppError::Forbidden(
+                "Tenant does not match the database".into(),
+            ));
+        }
         let mut rules = Vec::new();
         for value in TenantPricingPolicyRepository::new(db)
             .active_policies(organization_id, location_id)
@@ -752,24 +581,10 @@ impl PricingPolicyService {
         Ok(rules)
     }
 
-    /// Combine published plan rules in the same priority order as the preview.
-    /// Limits from applicable rule sets form a shared price range.
-    pub async fn active_plan_policy(&self) -> Result<PricingPolicy, AppError> {
-        self.active_plan_policy_for(
-            crate::models::DEFAULT_ORGANIZATION_ID,
-            Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
-        )
-        .await
-    }
-
-    pub async fn active_plan_policy_for(
-        &self, organization_id: Uuid, location_id: Option<Uuid>,
+    /// Combine published plan rules and the limits from applicable rule sets.
+    pub(crate) fn combine_plan_policies(
+        values: Vec<serde_json::Value>,
     ) -> Result<PricingPolicy, AppError> {
-        let values = self.repo.active_policies(organization_id, location_id).await?;
-        Self::combine_plan_policies(values)
-    }
-
-    pub(crate) fn combine_plan_policies(values: Vec<serde_json::Value>) -> Result<PricingPolicy, AppError> {
         let mut combined = PricingPolicy {
             base_rate: "0".into(),
             rules: vec![],

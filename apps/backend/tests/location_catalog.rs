@@ -8,7 +8,6 @@ use gaming_cafe_api::{
     services::catalog_scope::{self, CatalogScope, LocationPrice},
 };
 use serde_json::json;
-use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use support::TenantFixture;
 use uuid::Uuid;
@@ -216,12 +215,7 @@ async fn location_grants_catalog_visibility_prices_and_shared_write_boundary() {
     )
     .await
     .is_err());
-    let pool = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    pool.close().await;
     let config = Arc::new(gaming_cafe_api::services::ConfigService::new(
-        pool.clone(),
         Arc::new(NoopCache),
         "Asia/Kolkata".into(),
     ));
@@ -272,7 +266,7 @@ async fn location_grants_catalog_visibility_prices_and_shared_write_boundary() {
             .current_price,
         Some(75.0)
     );
-    let pricing = gaming_cafe_api::services::PricingPolicyService::new(pool.clone());
+    let pricing = gaming_cafe_api::services::PricingPolicyService::new();
     let (set,version)=pricing.create_tenant(db.clone(),org,serde_json::from_value(json!({"name":"Both venues","locationIds":[a,b],"policy":{"baseRate":"60","rules":[],"roundingScale":0,"minimumPrice":"80","maximumPrice":"90"}})).unwrap(),user).await.unwrap();
     assert_eq!(set.location_ids.len(), 2);
     assert!(pricing
