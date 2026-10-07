@@ -315,6 +315,7 @@ pub fn settings() -> gaming_cafe_api::config::Settings {
         database_acquire_timeout_seconds: 1,
         database_idle_timeout_seconds: 60,
         database_max_lifetime_seconds: 600,
+        nats_url: None,
         redis_url: None,
         jwt_secret: "arena360-test-secret-at-least-thirty-two-characters".into(),
         jwt_access_expiration: "15m".into(),

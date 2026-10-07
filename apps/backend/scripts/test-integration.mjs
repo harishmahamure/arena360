@@ -152,6 +152,7 @@ async function main() {
       CONTROL_DATABASE_URL: url.toString(),
       DATABASE_URL:
         'postgres://invalid:invalid@127.0.0.1:1/operational_database_is_not_a_test_fixture',
+      NATS_URL: '',
       REDIS_URL: '',
       CLICKHOUSE_URL: '',
       TENANT_DATA_DIR: tenantFiles,

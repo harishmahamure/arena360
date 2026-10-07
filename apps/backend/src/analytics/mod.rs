@@ -6,3 +6,5 @@ pub mod worker;
 pub use client::{query_as, ClickHouse};
 
 pub mod scope;
+
+pub mod publisher;

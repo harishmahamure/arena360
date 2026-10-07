@@ -184,6 +184,9 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     };
     let cache = create_cache(settings.redis_url.as_deref()).await;
     let metrics = Arc::new(crate::metrics::Metrics::default());
+    if let (Some(manager), Some(url)) = (tenant_dbs.clone(), settings.nats_url.clone()) {
+        crate::analytics::publisher::spawn(manager, metrics.clone(), url);
+    }
     spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);

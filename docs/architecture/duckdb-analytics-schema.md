@@ -459,7 +459,7 @@ These differences exist in today's queries and are kept as-is so reports don't c
   4. advance `_ingest_state.last_sequence`.
 
   The JetStream acknowledgement happens after the commit.
-- **Initial build and rebuild**: follow ADR-0043 decision 21. Take a `VACUUM INTO` snapshot, read T0 = `MAX(sequence)` from it, `ATTACH` it read-only (DuckDB `sqlite` extension), and run one `INSERT … SELECT` per table for rows inside the hot window. Then build `session_hours`, rebuild `monthly_summary`, replay events with sequence > T0, and set status `READY`.
+- **Initial build and rebuild**: follow ADR-0043 decision 21. Take a `VACUUM INTO` snapshot, read T0 from the snapshot's `sqlite_sequence` watermark for `outbox_events` (zero before the first event), `ATTACH` it read-only (DuckDB `sqlite` extension), and run one `INSERT … SELECT` per table for rows inside the hot window. Then build `session_hours`, rebuild `monthly_summary`, replay events with sequence > T0, and set status `READY`.
 - **Retention**: nightly, in batches. Delete fact rows older than `hot_window_start`, then refresh `monthly_summary` for the current and previous month.
 - **Schema change** (§32 Case C): create the new version's tables alongside, backfill, validate, switch, then drop the old tables.
 

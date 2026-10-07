@@ -1,7 +1,7 @@
 # Data Platform Progress
 
 **Updated:** 2026-10-08
-**Branch:** `main`  
+**Branch:** `codex/m6-analytics-ingestion`
 **Source plan:** `docs/plans/data-platform-build-plan.md`  
 **Architecture source:** `docs/architecture/data-platform.md`
 
@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through OPS-0011
+## Completed through API-0040
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `API-0040` — Per-cell canonical outbox publisher with acknowledgement, realtime-cursor safety, and backlog metrics.
+- [ ] `OPS-0020` — Provision the tenant JetStream stream with seven-day limits retention.
 
 ### API-0033 completed
 
@@ -92,6 +92,13 @@
 - Deployment uses explicit control migrations and durable tenant storage; owning-cell chart guards and production render/lint pass.
 - Backend 368, admin 124 and kiosk 123 checks pass; both client typechecks pass. Actual kiosk HTTP flow passes against the native API and seeded SQLite tenant. The authenticated admin browser floor updates 5 → 6 → 5 without refresh. Native Tauri window behavior was not exercised.
 - `platform-v2` is merged locally into `main`, based on existing `master`. Remote default and deployment remain unchanged. Reports remain unavailable until M7.
+
+### API-0040 completed
+
+- Ordered per-cell publication, stable tenant/event message IDs, explicit stream checks, persistent ACK cursors and realtime-safe fenced deletion. Network waits do not hold the SQLite writer.
+- Pending tenants survive handle eviction; empty polling permits eviction and no publisher acquires ownership. Backlog and publication metrics are available.
+- 373 backend checks and a separate real JetStream check pass (374 total). Missing-stream retention, replay deduplication, partial failure/recovery, fencing, gaps, exact JSON numbers, tombstones and writer availability are verified.
+- Rebuild boundary documentation uses the committed AUTOINCREMENT watermark after source cleanup.
 
 ## M5 queue
 

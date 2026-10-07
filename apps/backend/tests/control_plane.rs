@@ -485,6 +485,7 @@ fn test_settings(database_url: String) -> Settings {
         database_acquire_timeout_seconds: 2,
         database_idle_timeout_seconds: 600,
         database_max_lifetime_seconds: 1800,
+        nats_url: None,
         redis_url: None,
         jwt_secret: "control-auth-test-secret-at-least-32-bytes".into(),
         jwt_access_expiration: "15m".into(),

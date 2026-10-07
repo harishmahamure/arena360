@@ -90,3 +90,23 @@ address in that control database. The chart mounts tenant files at
 Replication, cell-loss recovery and backup drills are M8 work; distinct-cell
 orchestration and rebalancing are M9 work. Docker builds embed both active migration
 families and include the API and demo seed binaries.
+## Tenant outbox publishing
+
+Owning cells publish canonical event envelopes in sequence order every 250 ms when
+`NATS_URL` is configured. Startup and operational commits do not wait for NATS.
+The publisher expects stream `ARENA_TENANT_EVENTS` on
+`arena.tenant.*.events.v1`; stream provisioning is OPS-0020. Missing or unavailable
+streams retain SQLite rows. Message IDs combine tenant ID and event ID for server
+deduplication; consumers must also deduplicate by per-tenant sequence.
+
+Tenant migration 0014 persists the acknowledged sequence. Acknowledged source rows
+remain until the durable realtime projection cursor covers them. SQLite cleanup
+uses the current ownership lease and an immediate transaction. Network requests
+never hold the SQLite writer. Lost acknowledgements and checkpoint failures replay
+stable events; a sequence gap fails closed.
+
+`/metrics` exposes retained event count, estimated envelope/payload bytes, oldest
+retained event age, publication acknowledgement count and publication failures.
+Counts aggregate locally owned tenants; they include acknowledged rows waiting for
+realtime. Reopening a pending tenant requires an existing valid lease. Empty polls
+allow idle eviction. Publishers do not provision tenants or acquire ownership.

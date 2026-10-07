@@ -2547,6 +2547,7 @@ fn test_settings() -> Arc<Settings> {
         database_acquire_timeout_seconds: 1,
         database_idle_timeout_seconds: 1,
         database_max_lifetime_seconds: 1,
+        nats_url: None,
         redis_url: None,
         jwt_secret: "tenant-login-test-secret-at-least-32-characters".into(),
         jwt_access_expiration: "15m".into(),

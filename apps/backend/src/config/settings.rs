@@ -11,6 +11,7 @@ pub struct Settings {
     pub database_acquire_timeout_seconds: u64,
     pub database_idle_timeout_seconds: u64,
     pub database_max_lifetime_seconds: u64,
+    pub nats_url: Option<String>,
     pub redis_url: Option<String>,
     pub jwt_secret: String,
     pub jwt_access_expiration: String,
@@ -62,6 +63,7 @@ impl Settings {
             database_acquire_timeout_seconds: env_parse("DATABASE_ACQUIRE_TIMEOUT_SECONDS", 2),
             database_idle_timeout_seconds: env_parse("DATABASE_IDLE_TIMEOUT_SECONDS", 600),
             database_max_lifetime_seconds: env_parse("DATABASE_MAX_LIFETIME_SECONDS", 1800),
+            nats_url: std::env::var("NATS_URL").ok().filter(|v| !v.is_empty()),
             redis_url: std::env::var("REDIS_URL").ok().filter(|v| !v.is_empty()),
             jwt_secret,
             jwt_access_expiration: std::env::var("JWT_ACCESS_EXPIRATION")
