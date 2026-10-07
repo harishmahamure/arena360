@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0029
+## Completed through API-0030
 
-- 27 planned tasks completed.
+- 28 planned tasks completed.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -54,15 +54,17 @@
 
 - Strict tenant back-office schema and fenced inventory/procurement paths, with exact purchase-order snapshots and atomic receipts, expenses, cash entries, and outbox events.
 
+- Tenant SQLite shifts, cash registers, deposits, expense categories, and expense approvals, with atomic handover and financial source entries.
+
 ## Current task
 
-- [ ] `API-0030` — Port shifts, cash registers, deposits, expenses, and expense categories.
+- [ ] `API-0031` — Port settings, configuration, notifications, access locks, and kitchen.
 
 ## M5 queue
 
 - [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).
 - [x] `API-0029` — Inventory and procurement (`828a90c`).
-- [ ] `API-0030` — Shifts, cash, and expenses.
+- [x] `API-0030` — Shifts, cash, and expenses (`e098ef7`).
 - [ ] `API-0031` — Settings, notifications, access locks, and kitchen.
 - [ ] `API-0033` — Operational cutover and shared-table compatibility removal.
 - [ ] `OPS-0010` — Tenant service demo seed.
@@ -90,8 +92,10 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed implementation commit: `828a90c` (`API-0029`).
+- Latest completed implementation commit: `e098ef7` (`API-0030`).
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
+
+- Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.
 
 ## Update rule
 
