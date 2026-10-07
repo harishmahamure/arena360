@@ -219,7 +219,6 @@ pub async fn build_state() -> Arc<AppState> {
     );
     let player_plans = Arc::new(PlayerPlanService::new());
     let balances = Arc::new(BalanceService::new(pool.clone(), cache.clone()));
-    let balances_for_auth = balances.clone();
 
     let cash_registers = Arc::new(
         CashRegisterService::new(pool.clone(), cache.clone())
@@ -278,13 +277,7 @@ pub async fn build_state() -> Arc<AppState> {
     shifts.set_notifications(notifications.clone());
 
     Arc::new(AppState {
-        auth: AuthService::new(
-            pool.clone(),
-            settings.clone(),
-            balances_for_auth,
-            users.clone(),
-        )
-        .with_control_pool(control_db.clone()),
+        auth: AuthService::new(settings.clone()).with_control_pool(control_db.clone()),
         config: config_service.clone(),
         users: users.clone(),
         devices: devices.clone(),

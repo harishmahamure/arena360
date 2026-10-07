@@ -86,9 +86,19 @@ async fn register_player_validation_and_conflict_paths() {
     .await
     .expect("mark device registered");
 
+    let token_device_id = gaming_cafe_api::repositories::DeviceRepository::new(state.db.clone())
+        .find_by_id(device_id)
+        .await
+        .unwrap()
+        .unwrap();
+
     let device_token = state
         .auth
-        .generate_device_token(device_id)
+        .generate_device_token_for(
+            device_id,
+            token_device_id.organization_id,
+            token_device_id.location_id,
+        )
         .expect("device token");
 
     let app = build_router(state.clone());

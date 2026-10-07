@@ -15,14 +15,14 @@ use crate::dto::{
 };
 use crate::error::AppError;
 use crate::models::{
-    deduction_profile::DeductionProfile, Device, PlayerPlanBalance, User, DEFAULT_ORGANIZATION_ID,
+    deduction_profile::DeductionProfile, Device, PlayerPlanBalance, User,
 };
 use crate::repositories::{
-    SessionRepository, ShiftRepository, TenantBalanceRepository, TenantSessionRepository,
+    TenantBalanceRepository, TenantSessionRepository,
 };
 use crate::services::session_service::display_remaining_for_session;
 use crate::services::totp_util::verify_totp_code;
-use crate::services::{BalanceService, UserService};
+use crate::services::BalanceService;
 use crate::tenancy::TenantDb;
 use crate::validation::{normalize_username, trim_secret};
 
@@ -30,29 +30,14 @@ const TENANT_PLAYER_DUMMY_PASSWORD_HASH: &str =
     "$2b$12$dprJEXAvjHcojSitMeEB1uwqnBOMCoctwdsvqEIhYFRxP1IGRvmx6";
 
 pub struct AuthService {
-    pool: PgPool,
     control_pool: Option<PgPool>,
-    users: Arc<UserService>,
-    session_repo: SessionRepository,
-    shift_repo: ShiftRepository,
-    balances: Arc<BalanceService>,
     settings: Arc<Settings>,
 }
 
 impl AuthService {
-    pub fn new(
-        pool: PgPool,
-        settings: Arc<Settings>,
-        balances: Arc<BalanceService>,
-        users: Arc<UserService>,
-    ) -> Self {
+    pub fn new(settings: Arc<Settings>) -> Self {
         Self {
-            pool: pool.clone(),
             control_pool: None,
-            users,
-            session_repo: SessionRepository::new(pool.clone()),
-            shift_repo: ShiftRepository::new(pool),
-            balances,
             settings,
         }
     }
@@ -60,6 +45,14 @@ impl AuthService {
     pub fn with_control_pool(mut self, control_pool: Option<PgPool>) -> Self {
         self.control_pool = control_pool;
         self
+    }
+
+    fn control_database(&self) -> Result<&PgPool, AppError> {
+        self.control_pool.as_ref().ok_or_else(|| AppError::Api {
+            code: "CONTROL_AUTH_UNAVAILABLE".into(),
+            status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            details: None,
+        })
     }
 
     pub async fn login_admin(&self, dto: StaffLoginDto) -> Result<AuthResponseDto, AppError> {
@@ -93,6 +86,7 @@ impl AuthService {
     }
 
     pub async fn login_panel(&self, dto: StaffLoginDto) -> Result<PanelLoginResponseDto, AppError> {
+        self.control_database()?;
         let user = self
             .authenticate_panel(
                 &normalize_username(&dto.username),
@@ -110,9 +104,9 @@ impl AuthService {
                 Uuid::new_v4().simple()
             );
             let token_hash = Self::panel_challenge_hash(&challenge_token);
-            if let Some(pool) = &self.control_pool {
-                sqlx::query(
-                    r#"INSERT INTO auth_challenges
+            let pool = self.control_database()?;
+            sqlx::query(
+                r#"INSERT INTO auth_challenges
                         (token_hash, user_id, kind, expires_at, attempts, created_at)
                        VALUES ($1, $2, 'PANEL_MFA', $3, 0, NOW())
                        ON CONFLICT (user_id, kind) DO UPDATE SET
@@ -120,29 +114,12 @@ impl AuthService {
                          expires_at = EXCLUDED.expires_at,
                          attempts = 0,
                          created_at = NOW()"#,
-                )
-                .bind(token_hash)
-                .bind(user.id)
-                .bind(expires_at)
-                .execute(pool)
-                .await?;
-            } else {
-                sqlx::query(
-                    r#"INSERT INTO panel_auth_challenges
-                    ("tokenHash", "userId", "expiresAt", attempts, "createdAt")
-                   VALUES ($1, $2, $3, 0, NOW())
-                   ON CONFLICT ("userId") DO UPDATE SET
-                     "tokenHash" = EXCLUDED."tokenHash",
-                     "expiresAt" = EXCLUDED."expiresAt",
-                     attempts = 0,
-                     "createdAt" = NOW()"#,
-                )
-                .bind(token_hash)
-                .bind(user.id)
-                .bind(expires_at)
-                .execute(&self.pool)
-                .await?;
-            }
+            )
+            .bind(token_hash)
+            .bind(user.id)
+            .bind(expires_at)
+            .execute(pool)
+            .await?;
             return Ok(PanelLoginResponseDto::MfaRequired {
                 challenge_token,
                 expires_at,
@@ -157,36 +134,23 @@ impl AuthService {
         dto: PanelMfaDto,
     ) -> Result<PanelLoginResponseDto, AppError> {
         let token_hash = Self::panel_challenge_hash(dto.challengeToken.trim());
-        let pool = self.control_pool.as_ref().unwrap_or(&self.pool);
+        let pool = self.control_database()?;
         let mut tx = pool.begin().await?;
-        let challenge: Option<(Uuid, chrono::DateTime<Utc>, i32)> = if self.control_pool.is_some() {
-            sqlx::query_as(
-                r#"SELECT user_id, expires_at, attempts
+        let challenge: Option<(Uuid, chrono::DateTime<Utc>, i32)> = sqlx::query_as(
+            r#"SELECT user_id, expires_at, attempts
                        FROM auth_challenges
                        WHERE token_hash = $1 AND kind = 'PANEL_MFA'
                        FOR UPDATE"#,
-            )
-            .bind(&token_hash)
-            .fetch_optional(&mut *tx)
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"SELECT "userId", "expiresAt", attempts
-                       FROM panel_auth_challenges WHERE "tokenHash" = $1 FOR UPDATE"#,
-            )
-            .bind(&token_hash)
-            .fetch_optional(&mut *tx)
-            .await?
-        };
+        )
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
         let Some((user_id, expires_at, attempts)) = challenge else {
             return Err(AppError::unauthorized_code("AUTH_CHALLENGE_EXPIRED"));
         };
         if expires_at <= Utc::now() || attempts >= 5 {
-            let delete_sql = if self.control_pool.is_some() {
-                "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
-            } else {
-                r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#
-            };
+            let delete_sql =
+                "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
             sqlx::query(delete_sql)
                 .bind(&token_hash)
                 .execute(&mut *tx)
@@ -209,23 +173,15 @@ impl AuthService {
             .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_MFA"))?;
         if !verify_totp_code(secret, dto.code.trim(), &user.username)? {
             if attempts >= 4 {
-                let delete_sql = if self.control_pool.is_some() {
-                    "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
-                } else {
-                    r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#
-                };
+                let delete_sql =
+                    "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
                 sqlx::query(delete_sql)
                     .bind(&token_hash)
                     .execute(&mut *tx)
                     .await?;
             } else {
-                let update_sql = if self.control_pool.is_some() {
-                    "UPDATE auth_challenges SET attempts = attempts + 1 \
-                     WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
-                } else {
-                    r#"UPDATE panel_auth_challenges SET attempts = attempts + 1
-                       WHERE "tokenHash" = $1"#
-                };
+                let update_sql = "UPDATE auth_challenges SET attempts = attempts + 1 \
+                     WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
                 sqlx::query(update_sql)
                     .bind(&token_hash)
                     .execute(&mut *tx)
@@ -235,11 +191,7 @@ impl AuthService {
             return Err(AppError::unauthorized_code("AUTH_INVALID_MFA"));
         }
 
-        let delete_sql = if self.control_pool.is_some() {
-            "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'"
-        } else {
-            r#"DELETE FROM panel_auth_challenges WHERE "tokenHash" = $1"#
-        };
+        let delete_sql = "DELETE FROM auth_challenges WHERE token_hash = $1 AND kind = 'PANEL_MFA'";
         sqlx::query(delete_sql)
             .bind(&token_hash)
             .execute(&mut *tx)
@@ -271,29 +223,25 @@ impl AuthService {
         user: &User,
     ) -> Result<PanelLoginResponseDto, AppError> {
         let token = self.generate_access_token(user).await?;
-        let permissions = if let Some(pool) = &self.control_pool {
-            sqlx::query_scalar::<_, serde_json::Value>(
-                r#"SELECT m.permissions
+        let pool = self.control_database()?;
+        let permissions: Vec<String> = sqlx::query_scalar::<_, serde_json::Value>(
+            r#"SELECT m.permissions
                    FROM organization_memberships m
                    JOIN tenants t ON t.id = m.tenant_id
                    WHERE m.user_id = $1 AND m.role = $2 AND m.is_active
                      AND t.state NOT IN ('DELETED', 'FAILED')
                    ORDER BY m.created_at
                    LIMIT 1"#,
-            )
-            .bind(user.id)
-            .bind(user.role.as_deref())
-            .fetch_one(pool)
-            .await?
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|permission| permission.as_str().map(str::to_string))
-            .collect()
-        } else {
-            let organization: Uuid = sqlx::query_scalar(r#"SELECT "organizationId" FROM organization_memberships WHERE "userId"=$1 AND "isActive" AND EXISTS (SELECT 1 FROM organizations o WHERE o.id="organizationId" AND o."isActive") ORDER BY "createdAt" LIMIT 1"#).bind(user.id).fetch_one(&self.pool).await?;
-            crate::access::effective(&self.pool, organization, user.id).await?
-        };
+        )
+        .bind(user.id)
+        .bind(user.role.as_deref())
+        .fetch_one(pool)
+        .await?
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|permission| permission.as_str().map(str::to_string))
+        .collect();
         let next_step = if permissions.iter().any(|p| p == "shifts:write")
             && !permissions.iter().any(|p| p == "access:manage")
         {
@@ -305,128 +253,6 @@ impl AuthService {
             access_token: token,
             user: user.to_auth_user(),
             next_step: next_step.to_string(),
-        })
-    }
-
-    pub async fn login_player(
-        &self,
-        device: &Device,
-        dto: LoginDto,
-    ) -> Result<AuthResponseDto, AppError> {
-        if device.registration_status != "registered" {
-            return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
-        }
-
-        if device.status == "under_maintenance" {
-            return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
-        }
-
-        // Fingerprint drift is enforced in the player-login handler (ADR-0017)
-        // before this call, using the optional fingerprint in PlayerLoginDto.
-
-        let user = self
-            .authenticate_kiosk_user(
-                &normalize_username(&dto.username),
-                &trim_secret(&dto.password),
-            )
-            .await?;
-
-        let is_staff = user.role.as_deref() == Some("staff");
-        if is_staff
-            && self
-                .shift_repo
-                .find_active_by_user(user.id)
-                .await?
-                .is_some()
-        {
-            return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
-        }
-
-        let open_session = self
-            .session_repo
-            .find_open_session_for_player(user.id)
-            .await?;
-
-        let active_session = if let Some(session) = open_session {
-            if session.device_id != device.id {
-                return Err(AppError::conflict_code(
-                    "PLAYER_ALREADY_IN_SESSION",
-                    Some(json!({
-                        "deviceId": session.device_id.to_string(),
-                        "deviceName": session.device_name,
-                        "sessionId": session.session_id.to_string(),
-                        "sessionStartTime": crate::time::utc_timestamp(&session.start_time),
-                    })),
-                ));
-            }
-
-            let validation = self
-                .balances
-                .validate_access(session.balance_id, Some(device), None)
-                .await?;
-            if !validation.valid {
-                let balance = self.balances.get_raw(session.balance_id).await?;
-                return Err(BalanceService::validation_to_app_error_for_balance(
-                    &balance, validation,
-                ));
-            }
-
-            let balance = self.balances.get_raw(session.balance_id).await?;
-            let usage_session = self
-                .session_repo
-                .find_by_id(session.session_id)
-                .await?
-                .ok_or_else(|| AppError::NotFound("Open session record missing".to_string()))?;
-            let remaining = display_remaining_for_session(
-                &balance,
-                &usage_session,
-                &self.settings.cafe_timezone,
-            );
-            let deduction_profile =
-                crate::services::session_service::session_profile_value(&balance, &usage_session)
-                    .and_then(|value| {
-                        serde_json::from_value::<DeductionProfile>(value.clone()).ok()
-                    });
-            Some(ActiveSessionDto {
-                id: session.session_id.to_string(),
-                startTime: session.start_time,
-                balanceId: session.balance_id.to_string(),
-                remainingMinutes: remaining as f64,
-                walletBalanceMinutes: balance.remaining_minutes as f64,
-                deductionProfile: deduction_profile,
-                cafeTimezone: self.settings.cafe_timezone.clone(),
-                timeCreditsConsumed: Some(
-                    usage_session
-                        .time_credits_consumed
-                        .map(|v| v as f64)
-                        .unwrap_or(0.0),
-                ),
-                expiryDate: balance.expiry_date,
-            })
-        } else if is_staff {
-            self.balances
-                .require_staff_allowance_for_device(user.id, device)
-                .await?;
-            None
-        } else {
-            self.balances
-                .require_usable_for_device(user.id, device)
-                .await?;
-            None
-        };
-
-        let token = self.generate_player_token_for(
-            &user,
-            device.id,
-            device.organization_id,
-            device.location_id,
-        )?;
-
-        Ok(AuthResponseDto {
-            accessToken: token,
-            user: user.to_auth_user(),
-            shiftId: None,
-            activeSession: active_session,
         })
     }
 
@@ -447,7 +273,7 @@ impl AuthService {
             return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
         }
         let username = normalize_username(&dto.username);
-        let local_player = self.users.find_by_username_for_auth_tenant(db.clone(), &username).await?;
+        let local_player = crate::repositories::TenantUserRepository::new(db.clone()).find_player_for_auth(&username).await?;
         let global_staff = if local_player.is_none() {
             if let Some(control) = &self.control_pool {
                 crate::control::identity::IdentityRepository::new(control.clone()).kiosk_staff_identity(db.tenant_id(), &username).await?
@@ -577,48 +403,6 @@ impl AuthService {
         })
     }
 
-    pub async fn authenticate_player(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<User, AppError> {
-        let user = self.authenticate_kiosk_user(username, password).await?;
-        if user.role.as_deref() != Some("player") {
-            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
-        }
-        Ok(user)
-    }
-
-    async fn authenticate_kiosk_user(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<User, AppError> {
-        let user = self
-            .users
-            .find_by_username_for_auth(username)
-            .await?
-            .ok_or_else(|| AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))?;
-
-        let role = user.role.as_deref();
-        if role != Some("player") && role != Some("staff") {
-            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
-        }
-
-        self.verify_password_for_player(password, user.password_hash.as_deref())?;
-        self.ensure_active_for_player(&user)?;
-
-        Ok(user)
-    }
-
-    pub fn generate_device_token(&self, device_id: Uuid) -> Result<String, AppError> {
-        self.generate_device_token_for(
-            device_id,
-            DEFAULT_ORGANIZATION_ID,
-            crate::models::DEFAULT_VENUE_LOCATION_ID,
-        )
-    }
-
     pub fn generate_device_token_for(
         &self,
         device_id: Uuid,
@@ -654,15 +438,6 @@ impl AuthService {
             &EncodingKey::from_secret(self.settings.jwt_secret.as_bytes()),
         )
         .map_err(AppError::Jwt)
-    }
-
-    pub fn generate_player_token(&self, user: &User, device_id: Uuid) -> Result<String, AppError> {
-        self.generate_player_token_for(
-            user,
-            device_id,
-            DEFAULT_ORGANIZATION_ID,
-            crate::models::DEFAULT_VENUE_LOCATION_ID,
-        )
     }
 
     pub fn generate_player_token_for(
@@ -750,9 +525,7 @@ impl AuthService {
         username: &str,
         required_role: Option<&str>,
     ) -> Result<Option<User>, AppError> {
-        let Some(pool) = &self.control_pool else {
-            return self.users.find_by_username_for_auth(username).await;
-        };
+        let pool = self.control_database()?;
 
         sqlx::query_as::<_, User>(
             r#"SELECT u.id, u.email, u.username, u.password_hash, u.is_active,
@@ -784,9 +557,7 @@ impl AuthService {
     }
 
     async fn identity_user_by_id(&self, user_id: Uuid) -> Result<Option<User>, AppError> {
-        let Some(pool) = &self.control_pool else {
-            return self.users.get_by_id(user_id).await.map(Some);
-        };
+        let pool = self.control_database()?;
 
         sqlx::query_as::<_, User>(
             r#"SELECT u.id, u.email, u.username, u.password_hash, u.is_active,
@@ -948,21 +719,6 @@ impl AuthService {
         }
     }
 
-    fn verify_password_for_player(
-        &self,
-        password: &str,
-        hash: Option<&str>,
-    ) -> Result<(), AppError> {
-        let Some(hash) = hash else {
-            return Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"));
-        };
-        if verify(password, hash).unwrap_or(false) {
-            Ok(())
-        } else {
-            Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))
-        }
-    }
-
     fn ensure_active(&self, user: &User) -> Result<(), AppError> {
         if user.is_active {
             Ok(())
@@ -971,49 +727,24 @@ impl AuthService {
         }
     }
 
-    fn ensure_active_for_player(&self, user: &User) -> Result<(), AppError> {
-        if user.is_active {
-            Ok(())
-        } else {
-            Err(AppError::unauthorized_code("AUTH_INVALID_CREDENTIALS"))
-        }
-    }
-
     async fn generate_access_token(&self, user: &User) -> Result<String, AppError> {
-        let mut memberships: Vec<(Uuid, serde_json::Value)> = if let Some(pool) = &self.control_pool
-        {
-            sqlx::query_as(
-                r#"SELECT m.tenant_id, m.permissions
+        let pool = self.control_database()?;
+        let memberships: Vec<(Uuid, serde_json::Value)> = sqlx::query_as(
+            r#"SELECT m.tenant_id, m.permissions
                        FROM organization_memberships m
                        JOIN tenants t ON t.id = m.tenant_id
                        WHERE m.user_id = $1 AND m.is_active
                          AND t.state NOT IN ('DELETED', 'FAILED')
                        ORDER BY (m.role = $2) DESC, m.created_at, m.tenant_id"#,
-            )
-            .bind(user.id)
-            .bind(user.role.as_deref())
-            .fetch_all(pool)
-            .await?
-        } else {
-            sqlx::query_as(
-                    r#"SELECT "organizationId", permissions
-               FROM organization_memberships
-               WHERE "userId" = $1 AND "isActive" = TRUE
-                 AND EXISTS (SELECT 1 FROM organizations o WHERE o.id="organizationId" AND o."isActive")
-               ORDER BY "createdAt""#,
-                )
-                .bind(user.id)
-                .fetch_all(&self.pool)
-                .await?
-        };
+        )
+        .bind(user.id)
+        .bind(user.role.as_deref())
+        .fetch_all(pool)
+        .await?;
         if memberships.is_empty() {
             return Err(AppError::Forbidden(
                 "User has no active organization membership".to_string(),
             ));
-        }
-        if self.control_pool.is_none() && matches!(user.role.as_deref(), Some("admin" | "staff")) {
-            let grants = crate::access::effective(&self.pool, memberships[0].0, user.id).await?;
-            memberships[0].1 = serde_json::json!(grants);
         }
         self.encode_access_token(user, &memberships)
     }
@@ -1171,9 +902,7 @@ mod access_token_tests {
     use jsonwebtoken::{decode, DecodingKey, Validation};
     use std::sync::Arc;
 
-    use crate::cache::NoopCache;
     use crate::config::Settings;
-    use crate::services::BalanceService;
 
     fn test_settings(jwt_access_expiration: &str) -> Arc<Settings> {
         Arc::new(Settings {
@@ -1204,11 +933,22 @@ mod access_token_tests {
     }
 
     fn test_auth_service(settings: Arc<Settings>) -> AuthService {
-        let pool = PgPool::connect_lazy("postgres://localhost:5432/test").expect("lazy pool");
-        let cache = Arc::new(NoopCache);
-        let users = Arc::new(UserService::new(pool.clone(), cache.clone()));
-        let balances = Arc::new(BalanceService::new(pool.clone(), cache));
-        AuthService::new(pool, settings, balances, users)
+        AuthService::new(settings)
+    }
+
+    #[tokio::test]
+    async fn panel_auth_requires_control_storage_without_a_legacy_fallback() {
+        let auth = test_auth_service(test_settings("1h"));
+        let error = auth.login_panel(StaffLoginDto {
+            username: "staff".into(), password: "password".into(), totp: None,
+        }).await.unwrap_err();
+        assert!(matches!(error, AppError::Api { ref code, status, .. }
+            if code == "CONTROL_AUTH_UNAVAILABLE" && status == axum::http::StatusCode::SERVICE_UNAVAILABLE));
+        let error = auth.verify_panel_mfa(PanelMfaDto {
+            challengeToken: "missing".into(), code: "123456".into(),
+        }).await.unwrap_err();
+        assert!(matches!(error, AppError::Api { ref code, .. }
+            if code == "CONTROL_AUTH_UNAVAILABLE"));
     }
 
     fn test_user() -> User {
@@ -1257,7 +997,7 @@ mod access_token_tests {
             .encode_access_token(
                 &user,
                 &[(
-                    DEFAULT_ORGANIZATION_ID,
+                    Uuid::now_v7(),
                     serde_json::json!(["settings:read"]),
                 )],
             )

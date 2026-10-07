@@ -86,9 +86,19 @@ async fn login_player_happy_and_error_paths() {
     .await
     .expect("mark device registered");
 
+    let token_device_id = gaming_cafe_api::repositories::DeviceRepository::new(state.db.clone())
+        .find_by_id(device_id)
+        .await
+        .unwrap()
+        .unwrap();
+
     let device_token = state
         .auth
-        .generate_device_token(device_id)
+        .generate_device_token_for(
+            device_id,
+            token_device_id.organization_id,
+            token_device_id.location_id,
+        )
         .expect("device token");
 
     let app = build_router(state.clone());
@@ -162,7 +172,7 @@ async fn login_player_happy_and_error_paths() {
 
     let player_token = state
         .auth
-        .generate_player_token(
+        .generate_player_token_for(
             &gaming_cafe_api::models::User {
                 id: player_id,
                 email: None,
@@ -186,6 +196,8 @@ async fn login_player_happy_and_error_paths() {
                 avatar_url: None,
             },
             device_id,
+            token_device_id.organization_id,
+            token_device_id.location_id,
         )
         .expect("player token");
     assert!(!player_token.is_empty());

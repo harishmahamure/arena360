@@ -104,21 +104,50 @@ async fn second_device_start_returns_409() {
     }
 
     let player_row = state.users.get_by_id(player_id).await.expect("load player");
+    let token_device_a = gaming_cafe_api::repositories::DeviceRepository::new(state.db.clone())
+        .find_by_id(device_a)
+        .await
+        .unwrap()
+        .unwrap();
+    let token_device_b = gaming_cafe_api::repositories::DeviceRepository::new(state.db.clone())
+        .find_by_id(device_b)
+        .await
+        .unwrap()
+        .unwrap();
+
     let token_a = state
         .auth
-        .generate_player_token(&player_row, device_a)
+        .generate_player_token_for(
+            &player_row,
+            device_a,
+            token_device_a.organization_id,
+            token_device_a.location_id,
+        )
         .expect("player token a");
     let token_b = state
         .auth
-        .generate_player_token(&player_row, device_b)
+        .generate_player_token_for(
+            &player_row,
+            device_b,
+            token_device_b.organization_id,
+            token_device_b.location_id,
+        )
         .expect("player token b");
     let bearer_a = state
         .auth
-        .generate_device_token(device_a)
+        .generate_device_token_for(
+            device_a,
+            token_device_a.organization_id,
+            token_device_a.location_id,
+        )
         .expect("device a");
     let bearer_b = state
         .auth
-        .generate_device_token(device_b)
+        .generate_device_token_for(
+            device_b,
+            token_device_b.organization_id,
+            token_device_b.location_id,
+        )
         .expect("device b");
 
     let app = build_router(state.clone());

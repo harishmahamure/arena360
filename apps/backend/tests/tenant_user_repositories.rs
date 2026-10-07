@@ -16,7 +16,7 @@ use gaming_cafe_api::repositories::{
     StaffProjectionResult, TenantCreatePlayer, TenantLocationRoleGrant, TenantStaffProjection,
     TenantUserRepository,
 };
-use gaming_cafe_api::services::{AuthService, BalanceService, PlayerPlanService, UserService};
+use gaming_cafe_api::services::{AuthService, PlayerPlanService, UserService};
 use gaming_cafe_api::tenancy::{
     tenant_path, TenantDb, TenantDbConfig, TenantDbManager, TenantLease,
 };
@@ -193,22 +193,8 @@ async fn control_identity_and_local_membership_commands_recover_and_preserve_gra
         .await
         .unwrap();
     sqlx::query("INSERT INTO organization_memberships(tenant_id,user_id,role,created_at) VALUES($1,$2,'admin','2000-01-01')").bind(other).bind(user).execute(&pool).await.unwrap();
-    let unavailable_operational = PgPoolOptions::new()
-        .acquire_timeout(Duration::from_millis(100))
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    let cache = create_cache(None).await;
     let auth_settings = test_settings();
-    let auth = AuthService::new(
-        unavailable_operational.clone(),
-        auth_settings.clone(),
-        Arc::new(BalanceService::new(
-            unavailable_operational.clone(),
-            cache.clone(),
-        )),
-        Arc::new(UserService::new(unavailable_operational, cache)),
-    )
-    .with_control_pool(Some(pool.clone()));
+    let auth = AuthService::new(auth_settings.clone()).with_control_pool(Some(pool.clone()));
     let response = auth
         .issue_tenant_auth_response(f.db.clone(), user)
         .await
@@ -2093,15 +2079,8 @@ async fn local_staff_refresh_survives_control_outage_and_preserves_signed_tenant
         .acquire_timeout(Duration::from_millis(100))
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
         .unwrap();
-    let cache = create_cache(None).await;
     let settings = test_settings();
-    let auth = AuthService::new(
-        unavailable.clone(),
-        settings.clone(),
-        Arc::new(BalanceService::new(unavailable.clone(), cache.clone())),
-        Arc::new(UserService::new(unavailable.clone(), cache)),
-    )
-    .with_control_pool(Some(unavailable));
+    let auth = AuthService::new(settings.clone()).with_control_pool(Some(unavailable));
     let other = Uuid::now_v7().to_string();
     let allowed = vec![
         other.clone(),
@@ -2214,15 +2193,8 @@ async fn staff_kiosk_login_uses_global_credentials_and_local_allowance_with_play
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
         .unwrap();
     pg.close().await;
-    let cache = create_cache(None).await;
     let settings = test_settings();
-    let auth = AuthService::new(
-        pg.clone(),
-        settings.clone(),
-        Arc::new(BalanceService::new(pg.clone(), cache.clone())),
-        Arc::new(UserService::new(pg, cache)),
-    )
-    .with_control_pool(Some(control.clone()));
+    let auth = AuthService::new(settings.clone()).with_control_pool(Some(control.clone()));
     let login = || LoginDto {
         username: username.clone(),
         password: "playing-password".into(),
@@ -2509,13 +2481,7 @@ async fn staged_tenant_login_authenticates_only_tenant_players() {
     ))
     .await
     .unwrap();
-    let postgres = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    let cache = create_cache(None).await;
-    let users = Arc::new(UserService::new(postgres.clone(), cache.clone()));
-    let balances = Arc::new(BalanceService::new(postgres.clone(), cache));
-    let auth = AuthService::new(postgres, test_settings(), balances, users);
+    let auth = AuthService::new(test_settings());
     let now = Utc::now();
     let device = Device {
         id: Uuid::now_v7(),

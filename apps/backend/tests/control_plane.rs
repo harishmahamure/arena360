@@ -7,12 +7,11 @@ use gaming_cafe_api::control::{
     Repository,
 };
 use gaming_cafe_api::{
-    cache::NoopCache,
     config::{Roles, Settings},
-    dto::{JwtUserClaims, PanelLoginResponseDto, StaffLoginDto},
+    dto::{JwtUserClaims, PanelLoginResponseDto, PanelMfaDto, StaffLoginDto},
     middleware::auth::control_panel_session_active,
     routing::{RoutingCache, TenantRouter, ROUTING_CHANGED_CHANNEL},
-    services::{AuthService, BalanceService, UserService},
+    services::AuthService,
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde_json::json;
@@ -93,7 +92,7 @@ async fn authenticates_staff_and_invalidates_disabled_membership() {
     let password = "correct horse battery staple";
     let user_id: uuid::Uuid = sqlx::query_scalar(
         r#"INSERT INTO users (username, password_hash, totp_secret, totp_enabled)
-           VALUES ($1, $2, 'JBSWY3DPEHPK3PXP', FALSE)
+           VALUES ($1, $2, 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', FALSE)
            RETURNING id"#,
     )
     .bind(&username)
@@ -112,16 +111,8 @@ async fn authenticates_staff_and_invalidates_disabled_membership() {
     .await
     .unwrap();
 
-    let cache = Arc::new(NoopCache);
-    let operational_pool = PgPoolOptions::new()
-        .max_connections(1)
-        .connect_lazy(&database_url)
-        .unwrap();
-    let users = Arc::new(UserService::new(operational_pool.clone(), cache.clone()));
-    let balances = Arc::new(BalanceService::new(operational_pool.clone(), cache));
     let settings = Arc::new(test_settings(database_url));
-    let auth = AuthService::new(operational_pool, settings.clone(), balances, users)
-        .with_control_pool(Some(pool.clone()));
+    let auth = AuthService::new(settings.clone()).with_control_pool(Some(pool.clone()));
 
     let user = auth.authenticate_staff(&username, password).await.unwrap();
     let response = auth.issue_auth_response(&user).await.unwrap();
@@ -164,7 +155,7 @@ async fn authenticates_staff_and_invalidates_disabled_membership() {
         .unwrap();
     let panel = auth
         .login_panel(StaffLoginDto {
-            username,
+            username: username.clone(),
             password: password.into(),
             totp: None,
         })
@@ -179,6 +170,87 @@ async fn authenticates_staff_and_invalidates_disabled_membership() {
     .await
     .unwrap();
     assert_eq!(challenge_count, 1);
+    let PanelLoginResponseDto::MfaRequired {
+        challenge_token, ..
+    } = panel
+    else {
+        panic!("MFA required");
+    };
+    for _ in 0..5 {
+        let error = auth
+            .verify_panel_mfa(PanelMfaDto {
+                challengeToken: challenge_token.clone(),
+                code: "invalid".into(),
+            })
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("AUTH_INVALID_MFA"), "{error}");
+    }
+    let error = auth
+        .verify_panel_mfa(PanelMfaDto {
+            challengeToken: challenge_token.clone(),
+            code: "invalid".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("AUTH_CHALLENGE_EXPIRED"));
+    let panel = auth
+        .login_panel(StaffLoginDto {
+            username: username.clone(),
+            password: password.into(),
+            totp: None,
+        })
+        .await
+        .unwrap();
+    let PanelLoginResponseDto::MfaRequired {
+        challenge_token, ..
+    } = panel
+    else {
+        panic!("MFA required");
+    };
+    let totp = totp_rs::TOTP::new(
+        totp_rs::Algorithm::SHA1,
+        6,
+        1,
+        30,
+        totp_rs::Secret::Encoded("JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP".into())
+            .to_bytes()
+            .unwrap(),
+        Some("GameZone".into()),
+        username,
+    )
+    .unwrap();
+    let code = totp.generate_current().unwrap();
+    let verified = auth
+        .verify_panel_mfa(PanelMfaDto {
+            challengeToken: challenge_token.clone(),
+            code: code.clone(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        verified,
+        PanelLoginResponseDto::Authenticated { .. }
+    ));
+    let replay = auth
+        .verify_panel_mfa(PanelMfaDto {
+            challengeToken: challenge_token,
+            code,
+        })
+        .await
+        .unwrap_err();
+    assert!(replay.to_string().contains("AUTH_CHALLENGE_EXPIRED"));
+    sqlx::query("DELETE FROM tenants WHERE id=$1")
+        .bind(tenant.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
 }
 
 #[tokio::test]

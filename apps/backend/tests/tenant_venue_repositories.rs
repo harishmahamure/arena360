@@ -865,10 +865,7 @@ async fn registered_mac_fingerprint_and_location_filters_use_tenant_storage() {
 #[tokio::test]
 async fn player_plan_service_uses_tenant_storage_for_assignment_filter_update_and_expiry() {
     let fixture = Fixture::new().await;
-    let postgres = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
-    let service = PlayerPlanService::new(postgres);
+    let service = PlayerPlanService::new();
     let assigned = service
         .assign_plan_to_player_tenant(
             fixture.db.clone(),
