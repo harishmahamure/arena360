@@ -301,13 +301,11 @@ async fn session_service_activity_commits_locally_and_failure_rolls_back_the_ses
         cache.clone(),
     );
     let service = gaming_cafe_api::services::SessionService::new(
-        postgres.clone(),
         devices,
-        Arc::new(BalanceService::new(postgres, cache.clone())),
+        Arc::new(BalanceService::new(postgres.clone(), cache.clone())),
         events,
-        outbox,
-        notifications,
-        "UTC".into(),
+        Arc::new(gaming_cafe_api::services::ConfigService::new(postgres.clone(), cache.clone(), "UTC".into())),
+        gaming_cafe_api::services::PricingPolicyService::new(postgres),
         cache,
     );
     // Use unrestricted wallet calendar to exercise the service on any test date.
