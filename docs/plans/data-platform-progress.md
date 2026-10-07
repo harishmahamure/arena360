@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `DB-0020` — Tenant DuckDB schema v1 and migration runner.
+- [ ] `API-0041` — Tenant analytics consumer, batching, idempotency and gap recovery.
 
 ### API-0033 completed
 
@@ -111,7 +111,7 @@
 
 - Tenant-local DuckDB schema and transactional checksum migrations preserve exact decimals, generated values and existing checkpoints. All storage operations are lease fenced; fresh state is REBUILDING.
 - Six schema/rollback/fencing/timezone tests pass, and the complete SQLite/DuckDB/control/JetStream run passes 384 checks. Native SDK versions/checksums are pinned in CI, and loader paths are assigned in Cargo test runners.
-- OPS-0020 implementation: `a46c943`. Next: `API-0041` analytics consumer.
+- OPS-0020 implementation: `a46c943`. DB-0020 implementation: `da6379c`. Next: `API-0041` analytics consumer.
 
 ## M5 queue
 
