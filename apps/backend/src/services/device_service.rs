@@ -1,17 +1,14 @@
-use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::cache::{self, keys, CacheService};
 use crate::dto::{DeviceFingerprintDto, ProvisionDeviceDto};
 use crate::error::AppError;
-use crate::models::activity_kind;
 use crate::models::{
     CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
 };
-use crate::realtime::OutboxService;
-use crate::repositories::{DeviceRepository, TenantDeviceRepository};
-use crate::services::{EventService, NotificationService, Recipients, RecordNotification};
+use crate::repositories::TenantDeviceRepository;
+use crate::services::EventService;
 use crate::tenancy::TenantDb;
 use crate::validation::{
     optional_device_status, optional_device_sub_type, optional_device_type,
@@ -20,28 +17,13 @@ use crate::validation::{
 
 #[derive(Clone)]
 pub struct DeviceService {
-    repo: DeviceRepository,
     events: EventService,
-    outbox: OutboxService,
-    notifications: NotificationService,
     cache: Arc<dyn CacheService>,
 }
 
 impl DeviceService {
-    pub fn new(
-        pool: PgPool,
-        events: EventService,
-        outbox: OutboxService,
-        notifications: NotificationService,
-        cache: Arc<dyn CacheService>,
-    ) -> Self {
-        Self {
-            repo: DeviceRepository::new(pool),
-            events,
-            outbox,
-            notifications,
-            cache,
-        }
+    pub fn new(events: EventService, cache: Arc<dyn CacheService>) -> Self {
+        Self { events, cache }
     }
 
     async fn invalidate_device_cache(&self, device_id: &Uuid) {
@@ -51,18 +33,6 @@ impl DeviceService {
             .invalidate_prefix(keys::SESSIONS_LIST_PREFIX)
             .await;
         let _ = cache::invalidate_stats(&*self.cache).await;
-    }
-
-    pub async fn list(
-        &self,
-        filters: DeviceFilterDto,
-        organization_id: Uuid,
-        user_id: Uuid,
-        admin: bool,
-    ) -> Result<crate::dto::PaginationResult<Device>, AppError> {
-        self.repo
-            .list(&filters, organization_id, user_id, admin)
-            .await
     }
 
     pub async fn list_tenant(
@@ -149,6 +119,9 @@ impl DeviceService {
         mut dto: ProvisionDeviceDto,
         actor_id: Option<Uuid>,
     ) -> Result<Device, AppError> {
+        let location_id = dto
+            .locationId
+            .ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?;
         if dto.name.trim().is_empty() {
             return Err(AppError::BadRequest("Device name is required".into()));
         }
@@ -164,9 +137,7 @@ impl DeviceService {
             repo.find_registered_by_mac(&dto.fingerprint.mac).await?
         };
         if let Some(existing) = &existing {
-            let requested = dto
-                .locationId
-                .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+            let requested = location_id;
             if requested != existing.location_id {
                 return Err(AppError::Conflict(
                     "Move the device in admin before provisioning it at another location".into(),
@@ -191,8 +162,7 @@ impl DeviceService {
                 dto.deviceType.unwrap_or_else(|| "OTHER".into()),
                 dto.deviceSubType.unwrap_or_else(|| "OTHER".into()),
                 dto.location,
-                dto.locationId
-                    .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                location_id,
                 fingerprint,
                 actor_id,
             )
@@ -236,142 +206,6 @@ impl DeviceService {
         self.invalidate_device_cache(&device.id).await;
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<Device, AppError> {
-        self.repo
-            .find_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
-    }
-
-    pub async fn create(
-        &self,
-        dto: CreateDeviceDto,
-        actor_id: Option<Uuid>,
-        organization_id: Uuid,
-    ) -> Result<Device, AppError> {
-        let dto = prepare_create_dto(dto)?;
-        if self.repo.name_exists(&dto.name, None).await? {
-            return Err(AppError::Conflict(format!(
-                "Device with name '{}' already exists",
-                dto.name
-            )));
-        }
-        let device = self.repo.create(&dto, actor_id, organization_id).await?;
-        self.events
-            .publish_device_status(&device.id.to_string(), &device.status);
-        self.publish_device_ws(&device).await;
-        self.invalidate_device_cache(&device.id).await;
-        Ok(device)
-    }
-
-    /// Admin-authorized provisioning (DRAFT-0023): the admin is already
-    /// authenticated; create or re-register a device with its fingerprint snapshot.
-    pub async fn provision(
-        &self,
-        mut dto: ProvisionDeviceDto,
-        actor_id: Option<Uuid>,
-        organization_id: Uuid,
-    ) -> Result<Device, AppError> {
-        if dto.name.trim().is_empty() {
-            return Err(AppError::BadRequest("Device name is required".to_string()));
-        }
-        dto.deviceType = Some(require_device_type(dto.deviceType)?);
-        dto.deviceSubType = Some(require_device_sub_type(dto.deviceSubType)?);
-        // BIOS serial is often an OEM placeholder; persist MAC as the station identifier.
-        dto.serialNumber = Some(dto.fingerprint.mac.trim().to_string());
-
-        let fingerprint_json = serde_json::to_string(&dto.fingerprint)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-
-        if let Some(existing) = self.find_existing_for_reprovision(&dto.fingerprint).await? {
-            if existing.organization_id != organization_id {
-                return Err(AppError::Conflict(
-                    "This hardware is registered to another organization".into(),
-                ));
-            }
-            if self.fingerprint_compatible(&existing, &dto.fingerprint)? {
-                return self
-                    .reprovision_existing(existing, &dto, &fingerprint_json, actor_id)
-                    .await;
-            }
-        }
-
-        if self.repo.name_exists(&dto.name, None).await? {
-            return Err(AppError::Conflict(format!(
-                "Device with name '{}' already exists",
-                dto.name
-            )));
-        }
-
-        match self
-            .repo
-            .provision(&dto, &fingerprint_json, actor_id, organization_id)
-            .await
-        {
-            Ok(device) => {
-                self.events
-                    .publish_device_status(&device.id.to_string(), &device.status);
-                self.publish_device_ws(&device).await;
-                self.invalidate_device_cache(&device.id).await;
-                Ok(device)
-            }
-            Err(AppError::Database(e)) => Err(map_device_unique_violation(e)),
-            Err(e) => Err(e),
-        }
-    }
-
-    async fn find_existing_for_reprovision(
-        &self,
-        fingerprint: &DeviceFingerprintDto,
-    ) -> Result<Option<Device>, AppError> {
-        if is_unusable_mac(&fingerprint.mac) {
-            return Ok(None);
-        }
-        self.repo.find_registered_by_mac(&fingerprint.mac).await
-    }
-
-    async fn reprovision_existing(
-        &self,
-        existing: Device,
-        dto: &ProvisionDeviceDto,
-        fingerprint_json: &str,
-        actor_id: Option<Uuid>,
-    ) -> Result<Device, AppError> {
-        if dto
-            .locationId
-            .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)
-            != existing.location_id
-        {
-            return Err(AppError::Conflict(
-                "Move the device in admin before provisioning it at another location".into(),
-            ));
-        }
-        if !self.fingerprint_compatible(&existing, &dto.fingerprint)? {
-            return Err(AppError::Conflict(format!(
-                "This hardware fingerprint does not match device '{}'. \
-                 Delete that device in admin or factory-reset the original kiosk before reusing it.",
-                existing.name
-            )));
-        }
-
-        if self.repo.name_exists(&dto.name, Some(existing.id)).await? {
-            return Err(AppError::Conflict(format!(
-                "Device with name '{}' already exists",
-                dto.name
-            )));
-        }
-
-        let device = self
-            .repo
-            .reprovision(existing.id, dto, fingerprint_json, actor_id)
-            .await?;
-        self.events
-            .publish_device_status(&device.id.to_string(), &device.status);
-        self.publish_device_ws(&device).await;
-        self.invalidate_device_cache(&device.id).await;
-        Ok(device)
-    }
-
     fn fingerprint_compatible(
         &self,
         existing: &Device,
@@ -385,124 +219,6 @@ impl DeviceService {
             Err(_) => return Ok(true),
         };
         Ok(mac_addresses_match(&stored, presented))
-    }
-
-    pub async fn update(
-        &self,
-        id: Uuid,
-        dto: UpdateDeviceDto,
-        actor_id: Option<Uuid>,
-    ) -> Result<Device, AppError> {
-        if let Some(name) = &dto.name {
-            if self.repo.name_exists(name, Some(id)).await? {
-                return Err(AppError::Conflict(format!(
-                    "Device with name '{name}' already exists"
-                )));
-            }
-        }
-        let dto = prepare_update_dto(dto)?;
-        let device = self.repo.update(id, &dto, actor_id).await?;
-        self.events
-            .publish_device_status(&device.id.to_string(), &device.status);
-        self.publish_device_ws(&device).await;
-        self.invalidate_device_cache(&device.id).await;
-        Ok(device)
-    }
-
-    pub async fn update_status(
-        &self,
-        id: Uuid,
-        dto: UpdateDeviceStatusDto,
-    ) -> Result<Device, AppError> {
-        let device = self.repo.update_status(id, &dto.status).await?;
-        self.events
-            .publish_device_status(&device.id.to_string(), &device.status);
-        self.publish_device_ws(&device).await;
-        self.invalidate_device_cache(&device.id).await;
-        Ok(device)
-    }
-
-    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        self.repo.soft_delete(id).await?;
-        self.invalidate_device_cache(&id).await;
-        Ok(())
-    }
-
-    /// Enforce the fingerprint drift policy (ADR-0017, US-KREG-002/003):
-    /// tolerate a single changed component (persist the refreshed snapshot),
-    /// reject when two or more of MAC / serial / BIOS UUID differ.
-    pub async fn verify_fingerprint_drift(
-        &self,
-        device: &Device,
-        presented: &DeviceFingerprintDto,
-    ) -> Result<(), AppError> {
-        let Some(stored_json) = device.registered_kiosk.as_deref() else {
-            // No stored fingerprint yet (legacy/registered without one): accept and store.
-            if let Ok(json) = serde_json::to_string(presented) {
-                let _ = self.repo.update_fingerprint(device.id, &json).await;
-            }
-            return Ok(());
-        };
-
-        let stored: DeviceFingerprintDto = match serde_json::from_str(stored_json) {
-            Ok(value) => value,
-            Err(_) => return Ok(()), // unparseable legacy snapshot — don't lock the player out
-        };
-
-        match fingerprint_drift_count(&stored, presented) {
-            0 => Ok(()),
-            1 => {
-                if let Ok(json) = serde_json::to_string(presented) {
-                    let _ = self.repo.update_fingerprint(device.id, &json).await;
-                }
-                tracing::warn!(device_id = %device.id, "Single-component fingerprint drift; snapshot refreshed");
-                Ok(())
-            }
-            _ => Err(AppError::forbidden_code("DEVICE_FINGERPRINT_MISMATCH")),
-        }
-    }
-
-    async fn publish_device_ws(&self, device: &Device) {
-        let channel = format!("device:{}", device.id);
-        let payload = serde_json::json!({
-            "deviceId": device.id.to_string(),
-            "status": device.status
-        });
-        let _ = self
-            .outbox
-            .publish(
-                "staff",
-                "device.status_changed",
-                payload.clone(),
-                None,
-                None,
-                false,
-            )
-            .await;
-        let _ = self
-            .outbox
-            .publish(
-                &channel,
-                "device.status_changed",
-                payload.clone(),
-                None,
-                None,
-                false,
-            )
-            .await;
-        let _ = self
-            .notifications
-            .record_activity(RecordNotification {
-                kind: activity_kind::DEVICE_STATUS_CHANGED.to_string(),
-                title: format!("Device status: {}", device.status),
-                summary: Some(format!("{} is now {}", device.name, device.status)),
-                payload: payload.clone(),
-                actor_user_id: None,
-                entity_type: Some("device".to_string()),
-                entity_id: Some(device.id),
-                recipients: Recipients::AllStaff,
-            })
-            .await;
     }
 }
 
@@ -624,27 +340,4 @@ fn prepare_update_dto(mut dto: UpdateDeviceDto) -> Result<UpdateDeviceDto, AppEr
     dto.device_sub_type = optional_device_sub_type(dto.device_sub_type)?;
     dto.status = optional_device_status(dto.status)?;
     Ok(dto)
-}
-
-fn map_device_unique_violation(err: sqlx::Error) -> AppError {
-    if let sqlx::Error::Database(db) = &err {
-        if db.code().as_deref() == Some("23505") {
-            let detail = db.message().to_lowercase();
-            if detail.contains("serialnumber") || detail.contains("serial") {
-                return AppError::Conflict(
-                    "A device with this serial number is already registered. \
-                     Use a different station, delete the old device in admin, or re-provision the same hardware."
-                        .to_string(),
-                );
-            }
-            if detail.contains("name") {
-                return AppError::Conflict(
-                    "A device with this name already exists. Choose a different station name."
-                        .to_string(),
-                );
-            }
-            return AppError::Conflict("A device with these details already exists.".to_string());
-        }
-    }
-    AppError::Database(err)
 }

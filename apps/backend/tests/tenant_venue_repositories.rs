@@ -9,14 +9,13 @@ use gaming_cafe_api::models::{
     status, AssignPlanDto, CreateDeviceDto, DeviceFilterDto, PlayerPlanFilterDto,
     PlayerPlanUpdateValues, PurchaseBalanceDto, SessionFilterDto,
 };
-use gaming_cafe_api::realtime::OutboxService;
 use gaming_cafe_api::repositories::{
     TenantBalanceRepository, TenantDeviceRepository, TenantPlayerPlanRepository,
     TenantSessionRepository,
 };
 use gaming_cafe_api::services::deduction_profile::weighted_minutes_between;
 use gaming_cafe_api::services::{
-    BalanceService, DeviceService, EventService, NotificationService, PlayerPlanService,
+    BalanceService, DeviceService, EventService, PlayerPlanService,
 };
 use gaming_cafe_api::sse::Broadcaster;
 use gaming_cafe_api::tenancy::{
@@ -291,18 +290,10 @@ async fn session_service_activity_commits_locally_and_failure_rolls_back_the_ses
     postgres.close().await;
     let cache = gaming_cafe_api::cache::create_cache(None).await;
     let events = EventService::new(Broadcaster::new(16));
-    let outbox = OutboxService::new(postgres.clone());
-    let notifications = NotificationService::new(postgres.clone(), outbox.clone(), cache.clone());
-    let devices = DeviceService::new(
-        postgres.clone(),
-        events.clone(),
-        outbox.clone(),
-        notifications.clone(),
-        cache.clone(),
-    );
+    let devices = DeviceService::new(events.clone(), cache.clone());
     let service = gaming_cafe_api::services::SessionService::new(
         devices,
-        Arc::new(BalanceService::new(postgres.clone(), cache.clone())),
+        Arc::new(BalanceService::new(cache.clone())),
         events,
         Arc::new(gaming_cafe_api::services::ConfigService::new(postgres.clone(), cache.clone(), "UTC".into())),
         gaming_cafe_api::services::PricingPolicyService::new(postgres),
@@ -455,7 +446,7 @@ async fn staff_allowance_renewal_preserves_ledger_and_recovers_without_postgres_
     pg.close().await;
     let cache: Arc<dyn gaming_cafe_api::cache::CacheService> = Arc::new(UnavailableCache);
     let service = gaming_cafe_api::services::StaffGamingAllowanceService::new(
-        Arc::new(BalanceService::new(pg.clone(), cache.clone())),
+        Arc::new(BalanceService::new(cache.clone())),
         Arc::new(gaming_cafe_api::services::ConfigService::new(
             pg,
             cache,
@@ -694,11 +685,8 @@ async fn unique_open_sessions_and_lease_fencing_are_enforced() {
 #[tokio::test]
 async fn balance_service_tenant_path_does_not_touch_postgres() {
     let fixture = Fixture::new().await;
-    let postgres = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
     let cache = gaming_cafe_api::cache::create_cache(None).await;
-    let service = BalanceService::new(postgres, cache);
+    let service = BalanceService::new(cache);
     let balance = service
         .purchase_or_recharge_tenant(
             fixture.db.clone(),
@@ -798,18 +786,8 @@ async fn device_service_refuses_to_delete_device_with_open_tenant_session() {
         .await
         .unwrap();
 
-    let postgres = PgPoolOptions::new()
-        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-        .unwrap();
     let cache = gaming_cafe_api::cache::create_cache(None).await;
-    let outbox = OutboxService::new(postgres.clone());
-    let service = DeviceService::new(
-        postgres.clone(),
-        EventService::new(Broadcaster::new(16)),
-        outbox.clone(),
-        NotificationService::new(postgres, outbox, cache.clone()),
-        cache,
-    );
+    let service = DeviceService::new(EventService::new(Broadcaster::new(16)), cache);
     let result = service.delete_tenant(fixture.db.clone(), device.id).await;
     assert!(matches!(result, Err(AppError::Conflict(_))));
     assert!(TenantDeviceRepository::new(fixture.db.clone())

@@ -210,15 +210,9 @@ pub async fn build_state() -> Arc<AppState> {
     let rooms = RoomService::new(pool.clone());
     let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
 
-    let devices = DeviceService::new(
-        pool.clone(),
-        events.clone(),
-        outbox.clone(),
-        notifications.clone(),
-        cache.clone(),
-    );
+    let devices = DeviceService::new(events.clone(), cache.clone());
     let player_plans = Arc::new(PlayerPlanService::new());
-    let balances = Arc::new(BalanceService::new(pool.clone(), cache.clone()));
+    let balances = Arc::new(BalanceService::new(cache.clone()));
 
     let cash_registers = Arc::new(
         CashRegisterService::new(pool.clone(), cache.clone())

@@ -158,10 +158,9 @@ impl SessionFixture {
         use gaming_cafe_api::{
             cache::CacheService,
             models::PurchaseBalanceDto,
-            realtime::OutboxService,
             repositories::TenantDeviceRepository,
             services::{
-                BalanceService, ConfigService, DeviceService, EventService, NotificationService,
+                BalanceService, ConfigService, DeviceService, EventService,
                 PlanService, PricingPolicyService,
             },
             sse::Broadcaster,
@@ -183,7 +182,7 @@ impl SessionFixture {
         let settings = Arc::new(ConfigService::new(pg.clone(), cache.clone(), "UTC".into()));
         let plan = PlanService::new(settings.clone()).create_tenant(tenant.db.clone(), vec![venue],
             serde_json::from_value(serde_json::json!({"name":"Two hours","price":100,"planType":"time_based","validityDays":30,"timeCredits":120,"deviceType":"PC","deviceSubType":"HIGH_END_PCS"})).unwrap(),None).await.unwrap().id;
-        let balances = Arc::new(BalanceService::new(pg.clone(), cache.clone()));
+        let balances = Arc::new(BalanceService::new(cache.clone()));
         let balance = balances
             .purchase_or_recharge_tenant(
                 tenant.db.clone(),
@@ -200,15 +199,7 @@ impl SessionFixture {
         let device = TenantDeviceRepository::new(tenant.db.clone()).create(
             &serde_json::from_value(serde_json::json!({"name":"PC-01","locationId":venue,"deviceType":"PC","deviceSubType":"HIGH_END_PCS","registrationStatus":"registered"})).unwrap(),None).await.unwrap().id;
         let events = EventService::new(Broadcaster::new(16));
-        let outbox = OutboxService::new(pg.clone());
-        let notifications = NotificationService::new(pg.clone(), outbox.clone(), cache.clone());
-        let devices = DeviceService::new(
-            pg.clone(),
-            events.clone(),
-            outbox,
-            notifications,
-            cache.clone(),
-        );
+        let devices = DeviceService::new(events.clone(), cache.clone());
         let sessions = gaming_cafe_api::services::SessionService::new(
             devices,
             balances.clone(),
