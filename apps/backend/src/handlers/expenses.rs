@@ -15,6 +15,7 @@ use crate::models::{
 use crate::openapi::responses::{
     ErrorEnvelope, ExpenseEnvelope, ExpensePaginationEnvelope, ExpenseSummaryListEnvelope,
 };
+use crate::repositories::TenantExpenseRepository;
 
 #[utoipa::path(
     get,
@@ -29,11 +30,13 @@ use crate::openapi::responses::{
     tag = "expenses"
 )]
 pub async fn list_expenses(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<ExpenseFilterDto>,
 ) -> ApiResult<PaginationResult<Expense>> {
-    let result = state.expenses.list(filters).await?;
+    let result = TenantExpenseRepository::new(state.business_db(&claims).await?)
+        .list(&filters)
+        .await?;
     ok(result)
 }
 
@@ -53,11 +56,14 @@ pub async fn list_expenses(
     tag = "expenses"
 )]
 pub async fn get_expense(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Expense> {
-    let expense = state.expenses.get_by_id(id).await?;
+    let expense = TenantExpenseRepository::new(state.business_db(&claims).await?)
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Expense not found".into()))?;
     ok(expense)
 }
 
@@ -81,7 +87,9 @@ pub async fn create_expense(
     Json(dto): Json<CreateExpenseDto>,
 ) -> ApiResult<Expense> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let expense = state.expenses.create(dto, user_id).await?;
+    let expense = TenantExpenseRepository::new(state.business_db(&claims).await?)
+        .create(&dto, user_id)
+        .await?;
     created(expense)
 }
 
@@ -110,7 +118,9 @@ pub async fn update_expense(
     Json(dto): Json<UpdateExpenseDto>,
 ) -> ApiResult<Expense> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let expense = state.expenses.update(id, dto, user_id).await?;
+    let expense = TenantExpenseRepository::new(state.business_db(&claims).await?)
+        .update(id, &dto, user_id)
+        .await?;
     ok(expense)
 }
 
@@ -140,7 +150,9 @@ pub async fn approve_expense(
 ) -> ApiResult<Expense> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let expense = state.expenses.approve(id, user_id).await?;
+    let expense = TenantExpenseRepository::new(state.business_db(&claims).await?)
+        .approve(id, user_id)
+        .await?;
     ok(expense)
 }
 
@@ -170,8 +182,7 @@ pub async fn reject_expense(
 ) -> ApiResult<Expense> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    let expense = state
-        .expenses
+    let expense = TenantExpenseRepository::new(state.business_db(&claims).await?)
         .reject(id, &dto.rejection_reason, user_id)
         .await?;
     ok(expense)
@@ -193,8 +204,9 @@ pub async fn expense_summary(
     AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Vec<ExpenseSummaryDto>> {
-    super::kitchen::require_venue(&claims)?;
-    let summary = state.expenses.get_summary().await?;
+    let summary = TenantExpenseRepository::new(state.business_db(&claims).await?)
+        .get_summary()
+        .await?;
     ok(summary)
 }
 
@@ -215,10 +227,12 @@ pub async fn expense_summary(
     tag = "expenses"
 )]
 pub async fn delete_expense(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Expense> {
-    let expense = state.expenses.delete(id).await?;
+    let expense = TenantExpenseRepository::new(state.business_db(&claims).await?)
+        .soft_delete(id)
+        .await?;
     ok(expense)
 }

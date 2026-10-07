@@ -74,6 +74,18 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Business handlers must use the authenticated tenant's locally owned database.
+    /// Missing cell configuration is an error, never a PostgreSQL fallback.
+    pub async fn business_db(
+        &self,
+        claims: &crate::dto::JwtUserClaims,
+    ) -> Result<Arc<crate::tenancy::TenantDb>, crate::error::AppError> {
+        let tenant = Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| crate::error::AppError::Unauthorized("Invalid tenant identity".into()))?;
+        self.tenant_db(tenant).await?.ok_or_else(||
+            crate::error::AppError::Api { code: "TENANT_STORAGE_UNAVAILABLE".into(), status: axum::http::StatusCode::SERVICE_UNAVAILABLE, details: None })
+    }
+
     pub async fn tenant_db(
         &self,
         tenant_id: Uuid,
@@ -85,43 +97,6 @@ impl AppState {
         // cell is not the current writer (or has fenced itself); only provisioning
         // and ownership orchestration may acquire a lease.
         let db = manager.open(tenant_id).await?;
-        let locations: Vec<(
-            Uuid,
-            String,
-            String,
-            bool,
-            String,
-            String,
-            chrono::DateTime<chrono::Utc>,
-            chrono::DateTime<chrono::Utc>,
-        )> = sqlx::query_as(
-            r#"SELECT id,slug,name,"isActive",timezone,currency,"createdAt","updatedAt"
-                   FROM venue_locations
-                   WHERE "organizationId"=$1
-                   ORDER BY id"#,
-        )
-        .bind(tenant_id)
-        .fetch_all(&self.db)
-        .await?;
-        crate::tenancy::sync_venue_locations(
-            db.clone(),
-            locations
-                .into_iter()
-                .map(|(id, slug, name, is_active, timezone, currency, created_at, updated_at)| {
-                    crate::tenancy::ProjectedVenueLocation {
-                        id,
-                        slug,
-                        name,
-                        is_active,
-                        timezone,
-                        currency,
-                        created_at,
-                        updated_at,
-                    }
-                })
-                .collect(),
-        )
-        .await?;
         Ok(Some(db))
     }
 }

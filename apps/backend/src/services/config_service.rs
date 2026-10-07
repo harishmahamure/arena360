@@ -394,14 +394,20 @@ impl ConfigService {
         self.invalidate_scoped(tenant,key,None).await?;Ok(row)
     }
     pub async fn snapshot_all_tenant(&self,db:Arc<TenantDb>,organization:Uuid,location:Option<Uuid>)->Result<ConfigurationSnapshot,AppError>{
+        let timezone=db.timezone().await?;
         let (overrides,revision)=TenantSettingsRepository::new(db).snapshot_values(organization,location).await?;
-        snapshot_from_settings(organization,location,revision,self.resolve(overrides,location,None))
+        let mut values=self.resolve(overrides,location,None);
+        tenant_timezone_default(&mut values,&timezone);
+        snapshot_from_settings(organization,location,revision,values)
     }
     pub async fn effective_tenant(&self,db:Arc<TenantDb>,organization:Uuid,query:EffectiveSettingsQuery)->Result<Vec<ResolvedSetting>,AppError>{
+        let timezone=db.timezone().await?;
         let repo=TenantSettingsRepository::new(db);
         if let Some(location)=query.location_id{repo.validate_location(organization,location).await?;}
         let overrides=repo.list_overrides(organization,query.location_id).await?;
-        Ok(self.resolve(overrides,query.location_id,query.category.as_deref()))
+        let mut values=self.resolve(overrides,query.location_id,query.category.as_deref());
+        tenant_timezone_default(&mut values,&timezone);
+        Ok(values)
     }
     pub async fn upsert_setting_tenant(&self,db:Arc<TenantDb>,organization:Uuid,key:&str,dto:UpsertSettingOverrideDto,actor:Uuid,request:Option<&str>)->Result<SettingOverride,AppError>{
         if dto.reason.trim().len()<3{return Err(AppError::BadRequest("A change reason of at least 3 characters is required".into()));}
@@ -498,7 +504,7 @@ impl ConfigService {
         location_id: Option<Uuid>,
     ) -> Result<(String, String, String), AppError> {
         let settings = self
-            .effective_with_tenant_pricing(
+            .effective_tenant(
                 db,
                 organization_id,
                 EffectiveSettingsQuery {
@@ -727,3 +733,7 @@ impl ConfigService {
 }
 
 fn dto_key_unknown(service:&ConfigService,key:&str)->bool{!service.catalog().iter().any(|d|d.key==key)}
+
+fn tenant_timezone_default(values: &mut [ResolvedSetting], timezone: &str) {
+    for value in values { if value.key == "venue.timezone" && !value.overridden { value.value = serde_json::json!(timezone); } }
+}

@@ -165,6 +165,30 @@ pub async fn create_locations(
     Ok(ids)
 }
 
+pub async fn create_locations_tenant(
+    db: std::sync::Arc<crate::tenancy::TenantDb>,
+    scope: &LocationScope,
+    requested: Option<Vec<Uuid>>,
+) -> Result<Vec<Uuid>, AppError> {
+    let mut ids = requested.unwrap_or_else(|| {
+        if scope.organization_admin {
+            vec![]
+        } else {
+            scope.locations.clone()
+        }
+    });
+    ids.sort();
+    ids.dedup();
+    authorize(scope, &ids, true)?;
+    let settings = crate::repositories::TenantSettingsRepository::new(db);
+    for id in &ids {
+        settings
+            .validate_location(scope.organization_id, *id)
+            .await?;
+    }
+    Ok(ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

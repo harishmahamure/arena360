@@ -21,6 +21,16 @@ use crate::openapi::responses::{
     InventoryReorderRuleListEnvelope, PurchaseOrderEnvelope, PurchaseOrderPaginationEnvelope,
     PurchaseOrderReceiptEnvelope, ReorderSuggestionListEnvelope, StockMovementPaginationEnvelope,
 };
+use crate::services::TenantProcurementService;
+
+async fn service(
+    state: &AppState,
+    claims: &crate::dto::JwtUserClaims,
+) -> Result<TenantProcurementService, AppError> {
+    let db = state.business_db(claims).await?;
+    let timezone = db.timezone().await?;
+    Ok(TenantProcurementService::new(db, timezone))
+}
 
 fn actor_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
     claims
@@ -34,35 +44,37 @@ pub async fn overview(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<InventoryOverviewDto> {
-    super::kitchen::require_venue(&claims)?;
-    ok(state.procurement.overview().await?)
+    ok(service(&state, &claims).await?.overview().await?)
 }
 
 #[utoipa::path(get, operation_id = "inventory_list_movements", path = "/inventory/movements", params(StockMovementFilterDto), responses((status = 200, body = StockMovementPaginationEnvelope), (status = 401, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
 pub async fn list_movements(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<StockMovementFilterDto>,
 ) -> ApiResult<PaginationResult<StockMovementRow>> {
-    ok(state.procurement.list_movements(filters).await?)
+    ok(service(&state, &claims)
+        .await?
+        .list_movements(filters)
+        .await?)
 }
 
 #[utoipa::path(get, operation_id = "purchase_orders_list", path = "/inventory/purchase-orders", params(PurchaseOrderFilterDto), responses((status = 200, body = PurchaseOrderPaginationEnvelope), (status = 401, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
 pub async fn list_orders(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<PurchaseOrderFilterDto>,
 ) -> ApiResult<PaginationResult<PurchaseOrder>> {
-    ok(state.procurement.list_orders(filters).await?)
+    ok(service(&state, &claims).await?.list_orders(filters).await?)
 }
 
 #[utoipa::path(get, operation_id = "purchase_orders_get", path = "/inventory/purchase-orders/{id}", params(("id" = Uuid, Path)), responses((status = 200, body = PurchaseOrderEnvelope), (status = 404, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
 pub async fn get_order(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PurchaseOrderWithLines> {
-    ok(state.procurement.get_order(id).await?)
+    ok(service(&state, &claims).await?.get_order(id).await?)
 }
 
 #[utoipa::path(post, operation_id = "purchase_orders_create", path = "/inventory/purchase-orders", request_body = CreatePurchaseOrderDto, responses((status = 201, body = PurchaseOrderEnvelope), (status = 400, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
@@ -72,8 +84,8 @@ pub async fn create_order(
     Json(dto): Json<CreatePurchaseOrderDto>,
 ) -> ApiResult<PurchaseOrderWithLines> {
     created(
-        state
-            .procurement
+        service(&state, &claims)
+            .await?
             .create_order(dto, actor_id(&claims)?)
             .await?,
     )
@@ -86,8 +98,8 @@ pub async fn update_order(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdatePurchaseOrderDto>,
 ) -> ApiResult<PurchaseOrderWithLines> {
-    ok(state
-        .procurement
+    ok(service(&state, &claims)
+        .await?
         .update_order(id, dto, actor_id(&claims)?)
         .await?)
 }
@@ -98,9 +110,9 @@ pub async fn submit_order(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PurchaseOrderWithLines> {
-    ok(state
-        .procurement
-        .transition(id, "submit", actor_id(&claims)?, None)
+    ok(service(&state, &claims)
+        .await?
+        .transition(id, "submit", None, actor_id(&claims)?)
         .await?)
 }
 
@@ -110,9 +122,9 @@ pub async fn approve_order(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PurchaseOrderWithLines> {
-    ok(state
-        .procurement
-        .transition(id, "approve", actor_id(&claims)?, None)
+    ok(service(&state, &claims)
+        .await?
+        .transition(id, "approve", None, actor_id(&claims)?)
         .await?)
 }
 
@@ -123,9 +135,9 @@ pub async fn reject_order(
     Path(id): Path<Uuid>,
     Json(dto): Json<RejectPurchaseOrderDto>,
 ) -> ApiResult<PurchaseOrderWithLines> {
-    ok(state
-        .procurement
-        .transition(id, "reject", actor_id(&claims)?, Some(dto.reason))
+    ok(service(&state, &claims)
+        .await?
+        .transition(id, "reject", Some(dto.reason), actor_id(&claims)?)
         .await?)
 }
 
@@ -135,9 +147,9 @@ pub async fn mark_ordered(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PurchaseOrderWithLines> {
-    ok(state
-        .procurement
-        .transition(id, "mark_ordered", actor_id(&claims)?, None)
+    ok(service(&state, &claims)
+        .await?
+        .transition(id, "mark_ordered", None, actor_id(&claims)?)
         .await?)
 }
 
@@ -147,9 +159,9 @@ pub async fn cancel_order(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PurchaseOrderWithLines> {
-    ok(state
-        .procurement
-        .transition(id, "cancel", actor_id(&claims)?, None)
+    ok(service(&state, &claims)
+        .await?
+        .transition(id, "cancel", None, actor_id(&claims)?)
         .await?)
 }
 
@@ -161,8 +173,8 @@ pub async fn receive_order(
     Json(dto): Json<ReceivePurchaseOrderDto>,
 ) -> ApiResult<ReceivePurchaseOrderResponse> {
     created(
-        state
-            .procurement
+        service(&state, &claims)
+            .await?
             .receive(id, dto, actor_id(&claims)?)
             .await?,
     )
@@ -170,10 +182,10 @@ pub async fn receive_order(
 
 #[utoipa::path(get, path = "/inventory/reorder-rules", responses((status = 200, body = InventoryReorderRuleListEnvelope), (status = 401, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
 pub async fn list_reorder_rules(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Vec<InventoryReorderRule>> {
-    ok(state.procurement.list_reorder_rules().await?)
+    ok(service(&state, &claims).await?.list_reorder_rules().await?)
 }
 
 #[utoipa::path(post, path = "/inventory/reorder-rules", request_body = UpsertInventoryReorderRuleDto, responses((status = 200, body = InventoryReorderRuleEnvelope), (status = 400, body = ErrorEnvelope), (status = 403, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
@@ -182,16 +194,19 @@ pub async fn upsert_reorder_rule(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<UpsertInventoryReorderRuleDto>,
 ) -> ApiResult<InventoryReorderRule> {
-    ok(state
-        .procurement
+    ok(service(&state, &claims)
+        .await?
         .upsert_reorder_rule(dto, actor_id(&claims)?)
         .await?)
 }
 
 #[utoipa::path(get, path = "/inventory/reorder-suggestions", responses((status = 200, body = ReorderSuggestionListEnvelope), (status = 401, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]
 pub async fn reorder_suggestions(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Vec<ReorderSuggestion>> {
-    ok(state.procurement.reorder_suggestions().await?)
+    ok(service(&state, &claims)
+        .await?
+        .reorder_suggestions()
+        .await?)
 }

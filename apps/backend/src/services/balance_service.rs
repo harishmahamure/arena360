@@ -365,6 +365,11 @@ impl BalanceService {
         }
     }
 
+    pub async fn validate_access_tenant(&self, db: Arc<TenantDb>, id: Uuid, device: Option<&Device>, at: Option<DateTime<Utc>>) -> Result<BalanceValidationResult, AppError> {
+        let balance = self.get_raw_tenant(db, id).await?;
+        Ok(Self::validate_balance(&balance, device, at))
+    }
+
     pub async fn validate_access(
         &self,
         balance_id: Uuid,

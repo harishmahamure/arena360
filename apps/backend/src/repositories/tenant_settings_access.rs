@@ -88,3 +88,77 @@ impl TenantSettingsRepository {
         Ok(sqlx::query_as("SELECT unhex(replace(id,'-','')) AS id,? AS organization_id,slug,name,timezone,currency,is_active FROM venue_locations ORDER BY name,id").bind(org).fetch_all(&self.db.read_pool()?).await?)
     }
 }
+
+impl TenantSettingsRepository {
+    pub fn validate_location_dto(
+        dto: &crate::models::SaveVenueLocationDto,
+    ) -> Result<(), AppError> {
+        let slug = dto.slug.trim();
+        if slug.is_empty()
+            || slug.len() > 80
+            || !slug
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            || dto.name.trim().is_empty()
+            || dto.name.trim().len() > 160
+            || dto.timezone.trim().is_empty()
+            || dto.timezone.len() > 80
+            || dto.currency.len() != 3
+            || !dto.currency.chars().all(|c| c.is_ascii_uppercase())
+        {
+            return Err(AppError::BadRequest("Use a lowercase location slug, a name, an IANA timezone, and a three-letter currency code".into()));
+        }
+        crate::services::settings_catalog::validate(
+            "Asia/Kolkata",
+            "venue.timezone",
+            &serde_json::json!(dto.timezone),
+            true,
+        )?;
+        crate::services::settings_catalog::validate(
+            "Asia/Kolkata",
+            "pricing.currency",
+            &serde_json::json!(dto.currency),
+            true,
+        )?;
+        Ok(())
+    }
+
+    pub async fn save_location(
+        &self,
+        org: Uuid,
+        id: Option<Uuid>,
+        dto: crate::models::SaveVenueLocationDto,
+    ) -> Result<VenueLocation, AppError> {
+        self.require_tenant(org)?;
+        Self::validate_location_dto(&dto)?;
+        super::tenant_back_office::write(
+            &self.db,
+            Box::new(move |c| {
+                Box::pin(async move {
+                    let at = super::tenant_back_office::now()?;
+                    let (location, active) = if let Some(id) = id {
+                        let old: Option<bool> = sqlx::query_scalar("SELECT is_active FROM venue_locations WHERE id=?").bind(id.to_string()).fetch_optional(&mut *c).await?;
+                        (id, dto.is_active.unwrap_or(old.ok_or_else(|| AppError::NotFound("Location not found".into()))?))
+                    } else {
+                        (Uuid::now_v7(), dto.is_active.unwrap_or(true))
+                    };
+                    if !active {
+                        let in_use: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE location_id=? AND deleted_at IS NULL UNION ALL SELECT 1 FROM inventory_locations WHERE venue_location_id=? AND is_active=1 AND deleted_at IS NULL UNION ALL SELECT 1 FROM shifts WHERE location_id=? AND status='active')").bind(location.to_string()).bind(location.to_string()).bind(location.to_string()).fetch_one(&mut *c).await?;
+                        if in_use {
+                            return Err(AppError::Conflict("Move or retire devices and inventory locations, and close active shifts before deactivating this venue".into()));
+                        }
+                    }
+                    let duplicate: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM venue_locations WHERE slug=? AND id<>?)").bind(dto.slug.trim()).bind(location.to_string()).fetch_one(&mut *c).await?;
+                    if duplicate {
+                        return Err(AppError::Conflict("A location with this slug already exists".into()));
+                    }
+                    sqlx::query("INSERT INTO venue_locations(id,slug,name,timezone,currency,is_active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET slug=excluded.slug,name=excluded.name,timezone=excluded.timezone,currency=excluded.currency,is_active=excluded.is_active,updated_at=excluded.updated_at").bind(location.to_string()).bind(dto.slug.trim()).bind(dto.name.trim()).bind(dto.timezone.trim()).bind(dto.currency).bind(active).bind(&at).bind(&at).execute(&mut *c).await?;
+                    let row: VenueLocation = sqlx::query_as("SELECT unhex(replace(id,'-','')) id,? organization_id,slug,name,timezone,currency,is_active FROM venue_locations WHERE id=?").bind(org).bind(location.to_string()).fetch_one(&mut *c).await?;
+                    super::tenant_back_office::event(c, "venue_location", location, if id.is_some() { "location.updated" } else { "location.created" }, Some(location), false, serde_json::json!(row)).await?;
+                    Ok(row)
+                })
+            }),
+        )
+        .await
+    }
+}

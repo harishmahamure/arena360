@@ -15,6 +15,7 @@ use crate::models::{
 use crate::openapi::responses::{
     CashDepositEnvelope, CashDepositPaginationEnvelope, ErrorEnvelope,
 };
+use crate::repositories::TenantCashDepositRepository;
 
 #[utoipa::path(
     post,
@@ -39,7 +40,9 @@ pub async fn initiate_deposit(
         .userId
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid user ID in token".to_string()))?;
-    let deposit = state.cash_deposits.initiate(dto, staff_id).await?;
+    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
+        .create(&dto, staff_id)
+        .await?;
     created(deposit)
 }
 
@@ -57,11 +60,13 @@ pub async fn initiate_deposit(
     tag = "cash-deposits"
 )]
 pub async fn list_deposits(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<CashDepositFilterDto>,
 ) -> ApiResult<PaginationResult<CashDeposit>> {
-    let result = state.cash_deposits.list(filters).await?;
+    let result = TenantCashDepositRepository::new(state.business_db(&claims).await?)
+        .list(&filters)
+        .await?;
     ok(result)
 }
 
@@ -82,11 +87,14 @@ pub async fn list_deposits(
     tag = "cash-deposits"
 )]
 pub async fn get_deposit(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<CashDeposit> {
-    let deposit = state.cash_deposits.get_by_id(id).await?;
+    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Deposit not found".into()))?;
     ok(deposit)
 }
 
@@ -118,8 +126,7 @@ pub async fn approve_deposit(
         .userId
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid user ID in token".to_string()))?;
-    let deposit = state
-        .cash_deposits
+    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
         .approve(id, &dto.deposit_type, admin_id)
         .await?;
     ok(deposit)
@@ -153,8 +160,7 @@ pub async fn reject_deposit(
         .userId
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid user ID in token".to_string()))?;
-    let deposit = state
-        .cash_deposits
+    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
         .reject(id, &dto.rejection_reason, admin_id)
         .await?;
     ok(deposit)

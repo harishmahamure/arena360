@@ -62,6 +62,15 @@
 
 - [ ] `API-0033` — Wire the operational cutover and remove shared-table compatibility.
 
+### API-0033 checkpoint
+
+- Operational catalog, venue, player, wallet, session, checkout, inventory, procurement, shift, finance, kitchen, notification, and configuration handlers now require the authenticated tenant SQLite database.
+- Tenant timezone metadata is provisioned explicitly; operational pricing no longer reads shared PostgreSQL stock.
+- Local grants scope venue access, venue deactivation checks run inside the writer, and kiosk player/device tokens must match tenant and location.
+- Report routes return `ANALYTICS_UNAVAILABLE` until M7.
+- Staff identity/access, durable realtime transport, middleware, and startup workers still require cutover before API-0033 can be completed.
+- Full backend suite passes at this checkpoint, including local grant, atomic venue edit, and pricing-with-unavailable-PostgreSQL regressions.
+
 ## M5 queue
 
 - [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).

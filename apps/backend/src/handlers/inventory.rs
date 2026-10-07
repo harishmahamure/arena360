@@ -6,11 +6,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::app::AppState;
-use crate::error::AppError;
 use crate::dto::{
     created, ok, ApiResult, ApproveInventoryActionDto, PaginationResult, ReceiptSummaryFilterDto,
     WasteSummaryFilterDto,
 };
+use crate::error::AppError;
 use crate::middleware::{AdminOrStaff, AdminUser};
 use crate::models::{
     CreateInventoryLocationDto, CreateStockAdjustmentDto, CreateStockReceiptDto,
@@ -29,6 +29,7 @@ use crate::openapi::responses::{
     StockTransferPaginationEnvelope, StockTransferWithLinesEnvelope, StockWasteEnvelope,
     StockWastePaginationEnvelope, StockWasteSummaryListEnvelope, StockWasteWithLinesEnvelope,
 };
+use crate::repositories::{TenantInventoryRepository, TenantSettingsRepository};
 
 #[utoipa::path(
     get,
@@ -47,14 +48,32 @@ pub async fn list_locations(
     Query(mut filters): Query<InventoryLocationFilterDto>,
 ) -> ApiResult<PaginationResult<InventoryLocation>> {
     if !claims.is_admin() && filters.venue_location_id.is_none() {
-        filters.venue_location_id = Some(crate::models::DEFAULT_VENUE_LOCATION_ID);
+        filters.venue_location_id = Some(
+            crate::access::scope::LocationScope::resolve_tenant(
+                state.business_db(&claims).await?,
+                &claims,
+                "inventory:read",
+                None,
+            )
+            .await?
+            .first()?,
+        );
     }
     if let Some(location_id) = filters.venue_location_id {
-        let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
-        let user = claims.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
-        state.config.ensure_location_permission(org, location_id, user, "inventory:read").await?;
+        let org = Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+        let user = claims
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .ensure_location_permission(org, location_id, user, "inventory:read")
+            .await?;
     }
-    ok(state.inventory.list_locations(filters).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .list_locations(&filters)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -77,8 +96,21 @@ pub async fn create_location(
     Json(dto): Json<CreateInventoryLocationDto>,
 ) -> ApiResult<InventoryLocation> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    state.config.ensure_location_permission(Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?, dto.venue_location_id.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID), user_id.ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?, "inventory:manage").await?;
-    created(state.inventory.create_location(dto, user_id).await?)
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(
+            Uuid::parse_str(&claims.tenantId)
+                .map_err(|_| AppError::Forbidden("Select an organization".into()))?,
+            dto.venue_location_id
+                .ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?,
+            user_id.ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?,
+            "inventory:manage",
+        )
+        .await?;
+    created(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .create_location(&dto, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -104,14 +136,25 @@ pub async fn update_location(
     Json(dto): Json<UpdateInventoryLocationDto>,
 ) -> ApiResult<InventoryLocation> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let existing = state.inventory.get_location(id).await?;
-    let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+    let existing = TenantInventoryRepository::new(state.business_db(&claims).await?)
+        .get_location(id)
+        .await?;
+    let org = Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
     let user = user_id.ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
-    state.config.ensure_location_permission(org, existing.venue_location_id, user, "inventory:manage").await?;
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
+        .ensure_location_permission(org, existing.venue_location_id, user, "inventory:manage")
+        .await?;
     if let Some(location_id) = dto.venue_location_id {
-        state.config.ensure_location_permission(org, location_id, user, "inventory:manage").await?;
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .ensure_location_permission(org, location_id, user, "inventory:manage")
+            .await?;
     }
-    ok(state.inventory.update_location(id, dto, user_id).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .update_location(id, &dto, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -130,21 +173,46 @@ pub async fn list_stock(
     State(state): State<Arc<AppState>>,
     Query(mut filters): Query<LocationStockFilterDto>,
 ) -> ApiResult<PaginationResult<LocationStockRow>> {
-    let org = Uuid::parse_str(&claims.tenantId).map_err(|_| AppError::Forbidden("Select an organization".into()))?;
-    let user = claims.user_id_uuid().ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+    let org = Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+    let user = claims
+        .user_id_uuid()
+        .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
     if let Some(id) = filters.location_id {
-        let location = state.inventory.get_location(id).await?;
-        if filters.venue_location_id.is_some_and(|requested| requested != location.venue_location_id) {
-            return Err(AppError::BadRequest("Inventory location is outside the selected venue".into()));
+        let location = TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .get_location(id)
+            .await?;
+        if filters
+            .venue_location_id
+            .is_some_and(|requested| requested != location.venue_location_id)
+        {
+            return Err(AppError::BadRequest(
+                "Inventory location is outside the selected venue".into(),
+            ));
         }
         filters.venue_location_id = Some(location.venue_location_id);
     } else if !claims.is_admin() && filters.venue_location_id.is_none() {
-        filters.venue_location_id = Some(crate::models::DEFAULT_VENUE_LOCATION_ID);
+        filters.venue_location_id = Some(
+            crate::access::scope::LocationScope::resolve_tenant(
+                state.business_db(&claims).await?,
+                &claims,
+                "inventory:read",
+                None,
+            )
+            .await?
+            .first()?,
+        );
     }
     if let Some(location_id) = filters.venue_location_id {
-        state.config.ensure_location_permission(org, location_id, user, "inventory:read").await?;
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .ensure_location_permission(org, location_id, user, "inventory:read")
+            .await?;
     }
-    ok(state.inventory.list_stock(filters).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .list_stock(&filters)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -166,7 +234,10 @@ pub async fn create_receipt(
     Json(dto): Json<CreateStockReceiptDto>,
 ) -> ApiResult<StockReceiptWithLines> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    created(state.inventory.receive_stock(dto, user_id).await?)
+    let (receipt, lines) = TenantInventoryRepository::new(state.business_db(&claims).await?)
+        .create_receipt(&dto, user_id)
+        .await?;
+    created(StockReceiptWithLines { receipt, lines })
 }
 
 #[utoipa::path(
@@ -181,11 +252,15 @@ pub async fn create_receipt(
     tag = "inventory"
 )]
 pub async fn list_receipts(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<StockReceiptFilterDto>,
 ) -> ApiResult<PaginationResult<StockReceipt>> {
-    ok(state.inventory.list_receipts(filters).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .list_receipts(&filters)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -208,7 +283,10 @@ pub async fn create_adjustment(
     Json(dto): Json<CreateStockAdjustmentDto>,
 ) -> ApiResult<StockAdjustmentWithLines> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    created(state.inventory.create_adjustment(dto, user_id).await?)
+    let (adjustment, lines) = TenantInventoryRepository::new(state.business_db(&claims).await?)
+        .create_adjustment(&dto, user_id)
+        .await?;
+    created(StockAdjustmentWithLines { adjustment, lines })
 }
 
 #[utoipa::path(
@@ -223,11 +301,15 @@ pub async fn create_adjustment(
     tag = "inventory"
 )]
 pub async fn list_adjustments(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<StockAdjustmentFilterDto>,
 ) -> ApiResult<PaginationResult<StockAdjustment>> {
-    ok(state.inventory.list_adjustments(filters).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .list_adjustments(&filters)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -244,11 +326,15 @@ pub async fn list_adjustments(
     tag = "inventory"
 )]
 pub async fn get_adjustment(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StockAdjustmentWithLines> {
-    ok(state.inventory.get_adjustment(id).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .get_adjustment(id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -271,9 +357,8 @@ pub async fn create_transfer_request(
 ) -> ApiResult<StockTransferRequestWithLines> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
     created(
-        state
-            .inventory
-            .create_transfer_request(dto, user_id)
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .request_transfer(dto, user_id)
             .await?,
     )
 }
@@ -290,11 +375,15 @@ pub async fn create_transfer_request(
     tag = "inventory"
 )]
 pub async fn list_transfer_requests(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<StockTransferFilterDto>,
 ) -> ApiResult<PaginationResult<StockTransferRequest>> {
-    ok(state.inventory.list_transfer_requests(filters).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .list_transfer_requests(&filters)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -311,11 +400,15 @@ pub async fn list_transfer_requests(
     tag = "inventory"
 )]
 pub async fn get_transfer_request(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StockTransferRequestWithLines> {
-    ok(state.inventory.get_transfer_request(id).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .get_transfer_request(id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -342,7 +435,11 @@ pub async fn approve_transfer_request(
 ) -> ApiResult<StockTransferRequest> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    ok(state.inventory.approve_transfer(id, user_id).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .approve_transfer(id, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -369,10 +466,11 @@ pub async fn reject_transfer_request(
 ) -> ApiResult<StockTransferRequest> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    ok(state
-        .inventory
-        .reject_transfer(id, &dto.rejection_reason, user_id)
-        .await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .reject_transfer(id, &dto.rejection_reason, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -400,7 +498,11 @@ pub async fn fulfill_transfer_request(
 ) -> ApiResult<StockTransferRequest> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    ok(state.inventory.fulfill_transfer(id, user_id).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .fulfill_transfer(id, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -422,7 +524,10 @@ pub async fn create_waste_event(
     Json(dto): Json<CreateStockWasteEventDto>,
 ) -> ApiResult<StockWasteEventWithLines> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    created(state.inventory.create_waste_event(dto, user_id).await?)
+    let (event, lines) = TenantInventoryRepository::new(state.business_db(&claims).await?)
+        .create_waste_event(&dto, user_id)
+        .await?;
+    created(StockWasteEventWithLines { event, lines })
 }
 
 #[utoipa::path(
@@ -437,11 +542,15 @@ pub async fn create_waste_event(
     tag = "inventory"
 )]
 pub async fn list_waste_events(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<StockWasteFilterDto>,
 ) -> ApiResult<PaginationResult<StockWasteEvent>> {
-    ok(state.inventory.list_waste_events(filters).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .list_waste_events(&filters)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -458,11 +567,15 @@ pub async fn list_waste_events(
     tag = "inventory"
 )]
 pub async fn get_waste_event(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StockWasteEventWithLines> {
-    ok(state.inventory.get_waste_event(id).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .get_waste_event(id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -490,7 +603,11 @@ pub async fn approve_waste_event(
 ) -> ApiResult<StockWasteEvent> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    ok(state.inventory.approve_waste(id, user_id).await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .approve_waste(id, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -517,10 +634,11 @@ pub async fn reject_waste_event(
 ) -> ApiResult<StockWasteEvent> {
     let user_id = Uuid::parse_str(&claims.userId)
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID".to_string()))?;
-    ok(state
-        .inventory
-        .reject_waste(id, &dto.rejection_reason, user_id)
-        .await?)
+    ok(
+        TenantInventoryRepository::new(state.business_db(&claims).await?)
+            .reject_waste(id, &dto.rejection_reason, user_id)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -540,8 +658,12 @@ pub async fn waste_summary(
     State(state): State<Arc<AppState>>,
     Query(filters): Query<WasteSummaryFilterDto>,
 ) -> ApiResult<Vec<WasteSummaryRow>> {
-    super::kitchen::require_venue(&claims)?;
-    ok(state.inventory.waste_summary(filters).await?)
+    let _ = (state.business_db(&claims).await?, filters);
+    Err(AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -562,6 +684,10 @@ pub async fn receipt_summary(
     State(state): State<Arc<AppState>>,
     Query(filters): Query<ReceiptSummaryFilterDto>,
 ) -> ApiResult<Vec<ReceiptSummaryRow>> {
-    super::kitchen::require_venue(&claims)?;
-    ok(state.inventory.receipt_summary(filters).await?)
+    let _ = (state.business_db(&claims).await?, filters);
+    Err(AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }

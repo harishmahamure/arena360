@@ -38,7 +38,10 @@ pub async fn start_session(
 ) -> ApiResult<KioskSessionResponseDto> {
     let player_id = player.player_id()?;
     let device_id = player.device_id()?;
-    let device = state.devices.get_by_id(device_id).await?;
+    let device = state
+        .devices
+        .get_tenant(state.business_db(&player.0).await?, device_id)
+        .await?;
 
     if device.registration_status != "registered" {
         return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
@@ -57,7 +60,12 @@ pub async fn start_session(
 
     let started = state
         .sessions
-        .start_for_player(player_id, &device, balance_id)
+        .start_for_player_tenant(
+            state.business_db(&player.0).await?,
+            player_id,
+            &device,
+            balance_id,
+        )
         .await?;
 
     created(kiosk_session_response(&started, None))
@@ -83,7 +91,7 @@ pub async fn current_session(
     let player_id = player.player_id()?;
     let open = state
         .sessions
-        .open_kiosk_session_for_player(player_id)
+        .open_kiosk_session_for_player_tenant(state.business_db(&player.0).await?, player_id)
         .await?;
     ok(open.map(|s| kiosk_session_response(&s, None)))
 }
@@ -113,7 +121,12 @@ pub async fn heartbeat_session(
     let device_id = player.device_id()?;
     let heartbeat = state
         .sessions
-        .heartbeat_for_player(id, player_id, device_id)
+        .heartbeat_for_player_tenant(
+            state.business_db(&player.0).await?,
+            id,
+            player_id,
+            device_id,
+        )
         .await?;
 
     ok(kiosk_session_response(&heartbeat, None))
@@ -145,7 +158,17 @@ pub async fn end_session(
 ) -> ApiResult<KioskSessionResponseDto> {
     let player_id = player.player_id()?;
 
-    let session = state.sessions.get_by_id(id).await?;
+    let db = state.business_db(&player.0).await?;
+    let timezone = db.timezone().await?;
+    let session = state
+        .sessions
+        .get_by_id_tenant(db.clone(), id, timezone.clone())
+        .await?;
+    if session.device_id != player.device_id()? {
+        return Err(AppError::Forbidden(
+            "Session belongs to another device".into(),
+        ));
+    }
     let owner = session
         .balance
         .as_ref()
@@ -161,7 +184,10 @@ pub async fn end_session(
     // already-closed session is a no-op, never a second deduction.
     if session.end_time.is_some() {
         let balance_id = session.balance_id;
-        let balance = state.balances.get_raw(balance_id).await?;
+        let balance = state
+            .balances
+            .get_raw_tenant(db.clone(), balance_id)
+            .await?;
         let remaining = balance.remaining_minutes;
         let deduction_profile = session
             .balance
@@ -183,7 +209,7 @@ pub async fn end_session(
                 serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value)
                     .ok()
             }),
-            cafeTimezone: state.settings.cafe_timezone.clone(),
+            cafeTimezone: session.cafe_timezone.clone(),
             timeCreditsConsumed: time_credits_consumed,
             expiryDate: expiry_date,
         });
@@ -191,7 +217,8 @@ pub async fn end_session(
 
     let ended = state
         .sessions
-        .end(
+        .end_tenant(
+            db.clone(),
             id,
             EndSessionDto {
                 end_time: None,
@@ -204,7 +231,10 @@ pub async fn end_session(
         .await?;
 
     let balance_id = ended.balance_id;
-    let balance = state.balances.get_raw(balance_id).await?;
+    let balance = state
+        .balances
+        .get_raw_tenant(db.clone(), balance_id)
+        .await?;
     let remaining = balance.remaining_minutes;
     let deduction_profile =
         crate::services::session_service::session_profile_value(&balance, &ended).cloned();
@@ -223,7 +253,7 @@ pub async fn end_session(
         deductionProfile: deduction_profile.and_then(|value| {
             serde_json::from_value::<crate::models::deduction_profile::DeductionProfile>(value).ok()
         }),
-        cafeTimezone: state.settings.cafe_timezone.clone(),
+        cafeTimezone: session.cafe_timezone.clone(),
         timeCreditsConsumed: time_credits_consumed,
         expiryDate: expiry_date,
     })

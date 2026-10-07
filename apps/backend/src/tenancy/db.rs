@@ -89,6 +89,20 @@ pub struct TenantDb {
 }
 
 impl TenantDb {
+    pub async fn timezone(&self) -> Result<String, AppError> {
+        let timezone: String =
+            sqlx::query_scalar("SELECT timezone FROM tenant_runtime WHERE singleton=1")
+                .fetch_optional(&self.read_pool()?)
+                .await?
+                .ok_or_else(|| {
+                    AppError::Internal("Tenant timezone has not been projected".into())
+                })?;
+        timezone
+            .parse::<chrono_tz::Tz>()
+            .map_err(|_| AppError::Internal("Invalid projected tenant timezone".into()))?;
+        Ok(timezone)
+    }
+
     pub fn tenant_id(&self) -> Uuid {
         self.tenant_id
     }

@@ -610,6 +610,10 @@ impl Fixture {
             .await
             .unwrap();
         gaming_cafe_api::tenancy::migrate(&pool).await.unwrap();
+        sqlx::query("INSERT INTO tenant_runtime(singleton,timezone) VALUES(1,'Asia/Kolkata')")
+            .execute(&pool)
+            .await
+            .unwrap();
         let at = gaming_cafe_api::time::format_sqlite_timestamp(&Utc::now()).unwrap();
         let location_id = Uuid::now_v7();
         let player_id = Uuid::now_v7();

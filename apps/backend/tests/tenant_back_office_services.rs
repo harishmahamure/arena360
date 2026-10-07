@@ -68,6 +68,10 @@ impl Fixture {
             .await
             .unwrap();
         gaming_cafe_api::tenancy::migrate(&pool).await.unwrap();
+        sqlx::query("INSERT INTO tenant_runtime(singleton,timezone) VALUES(1,'Asia/Kolkata')")
+            .execute(&pool)
+            .await
+            .unwrap();
         pool.close().await;
         let lease = Arc::new(Lease::default());
         lease.generations.write().unwrap().insert(tenant_id, 1);
@@ -482,5 +486,110 @@ async fn access_edits_preserve_manager_revision_and_scopes() {
     assert_eq!(snapshot["members"].as_array().unwrap().len(), 2);
     assert_eq!(snapshot["modules"][0]["enabled"], false);
     assert_eq!(snapshot["audit"].as_array().unwrap().len(), 3);
+    f.close().await;
+}
+
+#[tokio::test]
+async fn tenant_location_scope_uses_current_grants_and_rejects_foreign_claims() {
+    use gaming_cafe_api::{access::scope::LocationScope, dto::JwtUserClaims};
+    let f = Fixture::new().await;
+    let user = f.staff().await;
+    let venue = f.location("permitted").await;
+    let other = f.location("unassigned").await;
+    let role = Uuid::now_v7();
+    f.db.with_immediate_writer(move |c| Box::pin(async move {
+        let at = gaming_cafe_api::tenancy::format_sqlite_timestamp(&Utc::now()).unwrap();
+        sqlx::query("INSERT INTO access_roles(id,name,permissions,created_at,updated_at) VALUES(?,'Scoped reader','[\"products:read\"]',?,?)")
+            .bind(role.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO access_assignments(user_id,role_id,created_at) VALUES(?,?,?)")
+            .bind(user.to_string()).bind(role.to_string()).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO location_role_assignments(user_id,location_id,role_id,created_at) VALUES(?,?,?,?)")
+            .bind(user.to_string()).bind(venue.to_string()).bind(role.to_string()).bind(&at).execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    let mut claims: JwtUserClaims =
+        dto(json!({"sub":user,"userId":user,"tenantId":f.db.tenant_id(),
+        "roles":["staff"],"permissions":["products:read"],"allowedTenants":[f.db.tenant_id()],
+        "iss":"gamezone","aud":"gamezone","appId":"admin","orgIds":[f.db.tenant_id()]}));
+    let scope = LocationScope::resolve_tenant(f.db.clone(), &claims, "products:read", None)
+        .await
+        .unwrap();
+    assert_eq!(scope.locations, vec![venue]);
+    assert!(
+        LocationScope::resolve_tenant(f.db.clone(), &claims, "products:read", Some(other))
+            .await
+            .is_err()
+    );
+    assert!(
+        LocationScope::resolve_tenant(f.db.clone(), &claims, "products:write", Some(venue))
+            .await
+            .is_err()
+    );
+    assert_eq!(f.db.timezone().await.unwrap(), "Asia/Kolkata");
+    claims.tenantId = Uuid::now_v7().to_string();
+    assert!(
+        LocationScope::resolve_tenant(f.db.clone(), &claims, "products:read", None)
+            .await
+            .is_err()
+    );
+    claims.tenantId = f.db.tenant_id().to_string();
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("UPDATE users SET is_active=0 WHERE id=?")
+                .bind(user.to_string())
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert!(
+        LocationScope::resolve_tenant(f.db.clone(), &claims, "products:read", None)
+            .await
+            .is_err()
+    );
+    f.close().await;
+}
+
+#[tokio::test]
+async fn location_edits_are_atomic_and_keep_live_venues_active() {
+    let f = Fixture::new().await;
+    let repo = TenantSettingsRepository::new(f.db.clone());
+    let tenant = f.db.tenant_id();
+    let details = || SaveVenueLocationDto {
+        slug: "north".into(),
+        name: "North hall".into(),
+        timezone: "Europe/London".into(),
+        currency: "GBP".into(),
+        is_active: None,
+    };
+    let venue = repo.save_location(tenant, None, details()).await.unwrap();
+    assert_eq!(venue.timezone, "Europe/London");
+    assert_eq!(venue.currency, "GBP");
+    let before = f.outbox_count().await;
+    assert!(repo.save_location(tenant, None, details()).await.is_err());
+    assert_eq!(f.outbox_count().await, before);
+    let user = f.staff().await;
+    let shift = gaming_cafe_api::repositories::TenantShiftRepository::new(f.db.clone());
+    shift.create(user, venue.id, None, user).await.unwrap();
+    let mut edit = details();
+    edit.is_active = Some(false);
+    assert!(repo
+        .save_location(tenant, Some(venue.id), edit)
+        .await
+        .is_err());
+    assert!(repo.list_managed_locations(tenant).await.unwrap()[0].is_active);
+    assert_eq!(f.outbox_count().await, before + 1);
+    assert!(repo
+        .save_location(Uuid::now_v7(), None, details())
+        .await
+        .is_err());
+    let mut invalid = details();
+    invalid.timezone = "Invalid/Zone".into();
+    assert!(repo
+        .save_location(tenant, Some(venue.id), invalid)
+        .await
+        .is_err());
     f.close().await;
 }

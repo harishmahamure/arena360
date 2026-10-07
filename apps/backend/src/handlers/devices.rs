@@ -50,14 +50,17 @@ pub async fn list_devices(
     filters.location_id = filters
         .location_id
         .or(crate::access::scope::requested_location(&headers)?);
+    let db = state.business_db(&claims).await?;
+    let scope = crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "devices:read",
+        filters.location_id,
+    )
+    .await?;
     let result = state
         .devices
-        .list(
-            filters,
-            organization_id(&claims)?,
-            actor_id(&claims)?,
-            claims.is_admin(),
-        )
+        .list_tenant(db, filters, scope.locations)
         .await?;
     ok(result)
 }
@@ -82,12 +85,14 @@ pub async fn get_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Device> {
-    let device = state.devices.get_by_id(id).await?;
+    let device = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
     if device.organization_id != organization_id(&claims)? {
         return Err(AppError::NotFound("Device not found".into()));
     }
-    state
-        .config
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_location_permission(
             device.organization_id,
             device.location_id,
@@ -117,19 +122,22 @@ pub async fn create_device(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateDeviceDto>,
 ) -> ApiResult<Device> {
-    state
-        .config
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_location_permission(
             organization_id(&claims)?,
             dto.location_id
-                .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                .ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?,
             actor_id(&claims)?,
             "devices:write",
         )
         .await?;
     let device = state
         .devices
-        .create(dto, claims.user_id_uuid(), organization_id(&claims)?)
+        .create_tenant(
+            state.business_db(&claims).await?,
+            dto,
+            claims.user_id_uuid(),
+        )
         .await?;
     created(device)
 }
@@ -154,12 +162,11 @@ pub async fn provision_device(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<ProvisionDeviceDto>,
 ) -> ApiResult<DeviceRegisterResponseDto> {
-    state
-        .config
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_location_permission(
             organization_id(&claims)?,
             dto.locationId
-                .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                .ok_or_else(|| AppError::bad_request_code("LOCATION_REQUIRED", None))?,
             actor_id(&claims)?,
             "devices:write",
         )
@@ -174,12 +181,17 @@ pub async fn provision_device(
 
     let device = state
         .devices
-        .provision(dto, claims.user_id_uuid(), organization_id(&claims)?)
+        .provision_tenant(
+            state.business_db(&claims).await?,
+            dto,
+            claims.user_id_uuid(),
+        )
         .await?;
-    let token =
-        state
-            .auth
-        .generate_device_token_for(device.id, device.organization_id, device.location_id)?;
+    let token = state.auth.generate_device_token_for(
+        device.id,
+        device.organization_id,
+        device.location_id,
+    )?;
     ok(DeviceRegisterResponseDto {
         accessToken: token,
         device: RegisteredDeviceDto::from(device),
@@ -210,12 +222,14 @@ pub async fn update_device(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateDeviceDto>,
 ) -> ApiResult<Device> {
-    let existing = state.devices.get_by_id(id).await?;
+    let existing = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
     if existing.organization_id != organization_id(&claims)? {
         return Err(AppError::NotFound("Device not found".into()));
     }
-    state
-        .config
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_location_permission(
             existing.organization_id,
             existing.location_id,
@@ -224,8 +238,7 @@ pub async fn update_device(
         )
         .await?;
     if let Some(location_id) = dto.location_id {
-        state
-            .config
+        crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
             .ensure_location_permission(
                 existing.organization_id,
                 location_id,
@@ -233,20 +246,16 @@ pub async fn update_device(
                 "devices:write",
             )
             .await?;
-        if location_id != existing.location_id {
-            let in_use: bool = sqlx::query_scalar(r#"SELECT EXISTS(
-                SELECT 1 FROM usage_sessions WHERE "deviceId"=$1 AND "endTime" IS NULL AND "deletedAt" IS NULL
-                UNION ALL
-                SELECT 1 FROM kiosk_orders WHERE "deviceId"=$1 AND status IN ('pending','preparing')
-            )"#).bind(id).fetch_one(&state.db).await?;
-            if in_use {
-                return Err(AppError::Conflict(
-                    "Finish active sessions and kiosk orders before moving this device".into(),
-                ));
-            }
-        }
     }
-    let device = state.devices.update(id, dto, claims.user_id_uuid()).await?;
+    let device = state
+        .devices
+        .update_tenant(
+            state.business_db(&claims).await?,
+            id,
+            dto,
+            claims.user_id_uuid(),
+        )
+        .await?;
     ok(device)
 }
 
@@ -274,12 +283,14 @@ pub async fn update_device_status(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateDeviceStatusDto>,
 ) -> ApiResult<Device> {
-    let existing = state.devices.get_by_id(id).await?;
+    let existing = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
     if existing.organization_id != organization_id(&claims)? {
         return Err(AppError::NotFound("Device not found".into()));
     }
-    state
-        .config
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_location_permission(
             existing.organization_id,
             existing.location_id,
@@ -287,7 +298,10 @@ pub async fn update_device_status(
             "devices:write",
         )
         .await?;
-    let device = state.devices.update_status(id, dto).await?;
+    let device = state
+        .devices
+        .update_status_tenant(state.business_db(&claims).await?, id, dto)
+        .await?;
     ok(device)
 }
 
@@ -312,12 +326,14 @@ pub async fn delete_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, crate::error::AppError> {
-    let existing = state.devices.get_by_id(id).await?;
+    let existing = state
+        .devices
+        .get_tenant(state.business_db(&claims).await?, id)
+        .await?;
     if existing.organization_id != organization_id(&claims)? {
         return Err(AppError::NotFound("Device not found".into()));
     }
-    state
-        .config
+    crate::repositories::TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_location_permission(
             existing.organization_id,
             existing.location_id,
@@ -325,6 +341,9 @@ pub async fn delete_device(
             "devices:write",
         )
         .await?;
-    state.devices.delete(id).await?;
+    state
+        .devices
+        .delete_tenant(state.business_db(&claims).await?, id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }

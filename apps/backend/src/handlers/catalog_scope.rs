@@ -28,8 +28,15 @@ async fn view(
     kind: &str,
     id: Uuid,
 ) -> Result<CatalogScopeView, AppError> {
-    let read = LocationScope::resolve(&state.db, claims, &format!("{kind}:read"), None).await?;
-    let scope = if let Some(db) = state.tenant_db(read.organization_id).await? {
+    let read = LocationScope::resolve_tenant(
+        state.business_db(claims).await?,
+        claims,
+        &format!("{kind}:read"),
+        None,
+    )
+    .await?;
+    let scope = {
+        let db = state.business_db(claims).await?;
         let (all, rows) = match kind {
             "products" => TenantProductRepository::new(db).location_scope(id).await?,
             "plans" => TenantPlanRepository::new(db).location_scope(id).await?,
@@ -55,15 +62,19 @@ async fn view(
                 })
                 .collect(),
         }
-    } else {
-        catalog_scope::get(&state.db, kind, id, &read, false).await?
     };
-    let writable_location_ids =
-        match LocationScope::resolve(&state.db, claims, &format!("{kind}:write"), None).await {
-            Ok(write) => write.locations,
-            Err(AppError::Forbidden(_)) => vec![],
-            Err(error) => return Err(error),
-        };
+    let writable_location_ids = match LocationScope::resolve_tenant(
+        state.business_db(claims).await?,
+        claims,
+        &format!("{kind}:write"),
+        None,
+    )
+    .await
+    {
+        Ok(write) => write.locations,
+        Err(AppError::Forbidden(_)) => vec![],
+        Err(error) => return Err(error),
+    };
     Ok(CatalogScopeView {
         scope,
         writable_location_ids,
@@ -84,15 +95,17 @@ pub async fn save_product(
     Path(id): Path<Uuid>,
     Json(dto): Json<CatalogScope>,
 ) -> ApiResult<CatalogScope> {
-    let scope = LocationScope::resolve(&state.db, &claims, "products:write", None).await?;
-    if let Some(db) = state.tenant_db(scope.organization_id).await? {
-        save_tenant_scope(&state, &scope, "products", id, dto, db).await?;
-        state.cache.invalidate_prefix("products:").await?;
-        return ok(view(&state, &claims, "products", id).await?.scope);
-    }
-    let result = catalog_scope::save(&state.db, "products", id, &scope, dto).await?;
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "products:write",
+        None,
+    )
+    .await?;
+    let db = state.business_db(&claims).await?;
+    save_tenant_scope(&scope, "products", id, dto, db).await?;
     state.cache.invalidate_prefix("products:").await?;
-    ok(result)
+    ok(view(&state, &claims, "products", id).await?.scope)
 }
 pub async fn get_plan(
     AdminOrStaff(claims): AdminOrStaff,
@@ -107,19 +120,20 @@ pub async fn save_plan(
     Path(id): Path<Uuid>,
     Json(dto): Json<CatalogScope>,
 ) -> ApiResult<CatalogScope> {
-    let scope = LocationScope::resolve(&state.db, &claims, "plans:write", None).await?;
-    if let Some(db) = state.tenant_db(scope.organization_id).await? {
-        save_tenant_scope(&state, &scope, "plans", id, dto, db).await?;
-        state.cache.invalidate_prefix("plans:").await?;
-        return ok(view(&state, &claims, "plans", id).await?.scope);
-    }
-    let result = catalog_scope::save(&state.db, "plans", id, &scope, dto).await?;
+    let scope = LocationScope::resolve_tenant(
+        state.business_db(&claims).await?,
+        &claims,
+        "plans:write",
+        None,
+    )
+    .await?;
+    let db = state.business_db(&claims).await?;
+    save_tenant_scope(&scope, "plans", id, dto, db).await?;
     state.cache.invalidate_prefix("plans:").await?;
-    ok(result)
+    ok(view(&state, &claims, "plans", id).await?.scope)
 }
 
 async fn save_tenant_scope(
-    state: &AppState,
     scope: &LocationScope,
     kind: &str,
     id: Uuid,
@@ -178,11 +192,9 @@ async fn save_tenant_scope(
         ));
     }
     let active: Vec<Uuid> = sqlx::query_scalar(
-        r#"SELECT id FROM venue_locations
-           WHERE "organizationId"=$1 AND "isActive""#,
+        "SELECT unhex(replace(id,'-','')) FROM venue_locations WHERE is_active=1",
     )
-    .bind(scope.organization_id)
-    .fetch_all(&state.db)
+    .fetch_all(&db.read_pool()?)
     .await?;
     if dto.location_ids.iter().any(|id| !active.contains(id))
         || dto.prices.iter().any(|price| {

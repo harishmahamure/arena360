@@ -34,11 +34,14 @@ use crate::openapi::responses::{
     tag = "credit"
 )]
 pub async fn list_credit_accounts(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<CreditAccountFilterDto>,
 ) -> ApiResult<PaginationResult<CreditPlayerRow>> {
-    let result = state.credit.list_credit_players(filters).await?;
+    let result = state
+        .credit
+        .list_credit_players_tenant(state.business_db(&claims).await?, filters)
+        .await?;
     ok(result)
 }
 
@@ -58,9 +61,12 @@ pub async fn credit_summary(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<CreditPortfolioSummary> {
-    super::kitchen::require_venue(&claims)?;
-    let summary = state.credit.portfolio_summary().await?;
-    ok(summary)
+    let _db = state.business_db(&claims).await?;
+    Err(AppError::Api {
+        code: "ANALYTICS_UNAVAILABLE".into(),
+        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        details: None,
+    })
 }
 
 #[utoipa::path(
@@ -80,11 +86,14 @@ pub async fn credit_summary(
     tag = "credit"
 )]
 pub async fn get_player_credit(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<PlayerCreditDetail> {
-    let detail = state.credit.get_player_credit(id).await?;
+    let detail = state
+        .credit
+        .get_player_credit_tenant(state.business_db(&claims).await?, id)
+        .await?;
     ok(detail)
 }
 
@@ -102,11 +111,14 @@ pub async fn get_player_credit(
     tag = "credit"
 )]
 pub async fn list_settlements(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<CreditSettlementFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<crate::models::CreditSettlementListRow>> {
-    let result = state.credit.list_settlements(filters).await?;
+    let result = state
+        .credit
+        .list_settlements_tenant(state.business_db(&claims).await?, filters)
+        .await?;
     ok(result)
 }
 
@@ -127,11 +139,14 @@ pub async fn list_settlements(
     tag = "credit"
 )]
 pub async fn get_settlement(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<CreditSettlementDetail> {
-    let detail = state.credit.get_settlement(id).await?;
+    let detail = state
+        .credit
+        .get_settlement_tenant(state.business_db(&claims).await?, id)
+        .await?;
     ok(detail)
 }
 
@@ -160,13 +175,22 @@ pub async fn create_settlement(
 
     require_staff_for_counter(&claims)?;
 
-    let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
-        AppError::BadRequest("No active shift found for current user".to_string())
-    })?;
+    let active_shift =
+        crate::repositories::TenantShiftRepository::new(state.business_db(&claims).await?)
+            .find_active_by_user(user_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::BadRequest("No active shift found for current user".to_string())
+            })?;
 
     let settlement = state
         .credit
-        .settle(dto, active_shift.id, user_id, &state.cash_registers)
+        .settle_tenant(
+            state.business_db(&claims).await?,
+            dto,
+            active_shift.id,
+            user_id,
+        )
         .await?;
     created(settlement)
 }
@@ -197,7 +221,12 @@ pub async fn update_credit_limit(
 ) -> ApiResult<CreditSummary> {
     let summary = state
         .credit
-        .set_limit(id, dto, claims.user_id_uuid())
+        .set_limit_tenant(
+            state.business_db(&claims).await?,
+            id,
+            dto,
+            claims.user_id_uuid(),
+        )
         .await?;
     ok(summary)
 }

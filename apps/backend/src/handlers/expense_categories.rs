@@ -14,6 +14,7 @@ use crate::models::{
 use crate::openapi::responses::{
     ErrorEnvelope, ExpenseCategoryEnvelope, ExpenseCategoryPaginationEnvelope,
 };
+use crate::repositories::TenantExpenseCategoryRepository;
 
 #[utoipa::path(
     get,
@@ -28,11 +29,13 @@ use crate::openapi::responses::{
     tag = "expense-categories"
 )]
 pub async fn list_expense_categories(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<ExpenseCategoryFilterDto>,
 ) -> ApiResult<PaginationResult<ExpenseCategory>> {
-    let result = state.expense_categories.list(filters).await?;
+    let result = TenantExpenseCategoryRepository::new(state.business_db(&claims).await?)
+        .list(&filters)
+        .await?;
     ok(result)
 }
 
@@ -52,11 +55,14 @@ pub async fn list_expense_categories(
     tag = "expense-categories"
 )]
 pub async fn get_expense_category(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<ExpenseCategory> {
-    let category = state.expense_categories.get_by_id(id).await?;
+    let category = TenantExpenseCategoryRepository::new(state.business_db(&claims).await?)
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| crate::error::AppError::NotFound("Expense category not found".into()))?;
     ok(category)
 }
 
@@ -81,7 +87,9 @@ pub async fn create_expense_category(
     Json(dto): Json<CreateExpenseCategoryDto>,
 ) -> ApiResult<ExpenseCategory> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let category = state.expense_categories.create(dto, user_id).await?;
+    let category = TenantExpenseCategoryRepository::new(state.business_db(&claims).await?)
+        .create(&dto, user_id)
+        .await?;
     created(category)
 }
 
@@ -111,7 +119,9 @@ pub async fn update_expense_category(
     Json(dto): Json<UpdateExpenseCategoryDto>,
 ) -> ApiResult<ExpenseCategory> {
     let user_id = Uuid::parse_str(&claims.userId).ok();
-    let category = state.expense_categories.update(id, dto, user_id).await?;
+    let category = TenantExpenseCategoryRepository::new(state.business_db(&claims).await?)
+        .update(id, &dto, user_id)
+        .await?;
     ok(category)
 }
 
@@ -132,10 +142,12 @@ pub async fn update_expense_category(
     tag = "expense-categories"
 )]
 pub async fn delete_expense_category(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<serde_json::Value> {
-    state.expense_categories.delete(id).await?;
+    TenantExpenseCategoryRepository::new(state.business_db(&claims).await?)
+        .delete(id)
+        .await?;
     ok(serde_json::json!({"deleted": true}))
 }

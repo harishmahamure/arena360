@@ -11,6 +11,48 @@ pub struct LocationScope {
     pub locations: Vec<Uuid>,
 }
 impl LocationScope {
+    pub async fn resolve_tenant(
+        db: std::sync::Arc<crate::tenancy::TenantDb>,
+        claims: &JwtUserClaims,
+        permission: &str,
+        requested: Option<Uuid>,
+    ) -> Result<Self, AppError> {
+        let org = Uuid::parse_str(&claims.tenantId)
+            .map_err(|_| AppError::Unauthorized("Invalid tenant identity".into()))?;
+        let user = claims
+            .user_id_uuid()
+            .ok_or_else(|| AppError::Unauthorized("Invalid user identity".into()))?;
+        let settings = crate::repositories::TenantSettingsRepository::new(db.clone());
+        settings.ensure_access(org, user, permission).await?;
+        let membership = settings
+            .membership_context(user)
+            .await?
+            .ok_or_else(|| AppError::Forbidden("Active membership required".into()))?;
+        let admin = membership.role == "admin";
+        let mut locations = crate::repositories::TenantUserRepository::new(db)
+            .location_ids_for_permission(user, permission)
+            .await?;
+        if let Some(id) = requested {
+            if !locations.contains(&id) {
+                return Err(AppError::Forbidden(format!(
+                    "Permission required at this location: {permission}"
+                )));
+            }
+            locations = vec![id];
+        }
+        if locations.is_empty() && !admin {
+            return Err(AppError::Forbidden(
+                "No locations assigned for this operation".into(),
+            ));
+        }
+        Ok(Self {
+            organization_id: org,
+            user_id: user,
+            organization_admin: admin,
+            locations,
+        })
+    }
+
     pub async fn resolve(
         pool: &PgPool,
         claims: &JwtUserClaims,
@@ -90,6 +132,45 @@ pub async fn require_organization_admin(
             "Organization administrator access is required to change shared defaults".into(),
         ))
     }
+}
+
+pub async fn require_tenant_admin(
+    db: std::sync::Arc<crate::tenancy::TenantDb>,
+    org: Uuid,
+    user: Uuid,
+) -> Result<(), AppError> {
+    if db.tenant_id() != org {
+        return Err(AppError::Forbidden("Tenant identity mismatch".into()));
+    }
+    let membership = crate::repositories::TenantSettingsRepository::new(db)
+        .membership_context(user)
+        .await?;
+    if membership.is_some_and(|m| m.role == "admin") {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "Organization administrator access is required to change shared defaults".into(),
+        ))
+    }
+}
+
+pub async fn report_scope_tenant(
+    db: std::sync::Arc<crate::tenancy::TenantDb>,
+    claims: &JwtUserClaims,
+    headers: &axum::http::HeaderMap,
+    requested: Option<Uuid>,
+    permission: &str,
+) -> Result<crate::analytics::scope::ReportScope, AppError> {
+    let selected = requested.or(requested_location(headers)?);
+    let scope = LocationScope::resolve_tenant(db, claims, permission, selected).await?;
+    Ok(crate::analytics::scope::ReportScope {
+        organization_id: scope.organization_id,
+        locations: if scope.organization_admin && selected.is_none() {
+            None
+        } else {
+            Some(scope.locations)
+        },
+    })
 }
 
 pub async fn report_scope(

@@ -20,6 +20,7 @@ use crate::openapi::responses::{
     SettingCatalogEnvelope, SettingOverrideEnvelope, SettingRevisionListEnvelope,
     VenueLocationEnvelope, VenueLocationListEnvelope,
 };
+use crate::repositories::{TenantConfigRepository, TenantSettingsRepository};
 
 /// Public white-label identity shown on the login screen and panel shell.
 #[derive(Debug, serde::Serialize, utoipa::ToSchema)]
@@ -37,21 +38,12 @@ pub struct Branding {
     tag = "config"
 )]
 pub async fn branding(State(state): State<Arc<AppState>>) -> ApiResult<Branding> {
-    let settings = state
-        .config
-        .effective(
-            crate::models::DEFAULT_ORGANIZATION_ID,
-            EffectiveSettingsQuery {
-                location_id: Some(crate::models::DEFAULT_VENUE_LOCATION_ID),
-                category: None,
-            },
-        )
-        .await?;
+    let settings = state.config.catalog();
     let text = |key: &str| {
         settings
             .iter()
             .find(|setting| setting.key == key)
-            .and_then(|setting| setting.value.as_str())
+            .and_then(|setting| setting.default_value.as_str())
             .unwrap_or_default()
             .to_string()
     };
@@ -76,11 +68,13 @@ pub async fn branding(State(state): State<Arc<AppState>>) -> ApiResult<Branding>
     tag = "config"
 )]
 pub async fn list_config(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<ConfigFilterDto>,
 ) -> ApiResult<Vec<Configuration>> {
-    let configs = state.config.list(filters).await?;
+    let configs = TenantConfigRepository::new(state.business_db(&claims).await?)
+        .find_all(&filters)
+        .await?;
     ok(configs)
 }
 
@@ -101,11 +95,14 @@ pub async fn list_config(
     tag = "config"
 )]
 pub async fn get_config(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(key): Path<String>,
 ) -> ApiResult<Configuration> {
-    let config = state.config.get(&key).await?;
+    let config = TenantConfigRepository::new(state.business_db(&claims).await?)
+        .find_by_key(&key)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Configuration not found".into()))?;
     ok(config)
 }
 
@@ -134,7 +131,10 @@ pub async fn upsert_config(
 ) -> ApiResult<Configuration> {
     let actor_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| AppError::Internal("Invalid user ID in token".to_string()))?;
-    let config = state.config.upsert(&key, dto, actor_id).await?;
+    let config = state
+        .config
+        .upsert_config_tenant(state.business_db(&claims).await?, &key, dto, actor_id)
+        .await?;
     ok(config)
 }
 
@@ -165,17 +165,23 @@ pub async fn venue_locations(
 ) -> ApiResult<Vec<VenueLocation>> {
     let actor_id = actor_id(&claims)?;
     if query.include_inactive {
-        state
-            .config
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
             .ensure_access(org_id, actor_id, "locations:manage")
             .await?;
-        return ok(state.config.list_managed_locations(org_id).await?);
+        return ok(
+            TenantSettingsRepository::new(state.business_db(&claims).await?)
+                .list_managed_locations(org_id)
+                .await?,
+        );
     }
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id, "locations:read")
         .await?;
-    ok(state.config.list_locations(org_id, actor_id).await?)
+    ok(
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .list_locations(org_id, actor_id)
+            .await?,
+    )
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -185,37 +191,8 @@ pub struct VenueLocationsQuery {
 }
 
 fn validate_venue(dto: &SaveVenueLocationDto) -> Result<(), AppError> {
-    let slug = dto.slug.trim();
-    if slug.is_empty()
-        || slug.len() > 80
-        || !slug
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-        || dto.name.trim().is_empty()
-        || dto.name.trim().len() > 160
-        || dto.timezone.trim().is_empty()
-        || dto.timezone.len() > 80
-        || dto.currency.len() != 3
-        || !dto.currency.chars().all(|c| c.is_ascii_uppercase())
-    {
-        return Err(AppError::BadRequest("Use a lowercase location slug, a name, an IANA timezone, and a three-letter currency code".into()));
-    }
-    crate::services::settings_catalog::validate(
-        "Asia/Kolkata",
-        "venue.timezone",
-        &serde_json::json!(dto.timezone),
-        true,
-    )?;
-    crate::services::settings_catalog::validate(
-        "Asia/Kolkata",
-        "pricing.currency",
-        &serde_json::json!(dto.currency),
-        true,
-    )?;
-    Ok(())
+    TenantSettingsRepository::validate_location_dto(dto)
 }
-
-const VENUE_COLUMNS: &str = r#"id, "organizationId" AS organization_id, slug, name, timezone, currency, "isActive" AS is_active"#;
 
 #[utoipa::path(
     post,
@@ -231,35 +208,15 @@ pub async fn create_venue_location(
     Path(org_id): Path<Uuid>,
     Json(dto): Json<SaveVenueLocationDto>,
 ) -> ApiResult<VenueLocation> {
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id(&claims)?, "locations:manage")
         .await?;
     validate_venue(&dto)?;
-    let query = format!(
-        r#"INSERT INTO venue_locations ("organizationId", slug, name, timezone, currency, "isActive")
-        VALUES ($1,$2,$3,$4,$5,COALESCE($6,TRUE)) RETURNING {VENUE_COLUMNS}"#
-    );
-    let location = sqlx::query_as::<_, VenueLocation>(&query)
-        .bind(org_id)
-        .bind(dto.slug.trim())
-        .bind(dto.name.trim())
-        .bind(dto.timezone.trim())
-        .bind(&dto.currency)
-        .bind(dto.is_active)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|error| {
-            if error
-                .as_database_error()
-                .is_some_and(|db| db.is_unique_violation())
-            {
-                AppError::Conflict("A location with this slug already exists".into())
-            } else {
-                AppError::Database(error)
-            }
-        })?;
-    ok(location)
+    ok(
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .save_location(org_id, None, dto)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -276,65 +233,15 @@ pub async fn update_venue_location(
     Path((org_id, location_id)): Path<(Uuid, Uuid)>,
     Json(dto): Json<SaveVenueLocationDto>,
 ) -> ApiResult<VenueLocation> {
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id(&claims)?, "locations:manage")
         .await?;
     validate_venue(&dto)?;
-    if dto.is_active == Some(false) {
-        let devices: i64 = sqlx::query_scalar(r#"SELECT count(*) FROM devices WHERE "organizationId"=$1 AND "locationId"=$2 AND "deletedAt" IS NULL"#)
-            .bind(org_id).bind(location_id).fetch_one(&state.db).await?;
-        if devices > 0 {
-            return Err(AppError::Conflict(
-                "Move or retire devices before deactivating this location".into(),
-            ));
-        }
-        let stores: i64 = sqlx::query_scalar(r#"SELECT count(*) FROM inventory_locations WHERE "venueLocationId"=$1 AND "isActive" AND "deletedAt" IS NULL"#)
-            .bind(location_id).fetch_one(&state.db).await?;
-        if stores > 0 {
-            return Err(AppError::Conflict(
-                "Move or deactivate inventory locations before deactivating this venue".into(),
-            ));
-        }
-        let shifts: i64 = sqlx::query_scalar(
-            r#"SELECT count(*) FROM shifts WHERE "venueLocationId"=$1 AND status='active'"#,
-        )
-        .bind(location_id)
-        .fetch_one(&state.db)
-        .await?;
-        if shifts > 0 {
-            return Err(AppError::Conflict(
-                "Close active shifts before deactivating this venue".into(),
-            ));
-        }
-    }
-    let query = format!(
-        r#"UPDATE venue_locations SET slug=$3, name=$4, timezone=$5, currency=$6,
-        "isActive"=COALESCE($7,"isActive"), "updatedAt"=NOW()
-        WHERE "organizationId"=$1 AND id=$2 RETURNING {VENUE_COLUMNS}"#
-    );
-    let location = sqlx::query_as::<_, VenueLocation>(&query)
-        .bind(org_id)
-        .bind(location_id)
-        .bind(dto.slug.trim())
-        .bind(dto.name.trim())
-        .bind(dto.timezone.trim())
-        .bind(&dto.currency)
-        .bind(dto.is_active)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|error| {
-            if error
-                .as_database_error()
-                .is_some_and(|db| db.is_unique_violation())
-            {
-                AppError::Conflict("A location with this slug already exists".into())
-            } else {
-                AppError::Database(error)
-            }
-        })?
-        .ok_or_else(|| AppError::NotFound("Location not found".into()))?;
-    ok(location)
+    ok(
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .save_location(org_id, Some(location_id), dto)
+            .await?,
+    )
 }
 
 #[utoipa::path(
@@ -353,8 +260,7 @@ pub async fn settings_catalog(
     State(state): State<Arc<AppState>>,
     Path(org_id): Path<Uuid>,
 ) -> ApiResult<Vec<SettingDefinition>> {
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id(&claims)?, "settings:read")
         .await?;
     ok(state.config.catalog())
@@ -378,25 +284,18 @@ pub async fn effective_settings(
     Query(query): Query<EffectiveSettingsQuery>,
 ) -> ApiResult<Vec<ResolvedSetting>> {
     let actor_id = actor_id(&claims)?;
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id, "settings:read")
         .await?;
     if let Some(location_id) = query.location_id {
-        state
-            .config
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
             .ensure_location_permission(org_id, location_id, actor_id, "settings:read")
             .await?;
     }
-    if query.category.is_none() || query.category.as_deref() == Some("pricing") {
-        if let Some(db) = state.tenant_db(org_id).await? {
-            return ok(state
-                .config
-                .effective_with_tenant_pricing(db, org_id, query)
-                .await?);
-        }
-    }
-    ok(state.config.effective(org_id, query).await?)
+    ok(state
+        .config
+        .effective_tenant(state.business_db(&claims).await?, org_id, query)
+        .await?)
 }
 
 #[utoipa::path(
@@ -420,30 +319,34 @@ pub async fn upsert_setting_override(
     Json(dto): Json<UpsertSettingOverrideDto>,
 ) -> ApiResult<SettingOverride> {
     let actor_id = actor_id(&claims)?;
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id, "settings:write")
         .await?;
     if let Some(location_id) = dto.location_id {
-        state
-            .config
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
             .ensure_location_permission(org_id, location_id, actor_id, "settings:write")
             .await?;
     }
     if dto.location_id.is_none() {
-        crate::access::scope::require_organization_admin(&state.db, org_id, actor_id).await?;
-    }
-    if key.starts_with("pricing.") {
-        if let Some(db) = state.tenant_db(org_id).await? {
-            return ok(state
-                .config
-                .upsert_pricing_tenant(db, org_id, &key, dto, actor_id, request_id(&headers))
-                .await?);
+        let membership = TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .membership_context(actor_id)
+            .await?;
+        if !membership.is_some_and(|m| m.role == "admin") {
+            return Err(AppError::Forbidden(
+                "Organization administrator access is required to change shared defaults".into(),
+            ));
         }
     }
     ok(state
         .config
-        .upsert_override(org_id, &key, dto, actor_id, request_id(&headers))
+        .upsert_setting_tenant(
+            state.business_db(&claims).await?,
+            org_id,
+            &key,
+            dto,
+            actor_id,
+            request_id(&headers),
+        )
         .await?)
 }
 
@@ -466,62 +369,37 @@ pub async fn delete_setting_override(
     headers: HeaderMap,
 ) -> ApiResult<serde_json::Value> {
     let actor_id = actor_id(&claims)?;
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id, "settings:write")
         .await?;
     if let Some(location_id) = query.location_id {
-        state
-            .config
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
             .ensure_location_permission(org_id, location_id, actor_id, "settings:write")
             .await?;
     }
     if query.location_id.is_none() {
-        crate::access::scope::require_organization_admin(&state.db, org_id, actor_id).await?;
-    }
-    let deleted = if key.starts_with("pricing.") {
-        if let Some(db) = state.tenant_db(org_id).await? {
-            state
-                .config
-                .delete_pricing_tenant(
-                    db,
-                    org_id,
-                    query.location_id,
-                    &key,
-                    query.expected_revision,
-                    &query.reason,
-                    actor_id,
-                    request_id(&headers),
-                )
-                .await?
-        } else {
-            state
-                .config
-                .delete_override(
-                    org_id,
-                    query.location_id,
-                    &key,
-                    query.expected_revision,
-                    &query.reason,
-                    actor_id,
-                    request_id(&headers),
-                )
-                .await?
+        let membership = TenantSettingsRepository::new(state.business_db(&claims).await?)
+            .membership_context(actor_id)
+            .await?;
+        if !membership.is_some_and(|m| m.role == "admin") {
+            return Err(AppError::Forbidden(
+                "Organization administrator access is required to change shared defaults".into(),
+            ));
         }
-    } else {
-        state
-            .config
-            .delete_override(
-                org_id,
-                query.location_id,
-                &key,
-                query.expected_revision,
-                &query.reason,
-                actor_id,
-                request_id(&headers),
-            )
-            .await?
-    };
+    }
+    let deleted = state
+        .config
+        .delete_setting_tenant(
+            state.business_db(&claims).await?,
+            org_id,
+            query.location_id,
+            &key,
+            query.expected_revision,
+            &query.reason,
+            actor_id,
+            request_id(&headers),
+        )
+        .await?;
     ok(serde_json::json!({"deleted": deleted}))
 }
 
@@ -540,56 +418,25 @@ pub async fn setting_history(
     Query(query): Query<SettingHistoryQuery>,
 ) -> ApiResult<Vec<SettingRevision>> {
     let actor_id = actor_id(&claims)?;
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id, "settings:read")
         .await?;
     if let Some(location_id) = query.location_id {
-        state
-            .config
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
             .ensure_location_permission(org_id, location_id, actor_id, "settings:read")
             .await?;
     }
-    let scope = crate::access::scope::LocationScope::resolve(
-        &state.db,
+    let db = state.business_db(&claims).await?;
+    let scope = crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
         &claims,
         "settings:read",
         query.location_id,
     )
     .await?;
-    let tenant_db = state.tenant_db(org_id).await?;
-    let mut history = match query.key.as_deref() {
-        Some(key) if key.starts_with("pricing.") => {
-            if let Some(db) = tenant_db {
-                state
-                    .config
-                    .pricing_history_tenant(db, org_id, query.clone())
-                    .await?
-            } else {
-                state.config.history(org_id, query.clone()).await?
-            }
-        }
-        Some(_) => state.config.history(org_id, query.clone()).await?,
-        None => {
-            let mut combined = state.config.history(org_id, query.clone()).await?;
-            if let Some(db) = tenant_db {
-                combined.retain(|item| !item.key.starts_with("pricing."));
-                combined.extend(
-                    state
-                        .config
-                        .pricing_history_tenant(db, org_id, query.clone())
-                        .await?,
-                );
-                combined.sort_by(|a, b| {
-                    b.created_at
-                        .cmp(&a.created_at)
-                        .then_with(|| b.id.cmp(&a.id))
-                });
-                combined.truncate(query.limit.unwrap_or(100).clamp(1, 500) as usize);
-            }
-            combined
-        }
-    };
+    let mut history = TenantSettingsRepository::new(db)
+        .history(org_id, &query)
+        .await?;
     if !scope.organization_admin {
         history.retain(|item| {
             item.location_id
@@ -614,24 +461,18 @@ pub async fn configuration_snapshot(
     Query(query): Query<ConfigurationSnapshotQuery>,
 ) -> ApiResult<ConfigurationSnapshot> {
     let actor_id = actor_id(&claims)?;
-    state
-        .config
+    TenantSettingsRepository::new(state.business_db(&claims).await?)
         .ensure_access(org_id, actor_id, "settings:read")
         .await?;
     if let Some(location_id) = query.location_id {
-        state
-            .config
+        TenantSettingsRepository::new(state.business_db(&claims).await?)
             .ensure_location_permission(org_id, location_id, actor_id, "settings:read")
             .await?;
     }
-    let mut snapshot = if let Some(db) = state.tenant_db(org_id).await? {
-        state
-            .config
-            .snapshot_tenant(db, org_id, query.location_id)
-            .await?
-    } else {
-        state.config.snapshot(org_id, query.location_id).await?
-    };
+    let mut snapshot = state
+        .config
+        .snapshot_all_tenant(state.business_db(&claims).await?, org_id, query.location_id)
+        .await?;
     if query
         .since_revision
         .is_some_and(|revision| revision >= snapshot.revision)

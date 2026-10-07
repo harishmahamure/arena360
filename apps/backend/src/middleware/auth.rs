@@ -272,7 +272,7 @@ fn extract_bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
-fn decode_token(state: &AppState, token: &str) -> Result<JwtUserClaims, AppError> {
+pub(crate) fn decode_token(state: &AppState, token: &str) -> Result<JwtUserClaims, AppError> {
     let mut validation = Validation::default();
     validation.validate_exp = true;
     validation.leeway = 0;
@@ -476,7 +476,7 @@ where
             .user_id_uuid()
             .ok_or_else(|| AppError::Internal("Invalid device ID in token".to_string()))?;
 
-        if player_device != kiosk_device {
+        if player_device != kiosk_device || player_claims.tenantId != device_claims.tenantId || player_claims.locationId != device_claims.locationId {
             return Err(AppError::Forbidden(
                 "Player token deviceId does not match device token".to_string(),
             ));

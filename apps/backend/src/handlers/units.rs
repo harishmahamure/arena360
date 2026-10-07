@@ -31,10 +31,9 @@ pub async fn list_units(
 ) -> ApiResult<crate::dto::PaginationResult<Unit>> {
     let tenant_id = tenant_id(&claims)?;
     filters.organization_id = Some(tenant_id);
-    let result = if let Some(db) = state.tenant_db(tenant_id).await? {
+    let result = {
+        let db = state.business_db(&claims).await?;
         state.units.list_tenant(db, filters).await?
-    } else {
-        state.units.list(filters).await?
     };
     ok(result)
 }
@@ -59,11 +58,9 @@ pub async fn get_unit(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Unit> {
-    let tenant_id = tenant_id(&claims)?;
-    let unit = if let Some(db) = state.tenant_db(tenant_id).await? {
+    let unit = {
+        let db = state.business_db(&claims).await?;
         state.units.get_tenant(db, id).await?
-    } else {
-        state.units.get_by_id(id).await?
     };
     ok(unit)
 }
@@ -87,13 +84,12 @@ pub async fn create_unit(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = if let Some(db) = state.tenant_db(tenant_id(&claims)?).await? {
+    let unit = {
+        let db = state.business_db(&claims).await?;
         state
             .units
             .create_tenant(db, dto, claims.user_id_uuid())
             .await?
-    } else {
-        state.units.create(dto, claims.user_id_uuid()).await?
     };
     created(unit)
 }
@@ -122,13 +118,12 @@ pub async fn update_unit(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = if let Some(db) = state.tenant_db(tenant_id(&claims)?).await? {
+    let unit = {
+        let db = state.business_db(&claims).await?;
         state
             .units
             .update_tenant(db, id, dto, claims.user_id_uuid())
             .await?
-    } else {
-        state.units.update(id, dto, claims.user_id_uuid()).await?
     };
     ok(unit)
 }
@@ -154,10 +149,9 @@ pub async fn delete_unit(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, crate::error::AppError> {
-    if let Some(db) = state.tenant_db(tenant_id(&claims)?).await? {
+    {
+        let db = state.business_db(&claims).await?;
         state.units.delete_tenant(db, id).await?;
-    } else {
-        state.units.delete(id).await?;
     }
     Ok(StatusCode::NO_CONTENT)
 }

@@ -787,6 +787,13 @@ impl AuthService {
         .map_err(AppError::Database)
     }
 
+    pub async fn verify_optional_staff_totp(&self, user_id: Uuid, code: Option<&str>) -> Result<(), AppError> {
+        let user = self.identity_user_by_id(user_id).await?
+            .ok_or_else(|| AppError::Unauthorized("Staff identity not found".into()))?;
+        self.ensure_active(&user)?;
+        Self::verify_totp_if_enabled(&user, code)
+    }
+
     pub async fn authenticate_staff_with_totp(
         &self,
         username: &str,

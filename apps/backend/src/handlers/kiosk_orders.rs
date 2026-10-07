@@ -29,7 +29,14 @@ pub async fn list_products(
     player: PlayerUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Vec<KioskMenuProduct>> {
-    let products = state.kiosk_orders.list_menu(player.device_id()?).await?;
+    let products = state
+        .kiosk_orders
+        .list_menu_tenant(
+            state.business_db(&player.0).await?,
+            player.device_id()?,
+            &state.products,
+        )
+        .await?;
     ok(products)
 }
 
@@ -55,7 +62,12 @@ pub async fn place_order(
     let device_id = player.device_id()?;
     let order = state
         .kiosk_orders
-        .place_order(player_id, device_id, dto)
+        .place_order_tenant(
+            state.business_db(&player.0).await?,
+            player_id,
+            device_id,
+            dto,
+        )
         .await?;
     created(order)
 }
@@ -78,7 +90,7 @@ pub async fn current_order(
     let device_id = player.device_id()?;
     let order = state
         .kiosk_orders
-        .current_order_for_player(player_id, device_id)
+        .current_order_for_player_tenant(state.business_db(&player.0).await?, player_id, device_id)
         .await?;
     ok(order)
 }
@@ -94,11 +106,14 @@ pub async fn current_order(
     tag = "kiosk-orders"
 )]
 pub async fn list_orders(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<KioskOrderFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<KioskOrderWithItems>> {
-    let result = state.kiosk_orders.list(filters).await?;
+    let result = state
+        .kiosk_orders
+        .list_tenant(state.business_db(&claims).await?, filters)
+        .await?;
     ok(result)
 }
 
@@ -114,11 +129,14 @@ pub async fn list_orders(
     tag = "kiosk-orders"
 )]
 pub async fn get_order(
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<KioskOrderWithItems> {
-    let order = state.kiosk_orders.get_by_id(id).await?;
+    let order = state
+        .kiosk_orders
+        .get_by_id_tenant(state.business_db(&claims).await?, id)
+        .await?;
     ok(order)
 }
 
@@ -144,10 +162,16 @@ pub async fn update_order(
     let user_id = claims.user_id_uuid().ok_or_else(|| {
         crate::error::AppError::BadRequest("Invalid user ID in token".to_string())
     })?;
-    state.shifts.get_active(user_id).await?.ok_or_else(|| {
-        crate::error::AppError::BadRequest("No active shift found for current user".to_string())
-    })?;
-    let order = state.kiosk_orders.update_status(id, &dto.status).await?;
+    crate::repositories::TenantShiftRepository::new(state.business_db(&claims).await?)
+        .find_active_by_user(user_id)
+        .await?
+        .ok_or_else(|| {
+            crate::error::AppError::BadRequest("No active shift found for current user".to_string())
+        })?;
+    let order = state
+        .kiosk_orders
+        .update_status_tenant(state.business_db(&claims).await?, id, &dto.status)
+        .await?;
     ok(order)
 }
 
@@ -176,26 +200,30 @@ pub async fn convert_order(
 
     require_staff_for_counter(&claims)?;
 
-    let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
-        crate::error::AppError::BadRequest("No active shift found for current user".to_string())
-    })?;
+    let active_shift =
+        crate::repositories::TenantShiftRepository::new(state.business_db(&claims).await?)
+            .find_active_by_user(user_id)
+            .await?
+            .ok_or_else(|| {
+                crate::error::AppError::BadRequest(
+                    "No active shift found for current user".to_string(),
+                )
+            })?;
 
     let mut convert = dto;
     if convert.payment_status.is_none() {
         convert.payment_status = Some("completed".to_string());
     }
 
-    let actor_role = claims.roles.first().map(|s| s.as_str());
     let tx = state
         .kiosk_orders
-        .convert_to_sale(
+        .convert_to_sale_tenant(
+            state.business_db(&claims).await?,
             id,
             convert,
             active_shift.id,
             user_id,
-            actor_role,
             &state.transactions,
-            &state.cash_registers,
         )
         .await?;
 

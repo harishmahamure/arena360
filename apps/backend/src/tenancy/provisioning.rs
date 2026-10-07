@@ -218,7 +218,7 @@ impl TenantProvisioner {
         validate_settings(&request.tenant.timezone, &request.settings)?;
         let tenant = self.control.register(request.tenant).await?;
         let path = create_tenant_file(&self.root, tenant.id).await?;
-        seed_defaults(&path, &request.settings).await?;
+        seed_defaults(&path, &request.settings, &tenant.timezone).await?;
         let ownership_generation = self.control.acquire_lease(tenant.id).await?;
         let tenant = self
             .control
@@ -308,7 +308,11 @@ async fn create_tenant_file(root: &Path, tenant_id: Uuid) -> Result<PathBuf, App
     Ok(path)
 }
 
-async fn seed_defaults(path: &Path, settings: &[InitialSettingOverride]) -> Result<(), AppError> {
+async fn seed_defaults(
+    path: &Path,
+    settings: &[InitialSettingOverride],
+    timezone: &str,
+) -> Result<(), AppError> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(SqliteConnectOptions::new().filename(path))
@@ -317,6 +321,8 @@ async fn seed_defaults(path: &Path, settings: &[InitialSettingOverride]) -> Resu
     let mut transaction = connection.begin().await?;
     let timestamp = format_sqlite_timestamp(&Utc::now())
         .map_err(|error| AppError::Internal(format!("format tenant timestamp: {error}")))?;
+    sqlx::query("INSERT INTO tenant_runtime(singleton,timezone) VALUES(1,?) ON CONFLICT(singleton) DO NOTHING")
+        .bind(timezone).execute(&mut *transaction).await?;
     seed_units(&mut transaction, &timestamp).await?;
     seed_roles(&mut transaction, &timestamp).await?;
     seed_settings(&mut transaction, settings, &timestamp).await?;

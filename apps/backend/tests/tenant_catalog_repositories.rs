@@ -584,6 +584,10 @@ impl Fixture {
             .await
             .unwrap();
         gaming_cafe_api::tenancy::migrate(&pool).await.unwrap();
+        sqlx::query("INSERT INTO tenant_runtime(singleton,timezone) VALUES(1,'Asia/Kolkata')")
+            .execute(&pool)
+            .await
+            .unwrap();
         pool.close().await;
         let lease = Arc::new(Lease::default());
         lease.generations.write().unwrap().insert(tenant_id, 1);
@@ -640,4 +644,63 @@ impl Fixture {
         self.db.close().await.unwrap();
         tokio::fs::remove_dir_all(self.root).await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn product_prices_and_settings_use_only_the_selected_tenant() {
+    use gaming_cafe_api::services::{ConfigService, ProductService};
+    let f = Fixture::new().await;
+    let venue = f.location("priced").await;
+    let unit = TenantUnitRepository::new(f.db.clone())
+        .create(
+            &serde_json::from_value(json!({"name":"Serving","abbreviation":"srv","type":"other"}))
+                .unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+    let item = TenantProductRepository::new(f.db.clone())
+        .create(
+            &product("Tenant coffee", "ONLY-1", 10.0, unit.id, false),
+            None,
+        )
+        .await
+        .unwrap();
+    let unavailable = PgPoolOptions::new()
+        .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+        .unwrap();
+    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let settings = ConfigService::new(
+        unavailable.clone(),
+        cache.clone(),
+        "America/New_York".into(),
+    );
+    let products = ProductService::new(unavailable, cache);
+    let values = settings
+        .effective_tenant(
+            f.db.clone(),
+            f.tenant_id,
+            gaming_cafe_api::models::EffectiveSettingsQuery {
+                location_id: Some(venue),
+                category: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        values
+            .iter()
+            .find(|s| s.key == "venue.timezone")
+            .unwrap()
+            .value,
+        json!("Asia/Kolkata")
+    );
+    let prices = products
+        .current_prices_tenant(f.db.clone(), None, venue, &settings)
+        .await
+        .unwrap();
+    let price = prices.iter().find(|p| p.product_id == item.id).unwrap();
+    assert_eq!(price.price, 10.0);
+    assert_eq!(price.made_to_order_available, None);
+    f.close().await;
 }

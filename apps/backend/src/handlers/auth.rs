@@ -139,23 +139,32 @@ pub async fn login_player(
     Json(dto): Json<PlayerLoginDto>,
 ) -> ApiResult<AuthResponseDto> {
     let device_id = device_user.device_id()?;
-    let device = state.devices.get_by_id(device_id).await?;
+    let device = state
+        .devices
+        .get_tenant(state.business_db(&device_user.0).await?, device_id)
+        .await?;
 
     if let Some(fingerprint) = &dto.fingerprint {
         state
             .devices
-            .verify_fingerprint_drift(&device, fingerprint)
+            .verify_fingerprint_drift_tenant(
+                state.business_db(&device_user.0).await?,
+                &device,
+                fingerprint,
+            )
             .await?;
     }
 
     let result = state
         .auth
-        .login_player(
+        .login_player_tenant(
+            state.business_db(&device_user.0).await?,
             &device,
             LoginDto {
                 username: dto.username,
                 password: dto.password,
             },
+            state.business_db(&device_user.0).await?.timezone().await?,
         )
         .await?;
     ok(result)
@@ -183,7 +192,10 @@ pub async fn register_player(
     Json(dto): Json<KioskRegisterDto>,
 ) -> ApiResult<KioskRegisterResponseDto> {
     let device_id = device_user.device_id()?;
-    let device = state.devices.get_by_id(device_id).await?;
+    let device = state
+        .devices
+        .get_tenant(state.business_db(&device_user.0).await?, device_id)
+        .await?;
 
     if device.registration_status != "registered" {
         return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
@@ -196,7 +208,10 @@ pub async fn register_player(
         .check_and_record(device_id)
         .await?;
 
-    let result = state.users.register_from_kiosk(dto).await?;
+    let result = state
+        .users
+        .register_from_kiosk_tenant(state.business_db(&device_user.0).await?, dto)
+        .await?;
     created(result)
 }
 
@@ -219,7 +234,10 @@ pub async fn register(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<RegisterDto>,
 ) -> ApiResult<RegisterResponseDto> {
-    let result = state.users.register(dto, &claims).await?;
+    let result = state
+        .users
+        .register_tenant(state.business_db(&claims).await?, dto, &claims)
+        .await?;
     created(result)
 }
 

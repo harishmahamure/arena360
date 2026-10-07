@@ -155,21 +155,8 @@ impl ProductService {
         settings: &crate::services::ConfigService,
     ) -> Result<Vec<crate::models::ProductCurrentPrice>, AppError> {
         let recipes = TenantProductRecipeRepository::new(db.clone());
-        let requirements = recipes.recipe_requirements().await?;
-        let mut ingredient_ids = requirements
-            .iter()
-            .map(|(_, ingredient_id, _)| *ingredient_id)
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        ingredient_ids.sort_unstable();
-        let stock = self
-            .recipes
-            .ingredient_stock(inventory_location_id, &ingredient_ids)
-            .await?;
         let capacity = crate::services::product_recipe_service::made_to_order_capacity(
-            tenant_recipe_stock_rows(requirements, &stock),
-        );
+            recipes.made_to_order_stock(inventory_location_id, venue_location_id).await?);
         let with_options = recipes
             .with_option_groups()
             .await?
@@ -180,7 +167,7 @@ impl ProductService {
         let mut rules = Vec::new();
         for value in pricing
             .active_policies(
-                crate::models::DEFAULT_ORGANIZATION_ID,
+                db.tenant_id(),
                 Some(venue_location_id),
             )
             .await?
@@ -198,7 +185,7 @@ impl ProductService {
         let (timezone, night_start, night_end) = settings
             .venue_pricing_context_tenant(
                 db.clone(),
-                crate::models::DEFAULT_ORGANIZATION_ID,
+                db.tenant_id(),
                 Some(venue_location_id),
             )
             .await?;
@@ -505,6 +492,7 @@ fn metric_unit_conversion(purchase: &str, stock: &str) -> Result<Option<i32>, Ap
     }
 }
 
+#[cfg(test)]
 fn tenant_recipe_stock_rows(
     requirements: Vec<(Uuid, Uuid, i32)>,
     stock: &std::collections::HashMap<Uuid, i32>,

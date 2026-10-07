@@ -278,6 +278,15 @@ impl TenantDeviceRepository {
         );
         let db = self.db.clone();
         write(&db, Box::new(move |connection| Box::pin(async move {
+            if let Some(destination) = dto.6 {
+                let current: Option<String> = sqlx::query_scalar("SELECT location_id FROM devices WHERE id=? AND deleted_at IS NULL")
+                    .bind(id.to_string()).fetch_optional(&mut *connection).await?;
+                if current.as_deref().is_some_and(|value| value != destination.to_string()) {
+                    let in_use: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM usage_sessions WHERE device_id=? AND end_time IS NULL AND deleted_at IS NULL UNION ALL SELECT 1 FROM kiosk_orders WHERE device_id=? AND status IN('pending','preparing'))")
+                        .bind(id.to_string()).bind(id.to_string()).fetch_one(&mut *connection).await?;
+                    if in_use { return Err(AppError::Conflict("Finish active sessions and kiosk orders before moving this device".into())); }
+                }
+            }
             let result=sqlx::query("UPDATE devices SET name=COALESCE(?,name),serial_number=COALESCE(?,serial_number),local_ip_address=COALESCE(?,local_ip_address),device_type=COALESCE(?,device_type),device_sub_type=COALESCE(?,device_sub_type),location=COALESCE(?,location),location_id=COALESCE(?,location_id),status=COALESCE(?,status),registration_status=COALESCE(?,registration_status),updated_by=COALESCE(?,updated_by),updated_at=? WHERE id=? AND deleted_at IS NULL")
                 .bind(dto.0).bind(dto.1).bind(dto.2).bind(dto.3).bind(dto.4).bind(dto.5)
                 .bind(dto.6.map(|v|v.to_string())).bind(dto.7).bind(dto.8)

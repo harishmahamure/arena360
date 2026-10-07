@@ -17,6 +17,7 @@ use crate::openapi::responses::{
     CashRegisterEntryEnvelope, CashRegisterEnvelope, CashRegisterPaginationEnvelope,
     CashRegisterWithEntriesEnvelope, ErrorEnvelope, ExpectedClosingEnvelope,
 };
+use crate::repositories::{TenantCashRegisterRepository, TenantShiftRepository};
 
 #[utoipa::path(
     post,
@@ -42,7 +43,9 @@ pub async fn open_cash_register(
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = state.cash_registers.open(dto, actor_id).await?;
+    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .open_register(&dto, actor_id)
+        .await?;
     created(register)
 }
 
@@ -74,7 +77,9 @@ pub async fn close_cash_register(
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = state.cash_registers.close(id, dto, actor_id).await?;
+    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .close_register(id, &dto, actor_id)
+        .await?;
     ok(register)
 }
 
@@ -106,7 +111,9 @@ pub async fn reconcile_cash_register(
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = state.cash_registers.reconcile(id, dto, actor_id).await?;
+    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .reconcile(id, dto.reconciliation_notes, actor_id)
+        .await?;
     ok(register)
 }
 
@@ -138,9 +145,8 @@ pub async fn update_opening_balance(
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = state
-        .cash_registers
-        .update_opening_balance(id, dto, actor_id)
+    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .update_opening_balance(id, dto.opening_balance, dto.opening_denominations, actor_id)
         .await?;
     ok(register)
 }
@@ -173,7 +179,9 @@ pub async fn add_entry(
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let entry = state.cash_registers.add_entry(id, dto, actor_id).await?;
+    let entry = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .add_entry(id, &dto, actor_id)
+        .await?;
     created(entry)
 }
 
@@ -195,10 +203,12 @@ pub async fn add_entry(
 )]
 pub async fn get_cash_register(
     State(state): State<Arc<AppState>>,
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     Path(id): Path<Uuid>,
 ) -> ApiResult<CashRegisterWithEntries> {
-    let register = state.cash_registers.get_by_id(id).await?;
+    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .get_by_id(id)
+        .await?;
     ok(register)
 }
 
@@ -217,10 +227,12 @@ pub async fn get_cash_register(
 )]
 pub async fn list_cash_registers(
     State(state): State<Arc<AppState>>,
-    AdminOrStaff(_claims): AdminOrStaff,
+    AdminOrStaff(claims): AdminOrStaff,
     Query(filters): Query<CashRegisterFilterDto>,
 ) -> ApiResult<PaginationResult<CashRegister>> {
-    let result = state.cash_registers.list(filters).await?;
+    let result = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .list(&filters)
+        .await?;
     ok(result)
 }
 
@@ -254,14 +266,18 @@ pub async fn get_active_expected_closing(
         .parse()
         .map_err(|_| crate::error::AppError::BadRequest("Invalid user ID in token".to_string()))?;
 
-    let active_shift = state.shifts.get_active(user_id).await?.ok_or_else(|| {
-        crate::error::AppError::NotFound("No active shift found for current user".to_string())
-    })?;
+    let active_shift = TenantShiftRepository::new(state.business_db(&claims).await?)
+        .find_active_by_user(user_id)
+        .await?
+        .ok_or_else(|| {
+            crate::error::AppError::NotFound("No active shift found for current user".to_string())
+        })?;
 
-    let register = state.cash_registers.get_by_shift(active_shift.id).await?;
+    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+        .get_by_shift(active_shift.id)
+        .await?;
 
-    let expected = state
-        .cash_registers
+    let expected = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
         .get_expected_closing(register.register.id)
         .await?;
 

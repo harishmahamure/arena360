@@ -148,8 +148,9 @@ impl TransactionService {
         actor_id: Option<Uuid>,
     ) -> Result<Transaction, AppError> {
         sanitize_create_transaction(&mut dto)?;
+        let timezone = db.timezone().await?;
         TenantTransactionRepository::new(db)
-            .with_timezone(self.cafe_timezone.clone())
+            .with_timezone(timezone)
             .create(dto, actor_id)
             .await
     }
