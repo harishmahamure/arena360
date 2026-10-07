@@ -16,6 +16,7 @@
  *   KIOSK_ADMIN_PASSWORD
  *   KIOSK_PLAYER_USERNAME    a player with a usable balance for these devices
  *   KIOSK_PLAYER_PASSWORD
+ *   KIOSK_VENUE_ID           active tenant venue for device provisioning
  * Optional:
  *   KIOSK_ADMIN_TOTP
  */
@@ -91,6 +92,7 @@ async function provisionDevice(adminToken, name, fingerprint) {
     token: adminToken,
     body: {
       fingerprint,
+      locationId: need('KIOSK_VENUE_ID'),
       name,
       deviceType: 'PC',
       deviceSubType: 'HIGH_END_PCS',

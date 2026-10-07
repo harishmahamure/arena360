@@ -1,4 +1,4 @@
-//! Postgres enum labels — keep aligned with `packages/contracts/src/enums.ts`.
+//! Wire enum labels — keep aligned with `packages/contracts/src/enums.ts`.
 
 // Device / plan scope (case-sensitive uppercase)
 pub const DEVICE_TYPES: &[&str] = &["PC", "CONSOLE", "PS5", "PS4", "OTHER"];

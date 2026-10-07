@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_USER: arena360
       POSTGRES_PASSWORD: arena360
-      POSTGRES_DB: arena360
+      POSTGRES_DB: arena360_control
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
     ports:
       - "6432:5432"
     environment:
-      DATABASE_URL: postgres://arena360:arena360@postgres:5432/arena360
+      DATABASE_URL: postgres://arena360:arena360@postgres:5432/arena360_control
       POOL_MODE: transaction
       MAX_CLIENT_CONN: "100"
       DEFAULT_POOL_SIZE: "20"
@@ -99,27 +99,6 @@ services:
       object-storage:
         condition: service_healthy
 
-  analytics-worker:
-    profiles: ["analytics"]
-    build: ./apps/backend
-    command: ["analytics_worker"]
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgres://arena360:arena360@postgres:5432/arena360
-      ANALYTICS_DATABASE_URL: postgres://arena360:arena360@postgres:5432/arena360
-      NATS_URL: nats://nats:4222
-      CLICKHOUSE_URL: http://clickhouse:8123
-      CLICKHOUSE_DATABASE: arena360
-      CLICKHOUSE_USER: arena360
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-arena360}
-      RUST_LOG: info
-    depends_on:
-      postgres:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
 
 volumes:
   pgdata:

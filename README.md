@@ -57,15 +57,9 @@ pnpm backend:dev
 pnpm admin:dev
 ```
 
-Start the analytics worker in another terminal for reports and dashboards:
-
-```bash
-pnpm analytics:backfill # first start; keeps consuming after the initial snapshot
-# Subsequent starts: pnpm analytics:dev
-```
-
-Reporting reads ClickHouse only. PostgreSQL remains the transaction ledger.
-See the [analytics setup and recovery guide](docs/architecture/analytics.md).
+The backend uses per-tenant SQLite for operations and PostgreSQL for the control plane.
+Reports return `503 ANALYTICS_UNAVAILABLE` until M7; the old PostgreSQL/ClickHouse writer
+is retired. See the [storage-cell development guide](docs/architecture/storage-cell-development.md).
 
 Provision a demo tenant with 60 days of synthetic sales and activity. Configure
 `CONTROL_DATABASE_URL`, `ARENA_CELL_ID`, and `TENANT_DATA_DIR` for a registered cell:

@@ -5,9 +5,7 @@ pub struct Settings {
     pub roles: Roles,
     pub cell_id: Option<uuid::Uuid>,
     pub tenant_data_dir: std::path::PathBuf,
-    pub database_url: String,
     pub control_database_url: Option<String>,
-    pub database_listener_url: String,
     pub database_min_connections: u32,
     pub database_max_connections: u32,
     pub database_acquire_timeout_seconds: u64,
@@ -36,7 +34,6 @@ impl Settings {
             panic!("JWT_SECRET must be at least 32 characters");
         }
 
-        let database_url = resolve_database_url();
         Self {
             roles: std::env::var("ARENA_ROLES")
                 .map(|value| {
@@ -54,14 +51,9 @@ impl Settings {
             tenant_data_dir: std::env::var("TENANT_DATA_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| std::path::PathBuf::from("data/tenants")),
-            database_listener_url: std::env::var("DATABASE_LISTENER_URL")
-                .ok()
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| database_url.clone()),
             control_database_url: std::env::var("CONTROL_DATABASE_URL")
                 .ok()
                 .filter(|value| !value.is_empty()),
-            database_url,
             database_min_connections: env_parse("DATABASE_MIN_CONNECTIONS", 2),
             database_max_connections: std::env::var("DATABASE_MAX_CONNECTIONS")
                 .unwrap_or_else(|_| "10".to_string())
@@ -139,20 +131,4 @@ pub fn is_production_env() -> bool {
     ["NODE_ENV", "RUST_ENV", "ENVIRONMENT"]
         .into_iter()
         .any(|key| std::env::var(key).is_ok_and(|v| v == "production"))
-}
-
-fn resolve_database_url() -> String {
-    if let Ok(url) = std::env::var("DATABASE_URL") {
-        if !url.is_empty() {
-            return url;
-        }
-    }
-
-    let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-    let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-    let username = std::env::var("DB_USERNAME").unwrap_or_else(|_| "postgres".to_string());
-    let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "postgres".to_string());
-    let database = std::env::var("DB_DATABASE").unwrap_or_else(|_| "gamezone_dev".to_string());
-
-    format!("postgres://{username}:{password}@{host}:{port}/{database}")
 }

@@ -16,6 +16,8 @@ const api = vi.hoisted(() => vi.fn());
 vi.mock('../../../lib/realtime/RealtimeProvider', () => ({ useRealtimeStatus: () => 'connected' }));
 vi.mock('../../../services/config/branding', () => ({ useBranding: () => ({ name: 'Arena360' }) }));
 vi.mock('../../../components/BrandMark', () => ({ BrandMark: () => null }));
+// Location selection has separate authorization coverage; this suite exercises report navigation.
+vi.mock('../../../components/LocationSelector', () => ({ default: () => null }));
 vi.mock('../../../theme/AppearanceDialog', () => ({ default: () => null }));
 vi.mock('../../../services/stats/business', () => ({ getBusinessReport: api }));
 vi.mock('@mui/x-charts/LineChart', () => ({ LineChart: () => <div>Line chart</div> }));

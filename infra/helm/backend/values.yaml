@@ -1,4 +1,4 @@
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: harishmahamure/arena360
@@ -53,8 +53,8 @@ resources:
     memory: 128Mi
 
 autoscaling:
-  enabled: true
-  minReplicas: 2
+  enabled: false
+  minReplicas: 1
   maxReplicas: 4
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 75
@@ -90,6 +90,8 @@ readinessProbe:
   failureThreshold: 3
 
 env:
+  ARENA_ROLES: control,cell,router
+  TENANT_DATA_DIR: /var/lib/arena360/tenants
   PORT: "3000"
   RUST_ENV: production
   DATABASE_MAX_CONNECTIONS: "10"
@@ -162,3 +164,11 @@ podDisruptionBudget:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# One owning-cell process per persistent tenant directory until M9 introduces cell orchestration.
+persistence:
+  enabled: true
+  existingClaim: ""
+  size: 20Gi
+  storageClass: ""
+  mountPath: /var/lib/arena360/tenants

@@ -25,6 +25,8 @@ ingress:
         - api.arena360.cloud
 
 env:
+  ARENA_ROLES: control,cell,router
+  TENANT_DATA_DIR: /var/lib/arena360/tenants
   PORT: "3000"
   RUST_ENV: production
   DATABASE_MAX_CONNECTIONS: "10"

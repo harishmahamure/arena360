@@ -75,10 +75,10 @@ jobs:
       - name: Run database migrations
         if: inputs.run_migrations
         env:
-          DATABASE_URL: "${{ secrets.MIGRATION_DATABASE_URL }}"
+          DATABASE_URL: "${{ secrets.CONTROL_MIGRATION_DATABASE_URL }}"
         run: |
           echo "Running database migrations from the CI runner..."
-          sqlx migrate run --source apps/backend/migrations
+          sqlx migrate run --source apps/backend/migrations/control
           echo "Database migrations completed"
 
       - name: Verify cluster prerequisites
@@ -94,7 +94,8 @@ jobs:
       - name: Deploy backend
         id: deploy
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CONTROL_DATABASE_URL: ${{ secrets.CONTROL_DATABASE_URL }}
+          ARENA_CELL_ID: ${{ secrets.ARENA_CELL_ID }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ZEPTOMAIL_TOKEN: ${{ secrets.ZEPTOMAIL_TOKEN }}
@@ -111,15 +112,19 @@ jobs:
           set -euo pipefail
 
           # Secrets must not be interpolated into the script body — newlines or
-          # quotes in DATABASE_URL break shell parsing and helm loses RELEASE/CHART.
+          # quotes in CONTROL_DATABASE_URL break shell parsing and helm loses RELEASE/CHART.
           strip_cr() { printf '%s' "$1" | tr -d '\r\n'; }
 
           REDIS_URL="${REDIS_URL:-redis://arena360-redis.${NAMESPACE}.svc.cluster.local:6379}"
 
-          db_url="$(strip_cr "$DATABASE_URL")"
+          db_url="$(strip_cr "$CONTROL_DATABASE_URL")"
           jwt_secret="$(strip_cr "$JWT_SECRET")"
           if [ -z "$db_url" ]; then
-            echo "::error::DATABASE_URL secret is empty"
+            echo "::error::CONTROL_DATABASE_URL secret is empty"
+            exit 1
+          fi
+          if [ -z "$(strip_cr "$ARENA_CELL_ID")" ]; then
+            echo "::error::ARENA_CELL_ID must identify a registered storage cell"
             exit 1
           fi
           if [ -z "$jwt_secret" ]; then
@@ -133,7 +138,8 @@ jobs:
 
           # Build Helm overrides as a file — avoids shell-quoting bugs with --set-json.
           jq -n \
-            --arg DATABASE_URL "$db_url" \
+            --arg CONTROL_DATABASE_URL "$db_url" \
+            --arg ARENA_CELL_ID "$(strip_cr "$ARENA_CELL_ID")" \
             --arg REDIS_URL "$(strip_cr "$REDIS_URL")" \
             --arg JWT_SECRET "$jwt_secret" \
             --arg ZEPTOMAIL_TOKEN "$(strip_cr "$ZEPTOMAIL_TOKEN")" \
@@ -148,7 +154,8 @@ jobs:
               image: { repository: $IMAGE_REPOSITORY, tag: $IMAGE_TAG },
               inlineSecretEnv: (
                 {
-                  DATABASE_URL: $DATABASE_URL,
+                  CONTROL_DATABASE_URL: $CONTROL_DATABASE_URL,
+                  ARENA_CELL_ID: $ARENA_CELL_ID,
                   REDIS_URL: $REDIS_URL,
                   JWT_SECRET: $JWT_SECRET,
                   ZEPTOMAIL_TOKEN: $ZEPTOMAIL_TOKEN,

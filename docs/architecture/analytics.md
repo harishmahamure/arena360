@@ -1,3 +1,9 @@
+> M5 status: the PostgreSQL operational schema and writer are retired. Live reporting
+> returns `503 ANALYTICS_UNAVAILABLE` until M7. Sections describing the old
+> PostgreSQL/ClickHouse pipeline are retained as historical report-parity context.
+> Use [storage-cell development](storage-cell-development.md) for current setup and
+> [Demo data](#demo-data) below for the tenant SQLite seed.
+
 # Reporting with JetStream and ClickHouse
 
 > **Superseded** by `docs/architecture/data-platform.md`, ADR-0043, and `docs/architecture/duckdb-analytics-schema.md` (per-tenant DuckDB; ClickHouse removed). This describes the current code until milestone M7 of `docs/plans/data-platform-build-plan.md` completes.

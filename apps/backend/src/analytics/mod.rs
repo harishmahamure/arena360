@@ -1,4 +1,4 @@
-//! ClickHouse is the sole reporting store; PostgreSQL remains the transaction ledger.
+//! Legacy ClickHouse definitions retained for M7 parity. Operational writes use tenant SQLite.
 pub mod business;
 mod client;
 pub mod reports;
