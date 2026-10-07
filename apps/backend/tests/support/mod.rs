@@ -258,3 +258,32 @@ impl SessionFixture {
         self.tenant.close().await;
     }
 }
+impl TenantFixture {
+    pub async fn venue(&self, slug: &str) -> Uuid {
+        gaming_cafe_api::repositories::TenantSettingsRepository::new(self.db.clone())
+            .save_location(
+                self.db.tenant_id(),
+                None,
+                serde_json::from_value(
+                    serde_json::json!({"slug":slug,"name":slug,"timezone":"UTC","currency":"INR"}),
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap()
+            .id
+    }
+    pub async fn staff(&self, venue: Option<Uuid>, permissions: Vec<String>) -> Uuid {
+        let user = Uuid::now_v7();
+        let role = Uuid::now_v7();
+        self.db.with_immediate_writer(move|c|Box::pin(async move {
+            let at=gaming_cafe_api::time::format_sqlite_timestamp(&chrono::Utc::now()).unwrap();
+            sqlx::query("INSERT INTO users(id,username,role,created_at,updated_at) VALUES(?,?,'staff',?,?)").bind(user.to_string()).bind(user.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+            sqlx::query("INSERT INTO access_roles(id,name,permissions,created_at,updated_at) VALUES(?,?,?,?,?)").bind(role.to_string()).bind(role.to_string()).bind(serde_json::to_string(&permissions).unwrap()).bind(&at).bind(&at).execute(&mut *c).await?;
+            sqlx::query("INSERT INTO access_assignments(user_id,role_id,created_at) VALUES(?,?,?)").bind(user.to_string()).bind(role.to_string()).bind(&at).execute(&mut *c).await?;
+            if let Some(venue)=venue {sqlx::query("INSERT INTO location_role_assignments(user_id,location_id,role_id,created_at) VALUES(?,?,?,?)").bind(user.to_string()).bind(venue.to_string()).bind(role.to_string()).bind(&at).execute(c).await?;}
+            Ok(())
+        })).await.unwrap();
+        user
+    }
+}
