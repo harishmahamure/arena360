@@ -19,7 +19,7 @@ pub struct InventoryLocation {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateInventoryLocationDto {
     pub name: String,
@@ -28,7 +28,7 @@ pub struct CreateInventoryLocationDto {
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInventoryLocationDto {
     pub name: Option<String>,
@@ -37,7 +37,7 @@ pub struct UpdateInventoryLocationDto {
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryLocationFilterDto {
     pub venue_location_id: Option<Uuid>,

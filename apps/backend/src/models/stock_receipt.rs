@@ -33,14 +33,14 @@ pub struct StockReceiptWithLines {
     pub lines: Vec<StockReceiptLine>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockReceiptLineDto {
     pub product_id: Uuid,
     pub box_quantity: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStockReceiptDto {
     pub location_id: Uuid,
@@ -50,7 +50,7 @@ pub struct CreateStockReceiptDto {
     pub lines: Vec<CreateStockReceiptLineDto>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct StockReceiptFilterDto {
     pub location_id: Option<Uuid>,

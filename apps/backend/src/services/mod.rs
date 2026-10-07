@@ -70,3 +70,6 @@ pub use vendor_service::VendorService;
 pub mod kitchen_service;
 
 pub mod catalog_scope;
+
+pub mod tenant_procurement_service;
+pub use tenant_procurement_service::TenantProcurementService;

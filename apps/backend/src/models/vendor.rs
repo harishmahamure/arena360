@@ -22,7 +22,7 @@ pub struct Vendor {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateVendorDto {
     pub name: String,
@@ -35,7 +35,7 @@ pub struct CreateVendorDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateVendorDto {
     pub name: Option<String>,
@@ -48,7 +48,7 @@ pub struct UpdateVendorDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct VendorFilterDto {
     pub name: Option<String>,

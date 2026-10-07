@@ -785,3 +785,13 @@ mod tests {
         );
     }
 }
+
+impl InventoryService {
+    /// Staged tenant path; mutation validation and outbox writes live in the fenced repository.
+    pub fn tenant(
+        &self,
+        db: Arc<crate::tenancy::TenantDb>,
+    ) -> crate::repositories::TenantInventoryRepository {
+        crate::repositories::TenantInventoryRepository::new(db)
+    }
+}

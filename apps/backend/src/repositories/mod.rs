@@ -71,3 +71,9 @@ pub use transaction_repo::TransactionRepository;
 pub use unit_repo::UnitRepository;
 pub use user_repo::{CreatePlayerParams, UserRepository};
 pub use vendor_repo::VendorRepository;
+
+pub(crate) mod tenant_back_office;
+pub mod tenant_inventory_repo;
+pub mod tenant_vendor_repo;
+pub use tenant_inventory_repo::TenantInventoryRepository;
+pub use tenant_vendor_repo::TenantVendorRepository;

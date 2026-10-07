@@ -783,3 +783,13 @@ mod tests {
         assert!(ProcurementService::validate_receipt_quantity(0, 1, 5).is_err());
     }
 }
+
+impl ProcurementService {
+    pub fn tenant(
+        &self,
+        db: std::sync::Arc<crate::tenancy::TenantDb>,
+        timezone: String,
+    ) -> crate::services::TenantProcurementService {
+        crate::services::TenantProcurementService::new(db, timezone)
+    }
+}
