@@ -145,6 +145,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         tracing::info!(recovered, "Recovered assigned tenant databases");
     }
     if let (Some(control), Some(manager)) = (control_db.clone(), tenant_dbs.clone()) {
+        crate::control::timezone::spawn(control.clone(), manager.clone());
         crate::control::staff_projection::spawn(control, manager);
     }
     let tenant_provisioner = match (control_db.clone(), leases.clone()) {

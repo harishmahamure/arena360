@@ -260,6 +260,7 @@ pub async fn apply_batch(
     if events.len() > 1000 {
         return Err(invalid("batch exceeds bounded capacity"));
     }
+    if !analytics.ensure_timezone().await? {return Ok(BatchOutcome::RebuildRequired);}
     let tenant = analytics.tenant_id();
     analytics.write(move|tx|{
   let (mut last,status,timezone,hot):(i64,String,String,String)=tx.query_row("SELECT CAST(last_sequence AS BIGINT),status,timezone,CAST(hot_window_start AS VARCHAR) FROM _ingest_state WHERE id=1",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).map_err(error)?;
@@ -367,6 +368,7 @@ impl JetStreamConsumer {
     }
     pub async fn poll(&mut self, metrics: &Metrics) -> Result<BatchOutcome, AppError> {
         self.db.ensure_current_owner()?;
+        if !self.analytics.ensure_timezone().await? {return Ok(BatchOutcome::RebuildRequired);}
         let (initial_sequence, status, replay_start) = self
             .analytics
             .read(|tx| {

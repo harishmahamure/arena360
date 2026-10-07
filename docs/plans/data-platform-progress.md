@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0044
+## Completed through API-0045
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `API-0045` — Revisioned timezone changes and automatic analytics rebuild.
+- [ ] `API-0046` — Per-cell background scheduling and M6 completion gates.
 
 ### API-0033 completed
 
@@ -131,7 +131,13 @@
 
 - Nightly tenant-calendar maintenance seals expiring summaries and deletes facts/child collections in bounded, fenced transactions. Open and crossing work survives; checkpoints and sealed history remain intact. Pending SQLite watermarks delay maintenance until ingestion catches up.
 - Full regression: 404 backend/control/live checks pass. Five targeted retention checks pass, including two final source-backlog/DST cases: 406 distinct passing checks across the runs.
-- Next: `API-0045` timezone changes.
+- Implementation: `c1e1eca`.
+
+### API-0045 completed
+
+- Control timezone revisions project locally without synchronous business dependence on PostgreSQL. Live and restarted analytics preserve old facts/checkpoints in REBUILDING until labels are derived again from unchanged UTC instants. Signed entitlement revisions advance; stale/conflicting updates cannot revert calendars.
+- 20 targeted checks, nine disposable control checks and five live JetStream gates pass, including demo parity and a timezone change during a rebuild. Historical aggregates from a different calendar require archived facts for accurate relabeling (M11).
+- Next: `API-0046` per-cell scheduling, then final M6 outage/recovery gates.
 
 ## M5 queue
 
@@ -165,7 +171,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed item: `API-0044`; 406 distinct backend checks pass across full and final targeted runs. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
+- Latest completed item: `API-0045`; targeted schema/consumer/retention/calendar regressions, all nine control checks and all five live JetStream gates pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

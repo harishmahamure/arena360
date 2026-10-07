@@ -179,6 +179,14 @@ impl Repository {
         Ok(tenant)
     }
 
+    /// Administrative control operation. Cells reconcile this revision asynchronously.
+    pub async fn update_timezone(&self, tenant_id: Uuid, timezone: &str) -> Result<Tenant, AppError> {
+        timezone.parse::<chrono_tz::Tz>().map_err(|_| AppError::BadRequest("timezone must be an IANA time zone".into()))?;
+        sqlx::query_as("UPDATE tenants SET timezone=$2 WHERE id=$1 AND state NOT IN ('DELETED','FAILED') RETURNING id,slug,name,owner_cell,ownership_generation,schema_version,state,timezone")
+            .bind(tenant_id).bind(timezone).fetch_optional(&self.pool).await?
+            .ok_or_else(|| AppError::NotFound("Tenant not found".into()))
+    }
+
     pub async fn signed_entitlement(
         &self,
         tenant_id: Uuid,
@@ -186,7 +194,7 @@ impl Repository {
     ) -> Result<String, AppError> {
         let row: Option<(String, i64, serde_json::Value, DateTime<Utc>, DateTime<Utc>)> =
             sqlx::query_as(
-                r#"SELECT t.timezone, l.revision, l.entitlements, l.valid_until, l.grace_until
+                r#"SELECT t.timezone, l.revision+t.timezone_revision, l.entitlements, l.valid_until, l.grace_until
                    FROM tenants t
                    JOIN licenses l ON l.tenant_id = t.id
                    WHERE t.id = $1 AND t.state NOT IN ('DELETED', 'FAILED')

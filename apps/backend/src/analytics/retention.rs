@@ -70,6 +70,9 @@ pub async fn run(
     analytics: Arc<TenantAnalytics>,
     now: DateTime<Utc>,
 ) -> Result<RetentionOutcome, AppError> {
+    if !analytics.ensure_timezone().await? {
+        return Ok(RetentionOutcome::Skipped);
+    }
     let _maintenance = analytics.rebuild_lock.lock().await;
     let source = super::rebuild::source_watermark(analytics.owner()).await?;
     let prepared = analytics

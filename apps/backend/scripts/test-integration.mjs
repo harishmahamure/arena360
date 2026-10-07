@@ -213,7 +213,7 @@ async function runJetstream(env, required = false) {
   if (bin) {
     const targets = ['outbox_publisher', 'tenant_event_stream'];
     if (process.env.DUCKDB_LIB_DIR)
-      targets.push('tenant_analytics_consumer', 'tenant_analytics_rebuild');
+      targets.push('tenant_analytics_consumer', 'tenant_analytics_rebuild', 'tenant_timezone');
     for (const target of targets) {
       const nats = await localNats(bin);
       try {

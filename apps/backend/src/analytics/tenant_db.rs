@@ -58,7 +58,7 @@ impl TenantAnalytics {
                     ));
                 }
             }
-            migrate(&mut connection, &db, &timezone, Utc::now())?;
+            migrate_with_policy(&mut connection, &db, &timezone, Utc::now(), require_latest)?;
             Ok(Arc::new(Self {
                 db,
                 connection: Mutex::new(Some(connection)),
@@ -194,7 +194,29 @@ impl TenantAnalytics {
     pub fn path(&self) -> &std::path::Path {
         &self.path
     }
-    pub(crate) fn owner(&self) -> &Arc<TenantDb> { &self.db }
+    /// Changed calendars cannot serve facts or accept events until the shadow rebuild.
+    /// Keep the stored timezone until replacement so old labels are never relabelled in place.
+    pub async fn ensure_timezone(self: &Arc<Self>) -> Result<bool, AppError> {
+        let timezone: String =
+            sqlx::query_scalar("SELECT timezone FROM tenant_runtime WHERE singleton=1")
+                .fetch_one(&self.db.background_read_pool()?)
+                .await?;
+        self.write(move |tx| {
+            let stored: String = tx
+                .query_row("SELECT timezone FROM _ingest_state", [], |r| r.get(0))
+                .map_err(error)?;
+            if stored == timezone {
+                return Ok(true);
+            }
+            tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'")
+                .map_err(error)?;
+            Ok(false)
+        })
+        .await
+    }
+    pub(crate) fn owner(&self) -> &Arc<TenantDb> {
+        &self.db
+    }
     pub fn tenant_id(&self) -> uuid::Uuid {
         self.db.tenant_id()
     }
@@ -270,6 +292,15 @@ pub fn migrate(
     timezone: &str,
     now: DateTime<Utc>,
 ) -> Result<(), AppError> {
+    migrate_with_policy(connection, owner, timezone, now, false)
+}
+fn migrate_with_policy(
+    connection: &mut Connection,
+    owner: &TenantDb,
+    timezone: &str,
+    now: DateTime<Utc>,
+    allow_timezone_rebuild: bool,
+) -> Result<(), AppError> {
     owner.ensure_current_owner()?;
     let expected = owner.path().with_file_name("analytics.duckdb");
     if connection.path() != Some(expected.as_path()) {
@@ -277,13 +308,22 @@ pub fn migrate(
             "Foreign analytics database path".into(),
         ));
     }
-    migrate_at(connection, owner, timezone, now)
+    migrate_at_with_policy(connection, owner, timezone, now, allow_timezone_rebuild)
 }
 pub(crate) fn migrate_at(
     connection: &mut Connection,
     owner: &TenantDb,
     timezone: &str,
     now: DateTime<Utc>,
+) -> Result<(), AppError> {
+    migrate_at_with_policy(connection, owner, timezone, now, false)
+}
+fn migrate_at_with_policy(
+    connection: &mut Connection,
+    owner: &TenantDb,
+    timezone: &str,
+    now: DateTime<Utc>,
+    allow_timezone_rebuild: bool,
 ) -> Result<(), AppError> {
     owner.ensure_current_owner()?;
     let zone = timezone
@@ -351,10 +391,14 @@ pub(crate) fn migrate_at(
                 "Analytics state disagrees with migration history".into(),
             ));
         }
-        if stored_zone != timezone {
+        if stored_zone != timezone && !allow_timezone_rebuild {
             return Err(AppError::Conflict(
                 "Analytics timezone requires a rebuild".into(),
             ));
+        }
+        if stored_zone != timezone {
+            tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'")
+                .map_err(error)?;
         }
         tx.execute(
             "UPDATE _ingest_state SET schema_version=?,status=CASE WHEN schema_version<>? THEN 'REBUILDING' ELSE status END WHERE id=1",

@@ -3,6 +3,7 @@
 //! Business operations never depend on it synchronously (§51).
 
 pub mod entitlement;
+pub mod timezone;
 pub mod lease;
 pub mod identity;
 pub mod staff_projection;
