@@ -1,10 +1,12 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::access::scope::{requested_location, LocationScope};
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::middleware::{AdminOrStaff, AdminUser, StaffUser};
@@ -39,11 +41,16 @@ pub async fn open_cash_register(
     StaffUser(claims): StaffUser,
     Json(dto): Json<OpenCashRegisterDto>,
 ) -> ApiResult<CashRegister> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantShiftRepository::new(db.clone())
+        .location_id(dto.shift_id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-registers:write", Some(venue)).await?;
     let actor_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let register = TenantCashRegisterRepository::new(db.clone())
         .open_register(&dto, actor_id)
         .await?;
     created(register)
@@ -73,11 +80,16 @@ pub async fn close_cash_register(
     Path(id): Path<Uuid>,
     Json(dto): Json<CloseCashRegisterDto>,
 ) -> ApiResult<CashRegister> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashRegisterRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-registers:write", Some(venue)).await?;
     let actor_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let register = TenantCashRegisterRepository::new(db.clone())
         .close_register(id, &dto, actor_id)
         .await?;
     ok(register)
@@ -107,11 +119,17 @@ pub async fn reconcile_cash_register(
     Path(id): Path<Uuid>,
     Json(dto): Json<ReconcileCashRegisterDto>,
 ) -> ApiResult<CashRegister> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashRegisterRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-registers:reconcile", Some(venue))
+        .await?;
     let actor_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let register = TenantCashRegisterRepository::new(db.clone())
         .reconcile(id, dto.reconciliation_notes, actor_id)
         .await?;
     ok(register)
@@ -141,11 +159,22 @@ pub async fn update_opening_balance(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateOpeningBalanceDto>,
 ) -> ApiResult<CashRegister> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashRegisterRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "cash-registers:adjust_opening",
+        Some(venue),
+    )
+    .await?;
     let actor_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let register = TenantCashRegisterRepository::new(db.clone())
         .update_opening_balance(id, dto.opening_balance, dto.opening_denominations, actor_id)
         .await?;
     ok(register)
@@ -175,11 +204,16 @@ pub async fn add_entry(
     Path(id): Path<Uuid>,
     Json(dto): Json<CreateCashRegisterEntryDto>,
 ) -> ApiResult<CashRegisterEntry> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashRegisterRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-registers:write", Some(venue)).await?;
     let actor_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| crate::error::AppError::Internal("Invalid user ID in token".to_string()))?;
-    let entry = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let entry = TenantCashRegisterRepository::new(db.clone())
         .add_entry(id, &dto, actor_id)
         .await?;
     created(entry)
@@ -206,7 +240,12 @@ pub async fn get_cash_register(
     AdminOrStaff(claims): AdminOrStaff,
     Path(id): Path<Uuid>,
 ) -> ApiResult<CashRegisterWithEntries> {
-    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashRegisterRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-registers:read", Some(venue)).await?;
+    let register = TenantCashRegisterRepository::new(db.clone())
         .get_by_id(id)
         .await?;
     ok(register)
@@ -228,10 +267,19 @@ pub async fn get_cash_register(
 pub async fn list_cash_registers(
     State(state): State<Arc<AppState>>,
     AdminOrStaff(claims): AdminOrStaff,
+    headers: HeaderMap,
     Query(filters): Query<CashRegisterFilterDto>,
 ) -> ApiResult<PaginationResult<CashRegister>> {
-    let result = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
-        .list(&filters)
+    let db = state.business_db(&claims).await?;
+    let scope = LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "cash-registers:read",
+        requested_location(&headers)?,
+    )
+    .await?;
+    let result = TenantCashRegisterRepository::new(db)
+        .list_scoped(&filters, &scope.locations)
         .await?;
     ok(result)
 }
@@ -273,11 +321,17 @@ pub async fn get_active_expected_closing(
             crate::error::AppError::NotFound("No active shift found for current user".to_string())
         })?;
 
-    let register = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let db = state.business_db(&claims).await?;
+    let venue = TenantShiftRepository::new(db.clone())
+        .location_id(active_shift.id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-registers:read", Some(venue)).await?;
+
+    let register = TenantCashRegisterRepository::new(db.clone())
         .get_by_shift(active_shift.id)
         .await?;
 
-    let expected = TenantCashRegisterRepository::new(state.business_db(&claims).await?)
+    let expected = TenantCashRegisterRepository::new(db.clone())
         .get_expected_closing(register.register.id)
         .await?;
 

@@ -494,9 +494,9 @@ impl TenantProcurementService {
                     sqlx::query(r#"
                         INSERT INTO expenses(id, category_id, vendor_id, amount, payment_method, payment_account,
                         description, expense_date, approval_status, approved_by, approved_at, shift_id,
-                        cash_register_entry_id, source_type, source_id, created_by, updated_by, created_at, updated_at)
-                        VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'approved' , ?, ?, ?, ?, 'stock_receipt' , ?, ?, ?, ?, ?)
-                    "#).bind(expense.to_string()).bind(category).bind(order.vendor_id.to_string()).bind(total).bind(dto.payment_method).bind(dto.payment_account).bind(format!("Inventory receipt {} for {}", dto.invoice_reference.trim(), order.po_number)).bind(date).bind(approver.to_string()).bind(&ts).bind(shift).bind(entry.map(|x| x.to_string())).bind(receipt.to_string()).bind(actor.to_string()).bind(actor.to_string()).bind(&ts).bind(&ts).execute(&mut *c).await?;
+                        cash_register_entry_id, source_type, source_id, created_by, updated_by, created_at, updated_at, location_id)
+                        VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'approved' , ?, ?, ?, ?, 'stock_receipt' , ?, ?, ?, ?, ?, ?)
+                    "#).bind(expense.to_string()).bind(category).bind(order.vendor_id.to_string()).bind(total).bind(dto.payment_method).bind(dto.payment_account).bind(format!("Inventory receipt {} for {}", dto.invoice_reference.trim(), order.po_number)).bind(date).bind(approver.to_string()).bind(&ts).bind(shift).bind(entry.map(|x| x.to_string())).bind(receipt.to_string()).bind(actor.to_string()).bind(actor.to_string()).bind(&ts).bind(&ts).bind(location.venue_location_id.to_string()).execute(&mut *c).await?;
                     event(c, "expense", expense, "expense.created", Some(location.venue_location_id), false, json!({"id":expense,"amount":money_f64(total)?,"sourceType":"stock_receipt","sourceId":receipt,"approvalStatus":"approved"})).await?;
                     event(c,"stock_receipt",receipt,"inventory.receipt_created",Some(location.venue_location_id),false,receipt_snapshot).await?;
                     let purchase_order = Self::get(c, id).await?;

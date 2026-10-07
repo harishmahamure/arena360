@@ -1,10 +1,12 @@
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::access::scope::{requested_location, LocationScope};
 use crate::app::AppState;
 use crate::dto::{created, ok, ApiResult, PaginationResult};
 use crate::error::AppError;
@@ -36,11 +38,16 @@ pub async fn initiate_deposit(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<InitiateDepositDto>,
 ) -> ApiResult<CashDeposit> {
+    let db = state.business_db(&claims).await?;
+    let venue = crate::repositories::TenantCashRegisterRepository::new(db.clone())
+        .location_id(dto.cash_register_id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-deposits:write", Some(venue)).await?;
     let staff_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid user ID in token".to_string()))?;
-    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
+    let deposit = TenantCashDepositRepository::new(db.clone())
         .create(&dto, staff_id)
         .await?;
     created(deposit)
@@ -62,10 +69,19 @@ pub async fn initiate_deposit(
 pub async fn list_deposits(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(filters): Query<CashDepositFilterDto>,
 ) -> ApiResult<PaginationResult<CashDeposit>> {
-    let result = TenantCashDepositRepository::new(state.business_db(&claims).await?)
-        .list(&filters)
+    let db = state.business_db(&claims).await?;
+    let scope = LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "cash-deposits:read",
+        requested_location(&headers)?,
+    )
+    .await?;
+    let result = TenantCashDepositRepository::new(db)
+        .list_scoped(&filters, &scope.locations)
         .await?;
     ok(result)
 }
@@ -91,7 +107,12 @@ pub async fn get_deposit(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<CashDeposit> {
-    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashDepositRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-deposits:read", Some(venue)).await?;
+    let deposit = TenantCashDepositRepository::new(db.clone())
         .find_by_id(id)
         .await?
         .ok_or_else(|| AppError::NotFound("Deposit not found".into()))?;
@@ -122,11 +143,17 @@ pub async fn approve_deposit(
     Path(id): Path<Uuid>,
     Json(dto): Json<ApproveDepositDto>,
 ) -> ApiResult<CashDeposit> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashDepositRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-deposits:approve", Some(venue))
+        .await?;
     let admin_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid user ID in token".to_string()))?;
-    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
+    let deposit = TenantCashDepositRepository::new(db.clone())
         .approve(id, &dto.deposit_type, admin_id)
         .await?;
     ok(deposit)
@@ -156,11 +183,17 @@ pub async fn reject_deposit(
     Path(id): Path<Uuid>,
     Json(dto): Json<RejectDepositDto>,
 ) -> ApiResult<CashDeposit> {
+    let db = state.business_db(&claims).await?;
+    let venue = TenantCashDepositRepository::new(db.clone())
+        .location_id(id)
+        .await?;
+    LocationScope::resolve_tenant(db.clone(), &claims, "cash-deposits:approve", Some(venue))
+        .await?;
     let admin_id: Uuid = claims
         .userId
         .parse()
         .map_err(|_| AppError::BadRequest("Invalid user ID in token".to_string()))?;
-    let deposit = TenantCashDepositRepository::new(state.business_db(&claims).await?)
+    let deposit = TenantCashDepositRepository::new(db.clone())
         .reject(id, &dto.rejection_reason, admin_id)
         .await?;
     ok(deposit)

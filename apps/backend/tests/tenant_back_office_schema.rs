@@ -275,3 +275,85 @@ async fn activity_venue_migration_uses_original_events_and_preserves_replay() {
     );
     pool.close().await;
 }
+
+#[tokio::test]
+async fn expense_venue_migration_uses_event_history_and_preserves_unknown_scope() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(":memory:")
+                .foreign_keys(true),
+        )
+        .await
+        .unwrap();
+    let mut migrator = sqlx::migrate::Migrator::new(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/tenant"
+    )))
+    .await
+    .unwrap();
+    migrator.migrations.to_mut().retain(|m| m.version <= 11);
+    migrator.run(&pool).await.unwrap();
+    let other = uuid::Uuid::now_v7().to_string();
+    for (id, slug) in [(VENUE, "original"), (other.as_str(), "current")] {
+        sqlx::query(
+            "INSERT INTO venue_locations(id,slug,name,created_at,updated_at) VALUES(?,?,?,?,?)",
+        )
+        .bind(id)
+        .bind(slug)
+        .bind(slug)
+        .bind(NOW)
+        .bind(NOW)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let category = uuid::Uuid::now_v7().to_string();
+    sqlx::query(
+        "INSERT INTO expense_categories(id,name,created_at,updated_at) VALUES(?,'Historical',?,?)",
+    )
+    .bind(&category)
+    .bind(NOW)
+    .bind(NOW)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let historical = uuid::Uuid::now_v7().to_string();
+    let changed = uuid::Uuid::now_v7().to_string();
+    let unknown = uuid::Uuid::now_v7().to_string();
+    for id in [&historical, &changed, &unknown] {
+        sqlx::query("INSERT INTO expenses(id,category_id,amount,payment_method,expense_date,source_type,source_id,created_at,updated_at) VALUES(?,?,10000,'card',?,'stock_receipt',?,?,?)")
+            .bind(id).bind(&category).bind(NOW).bind(id).bind(NOW).bind(NOW).execute(&pool).await.unwrap();
+    }
+    // A later explicit expense update determines its venue, rather than its creation event.
+    for (id, venue, kind) in [
+        (&historical, VENUE, "expense.created"),
+        (&changed, VENUE, "expense.created"),
+        (&changed, other.as_str(), "expense.updated"),
+    ] {
+        sqlx::query("INSERT INTO outbox_events(event_id,location_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,payload) VALUES(?,?,'expense',?,?,?,1,'{}')")
+            .bind(uuid::Uuid::now_v7().to_string()).bind(venue).bind(id).bind(kind).bind(NOW).execute(&pool).await.unwrap();
+    }
+    // Receipt source identifiers alone are insufficient to infer an unknown historical venue.
+    gaming_cafe_api::tenancy::migrate(&pool).await.unwrap();
+    for (id, expected) in [
+        (&historical, Some(VENUE.to_string())),
+        (&changed, Some(other)),
+        (&unknown, None),
+    ] {
+        let actual: Option<String> =
+            sqlx::query_scalar("SELECT location_id FROM expenses WHERE id=?")
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(actual, expected);
+    }
+    assert!(sqlx::query("PRAGMA foreign_key_check")
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+        .is_empty());
+    pool.close().await;
+}

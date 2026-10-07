@@ -1,5 +1,5 @@
 use axum::extract::{Path, Query, State};
-use axum::Json;
+use axum::{http::HeaderMap, Json};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -303,6 +303,7 @@ pub async fn get_active_shift(
 pub async fn list_shifts(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(mut filters): Query<ShiftFilterDto>,
 ) -> ApiResult<PaginationResult<Shift>> {
     if !crate::access::has(&claims, "finance:read") {
@@ -311,8 +312,16 @@ pub async fn list_shifts(
         })?;
         filters.user_id = Some(user_id);
     }
-    let result = TenantShiftRepository::new(state.business_db(&claims).await?)
-        .list(&filters)
+    let db = state.business_db(&claims).await?;
+    let scope = crate::access::scope::LocationScope::resolve_tenant(
+        db.clone(),
+        &claims,
+        "shifts:read",
+        crate::access::scope::requested_location(&headers)?,
+    )
+    .await?;
+    let result = TenantShiftRepository::new(db)
+        .list_scoped(&filters, &scope.locations)
         .await?;
     ok(result)
 }
@@ -338,6 +347,13 @@ pub async fn get_shift(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Shift> {
+    require_shift_venue(
+        &state,
+        &claims,
+        shift_venue(&state, &claims, id).await?,
+        "shifts:read",
+    )
+    .await?;
     let shift = TenantShiftRepository::new(state.business_db(&claims).await?)
         .find_by_id(id)
         .await?
@@ -378,6 +394,13 @@ pub async fn force_close_shift(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Shift> {
+    require_shift_venue(
+        &state,
+        &claims,
+        shift_venue(&state, &claims, id).await?,
+        "shifts:force_close",
+    )
+    .await?;
     let actor_id: Uuid = claims
         .userId
         .parse()

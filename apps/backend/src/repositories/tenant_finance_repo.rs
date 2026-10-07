@@ -57,6 +57,12 @@ impl TenantShiftRepository {
         &self,
         filters: &ShiftFilterDto,
     ) -> Result<PaginationResult<Shift>, AppError> {
+        self.list_inner(filters, None).await
+    }
+    pub async fn list_scoped(&self, filters: &ShiftFilterDto, locations: &[Uuid]) -> Result<PaginationResult<Shift>, AppError> {
+        self.list_inner(filters, Some(locations)).await
+    }
+    async fn list_inner(&self, filters: &ShiftFilterDto, locations: Option<&[Uuid]>) -> Result<PaginationResult<Shift>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1).saturating_mul(limit);
@@ -75,6 +81,7 @@ impl TenantShiftRepository {
                FROM shifts WHERE 1=1"#,
         );
 
+        append_location_scope(&mut builder, "location_id", locations);
         Self::apply_filters(&mut builder, filters)?;
 
         let sort_by = filters.sort_by.as_deref().unwrap_or("clockIn");
@@ -103,6 +110,7 @@ impl TenantShiftRepository {
 
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM shifts WHERE 1=1");
+        append_location_scope(&mut count_builder, "location_id", locations);
         Self::apply_filters(&mut count_builder, filters)?;
 
         let total: (i64,) = count_builder
@@ -147,6 +155,12 @@ pub struct TenantCashRegisterRepository {
 impl TenantCashRegisterRepository {
     pub fn new(db: Arc<TenantDb>) -> Self {
         Self { db }
+    }
+    /// Venue comes from the immutable shift, never from the caller's selection.
+    pub async fn location_id(&self, id: Uuid) -> Result<Uuid, AppError> {
+        sqlx::query_scalar("SELECT unhex(replace(s.location_id,'-','')) FROM cash_registers r JOIN shifts s ON s.id=r.shift_id WHERE r.id=?")
+            .bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?
+            .ok_or_else(|| AppError::NotFound("CashRegister not found".into()))
     }
     const SELECT: &'static str = r#"
         SELECT unhex(replace(id,'-','')) AS id,
@@ -248,6 +262,12 @@ impl TenantCashRegisterRepository {
         &self,
         filters: &CashRegisterFilterDto,
     ) -> Result<PaginationResult<CashRegister>, AppError> {
+        self.list_inner(filters, None).await
+    }
+    pub async fn list_scoped(&self, filters: &CashRegisterFilterDto, locations: &[Uuid]) -> Result<PaginationResult<CashRegister>, AppError> {
+        self.list_inner(filters, Some(locations)).await
+    }
+    async fn list_inner(&self, filters: &CashRegisterFilterDto, locations: Option<&[Uuid]>) -> Result<PaginationResult<CashRegister>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1).saturating_mul(limit);
@@ -258,6 +278,7 @@ impl TenantCashRegisterRepository {
             Self::ENTRY_AGGREGATES_JOIN
         ));
 
+        append_location_scope(&mut builder, "(SELECT s.location_id FROM shifts s WHERE s.id=cr.shift_id)", locations);
         Self::apply_filters(&mut builder, filters)?;
 
         let sort_by = filters.sort_by.as_deref().unwrap_or("createdAt");
@@ -286,6 +307,7 @@ impl TenantCashRegisterRepository {
 
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM cash_registers cr WHERE 1=1");
+        append_location_scope(&mut count_builder, "(SELECT s.location_id FROM shifts s WHERE s.id=cr.shift_id)", locations);
         Self::apply_filters(&mut count_builder, filters)?;
 
         let total: (i64,) = count_builder
@@ -401,6 +423,12 @@ impl TenantCashDepositRepository {
     pub fn new(db: Arc<TenantDb>) -> Self {
         Self { db }
     }
+    /// Venue comes from the immutable shift, never from the caller's selection.
+    pub async fn location_id(&self, id: Uuid) -> Result<Uuid, AppError> {
+        sqlx::query_scalar("SELECT unhex(replace(s.location_id,'-','')) FROM cash_deposits r JOIN shifts s ON s.id=r.shift_id WHERE r.id=?")
+            .bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?
+            .ok_or_else(|| AppError::NotFound("CashDeposit not found".into()))
+    }
     const SELECT: &'static str = r#"
         SELECT unhex(replace(id,'-','')) AS id,
                unhex(replace(cash_register_id,'-','')) AS cash_register_id,
@@ -430,6 +458,12 @@ impl TenantCashDepositRepository {
         &self,
         filters: &CashDepositFilterDto,
     ) -> Result<PaginationResult<CashDeposit>, AppError> {
+        self.list_inner(filters, None).await
+    }
+    pub async fn list_scoped(&self, filters: &CashDepositFilterDto, locations: &[Uuid]) -> Result<PaginationResult<CashDeposit>, AppError> {
+        self.list_inner(filters, Some(locations)).await
+    }
+    async fn list_inner(&self, filters: &CashDepositFilterDto, locations: Option<&[Uuid]>) -> Result<PaginationResult<CashDeposit>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1).saturating_mul(limit);
@@ -452,6 +486,7 @@ impl TenantCashDepositRepository {
                FROM cash_deposits WHERE 1=1"#,
         );
 
+        append_location_scope(&mut builder, "(SELECT s.location_id FROM shifts s WHERE s.id=cash_deposits.shift_id)", locations);
         Self::apply_filters(&mut builder, filters)?;
 
         let sort_by = filters.sort_by.as_deref().unwrap_or("createdAt");
@@ -479,6 +514,7 @@ impl TenantCashDepositRepository {
 
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM cash_deposits WHERE 1=1");
+        append_location_scope(&mut count_builder, "(SELECT s.location_id FROM shifts s WHERE s.id=cash_deposits.shift_id)", locations);
         Self::apply_filters(&mut count_builder, filters)?;
 
         let total: (i64,) = count_builder
@@ -520,6 +556,11 @@ impl TenantExpenseRepository {
     pub fn new(db: Arc<TenantDb>) -> Self {
         Self { db }
     }
+    pub async fn location_id(&self, id: Uuid) -> Result<Option<Uuid>, AppError> {
+        sqlx::query_scalar("SELECT unhex(replace(location_id,'-','')) FROM expenses WHERE id=? AND deleted_at IS NULL")
+            .bind(id.to_string()).fetch_optional(&self.db.read_pool()?).await?
+            .ok_or_else(|| AppError::NotFound("Expense not found".into()))
+    }
     const SELECT: &'static str = r#"
         SELECT unhex(replace(id,'-','')) AS id,
                unhex(replace(category_id,'-','')) AS category_id,
@@ -554,10 +595,20 @@ impl TenantExpenseRepository {
             .await?;
         Ok(expense)
     }
+    pub async fn find_by_id_if_location(&self, id: Uuid, expected: Option<Uuid>) -> Result<Option<Expense>, AppError> {
+        Ok(sqlx::query_as(&format!("{} WHERE id=? AND deleted_at IS NULL AND location_id IS ?", Self::SELECT))
+            .bind(id.to_string()).bind(expected.map(|x| x.to_string())).fetch_optional(&self.db.read_pool()?).await?)
+    }
     pub async fn list(
         &self,
         filters: &ExpenseFilterDto,
     ) -> Result<PaginationResult<Expense>, AppError> {
+        self.list_inner(filters, None, true).await
+    }
+    pub async fn list_scoped(&self, filters: &ExpenseFilterDto, locations: &[Uuid], include_unscoped: bool) -> Result<PaginationResult<Expense>, AppError> {
+        self.list_inner(filters, Some(locations), include_unscoped).await
+    }
+    async fn list_inner(&self, filters: &ExpenseFilterDto, locations: Option<&[Uuid]>, include_unscoped: bool) -> Result<PaginationResult<Expense>, AppError> {
         let page = filters.page.unwrap_or(1).max(1);
         let limit = filters.limit.unwrap_or(10).clamp(1, 100);
         let offset = (page - 1).saturating_mul(limit);
@@ -589,6 +640,14 @@ impl TenantExpenseRepository {
              FROM expenses WHERE deleted_at IS NULL",
         );
 
+        if locations.is_some() {
+            builder.push(" AND (");
+            builder.push("0");
+            if include_unscoped { builder.push(" OR location_id IS NULL"); }
+            builder.push(" OR (1");
+            append_location_scope(&mut builder, "location_id", locations);
+            builder.push("))");
+        }
         Self::apply_filters(&mut builder, filters)?;
 
         let sort_by = filters.sort_by.as_deref().unwrap_or("expenseDate");
@@ -617,6 +676,14 @@ impl TenantExpenseRepository {
 
         let mut count_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("SELECT COUNT(*) FROM expenses WHERE deleted_at IS NULL");
+        if locations.is_some() {
+            count_builder.push(" AND (");
+            count_builder.push("0");
+            if include_unscoped { count_builder.push(" OR location_id IS NULL"); }
+            count_builder.push(" OR (1");
+            append_location_scope(&mut count_builder, "location_id", locations);
+            count_builder.push("))");
+        }
         Self::apply_filters(&mut count_builder, filters)?;
 
         let total: (i64,) = count_builder
@@ -1844,6 +1911,10 @@ impl TenantExpenseRepository {
         }
         Ok(())
     }
+    async fn stored_location(c: &mut SqliteConnection, id: Uuid) -> Result<Option<Uuid>, AppError> {
+        Ok(sqlx::query_scalar("SELECT unhex(replace(location_id,'-','')) FROM expenses WHERE id=?")
+            .bind(id.to_string()).fetch_one(c).await?)
+    }
     async fn scope(
         c: &mut SqliteConnection,
         shift: Option<Uuid>,
@@ -1858,6 +1929,9 @@ impl TenantExpenseRepository {
         dto: &CreateExpenseDto,
         actor: Option<Uuid>,
     ) -> Result<Expense, AppError> {
+        self.create_at(dto, actor, None).await
+    }
+    pub async fn create_at(&self, dto: &CreateExpenseDto, actor: Option<Uuid>, location: Option<Uuid>) -> Result<Expense, AppError> {
         let dto = dto.clone();
         write(
             &self.db,
@@ -1867,8 +1941,12 @@ impl TenantExpenseRepository {
                     Self::references(c, dto.category_id, dto.vendor_id, dto.shift_id).await?;
                     let id = Uuid::now_v7();
                     let ts = now()?;
-                    let venue = Self::scope(c, dto.shift_id).await?;
-                    sqlx::query("INSERT INTO expenses(id,category_id,vendor_id,amount,payment_method,payment_account,description,receipt_url,expense_date,is_recurring,recurrence_pattern,shift_id,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(id.to_string()).bind(dto.category_id.to_string()).bind(dto.vendor_id.map(|x| x.to_string())).bind(amount).bind(dto.payment_method).bind(dto.payment_account).bind(dto.description).bind(dto.receipt_url).bind(date(dto.expense_date)?.unwrap_or_else(|| ts.clone())).bind(dto.is_recurring.unwrap_or(false)).bind(dto.recurrence_pattern).bind(dto.shift_id.map(|x| x.to_string())).bind(actor.map(|x| x.to_string())).bind(actor.map(|x| x.to_string())).bind(&ts).bind(&ts).execute(&mut *c).await?;
+                    let shift_venue = Self::scope(c, dto.shift_id).await?;
+                    if location.is_some() && shift_venue.is_some() && location != shift_venue {
+                        return Err(AppError::BadRequest("Expense venue must match its shift".into()));
+                    }
+                    let venue = location.or(shift_venue);
+                    sqlx::query("INSERT INTO expenses(id,category_id,vendor_id,amount,payment_method,payment_account,description,receipt_url,expense_date,is_recurring,recurrence_pattern,shift_id,created_by,updated_by,created_at,updated_at,location_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(id.to_string()).bind(dto.category_id.to_string()).bind(dto.vendor_id.map(|x| x.to_string())).bind(amount).bind(dto.payment_method).bind(dto.payment_account).bind(dto.description).bind(dto.receipt_url).bind(date(dto.expense_date)?.unwrap_or_else(|| ts.clone())).bind(dto.is_recurring.unwrap_or(false)).bind(dto.recurrence_pattern).bind(dto.shift_id.map(|x| x.to_string())).bind(actor.map(|x| x.to_string())).bind(actor.map(|x| x.to_string())).bind(&ts).bind(&ts).bind(venue.map(|x| x.to_string())).execute(&mut *c).await?;
                     let row = Self::get(c, id, false).await?;
                     event(c, "expense", id, "expense.created", venue, false, json!(row)).await?;
                     event(c, "expense", id, "approval.requested", venue, false, json!({"expense_id":id,"entity_type":"expense","amount":row.amount,"requestedBy":actor})).await?;
@@ -1884,12 +1962,19 @@ impl TenantExpenseRepository {
         dto: &UpdateExpenseDto,
         actor: Option<Uuid>,
     ) -> Result<Expense, AppError> {
+        self.update_inner(id, dto, actor, None).await
+    }
+    pub async fn update_if_location(&self, id: Uuid, dto: &UpdateExpenseDto, actor: Option<Uuid>, expected: Option<Uuid>) -> Result<Expense, AppError> {
+        self.update_inner(id, dto, actor, Some(expected)).await
+    }
+    async fn update_inner(&self, id: Uuid, dto: &UpdateExpenseDto, actor: Option<Uuid>, expected: Option<Option<Uuid>>) -> Result<Expense, AppError> {
         let dto = dto.clone();
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let old = Self::get(c, id, false).await?;
+                    Self::check_location(c, id, expected).await?;
                     if old.approval_status == "approved" {
                         return Err(AppError::Conflict("Cannot update an approved expense".into()));
                     }
@@ -1897,9 +1982,10 @@ impl TenantExpenseRepository {
                     let vendor = dto.vendor_id.or(old.vendor_id);
                     let shift = dto.shift_id.or(old.shift_id);
                     Self::references(c, category, vendor, shift).await?;
-                    sqlx::query("UPDATE expenses SET category_id=?,vendor_id=?,amount=COALESCE(?,amount),payment_method=COALESCE(?,payment_method),payment_account=COALESCE(?,payment_account),description=COALESCE(?,description),receipt_url=COALESCE(?,receipt_url),expense_date=COALESCE(?,expense_date),is_recurring=COALESCE(?,is_recurring),recurrence_pattern=COALESCE(?,recurrence_pattern),shift_id=?,updated_by=?,updated_at=? WHERE id=?").bind(category.to_string()).bind(vendor.map(|x| x.to_string())).bind(dto.amount.map(positive).transpose()?).bind(dto.payment_method).bind(dto.payment_account).bind(dto.description).bind(dto.receipt_url).bind(date(dto.expense_date)?).bind(dto.is_recurring).bind(dto.recurrence_pattern).bind(shift.map(|x| x.to_string())).bind(actor.map(|x| x.to_string())).bind(now()?).bind(id.to_string()).execute(&mut *c).await?;
+                    let venue = if dto.shift_id.is_some() { Self::scope(c, shift).await? } else { Self::stored_location(c, id).await? };
+                    sqlx::query("UPDATE expenses SET category_id=?,vendor_id=?,amount=COALESCE(?,amount),payment_method=COALESCE(?,payment_method),payment_account=COALESCE(?,payment_account),description=COALESCE(?,description),receipt_url=COALESCE(?,receipt_url),expense_date=COALESCE(?,expense_date),is_recurring=COALESCE(?,is_recurring),recurrence_pattern=COALESCE(?,recurrence_pattern),shift_id=?,location_id=?,updated_by=?,updated_at=? WHERE id=?").bind(category.to_string()).bind(vendor.map(|x| x.to_string())).bind(dto.amount.map(positive).transpose()?).bind(dto.payment_method).bind(dto.payment_account).bind(dto.description).bind(dto.receipt_url).bind(date(dto.expense_date)?).bind(dto.is_recurring).bind(dto.recurrence_pattern).bind(shift.map(|x| x.to_string())).bind(venue.map(|x| x.to_string())).bind(actor.map(|x| x.to_string())).bind(now()?).bind(id.to_string()).execute(&mut *c).await?;
                     let row = Self::get(c, id, false).await?;
-                    let venue = Self::scope(c, row.shift_id).await?;
+
                     event(c, "expense", id, "expense.updated", venue, false, json!(row)).await?;
                     Ok(row)
                 })
@@ -1908,11 +1994,18 @@ impl TenantExpenseRepository {
         .await
     }
     pub async fn soft_delete(&self, id: Uuid) -> Result<Expense, AppError> {
+        self.soft_delete_inner(id, None).await
+    }
+    pub async fn soft_delete_if_location(&self, id: Uuid, expected: Option<Uuid>) -> Result<Expense, AppError> {
+        self.soft_delete_inner(id, Some(expected)).await
+    }
+    async fn soft_delete_inner(&self, id: Uuid, expected: Option<Option<Uuid>>) -> Result<Expense, AppError> {
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
-                    let old = Self::get(c, id, false).await?;
+                    Self::get(c, id, false).await?;
+                    Self::check_location(c, id, expected).await?;
                     let ts = now()?;
                     sqlx::query("UPDATE expenses SET deleted_at=?,updated_at=? WHERE id=?")
                         .bind(&ts)
@@ -1921,7 +2014,7 @@ impl TenantExpenseRepository {
                         .execute(&mut *c)
                         .await?;
                     let row = Self::get(c, id, true).await?;
-                    let venue = Self::scope(c, old.shift_id).await?;
+                    let venue = Self::stored_location(c, id).await?;
                     event(c, "expense", id, "expense.deleted", venue, true, json!(row)).await?;
                     Ok(row)
                 })
@@ -1930,29 +2023,47 @@ impl TenantExpenseRepository {
         .await
     }
     pub async fn approve(&self, id: Uuid, actor: Uuid) -> Result<Expense, AppError> {
-        self.decide(id, None, actor).await
+        self.decide(id, None, actor, None).await
     }
     pub async fn reject(&self, id: Uuid, reason: &str, actor: Uuid) -> Result<Expense, AppError> {
         if reason.trim().is_empty() {
             return Err(AppError::BadRequest("Rejection reason is required".into()));
         }
-        self.decide(id, Some(reason.trim().into()), actor).await
+        self.decide(id, Some(reason.trim().into()), actor, None).await
+    }
+    pub async fn approve_if_location(&self, id: Uuid, actor: Uuid, expected: Option<Uuid>) -> Result<Expense, AppError> {
+        self.decide(id, None, actor, Some(expected)).await
+    }
+    pub async fn reject_if_location(&self, id: Uuid, reason: &str, actor: Uuid, expected: Option<Uuid>) -> Result<Expense, AppError> {
+        if reason.trim().is_empty() { return Err(AppError::BadRequest("Rejection reason is required".into())); }
+        self.decide(id, Some(reason.trim().into()), actor, Some(expected)).await
+    }
+    async fn check_location(c: &mut SqliteConnection, id: Uuid, expected: Option<Option<Uuid>>) -> Result<(), AppError> {
+        if let Some(expected) = expected {
+            if Self::stored_location(c, id).await? != expected {
+                return Err(AppError::Conflict("Expense venue changed; reload before continuing".into()));
+            }
+        }
+        Ok(())
     }
     async fn decide(
         &self,
         id: Uuid,
         reason: Option<String>,
         actor: Uuid,
+        expected: Option<Option<Uuid>>,
     ) -> Result<Expense, AppError> {
         write(
             &self.db,
             Box::new(move |c| {
                 Box::pin(async move {
                     let old = Self::get(c, id, false).await?;
+                    Self::check_location(c, id, expected).await?;
                     if old.approval_status == "approved" || old.approval_status == "rejected" && reason.is_some() {
                         return Err(AppError::Conflict("Expense decision is already recorded".into()));
                     }
                     let status = if reason.is_some() { "rejected" } else { "approved" };
+                    let mut venue = Self::stored_location(c, id).await?;
                     let mut shift = old.shift_id;
                     let mut entry = None;
                     if status == "approved" && matches!(old.payment_method.as_str(), "cash" | "split_payment") {
@@ -1961,14 +2072,19 @@ impl TenantExpenseRepository {
                             shift = value.map(|x| Uuid::parse_str(&x).map_err(|e| AppError::Internal(e.to_string()))).transpose()?;
                         }
                         let shift = shift.ok_or_else(|| AppError::conflict_code("CASH_REGISTER_REQUIRED", None))?;
+                        let cash_venue = shift_location(c, shift).await?;
+                        if venue.is_some() && venue != Some(cash_venue) {
+                            return Err(AppError::Forbidden("Expense must be paid from its venue's register".into()));
+                        }
+                        venue = Some(cash_venue);
                         let register = TenantCashRegisterRepository::by_shift(c, shift).await?.filter(|x| x.status == "open").ok_or_else(|| AppError::conflict_code("CASH_REGISTER_REQUIRED", None))?;
                         let amount: i64 = sqlx::query_scalar("SELECT amount FROM expenses WHERE id=?").bind(id.to_string()).fetch_one(&mut *c).await?;
                         entry = Some(TenantCashRegisterRepository::entry_on(c, register.id, "cash_out", amount, Some(format!("Expense: {}", old.description.as_deref().unwrap_or("N/A"))), Some(id), Some("expense".into()), actor, false).await?.id);
                     }
                     let ts = now()?;
-                    sqlx::query("UPDATE expenses SET approval_status=?,approved_by=?,approved_at=?,rejection_reason=?,shift_id=?,cash_register_entry_id=COALESCE(?,cash_register_entry_id),updated_by=?,updated_at=? WHERE id=?").bind(status).bind(actor.to_string()).bind(&ts).bind(reason).bind(shift.map(|x| x.to_string())).bind(entry.map(|x| x.to_string())).bind(actor.to_string()).bind(&ts).bind(id.to_string()).execute(&mut *c).await?;
+                    sqlx::query("UPDATE expenses SET approval_status=?,approved_by=?,approved_at=?,rejection_reason=?,shift_id=?,location_id=?,cash_register_entry_id=COALESCE(?,cash_register_entry_id),updated_by=?,updated_at=? WHERE id=?").bind(status).bind(actor.to_string()).bind(&ts).bind(reason).bind(shift.map(|x| x.to_string())).bind(venue.map(|x| x.to_string())).bind(entry.map(|x| x.to_string())).bind(actor.to_string()).bind(&ts).bind(id.to_string()).execute(&mut *c).await?;
                     let row = Self::get(c, id, false).await?;
-                    let venue = Self::scope(c, row.shift_id).await?;
+
                     event(c, "expense", id, "expense.status_changed", venue, false, json!(row)).await?;
                     event(c, "expense", id, "approval.decided", venue, false, json!({"expense_id":id,"entity_type":"expense","status":status,"requestedBy":old.created_by})).await?;
                     Ok(row)
@@ -1983,5 +2099,19 @@ impl TenantExpenseRepository {
             status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
             details: None,
         })
+    }
+}
+
+/// An explicitly empty grant list must stay empty, including pagination totals.
+fn append_location_scope(builder: &mut QueryBuilder<Sqlite>, expression: &str, locations: Option<&[Uuid]>) {
+    if let Some(locations) = locations {
+        if locations.is_empty() {
+            builder.push(" AND 0");
+        } else {
+            builder.push(" AND ").push(expression).push(" IN (");
+            let mut separated = builder.separated(",");
+            for id in locations { separated.push_bind(id.to_string()); }
+            separated.push_unseparated(")");
+        }
     }
 }

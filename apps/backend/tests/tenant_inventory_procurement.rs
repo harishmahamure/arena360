@@ -343,6 +343,44 @@ async fn procurement_snapshots_receipt_expense_idempotency_and_reorder() {
         .await
         .unwrap();
     assert_eq!(final_receipt.purchase_order.order.status, "received");
+    let historical_expense =
+        gaming_cafe_api::repositories::TenantExpenseRepository::new(f.db.clone());
+    assert_eq!(
+        historical_expense
+            .location_id(result.expense_id)
+            .await
+            .unwrap(),
+        Some(venue)
+    );
+    let moved_venue = f.location("moved-store").await;
+    let store_id = store.id;
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("UPDATE inventory_locations SET venue_location_id=? WHERE id=?")
+                .bind(moved_venue.to_string())
+                .bind(store_id.to_string())
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        historical_expense
+            .location_id(result.expense_id)
+            .await
+            .unwrap(),
+        Some(venue)
+    );
+    historical_expense
+        .soft_delete(result.expense_id)
+        .await
+        .unwrap();
+    let deleted_venue: String = sqlx::query_scalar("SELECT location_id FROM outbox_events WHERE aggregate_id=? AND event_type='expense.deleted'")
+        .bind(result.expense_id.to_string()).fetch_one(&f.db.read_pool().unwrap()).await.unwrap();
+    assert_eq!(deleted_venue, venue.to_string());
+
     assert_eq!(f.scalar("SELECT COUNT(*) FROM expenses").await, 2);
     let rule:UpsertInventoryReorderRuleDto=serde_json::from_value(json!({"locationId":store.id,"productId":product,"minimumPieces":50,"targetPieces":100,"preferredVendorId":vendor.id})).unwrap();
     service.upsert_reorder_rule(rule, actor).await.unwrap();

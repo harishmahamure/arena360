@@ -482,3 +482,300 @@ async fn invalid_money_and_fencing_leave_no_records() {
     assert_eq!(f.scalar("SELECT COUNT(*) FROM cash_registers").await, 0);
     f.close().await;
 }
+
+#[tokio::test]
+async fn financial_lists_and_cash_approval_keep_the_actual_venue() {
+    use gaming_cafe_api::{access::scope::LocationScope, dto::JwtUserClaims};
+    let f = Fixture::new().await;
+    let venue = f.location("allowed").await;
+    let other = f.location("elsewhere").await;
+    let staff = f.staff().await;
+    let outsider = f.staff().await;
+    let role = Uuid::now_v7();
+    f.db.with_immediate_writer(move |c| Box::pin(async move {
+        let at = gaming_cafe_api::tenancy::format_sqlite_timestamp(&Utc::now()).unwrap();
+        sqlx::query("INSERT INTO access_roles(id,name,permissions,created_at,updated_at) VALUES(?,'Finance','[\"cash-registers:read\",\"cash-registers:write\",\"cash-deposits:read\",\"cash-deposits:approve\",\"expenses:read\",\"expenses:write\",\"expenses:approve\"]',?,?)")
+            .bind(role.to_string()).bind(&at).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO access_assignments(user_id,role_id,created_at) VALUES(?,?,?)")
+            .bind(staff.to_string()).bind(role.to_string()).bind(&at).execute(&mut *c).await?;
+        sqlx::query("INSERT INTO location_role_assignments(user_id,location_id,role_id,created_at) VALUES(?,?,?,?)")
+            .bind(staff.to_string()).bind(venue.to_string()).bind(role.to_string()).bind(&at).execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    let claims: JwtUserClaims = dto(
+        json!({"sub":staff,"userId":staff,"tenantId":f.db.tenant_id(),
+        "roles":["staff"],"permissions":[],"allowedTenants":[f.db.tenant_id()],
+        "iss":"gamezone","aud":"gamezone","appId":"admin","orgIds":[f.db.tenant_id()]}),
+    );
+    let shifts = TenantShiftRepository::new(f.db.clone());
+    let here = shifts
+        .start_confirmed(
+            staff,
+            dto(json!({"openingBalance":100,"venueLocationId":venue})),
+            staff,
+        )
+        .await
+        .unwrap();
+    let there = shifts
+        .start_confirmed(
+            outsider,
+            dto(json!({"openingBalance":100,"venueLocationId":other})),
+            outsider,
+        )
+        .await
+        .unwrap();
+    let shift_page = shifts
+        .list_scoped(&dto(json!({"limit":1})), &[venue])
+        .await
+        .unwrap();
+    assert_eq!(shift_page.total, 1);
+    assert_eq!(shift_page.data[0].id, here.shift.id);
+    assert_eq!(
+        shifts
+            .list_scoped(&dto(json!({"userId":outsider})), &[venue])
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        shifts
+            .list_scoped(&dto(json!({})), &[])
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    let cash = TenantCashRegisterRepository::new(f.db.clone());
+    let deposits = TenantCashDepositRepository::new(f.db.clone());
+    let here_deposit = deposits.create(&dto(json!({"cashRegisterId":here.cash_register.id,"shiftId":here.shift.id,"amount":10,"denominations":{"10":1}})), staff).await.unwrap();
+    let there_deposit = deposits.create(&dto(json!({"cashRegisterId":there.cash_register.id,"shiftId":there.shift.id,"amount":10,"denominations":{"10":1}})), outsider).await.unwrap();
+    let scope = LocationScope::resolve_tenant(f.db.clone(), &claims, "cash-registers:read", None)
+        .await
+        .unwrap();
+    let page = cash
+        .list_scoped(&dto(json!({"limit":1})), &scope.locations)
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.data[0].id, here.cash_register.id);
+    assert_eq!(
+        cash.list_scoped(&dto(json!({"shiftId":there.shift.id})), &scope.locations)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        cash.list_scoped(&dto(json!({})), &[]).await.unwrap().total,
+        0
+    );
+    assert_eq!(
+        cash.location_id(there.cash_register.id).await.unwrap(),
+        other
+    );
+    assert!(LocationScope::resolve_tenant(
+        f.db.clone(),
+        &claims,
+        "cash-registers:write",
+        Some(cash.location_id(there.cash_register.id).await.unwrap())
+    )
+    .await
+    .is_err());
+    let scope = LocationScope::resolve_tenant(f.db.clone(), &claims, "cash-deposits:read", None)
+        .await
+        .unwrap();
+    let page = deposits
+        .list_scoped(&dto(json!({"limit":1})), &scope.locations)
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.data[0].id, here_deposit.id);
+    assert_eq!(
+        deposits
+            .list_scoped(
+                &dto(json!({"cashRegisterId":there.cash_register.id})),
+                &scope.locations
+            )
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        deposits
+            .list_scoped(&dto(json!({})), &[])
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert!(LocationScope::resolve_tenant(
+        f.db.clone(),
+        &claims,
+        "cash-deposits:approve",
+        Some(deposits.location_id(there_deposit.id).await.unwrap())
+    )
+    .await
+    .is_err());
+
+    let category = TenantExpenseCategoryRepository::new(f.db.clone())
+        .create(&dto(json!({"name":"Venue repairs"})), Some(staff))
+        .await
+        .unwrap();
+    let expenses = TenantExpenseRepository::new(f.db.clone());
+    let scoped = expenses
+        .create_at(
+            &dto(json!({"categoryId":category.id,"amount":3,"paymentMethod":"cash"})),
+            Some(staff),
+            Some(other),
+        )
+        .await
+        .unwrap();
+    let card = expenses
+        .create_at(
+            &dto(json!({"categoryId":category.id,"amount":4,"paymentMethod":"card"})),
+            Some(staff),
+            Some(venue),
+        )
+        .await
+        .unwrap();
+    let unscoped = expenses
+        .create(
+            &dto(json!({"categoryId":category.id,"amount":5,"paymentMethod":"card"})),
+            Some(staff),
+        )
+        .await
+        .unwrap();
+    let before = f.outbox_count().await;
+    let entries = f.scalar("SELECT COUNT(*) FROM cash_register_entries").await;
+    assert!(expenses.approve(scoped.id, staff).await.is_err());
+    assert_eq!(f.outbox_count().await, before);
+    assert_eq!(
+        f.scalar("SELECT COUNT(*) FROM cash_register_entries").await,
+        entries
+    );
+    assert_eq!(
+        expenses
+            .find_by_id(scoped.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .approval_status,
+        "pending"
+    );
+    let page = expenses
+        .list_scoped(&dto(json!({"limit":1})), &[venue], false)
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.data[0].id, card.id);
+    assert_eq!(
+        expenses
+            .list_scoped(&dto(json!({})), &[venue], true)
+            .await
+            .unwrap()
+            .total,
+        2
+    );
+    assert_eq!(
+        expenses
+            .list_scoped(&dto(json!({})), &[], false)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    assert_eq!(
+        expenses
+            .list_scoped(&dto(json!({})), &[], true)
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    assert_eq!(expenses.location_id(unscoped.id).await.unwrap(), None);
+    assert!(expenses.create_at(&dto(json!({"categoryId":category.id,"amount":1,"paymentMethod":"card","shiftId":here.shift.id})), Some(staff), Some(other)).await.is_err());
+    expenses
+        .update(
+            card.id,
+            &dto(json!({"description":"New description"})),
+            Some(staff),
+        )
+        .await
+        .unwrap();
+    assert_eq!(expenses.location_id(card.id).await.unwrap(), Some(venue));
+    expenses
+        .update(
+            card.id,
+            &dto(json!({"shiftId":there.shift.id})),
+            Some(staff),
+        )
+        .await
+        .unwrap();
+    assert_eq!(expenses.location_id(card.id).await.unwrap(), Some(other));
+    assert!(expenses
+        .find_by_id_if_location(card.id, Some(venue))
+        .await
+        .unwrap()
+        .is_none());
+    assert!(expenses
+        .find_by_id_if_location(card.id, Some(other))
+        .await
+        .unwrap()
+        .is_some());
+    let before_stale_action = f.outbox_count().await;
+    assert!(expenses
+        .approve_if_location(card.id, staff, Some(venue))
+        .await
+        .is_err());
+    assert!(expenses
+        .reject_if_location(card.id, "Stale", staff, Some(venue))
+        .await
+        .is_err());
+    assert!(expenses
+        .update_if_location(
+            card.id,
+            &dto(json!({"amount":99})),
+            Some(staff),
+            Some(venue)
+        )
+        .await
+        .is_err());
+    assert!(expenses
+        .soft_delete_if_location(card.id, Some(venue))
+        .await
+        .is_err());
+    assert_eq!(f.outbox_count().await, before_stale_action);
+    assert_eq!(
+        expenses.find_by_id(card.id).await.unwrap().unwrap().amount,
+        4.0
+    );
+
+    expenses.approve(scoped.id, outsider).await.unwrap();
+    assert_eq!(expenses.location_id(scoped.id).await.unwrap(), Some(other));
+    expenses.soft_delete(scoped.id).await.unwrap();
+    let last: String = sqlx::query_scalar("SELECT location_id FROM outbox_events WHERE aggregate_id=? AND event_type='expense.deleted'")
+        .bind(scoped.id.to_string()).fetch_one(&f.db.read_pool().unwrap()).await.unwrap();
+    assert_eq!(last, other.to_string());
+    f.db.with_immediate_writer(move |c| {
+        Box::pin(async move {
+            sqlx::query("DELETE FROM location_role_assignments WHERE user_id=?")
+                .bind(staff.to_string())
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+    assert!(LocationScope::resolve_tenant(
+        f.db.clone(),
+        &claims,
+        "cash-registers:read",
+        Some(venue)
+    )
+    .await
+    .is_err());
+    f.close().await;
+}
