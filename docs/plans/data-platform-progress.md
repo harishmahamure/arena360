@@ -1,7 +1,7 @@
 # Data Platform Progress
 
 **Updated:** 2026-10-08
-**Branch:** `platform-v2`  
+**Branch:** `main`  
 **Source plan:** `docs/plans/data-platform-build-plan.md`  
 **Architecture source:** `docs/architecture/data-platform.md`
 
@@ -12,7 +12,7 @@
 - [x] M2 — Ownership and routing
 - [x] M3 — Tenant storage foundation
 - [x] M4 — Core venue operations on SQLite
-- [ ] M5 — Back office on SQLite
+- [x] M5 — Back office on SQLite
 - [ ] M6 — Analytics ingestion
 - [ ] M7 — Reports on DuckDB
 - [ ] M8 — Replication and recovery
@@ -20,9 +20,9 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through TEST-0020
+## Completed through OPS-0011
 
-- M0–M4 are complete; operational API cutover is verified.
+- M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `OPS-0011` — Retire operational PostgreSQL migrations/schema and merge the cutover.
+- [ ] `API-0040` — Per-cell canonical outbox publisher with acknowledgement, realtime-cursor safety, and backlog metrics.
 
 ### API-0033 completed
 
@@ -86,6 +86,13 @@
 - Obsolete operational PostgreSQL trigger tests are retired; all nine live report routes are tested for 503 and current local access revocation for 403.
 - Five optional external ClickHouse/Redis gates remain. JetStream and report parity suites are rebuilt in M6/M7.
 
+### OPS-0011 completed
+
+- Removed 118 tracked operational SQL migrations, operational PostgreSQL configuration/import tools and the legacy worker. Control and tenant migration families remain active.
+- Deployment uses explicit control migrations and durable tenant storage; owning-cell chart guards and production render/lint pass.
+- Backend 368, admin 124 and kiosk 123 checks pass; both client typechecks pass. Actual kiosk HTTP flow passes against the native API and seeded SQLite tenant. The authenticated admin browser floor updates 5 → 6 → 5 without refresh. Native Tauri window behavior was not exercised.
+- `platform-v2` is merged locally into `main`, based on existing `master`. Remote default and deployment remain unchanged. Reports remain unavailable until M7.
+
 ## M5 queue
 
 - [x] `DB-0010c` — Back-office SQLite schema (`0a350c0`).
@@ -95,7 +102,7 @@
 - [x] `API-0033` — Operational cutover and shared-table compatibility removal.
 - [x] `OPS-0010` — Tenant service demo seed.
 - [x] `TEST-0020` — SQLite/control-plane integration harnesses.
-- [ ] `OPS-0011` — Retire operational PostgreSQL and merge.
+- [x] `OPS-0011` — Retire operational PostgreSQL and merge (`7ae41d7`).
 
 ## M4 queue
 
@@ -118,7 +125,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed implementation commit: `2907867` (`OPS-0010`).
+- Latest completed implementation commit: `7ae41d7` (`OPS-0011`); integration harness `2492b35`.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.
