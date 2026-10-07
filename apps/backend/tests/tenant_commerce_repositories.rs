@@ -1194,3 +1194,88 @@ async fn sales_and_settlements_update_cash_atomically() {
     assert_eq!(credits.summary(f.player).await.unwrap().outstanding, 7.5);
     f.close().await;
 }
+
+#[tokio::test]
+async fn kitchen_queue_is_opt_in_atomic_and_uses_sale_snapshots() {
+    let f = Fixture::new().await;
+    let kitchen = gaming_cafe_api::services::TenantKitchenService::new(f.db.clone());
+    let tx = TenantTransactionRepository::new(f.db.clone());
+    tx.create(f.sale("cash", "completed", 1, None), None)
+        .await
+        .unwrap();
+    assert_eq!(kitchen.list(false).await.unwrap(), serde_json::json!([]));
+    let (a, b) = tokio::join!(
+        kitchen.save_menu(f.product, true, "Counter", 5, 0, f.staff),
+        kitchen.save_menu(f.product, true, "Kitchen", 15, 0, f.staff)
+    );
+    assert_ne!(a.is_ok(), b.is_ok());
+    assert_eq!(kitchen.menu().await.unwrap()[0]["enabled"], true);
+    let sale = tx
+        .create(f.sale("credit", "credit", 1, None), Some(f.staff))
+        .await
+        .unwrap();
+    let tickets = kitchen.list(false).await.unwrap();
+    assert_eq!(tickets.as_array().unwrap().len(), 1);
+    assert_eq!(tickets[0]["transactionId"], sale.id.to_string());
+    assert_eq!(tickets[0]["items"][0]["name"], "Cola");
+    let id = Uuid::parse_str(tickets[0]["id"].as_str().unwrap()).unwrap();
+    sqlx::query("UPDATE products SET name='Renamed' WHERE id=?")
+        .bind(f.product.to_string())
+        .execute(&f.admin)
+        .await
+        .unwrap();
+    assert_eq!(
+        kitchen.list(false).await.unwrap()[0]["items"][0]["name"],
+        "Cola"
+    );
+    assert!(kitchen
+        .advance(id, "served", 1, None, f.staff)
+        .await
+        .is_err());
+    kitchen
+        .advance(id, "preparing", 1, None, f.staff)
+        .await
+        .unwrap();
+    assert!(kitchen
+        .advance(id, "ready", 1, None, f.staff)
+        .await
+        .is_err());
+    sqlx::query("UPDATE transactions SET payment_status='failed' WHERE id=?")
+        .bind(sale.id.to_string())
+        .execute(&f.admin)
+        .await
+        .unwrap();
+    assert!(kitchen
+        .advance(id, "ready", 2, None, f.staff)
+        .await
+        .is_err());
+    assert!(kitchen
+        .advance(id, "cancelled", 2, None, f.staff)
+        .await
+        .is_err());
+    kitchen
+        .advance(id, "cancelled", 2, Some("payment failed"), f.staff)
+        .await
+        .unwrap();
+    assert!(kitchen
+        .list(false)
+        .await
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let history = kitchen.list(true).await.unwrap();
+    assert_eq!(history[0]["events"].as_array().unwrap().len(), 3);
+    assert_eq!(history[0]["events"][1]["actor"], "staff");
+    let count = f.atomic_counts().await;
+    assert!(tx
+        .create(f.sale("cash", "completed", 99, None), Some(f.staff))
+        .await
+        .is_err());
+    assert_eq!(f.atomic_counts().await, count);
+    assert_eq!(
+        kitchen.list(true).await.unwrap().as_array().unwrap().len(),
+        1
+    );
+    f.close().await;
+}

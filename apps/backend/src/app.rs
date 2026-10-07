@@ -90,10 +90,12 @@ impl AppState {
             String,
             String,
             bool,
+            String,
+            String,
             chrono::DateTime<chrono::Utc>,
             chrono::DateTime<chrono::Utc>,
         )> = sqlx::query_as(
-            r#"SELECT id,slug,name,"isActive","createdAt","updatedAt"
+            r#"SELECT id,slug,name,"isActive",timezone,currency,"createdAt","updatedAt"
                    FROM venue_locations
                    WHERE "organizationId"=$1
                    ORDER BY id"#,
@@ -105,12 +107,14 @@ impl AppState {
             db.clone(),
             locations
                 .into_iter()
-                .map(|(id, slug, name, is_active, created_at, updated_at)| {
+                .map(|(id, slug, name, is_active, timezone, currency, created_at, updated_at)| {
                     crate::tenancy::ProjectedVenueLocation {
                         id,
                         slug,
                         name,
                         is_active,
+                        timezone,
+                        currency,
                         created_at,
                         updated_at,
                     }

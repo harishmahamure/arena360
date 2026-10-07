@@ -117,3 +117,74 @@ async fn migrated_pool() -> SqlitePool {
     gaming_cafe_api::tenancy::migrate(&pool).await.unwrap();
     pool
 }
+
+#[tokio::test]
+async fn notification_upgrade_preserves_rows_and_foreign_keys() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .in_memory(true)
+                .foreign_keys(true),
+        )
+        .await
+        .unwrap();
+    for migration in [
+        include_str!("../migrations/tenant/0001_foundation.sql"),
+        include_str!("../migrations/tenant/0002_provisioning_defaults.sql"),
+        include_str!("../migrations/tenant/0003_core_venue.sql"),
+        include_str!("../migrations/tenant/0004_back_office.sql"),
+        include_str!("../migrations/tenant/0005_shift_closure.sql"),
+    ] {
+        sqlx::raw_sql(migration).execute(&pool).await.unwrap();
+    }
+    let user = "0199c041-0000-7000-8000-000000000200";
+    let activity = "0199c041-0000-7000-8000-000000000201";
+    let notification = "0199c041-0000-7000-8000-000000000202";
+    sqlx::query(
+        "INSERT INTO users(id,username,role,created_at,updated_at) VALUES(?,'staff','staff',?,?)",
+    )
+    .bind(user)
+    .bind(NOW)
+    .bind(NOW)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO activity_log(id,kind,title,actor_user_id,created_at) VALUES(?,'transaction_sale','old',?,?)").bind(activity).bind(user).bind(NOW).execute(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO user_notifications(id,activity_id,user_id,created_at) VALUES(?,?,?,?)",
+    )
+    .bind(notification)
+    .bind(activity)
+    .bind(user)
+    .bind(NOW)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::raw_sql(include_str!(
+        "../migrations/tenant/0006_settings_notifications_access.sql"
+    ))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM user_notifications un JOIN activity_log al ON al.id=un.activity_id WHERE un.id=? AND al.title='old'").bind(notification).fetch_one(&pool).await.unwrap();
+    assert_eq!(count, 1);
+    assert!(sqlx::query("PRAGMA foreign_key_check")
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+        .is_empty());
+    sqlx::query("DELETE FROM activity_log WHERE id=?")
+        .bind(activity)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_notifications")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    pool.close().await;
+}

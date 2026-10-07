@@ -387,6 +387,35 @@ impl ConfigService {
         self.settings_repo.history(organization_id, &query).await
     }
 
+    pub async fn upsert_config_tenant(&self,db:Arc<TenantDb>,key:&str,dto:UpsertConfigDto,actor:Uuid)->Result<Configuration,AppError>{
+        settings_catalog::validate(&self.default_timezone,key,&dto.value,false)?;
+        let tenant=db.tenant_id();let category=key.split('.').next().unwrap_or("general");
+        let row=crate::repositories::TenantConfigRepository::new(db).upsert(key,category,&dto,actor).await?;
+        self.invalidate_scoped(tenant,key,None).await?;Ok(row)
+    }
+    pub async fn snapshot_all_tenant(&self,db:Arc<TenantDb>,organization:Uuid,location:Option<Uuid>)->Result<ConfigurationSnapshot,AppError>{
+        let (overrides,revision)=TenantSettingsRepository::new(db).snapshot_values(organization,location).await?;
+        snapshot_from_settings(organization,location,revision,self.resolve(overrides,location,None))
+    }
+    pub async fn effective_tenant(&self,db:Arc<TenantDb>,organization:Uuid,query:EffectiveSettingsQuery)->Result<Vec<ResolvedSetting>,AppError>{
+        let repo=TenantSettingsRepository::new(db);
+        if let Some(location)=query.location_id{repo.validate_location(organization,location).await?;}
+        let overrides=repo.list_overrides(organization,query.location_id).await?;
+        Ok(self.resolve(overrides,query.location_id,query.category.as_deref()))
+    }
+    pub async fn upsert_setting_tenant(&self,db:Arc<TenantDb>,organization:Uuid,key:&str,dto:UpsertSettingOverrideDto,actor:Uuid,request:Option<&str>)->Result<SettingOverride,AppError>{
+        if dto.reason.trim().len()<3{return Err(AppError::BadRequest("A change reason of at least 3 characters is required".into()));}
+        settings_catalog::validate(&self.default_timezone,key,&dto.value,dto.location_id.is_some())?;
+        let row=TenantSettingsRepository::new(db).upsert_override(organization,key,&dto,actor,request,false).await?;
+        self.invalidate_scoped(organization,key,row.location_id).await?;Ok(row)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub async fn delete_setting_tenant(&self,db:Arc<TenantDb>,organization:Uuid,location:Option<Uuid>,key:&str,expected:Option<i64>,reason:&str,actor:Uuid,request:Option<&str>)->Result<bool,AppError>{
+        if dto_key_unknown(self,key)||reason.trim().len()<3{return Err(AppError::BadRequest("Provide a known setting and a change reason of at least 3 characters".into()));}
+        let inherited=if location.is_none(){self.catalog().into_iter().find(|d|d.key==key).map(|d|d.default_value)}else{None};
+        let result=TenantSettingsRepository::new(db).delete_override(organization,location,key,expected,reason,actor,request,inherited.as_ref()).await?;
+        if result{self.invalidate_scoped(organization,key,location).await?;}Ok(result)
+    }
     pub async fn effective_pricing_tenant(
         &self,
         db: Arc<TenantDb>,
@@ -692,3 +721,9 @@ mod snapshot_revision_tests {
         assert!(combined_snapshot_revision(10, 5).unwrap() > base);
     }
 }
+
+impl ConfigService {
+    pub fn tenant(db: std::sync::Arc<crate::tenancy::TenantDb>) -> crate::repositories::TenantConfigRepository { crate::repositories::TenantConfigRepository::new(db) }
+}
+
+fn dto_key_unknown(service:&ConfigService,key:&str)->bool{!service.catalog().iter().any(|d|d.key==key)}

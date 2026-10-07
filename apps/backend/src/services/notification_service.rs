@@ -386,3 +386,7 @@ mod tests {
         ));
     }
 }
+
+impl NotificationService {
+    pub fn tenant(db: std::sync::Arc<crate::tenancy::TenantDb>) -> crate::repositories::TenantNotificationRepository { crate::repositories::TenantNotificationRepository::new(db) }
+}

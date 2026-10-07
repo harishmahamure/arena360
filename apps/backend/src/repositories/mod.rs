@@ -80,3 +80,13 @@ pub use tenant_vendor_repo::TenantVendorRepository;
 
 pub mod tenant_finance_repo;
 pub use tenant_finance_repo::{TenantShiftRepository,TenantCashRegisterRepository,TenantCashDepositRepository,TenantExpenseRepository,TenantExpenseCategoryRepository};
+
+pub mod tenant_config_repo;
+pub mod tenant_notification_repo;
+pub use tenant_config_repo::TenantConfigRepository;
+pub use tenant_notification_repo::TenantNotificationRepository;
+
+mod tenant_settings_access;
+
+pub mod tenant_access_repo;
+pub use tenant_access_repo::{TenantAccessRepository,TenantRoleDto,TenantMemberDto,TenantLocationRoleDto};

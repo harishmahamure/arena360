@@ -441,6 +441,7 @@ impl TenantTransactionRepository {
                     )
                     .await?;
                     insert_sale_lines(connection, id, &resolved.lines, &at_text).await?;
+                    crate::services::TenantKitchenService::enqueue_on(connection,id,actor).await?;
                     deduct_stock(
                         connection,
                         store,
@@ -2188,6 +2189,15 @@ impl TenantKioskOrderRepository {
                             "unitPrice": price,
                         }));
                     }
+                    super::TenantNotificationRepository::record_on(connection,
+                        crate::services::notification_service::RecordNotification {
+                            kind: crate::models::activity_kind::KIOSK_ORDER_PLACED.into(),
+                            title: format!("Kiosk order from {device_name}"),
+                            summary: Some(format!("{player_username} placed an order")),
+                            payload: json!({"orderId":id,"deviceId":device,"deviceName":device_name,"playerId":player,"playerUsername":player_username,"items":item_snapshots}),
+                            actor_user_id: Some(player), entity_type: Some("kiosk_order".into()), entity_id: Some(id),
+                            recipients: crate::services::notification_service::Recipients::AllStaff,
+                        }).await?;
                     event(
                         connection,
                         "kiosk_order",

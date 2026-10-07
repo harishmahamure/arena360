@@ -506,3 +506,7 @@ impl SettingsRepository {
         Ok(row.0)
     }
 }
+
+impl SettingsRepository {
+ pub fn tenant(db:std::sync::Arc<crate::tenancy::TenantDb>)->super::TenantSettingsRepository{super::TenantSettingsRepository::new(db)}
+}

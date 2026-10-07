@@ -454,6 +454,7 @@ impl TenantUserRepository {
         let rows: Vec<String> = sqlx::query_scalar(
             "SELECT l.id FROM venue_locations l JOIN users u ON u.id=? \
              WHERE u.is_active=1 AND u.deleted_at IS NULL AND l.is_active=1 \
+               AND COALESCE((SELECT enabled FROM access_modules WHERE module=?),1)=1 \
                AND (u.role='admin' OR (u.role='staff' AND EXISTS(\
                  SELECT 1 FROM location_role_assignments a \
                  JOIN access_roles r ON r.id=a.role_id \
@@ -462,6 +463,7 @@ impl TenantUserRepository {
              ORDER BY l.id",
         )
         .bind(user_id.to_string())
+        .bind(permission.split(':').next().unwrap_or(permission))
         .bind(permission)
         .fetch_all(&self.db.read_pool()?)
         .await?;

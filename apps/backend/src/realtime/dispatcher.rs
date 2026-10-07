@@ -342,6 +342,66 @@ async fn tenant_projections(
             );
             vec![projection("configuration", payload, None, true)]
         }
+        "access.changed" => {
+            let users = fields
+                .get("userIds")
+                .and_then(serde_json::Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|v| v.as_str().and_then(|v| Uuid::parse_str(v).ok()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            users
+                .into_iter()
+                .map(|user| projection(format!("user:{user}"), payload.clone(), Some(user), true))
+                .collect()
+        }
+        "notification.created" => {
+            let Some(user) = uuid_field(fields, "userId") else {
+                return Vec::new();
+            };
+            vec![projection(
+                format!("user:{user}"),
+                payload,
+                Some(user),
+                true,
+            )]
+        }
+        "kitchen.changed" => vec![
+            projection("kitchen", payload.clone(), None, true),
+            projection("admin", payload.clone(), None, true),
+            projection("staff", payload, None, true),
+        ],
+        "approval.requested" => vec![TenantProjection {
+            channel: "admin".into(),
+            event_type: None,
+            payload,
+            audience_role: Some("admin".into()),
+            audience_user_id: None,
+            durable: true,
+        }],
+        "approval.decided" => {
+            let requester = uuid_field(fields, "requestedBy");
+            let mut projections = vec![TenantProjection {
+                channel: "admin".into(),
+                event_type: None,
+                payload: payload.clone(),
+                audience_role: Some("admin".into()),
+                audience_user_id: None,
+                durable: true,
+            }];
+            if let Some(user) = requester {
+                projections.push(projection(
+                    format!("user:{user}"),
+                    payload,
+                    Some(user),
+                    true,
+                ));
+            }
+            projections
+        }
         "kiosk_order.placed" => {
             rename_id(fields, "orderId");
             vec![TenantProjection {

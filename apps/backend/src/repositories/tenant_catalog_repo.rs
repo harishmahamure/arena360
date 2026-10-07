@@ -1742,7 +1742,7 @@ const VERSION_SELECT:&str="SELECT unhex(replace(id,'-','')) AS id,unhex(replace(
 
 #[derive(Clone)]
 pub struct TenantSettingsRepository {
-    db: Arc<TenantDb>,
+    pub(super) db: Arc<TenantDb>,
 }
 impl TenantSettingsRepository {
     pub fn new(db: Arc<TenantDb>) -> Self {
@@ -1750,17 +1750,19 @@ impl TenantSettingsRepository {
     }
     pub async fn list_overrides(
         &self,
-        _: Uuid,
+        organization: Uuid,
         location: Option<Uuid>,
     ) -> Result<Vec<SettingOverride>, AppError> {
+        self.require_tenant(organization)?;
         Ok(sqlx::query_as(&format!("{SETTING_SELECT} WHERE location_id IS NULL OR location_id=? ORDER BY key,location_id IS NOT NULL,location_id")).bind(self.db.tenant_id()).bind(location.map(|v|v.to_string())).fetch_all(&self.db.read_pool()?).await?)
     }
     pub async fn find_override(
         &self,
-        _: Uuid,
+        organization: Uuid,
         location: Option<Uuid>,
         key: &str,
     ) -> Result<Option<SettingOverride>, AppError> {
+        self.require_tenant(organization)?;
         Ok(sqlx::query_as(&format!(
             "{SETTING_SELECT} WHERE location_id IS ? AND key=?"
         ))
@@ -1771,55 +1773,68 @@ impl TenantSettingsRepository {
         .await?)
     }
     pub async fn upsert_override(
-        &self,
-        _: Uuid,
-        key: &str,
-        dto: &UpsertSettingOverrideDto,
-        actor: Uuid,
-        request: Option<&str>,
-        _: bool,
+        &self, organization: Uuid, key: &str, dto: &UpsertSettingOverrideDto,
+        actor: Uuid, request: Option<&str>, _: bool,
     ) -> Result<SettingOverride, AppError> {
-        let id = Uuid::now_v7();
-        let timestamp = now()?;
-        let key = key.to_owned();
-        let location = dto.location_id;
-        let value = dto.value.clone();
-        let value_text =
-            serde_json::to_string(&value).map_err(|e| AppError::BadRequest(e.to_string()))?;
-        let reason = dto.reason.trim().to_owned();
-        let expected = dto.expected_revision;
-        let request = request.map(str::to_owned);
-        let lookup_key = key.clone();
-        let db = self.db.clone();
-        write(&db,Box::new(move|connection|Box::pin(async move{let existing:Option<(String,String,i64)>=sqlx::query_as("SELECT id,value,revision FROM setting_overrides WHERE location_id IS ? AND key=?").bind(location.map(|v|v.to_string())).bind(&key).fetch_optional(&mut *connection).await?;let actual=existing.as_ref().map_or(0,|row|row.2);if expected.is_some_and(|expected|expected!=actual){return Err(AppError::conflict_code("SETTING_REVISION_CONFLICT",Some(json!({"expectedRevision":expected,"actualRevision":actual}))));}let revision=actual+1;if let Some((existing_id,_,_))=&existing{sqlx::query("UPDATE setting_overrides SET value=?,revision=?,updated_at=? WHERE id=?").bind(&value_text).bind(revision).bind(&timestamp).bind(existing_id).execute(&mut *connection).await?;}else{sqlx::query("INSERT INTO setting_overrides(id,location_id,key,value,revision,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").bind(id.to_string()).bind(location.map(|v|v.to_string())).bind(&key).bind(&value_text).bind(revision).bind(&timestamp).bind(&timestamp).execute(&mut *connection).await?;}sqlx::query("INSERT INTO setting_revisions(location_id,key,revision,operation,old_value,new_value,reason,actor_user_id,request_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(location.map(|v|v.to_string())).bind(&key).bind(revision).bind(if existing.is_some(){"update"}else{"create"}).bind(existing.as_ref().map(|row|row.1.as_str())).bind(&value_text).bind(reason).bind(actor.to_string()).bind(request).bind(&timestamp).execute(&mut *connection).await?;event(connection,"setting_override",if let Some((existing_id,_,_))=&existing{Uuid::parse_str(existing_id).map_err(|e|AppError::Internal(e.to_string()))?}else{id},"configuration.changed",location,false,json!({"locationId":location,"key":key,"revision":revision,"updatedAt":timestamp})).await}))).await?;
-        self.find_override(self.db.tenant_id(), location, &lookup_key)
-            .await?
-            .ok_or_else(|| AppError::Internal("Setting override disappeared".into()))
+        self.require_tenant(organization)?;
+        validate_setting_write(key, &dto.reason, request)?;
+        let tenant=self.db.tenant_id(); let key=key.to_owned(); let location=dto.location_id;
+        let value=dto.value.to_string(); let reason=dto.reason.trim().to_owned();
+        let expected=dto.expected_revision; let request=request.map(str::to_owned);
+        write(&self.db,Box::new(move|c|Box::pin(async move{
+            validate_setting_location(c,location).await?;
+            let existing:Option<(String,String,i64)>=sqlx::query_as("SELECT id,value,revision FROM setting_overrides WHERE location_id IS ? AND key=?")
+                .bind(location.map(|v|v.to_string())).bind(&key).fetch_optional(&mut *c).await?;
+            let actual=existing.as_ref().map_or(0,|r|r.2);
+            if expected.is_some_and(|v|v!=actual){return Err(AppError::conflict_code("SETTING_REVISION_CONFLICT",Some(json!({"expectedRevision":expected,"actualRevision":actual}))));}
+            let history:i64=sqlx::query_scalar("SELECT COALESCE(MAX(revision),0) FROM setting_revisions WHERE location_id IS ? AND key=?")
+                .bind(location.map(|v|v.to_string())).bind(&key).fetch_one(&mut *c).await?;
+            let revision=actual.max(history).checked_add(1).ok_or_else(||AppError::Conflict("Setting revision is exhausted".into()))?;
+            let id=existing.as_ref().map(|r|r.0.clone()).unwrap_or_else(||Uuid::now_v7().to_string());let ts=now()?;
+            sqlx::query("INSERT INTO setting_overrides(id,location_id,key,value,revision,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value,revision=excluded.revision,updated_by=excluded.updated_by,updated_at=excluded.updated_at")
+                .bind(&id).bind(location.map(|v|v.to_string())).bind(&key).bind(&value).bind(revision).bind(actor.to_string()).bind(actor.to_string()).bind(&ts).bind(&ts).execute(&mut *c).await?;
+            sqlx::query("INSERT INTO setting_revisions(location_id,key,revision,operation,old_value,new_value,reason,actor_user_id,request_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+                .bind(location.map(|v|v.to_string())).bind(&key).bind(revision).bind(if existing.is_some(){"update"}else{"create"}).bind(existing.as_ref().map(|r|r.1.as_str())).bind(&value).bind(reason).bind(actor.to_string()).bind(request).bind(&ts).execute(&mut *c).await?;
+            if location.is_none(){
+                sqlx::query("INSERT INTO configurations(id,key,value,category,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=excluded.updated_at")
+                    .bind(Uuid::now_v7().to_string()).bind(&key).bind(&value).bind(key.split('.').next().unwrap_or("general")).bind(actor.to_string()).bind(actor.to_string()).bind(&ts).bind(&ts).execute(&mut *c).await?;
+            }
+            event(c,"setting_override",Uuid::parse_str(&id).map_err(|e|AppError::Internal(e.to_string()))?,"configuration.changed",location,false,json!({"organizationId":tenant,"locationId":location,"key":key,"revision":revision,"updatedAt":ts})).await?;
+            Ok(sqlx::query_as(&format!("{SETTING_SELECT} WHERE id=?")).bind(tenant).bind(id).fetch_one(c).await?)
+        }))).await
     }
     #[allow(clippy::too_many_arguments)]
     pub async fn delete_override(
-        &self,
-        _: Uuid,
-        location: Option<Uuid>,
-        key: &str,
-        expected: Option<i64>,
-        reason: &str,
-        actor: Uuid,
-        request: Option<&str>,
-        _: Option<&Value>,
-    ) -> Result<bool, AppError> {
-        let key = key.to_owned();
-        let reason = reason.trim().to_owned();
-        let request = request.map(str::to_owned);
-        let timestamp = now()?;
-        let db = self.db.clone();
-        write(&db,Box::new(move|connection|Box::pin(async move{let existing:Option<(String,String,i64)>=sqlx::query_as("SELECT id,value,revision FROM setting_overrides WHERE location_id IS ? AND key=?").bind(location.map(|v|v.to_string())).bind(&key).fetch_optional(&mut *connection).await?;let Some((id,value,revision))=existing else{return Ok(false)};if expected.is_some_and(|expected|expected!=revision){return Err(AppError::conflict_code("SETTING_REVISION_CONFLICT",Some(json!({"expectedRevision":expected,"actualRevision":revision}))));}sqlx::query("DELETE FROM setting_overrides WHERE id=?").bind(&id).execute(&mut *connection).await?;sqlx::query("INSERT INTO setting_revisions(location_id,key,revision,operation,old_value,reason,actor_user_id,request_id,created_at) VALUES (?,?,?,'delete',?,?,?,?,?)").bind(location.map(|v|v.to_string())).bind(&key).bind(revision+1).bind(value).bind(reason).bind(actor.to_string()).bind(request).bind(&timestamp).execute(&mut *connection).await?;let aggregate=Uuid::parse_str(&id).map_err(|e|AppError::Internal(e.to_string()))?;event(connection,"setting_override",aggregate,"configuration.changed",location,true,json!({"locationId":location,"key":key,"revision":revision+1,"deleted":true,"updatedAt":timestamp})).await?;Ok(true)}))).await
+        &self, organization:Uuid, location:Option<Uuid>, key:&str, expected:Option<i64>,
+        reason:&str, actor:Uuid, request:Option<&str>, mirror:Option<&Value>,
+    )->Result<bool,AppError>{
+        self.require_tenant(organization)?;validate_setting_write(key,reason,request)?;
+        let tenant=self.db.tenant_id();let key=key.to_owned();let reason=reason.trim().to_owned();let request=request.map(str::to_owned);let mirror=mirror.cloned();
+        write(&self.db,Box::new(move|c|Box::pin(async move{
+            let existing:Option<(String,String,i64)>=sqlx::query_as("SELECT id,value,revision FROM setting_overrides WHERE location_id IS ? AND key=?")
+                .bind(location.map(|v|v.to_string())).bind(&key).fetch_optional(&mut *c).await?;
+            let Some((id,value,actual))=existing else{return Ok(false)};
+            if expected.is_some_and(|v|v!=actual){return Err(AppError::conflict_code("SETTING_REVISION_CONFLICT",Some(json!({"expectedRevision":expected,"actualRevision":actual}))));}
+            let revision=actual.checked_add(1).ok_or_else(||AppError::Conflict("Setting revision is exhausted".into()))?;let ts=now()?;
+            sqlx::query("DELETE FROM setting_overrides WHERE id=?").bind(&id).execute(&mut *c).await?;
+            sqlx::query("INSERT INTO setting_revisions(location_id,key,revision,operation,old_value,reason,actor_user_id,request_id,created_at) VALUES(?,?,?,'delete',?,?,?,?,?)")
+                .bind(location.map(|v|v.to_string())).bind(&key).bind(revision).bind(&value).bind(reason).bind(actor.to_string()).bind(request).bind(&ts).execute(&mut *c).await?;
+            if location.is_none(){
+                if let Some(value)=mirror{
+                    sqlx::query("INSERT INTO configurations(id,key,value,category,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=excluded.updated_at")
+                        .bind(Uuid::now_v7().to_string()).bind(&key).bind(value.to_string()).bind(key.split('.').next().unwrap_or("general")).bind(actor.to_string()).bind(actor.to_string()).bind(&ts).bind(&ts).execute(&mut *c).await?;
+                }else{sqlx::query("DELETE FROM configurations WHERE key=?").bind(&key).execute(&mut *c).await?;}
+            }
+            event(c,"setting_override",Uuid::parse_str(&id).map_err(|e|AppError::Internal(e.to_string()))?,"configuration.changed",location,true,json!({"organizationId":tenant,"locationId":location,"key":key,"revision":revision,"deleted":true,"updatedAt":ts})).await?;Ok(true)
+        }))).await
     }
+    pub(super) fn require_tenant(&self,id:Uuid)->Result<(),AppError>{if id!=self.db.tenant_id(){Err(AppError::Forbidden("Tenant does not match the database".into()))}else{Ok(())}}
     pub async fn history(
         &self,
-        _: Uuid,
+        organization: Uuid,
         query: &SettingHistoryQuery,
     ) -> Result<Vec<SettingRevision>, AppError> {
+        self.require_tenant(organization)?;
         let mut builder = QueryBuilder::<Sqlite>::new("SELECT id,");
         builder.push_bind(self.db.tenant_id()).push(
             " AS organization_id,
@@ -1841,7 +1856,16 @@ impl TenantSettingsRepository {
             .fetch_all(&self.db.read_pool()?)
             .await?)
     }
-    pub async fn latest_revision(&self, _: Uuid) -> Result<i64, AppError> {
+    pub async fn snapshot_values(&self,organization:Uuid,location:Option<Uuid>)->Result<(Vec<SettingOverride>,i64),AppError>{
+        self.require_tenant(organization)?;
+        let pool=self.db.read_pool()?;let mut tx=pool.begin().await?;
+        if let Some(id)=location{let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM venue_locations WHERE id=? AND is_active=1)").bind(id.to_string()).fetch_one(&mut *tx).await?;if !valid{return Err(AppError::NotFound("Active location not found".into()));}}
+        let overrides=sqlx::query_as(&format!("{SETTING_SELECT} WHERE location_id IS NULL OR location_id=? ORDER BY key,location_id IS NOT NULL,location_id")).bind(organization).bind(location.map(|v|v.to_string())).fetch_all(&mut *tx).await?;
+        let revision=sqlx::query_scalar("SELECT COALESCE(MAX(id),0) FROM setting_revisions").fetch_one(&mut *tx).await?;
+        Ok((overrides,revision))
+    }
+    pub async fn latest_revision(&self, organization: Uuid) -> Result<i64, AppError> {
+        self.require_tenant(organization)?;
         Ok(
             sqlx::query_scalar("SELECT COALESCE(MAX(id),0) FROM setting_revisions")
                 .fetch_one(&self.db.read_pool()?)
@@ -1849,4 +1873,11 @@ impl TenantSettingsRepository {
         )
     }
 }
-const SETTING_SELECT:&str="SELECT unhex(replace(id,'-','')) AS id,? AS organization_id,unhex(replace(location_id,'-','')) AS location_id,key,value,revision,NULL AS created_by,NULL AS updated_by,created_at,updated_at FROM setting_overrides";
+const SETTING_SELECT:&str="SELECT unhex(replace(id,'-','')) AS id,? AS organization_id,unhex(replace(location_id,'-','')) AS location_id,key,value,revision,unhex(replace(created_by,'-','')) AS created_by,unhex(replace(updated_by,'-','')) AS updated_by,created_at,updated_at FROM setting_overrides";
+
+fn validate_setting_write(key:&str,reason:&str,request:Option<&str>)->Result<(),AppError>{
+    if key.trim().is_empty() || key.chars().count()>120 || reason.trim().is_empty() || request.is_some_and(|v|v.chars().count()>128){return Err(AppError::BadRequest("Provide a setting key, reason, and valid request ID".into()));}Ok(())
+}
+async fn validate_setting_location(c:&mut SqliteConnection,location:Option<Uuid>)->Result<(),AppError>{
+    if let Some(id)=location{let exists:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM venue_locations WHERE id=? AND is_active=1)").bind(id.to_string()).fetch_one(c).await?;if !exists{return Err(AppError::NotFound("Active location not found".into()));}}Ok(())
+}

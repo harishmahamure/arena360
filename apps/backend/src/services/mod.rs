@@ -73,3 +73,6 @@ pub mod catalog_scope;
 
 pub mod tenant_procurement_service;
 pub use tenant_procurement_service::TenantProcurementService;
+
+pub mod tenant_kitchen_service;
+pub use tenant_kitchen_service::TenantKitchenService;

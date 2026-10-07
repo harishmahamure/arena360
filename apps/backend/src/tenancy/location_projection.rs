@@ -13,6 +13,8 @@ pub struct ProjectedVenueLocation {
     pub slug: String,
     pub name: String,
     pub is_active: bool,
+    pub timezone: String,
+    pub currency: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -43,22 +45,27 @@ pub async fn sync_venue_locations(
                     })?;
                 changed += sqlx::query(
                     "INSERT INTO venue_locations(
-                        id,slug,name,is_active,created_at,updated_at
-                     ) VALUES (?,?,?,?,?,?)
+                        id,slug,name,is_active,timezone,currency,created_at,updated_at
+                     ) VALUES (?,?,?,?,?,?,?,?)
                      ON CONFLICT(id) DO UPDATE SET
                         slug=excluded.slug,
                         name=excluded.name,
                         is_active=excluded.is_active,
+                        timezone=excluded.timezone,currency=excluded.currency,
                         updated_at=excluded.updated_at
                      WHERE venue_locations.slug IS NOT excluded.slug
                         OR venue_locations.name IS NOT excluded.name
                         OR venue_locations.is_active IS NOT excluded.is_active
+                        OR venue_locations.timezone IS NOT excluded.timezone
+                        OR venue_locations.currency IS NOT excluded.currency
                         OR venue_locations.updated_at IS NOT excluded.updated_at",
                 )
                 .bind(location.id.to_string())
                 .bind(&location.slug)
                 .bind(&location.name)
                 .bind(location.is_active)
+                .bind(&location.timezone)
+                .bind(&location.currency)
                 .bind(created_at)
                 .bind(updated_at)
                 .execute(&mut *connection)
