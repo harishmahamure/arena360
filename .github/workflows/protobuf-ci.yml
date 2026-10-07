@@ -76,5 +76,8 @@ jobs:
           unzip -q /tmp/duckdb.zip -d /tmp/arena360-duckdb
           echo 'DUCKDB_LIB_DIR=/tmp/arena360-duckdb' >> "$GITHUB_ENV"
           echo 'LD_LIBRARY_PATH=/tmp/arena360-duckdb' >> "$GITHUB_ENV"
-      - run: cargo clippy --all-targets --features duckdb-analytics --manifest-path apps/backend/Cargo.toml
+          echo 'DUCKDB_EXTENSION_DIR=/tmp/arena360-duckdb-extensions' >> "$GITHUB_ENV"
+      - run: cargo clippy --all-targets --no-default-features --features duckdb-analytics --manifest-path apps/backend/Cargo.toml
+      - name: Install matching signed SQLite extension
+        run: cargo run --manifest-path apps/backend/Cargo.toml --no-default-features --features duckdb-analytics --bin analytics_extensions_setup
       - run: pnpm backend:test:integration

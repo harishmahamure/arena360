@@ -135,7 +135,7 @@ async fn newer_schema_and_timezone_drift_fail_without_rewriting_state() {
     let analytics = TenantAnalytics::open(f.db.clone()).await.unwrap();
     analytics
         .write(|c| {
-            c.execute_batch("INSERT INTO _schema_migrations VALUES(2,'unknown',CURRENT_TIMESTAMP)")
+            c.execute_batch("INSERT INTO _schema_migrations VALUES(3,'unknown',CURRENT_TIMESTAMP)")
                 .map_err(error)?;
             Ok(())
         })
@@ -145,7 +145,7 @@ async fn newer_schema_and_timezone_drift_fail_without_rewriting_state() {
     assert!(TenantAnalytics::open(f.db.clone()).await.is_err());
     let path = f.db.path().with_file_name("analytics.duckdb");
     let c = duckdb::Connection::open(&path).unwrap();
-    c.execute_batch("DELETE FROM _schema_migrations WHERE version=2; UPDATE _ingest_state SET timezone='America/New_York'").unwrap();
+    c.execute_batch("DELETE FROM _schema_migrations WHERE version=3; UPDATE _ingest_state SET timezone='America/New_York'").unwrap();
     drop(c);
     assert!(TenantAnalytics::open(f.db.clone()).await.is_err());
     let c = duckdb::Connection::open(path).unwrap();
@@ -192,6 +192,43 @@ async fn failed_ddl_rolls_back_every_new_table_and_migration_record() {
     assert!(TenantAnalytics::open(f.db.clone()).await.is_err());
     let c = duckdb::Connection::open(path).unwrap();
     assert_eq!(c.query_row("SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN('_schema_migrations','_ingest_state','transactions')",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    drop(c);
+    f.close().await;
+}
+
+#[tokio::test]
+async fn v1_upgrade_preserves_facts_and_checkpoint_but_requires_a_rebuild() {
+    use gaming_cafe_api::analytics::tenant_db::{migrate, SCHEMA_VERSION};
+    use sha2::{Digest, Sha256};
+    let f = TenantFixture::new().await;
+    let mut c = duckdb::Connection::open(f.db.path().with_file_name("analytics.duckdb")).unwrap();
+    let v1 = include_str!("../migrations/analytics/0001_initial.sql");
+    c.execute_batch(v1).unwrap();
+    c.execute_batch("CREATE TABLE _schema_migrations(version INTEGER PRIMARY KEY,checksum VARCHAR NOT NULL,applied_at TIMESTAMP NOT NULL); INSERT INTO _ingest_state(id,schema_version,status,last_sequence,hot_window_start,timezone,updated_at) VALUES(1,1,'READY',42,DATE '2025-04-01','UTC',current_timestamp); INSERT INTO transactions(id,occurred_at,local_date,transaction_type,payment_method,payment_status,amount,paid_amount) VALUES(uuid(),TIMESTAMP '2026-10-01',DATE '2026-10-01','product_purchase','cash','completed',12.3456,12.3456)").unwrap();
+    c.execute(
+        "INSERT INTO _schema_migrations VALUES(1,?,current_timestamp)",
+        duckdb::params![hex::encode(Sha256::digest(v1.as_bytes()))],
+    )
+    .unwrap();
+    migrate(&mut c, &f.db, "UTC", chrono::Utc::now()).unwrap();
+    let state:(i64,String,i64,Option<u64>)=c.query_row("SELECT schema_version,status,CAST(last_sequence AS BIGINT),replay_start_sequence FROM _ingest_state",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+    assert_eq!(state, (SCHEMA_VERSION, "REBUILDING".into(), 42, None));
+    assert_eq!(
+        c.query_row(
+            "SELECT CAST(amount AS VARCHAR) FROM transactions",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "12.3456"
+    );
+    migrate(&mut c, &f.db, "UTC", chrono::Utc::now()).unwrap();
+    assert_eq!(
+        c.query_row("SELECT count(*) FROM _schema_migrations", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
     drop(c);
     f.close().await;
 }

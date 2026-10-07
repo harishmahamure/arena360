@@ -79,7 +79,7 @@ fn value(v: &Value, kind: ColumnKind) -> Result<Option<String>, AppError> {
     };
     Ok(Some(result))
 }
-fn sql_type(kind: ColumnKind) -> &'static str {
+pub(crate) fn sql_type(kind: ColumnKind) -> &'static str {
     match kind {
         ColumnKind::Uuid | ColumnKind::StockKey => "UUID",
         ColumnKind::Timestamp => "TIMESTAMP",
@@ -363,13 +363,13 @@ impl JetStreamConsumer {
     }
     pub async fn poll(&mut self, metrics: &Metrics) -> Result<BatchOutcome, AppError> {
         self.db.ensure_current_owner()?;
-        let (initial_sequence, status) = self
+        let (initial_sequence, status, replay_start) = self
             .analytics
             .read(|tx| {
                 tx.query_row(
-                    "SELECT CAST(last_sequence AS BIGINT),status FROM _ingest_state",
+                    "SELECT CAST(last_sequence AS BIGINT),status,replay_start_sequence FROM _ingest_state",
                     [],
-                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_,Option<u64>>(2)?)),
                 )
                 .map_err(error)
             })
@@ -388,11 +388,21 @@ impl JetStreamConsumer {
             .map_err(|_| invalid("batch fetch failed"))?;
         let mut messages = Vec::with_capacity(BATCH_SIZE);
         let mut events = Vec::with_capacity(BATCH_SIZE);
+        let mut covered=0;
         while let Some(message) = batch.next().await {
             let message = message.map_err(|_| invalid("message delivery failed"))?;
             if message.subject.as_str() != format!("arena.tenant.{}.events.v1", self.db.tenant_id())
             {
                 return Err(invalid("foreign event subject"));
+            }
+            if let Some(start)=replay_start {
+                let info=message.info().map_err(|_|invalid("invalid broker metadata"))?;
+                if info.stream!=super::publisher::TENANT_EVENT_STREAM {return Err(invalid("foreign broker stream"));}
+                if info.stream_sequence<start {
+                    covered+=1;
+                    messages.push(message);
+                    continue;
+                }
             }
             events.push(
                 serde_json::from_slice::<TenantEvent>(&message.payload)
@@ -401,7 +411,7 @@ impl JetStreamConsumer {
             messages.push(message);
         }
         self.db.ensure_current_owner()?;
-        if events.is_empty() {
+        if messages.is_empty() {
             return Ok(BatchOutcome::Applied {
                 last_sequence: initial_sequence,
                 events: 0,
@@ -414,7 +424,8 @@ impl JetStreamConsumer {
             .acquire()
             .await
             .map_err(|_| invalid("commit scheduler closed"))?;
-        let result = apply_batch(self.analytics.clone(), events).await?;
+        let mut result = apply_batch(self.analytics.clone(), events).await?;
+        if let BatchOutcome::Applied{duplicates,..}=&mut result {*duplicates+=covered;}
         drop(permit);
         match &result {
             BatchOutcome::Applied { events, .. } => {
@@ -432,7 +443,7 @@ impl JetStreamConsumer {
                 self.gap_attempts += 1;
                 metrics.analytics_gap();
                 // Re-fetch unacknowledged deliveries first. Persistent gaps request the
-                // consistent rebuild implemented by the next queue item (API-0042).
+                // consistent snapshot rebuild.
                 if self.gap_attempts >= 2 {
                     self.analytics
                         .write(|tx| {
@@ -511,19 +522,28 @@ pub fn spawn(
                 let generation = db.ownership_generation();
                 let worker = tokio::spawn(async move {
                     let result = async {
-                        let analytics = TenantAnalytics::open(db.clone()).await?;
+                        let analytics = TenantAnalytics::open_for_ingestion(db.clone()).await?;
                         let mut consumer =
                             JetStreamConsumer::connect(&context, db.clone(), analytics).await?;
                         loop {
                             db.ensure_current_owner()?;
                             match consumer.poll(&metrics).await {
                                 Ok(BatchOutcome::RebuildRequired) => {
-                                    tokio::time::sleep(Duration::from_secs(1)).await
+                                    metrics.analytics_rebuild_started();
+                                    let started=std::time::Instant::now();
+                                    let result=super::rebuild::rebuild(db.clone(),consumer.analytics.clone(),&context).await;
+                                    metrics.analytics_rebuild_finished(result.is_ok(),started.elapsed().as_millis().min(u64::MAX as u128) as u64);
+                                    if let Err(error)=result {
+                                        metrics.analytics_failed();
+                                        tracing::warn!(tenant=%id,%error,"Analytics rebuild delayed");
+                                        tokio::time::sleep(Duration::from_secs(5)).await;
+                                    }
                                 }
                                 Ok(_) => {}
                                 Err(error) => {
                                     metrics.analytics_failed();
                                     tracing::warn!(tenant=%id,%error,"Analytics ingestion delayed");
+                                    if matches!(&error,AppError::Internal(message) if message.starts_with("DuckDB:")) {return Err(error);}
                                     tokio::time::sleep(Duration::from_secs(1)).await;
                                 }
                             }

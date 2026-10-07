@@ -212,7 +212,8 @@ async function runJetstream(env, required = false) {
   const bin = await natsBinary();
   if (bin) {
     const targets = ['outbox_publisher', 'tenant_event_stream'];
-    if (process.env.DUCKDB_LIB_DIR) targets.push('tenant_analytics_consumer');
+    if (process.env.DUCKDB_LIB_DIR)
+      targets.push('tenant_analytics_consumer', 'tenant_analytics_rebuild');
     for (const target of targets) {
       const nats = await localNats(bin);
       try {
@@ -287,20 +288,27 @@ async function main() {
       await command('cargo', ['test', '--manifest-path', manifest, ...analyticsFeatures], { env });
     // Only control targets include ignored tests; external analytics/Redis suites retain their explicit gates.
     const targets = controlTargets.flatMap((target) => ['--test', target]);
-    await command(
-      'cargo',
-      [
-        'test',
-        '--manifest-path',
-        manifest,
-        ...analyticsFeatures,
-        ...targets,
-        '--',
-        '--ignored',
-        '--test-threads=1',
-      ],
-      { env },
-    );
+    const controlNatsBinary = process.env.DUCKDB_LIB_DIR ? await natsBinary() : undefined;
+    const controlNats = controlNatsBinary ? await localNats(controlNatsBinary) : undefined;
+    try {
+      await command(
+        'cargo',
+        [
+          'test',
+          '--manifest-path',
+          manifest,
+          ...analyticsFeatures,
+          ...targets,
+          '--',
+          '--ignored',
+          '--test-threads=1',
+          '--show-output',
+        ],
+        { env: controlNats ? { ...env, NATS_TEST_URL: controlNats.url } : env },
+      );
+    } finally {
+      await controlNats?.cleanup();
+    }
     if (!args.includes('--control-only')) await runJetstream(env);
     process.stdout.write('[backend integration] Requested checks passed.\n');
   } finally {

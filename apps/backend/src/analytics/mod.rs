@@ -16,3 +16,6 @@ pub mod tenant_db;
 pub mod consumer;
 #[cfg(feature = "duckdb-analytics")]
 pub mod session_hours;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod rebuild;

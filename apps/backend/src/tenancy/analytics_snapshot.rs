@@ -1123,7 +1123,7 @@ impl Table {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "SELECT json_object({fields}) FROM {} WHERE {}",
+            "SELECT json_object({fields}) AS payload FROM {} WHERE {}",
             self.source, self.predicate
         )
     }

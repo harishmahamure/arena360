@@ -24,6 +24,9 @@ pub struct Metrics {
     analytics_events: AtomicU64,
     analytics_gaps: AtomicU64,
     analytics_failures: AtomicU64,
+    analytics_rebuild_started: AtomicU64,
+    analytics_rebuild_completed: AtomicU64,
+    analytics_rebuild_millis: AtomicU64,
 }
 
 impl Metrics {
@@ -83,6 +86,11 @@ impl Metrics {
     }
     pub fn analytics_ingested(&self, events: u64) { self.analytics_events.fetch_add(events, Ordering::Relaxed); }
     pub fn analytics_gap(&self) { self.analytics_gaps.fetch_add(1, Ordering::Relaxed); }
+    pub fn analytics_rebuild_started(&self) { self.analytics_rebuild_started.fetch_add(1, Ordering::Relaxed); }
+    pub fn analytics_rebuild_finished(&self, success: bool, millis: u64) {
+        if success { self.analytics_rebuild_completed.fetch_add(1, Ordering::Relaxed); }
+        self.analytics_rebuild_millis.fetch_add(millis, Ordering::Relaxed);
+    }
     pub fn analytics_failed(&self) { self.analytics_failures.fetch_add(1, Ordering::Relaxed); }
     pub fn render(&self) -> String {
         format!(
@@ -121,7 +129,13 @@ impl Metrics {
                 "# TYPE arena360_analytics_sequence_gaps_total counter\n",
                 "arena360_analytics_sequence_gaps_total {}\n",
                 "# TYPE arena360_analytics_failures_total counter\n",
-                "arena360_analytics_failures_total {}\n"
+                "arena360_analytics_failures_total {}\n",
+                "# TYPE arena360_analytics_rebuild_started_total counter\n",
+                "arena360_analytics_rebuild_started_total {}\n",
+                "# TYPE arena360_analytics_rebuild_completed_total counter\n",
+                "arena360_analytics_rebuild_completed_total {}\n",
+                "# TYPE arena360_analytics_rebuild_duration_milliseconds_total counter\n",
+                "arena360_analytics_rebuild_duration_milliseconds_total {}\n"
             ),
             self.rate_limit_allowed.load(Ordering::Relaxed),
             self.rate_limit_rejected.load(Ordering::Relaxed),
@@ -144,6 +158,9 @@ impl Metrics {
             self.analytics_events.load(Ordering::Relaxed),
             self.analytics_gaps.load(Ordering::Relaxed),
             self.analytics_failures.load(Ordering::Relaxed),
+            self.analytics_rebuild_started.load(Ordering::Relaxed),
+            self.analytics_rebuild_completed.load(Ordering::Relaxed),
+            self.analytics_rebuild_millis.load(Ordering::Relaxed),
         )
     }
 }

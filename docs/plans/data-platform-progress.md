@@ -20,7 +20,7 @@
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0041
+## Completed through API-0042
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `API-0042` — Consistent snapshot rebuild, derived summaries and replay after T0.
+- [ ] `API-0044` — Nightly batched hot-window retention and monthly summary refresh.
 
 ### API-0033 completed
 
@@ -117,7 +117,15 @@
 
 - Exact canonical snapshots commit with operational writes; per-tenant consumers collapse batches, atomically update facts, session hours and checkpoints, then ACK. Persistent gaps request rebuilds. Lease fencing and idle eviction remain effective.
 - All 394 regular/control/live checks pass, including replay after commit-before-ACK, parent collections, stock history, exact decimals, timezone hour splits and invalid events.
-- Next: `API-0042` consistent rebuild and production activation.
+- Implementation: `3b8fe64`. Next: `API-0042` consistent rebuild and production activation.
+
+### API-0042 completed
+
+- Consistent private SQLite snapshots, read-only signed-extension attachment, exact bulk projections, Rust calendar labels, session hours, monthly summaries and retained-stream replay build shadow files while operations continue. Fenced atomic file replacement occurs after replay reaches the post-backfill source watermark.
+- Schema v2 persists the pre-snapshot broker position to skip superseded deliveries after restore/restart. Failed builds preserve canonical facts; corrupt/old files are quarantined, newer schemas remain intact, and old monthly aggregates survive ordinary rebuilds.
+- All 401 backend/control/live checks pass. Native demo parity: 1,419 rows across 27 projections, every money-column total, and 486,000 occupied seconds match SQLite. Concurrent replay, failure preservation, purge-safe T0, self-fencing and superseded retained events are verified.
+- Deployment compiles analytics and caches the matching signed extension. The real setup binary, Biome and YAML checks pass; Docker image execution is unverified on this host.
+- Next: `API-0044` nightly retention.
 
 ## M5 queue
 
@@ -151,7 +159,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed item: `API-0041`; 394 backend checks pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
+- Latest completed item: `API-0042`; 401 backend checks pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

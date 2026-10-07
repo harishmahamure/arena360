@@ -7,36 +7,187 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-const MIGRATIONS: &[(i64, &str)] = &[(
-    1,
-    include_str!("../../migrations/analytics/0001_initial.sql"),
-)];
-pub const SCHEMA_VERSION: i64 = 1;
+const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
+        include_str!("../../migrations/analytics/0001_initial.sql"),
+    ),
+    (
+        2,
+        include_str!("../../migrations/analytics/0002_rebuild_replay_floor.sql"),
+    ),
+];
+pub const SCHEMA_VERSION: i64 = 2;
 
 pub struct TenantAnalytics {
     db: Arc<TenantDb>,
-    connection: Mutex<Connection>,
+    connection: Mutex<Option<Connection>>,
+    pub(crate) rebuild_lock: tokio::sync::Mutex<()>,
+    _rebuild_files: Option<Arc<super::rebuild::RebuildFiles>>,
     path: PathBuf,
 }
 impl TenantAnalytics {
     pub async fn open(db: Arc<TenantDb>) -> Result<Arc<Self>, AppError> {
+        Self::open_internal(db, false).await
+    }
+    async fn open_internal(db: Arc<TenantDb>, require_latest: bool) -> Result<Arc<Self>, AppError> {
         db.ensure_current_owner()?;
-        let timezone = db.timezone().await?;
+        let timezone: String =
+            sqlx::query_scalar("SELECT timezone FROM tenant_runtime WHERE singleton=1")
+                .fetch_one(&db.background_read_pool()?)
+                .await?;
         blocking(move || {
             db.ensure_current_owner()?;
             let path = db.path().with_file_name("analytics.duckdb");
+            let existing = path.exists();
             let config = duckdb::Config::default()
                 .threads(1)
                 .map_err(error)?
                 .max_memory("128MB")
                 .map_err(error)?;
             let mut connection = Connection::open_with_flags(&path, config).map_err(error)?;
+            if existing && require_latest {
+                let version: Option<i64> = connection
+                    .query_row("SELECT max(version) FROM _schema_migrations", [], |r| {
+                        r.get(0)
+                    })
+                    .map_err(error)?;
+                if version.unwrap_or(0) < SCHEMA_VERSION {
+                    return Err(AppError::Internal(
+                        "Analytics schema requires rebuild".into(),
+                    ));
+                }
+            }
             migrate(&mut connection, &db, &timezone, Utc::now())?;
             Ok(Arc::new(Self {
                 db,
-                connection: Mutex::new(connection),
+                connection: Mutex::new(Some(connection)),
+                rebuild_lock: tokio::sync::Mutex::new(()),
+                _rebuild_files: None,
                 path,
             }))
+        })
+        .await
+    }
+    /// Ingestion can rebuild corrupt/outdated derived files from authoritative SQLite.
+    /// A newer binary's schema is preserved and requires upgrading this binary.
+    pub async fn open_for_ingestion(db: Arc<TenantDb>) -> Result<Arc<Self>, AppError> {
+        match Self::open_internal(db.clone(), true).await {
+            Ok(handle) => Ok(handle),
+            Err(AppError::Internal(message))
+                if !message.contains("newer than this binary")
+                    && (message.starts_with("DuckDB:")
+                        || message.contains("migration history/checksum mismatch")
+                        || message.contains("state disagrees with migration history")
+                        || message.contains("schema requires rebuild")) =>
+            {
+                db.ensure_current_owner()?;
+                let path = db.path().with_file_name("analytics.duckdb");
+                if !path.exists() {
+                    return Err(AppError::Internal(message));
+                }
+                let quarantine = db.path().with_file_name(format!(
+                    "analytics.quarantined-{}.duckdb",
+                    uuid::Uuid::new_v4()
+                ));
+                std::fs::rename(&path, &quarantine)
+                    .map_err(|e| AppError::Internal(e.to_string()))?;
+                let wal = path.with_extension("duckdb.wal");
+                if wal.exists() {
+                    std::fs::rename(wal, quarantine.with_extension("duckdb.wal"))
+                        .map_err(|e| AppError::Internal(e.to_string()))?;
+                }
+                db.ensure_current_owner()?;
+                tracing::warn!(tenant=%db.tenant_id(),%message,"Derived analytics file quarantined for rebuild");
+                Self::open(db).await
+            }
+            Err(error) => Err(error),
+        }
+    }
+    pub(crate) async fn shadow(
+        db: Arc<TenantDb>,
+        files: Arc<super::rebuild::RebuildFiles>,
+        timezone: String,
+    ) -> Result<Arc<Self>, AppError> {
+        blocking(move || {
+            db.ensure_current_owner()?;
+            let path = files.root.join("analytics.duckdb");
+            let config = duckdb::Config::default()
+                .threads(1)
+                .map_err(error)?
+                .max_memory("128MB")
+                .map_err(error)?;
+            let mut connection = Connection::open_with_flags(&path, config).map_err(error)?;
+            migrate_at(&mut connection, &db, &timezone, Utc::now())?;
+            Ok(Arc::new(Self {
+                db,
+                connection: Mutex::new(Some(connection)),
+                path,
+                rebuild_lock: tokio::sync::Mutex::new(()),
+                _rebuild_files: Some(files),
+            }))
+        })
+        .await
+    }
+    /// Close both databases before the atomic rename; no connection keeps a stale WAL path.
+    pub(crate) async fn install(self: &Arc<Self>, shadow: Arc<Self>) -> Result<(), AppError> {
+        let this = self.clone();
+        blocking(move || {
+            this.db.ensure_current_owner()?;
+            if this.tenant_id() != shadow.tenant_id() {
+                return Err(AppError::Forbidden("Foreign rebuild".into()));
+            }
+            let mut live = this
+                .connection
+                .lock()
+                .map_err(|_| AppError::Internal("Analytics lock poisoned".into()))?;
+            let mut staged = shadow
+                .connection
+                .lock()
+                .map_err(|_| AppError::Internal("Analytics lock poisoned".into()))?;
+            staged
+                .as_ref()
+                .ok_or_else(|| AppError::Internal("Rebuild already installed".into()))?
+                .execute_batch("CHECKPOINT")
+                .map_err(error)?;
+            live.as_ref()
+                .ok_or_else(|| AppError::Internal("Analytics file unavailable".into()))?
+                .execute_batch("CHECKPOINT")
+                .map_err(error)?;
+            this.db.ensure_current_owner()?;
+            drop(staged.take());
+            drop(live.take());
+            let previous = shadow.path.with_file_name("previous.duckdb");
+            let switch = (|| {
+                std::fs::hard_link(&this.path, &previous)
+                    .map_err(|e| AppError::Internal(e.to_string()))?;
+                if let Err(e) = std::fs::rename(&shadow.path, &this.path) {
+                    return Err(AppError::Internal(e.to_string()));
+                }
+                let config = duckdb::Config::default()
+                    .threads(1)
+                    .map_err(error)?
+                    .max_memory("128MB")
+                    .map_err(error)?;
+                let connection = Connection::open_with_flags(&this.path, config).map_err(error)?;
+                this.db.ensure_current_owner()?;
+                *live = Some(connection);
+                Ok(())
+            })();
+            if switch.is_err() {
+                if previous.exists() {
+                    std::fs::rename(&previous, &this.path)
+                        .map_err(|e| AppError::Internal(e.to_string()))?;
+                }
+                this.db.ensure_current_owner()?;
+                let config = duckdb::Config::default()
+                    .threads(1)
+                    .map_err(error)?
+                    .max_memory("128MB")
+                    .map_err(error)?;
+                *live = Some(Connection::open_with_flags(&this.path, config).map_err(error)?);
+            }
+            switch
         })
         .await
     }
@@ -58,7 +209,13 @@ impl TenantAnalytics {
                 .connection
                 .lock()
                 .map_err(|_| AppError::Internal("Analytics connection lock poisoned".into()))?;
-            let tx = connection.transaction().map_err(error)?;
+            let tx = connection
+                .as_mut()
+                .ok_or_else(|| {
+                    AppError::Internal("Analytics file unavailable during switch".into())
+                })?
+                .transaction()
+                .map_err(error)?;
             let value = operation(&tx)?;
             tx.rollback().map_err(error)?;
             this.db.ensure_current_owner()?;
@@ -78,7 +235,13 @@ impl TenantAnalytics {
                 .connection
                 .lock()
                 .map_err(|_| AppError::Internal("Analytics connection lock poisoned".into()))?;
-            let tx = connection.transaction().map_err(error)?;
+            let tx = connection
+                .as_mut()
+                .ok_or_else(|| {
+                    AppError::Internal("Analytics file unavailable during switch".into())
+                })?
+                .transaction()
+                .map_err(error)?;
             let value = operation(&tx)?;
             this.db.ensure_current_owner()?;
             tx.commit().map_err(error)?;
@@ -113,6 +276,15 @@ pub fn migrate(
             "Foreign analytics database path".into(),
         ));
     }
+    migrate_at(connection, owner, timezone, now)
+}
+pub(crate) fn migrate_at(
+    connection: &mut Connection,
+    owner: &TenantDb,
+    timezone: &str,
+    now: DateTime<Utc>,
+) -> Result<(), AppError> {
+    owner.ensure_current_owner()?;
     let zone = timezone
         .parse::<chrono_tz::Tz>()
         .map_err(|_| AppError::Internal("Invalid analytics timezone".into()))?;
@@ -184,8 +356,8 @@ pub fn migrate(
             ));
         }
         tx.execute(
-            "UPDATE _ingest_state SET schema_version=? WHERE id=1",
-            params![SCHEMA_VERSION],
+            "UPDATE _ingest_state SET schema_version=?,status=CASE WHEN schema_version<>? THEN 'REBUILDING' ELSE status END WHERE id=1",
+            params![SCHEMA_VERSION,SCHEMA_VERSION],
         )
         .map_err(error)?;
     }
