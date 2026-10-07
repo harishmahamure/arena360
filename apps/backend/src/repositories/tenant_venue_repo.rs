@@ -506,29 +506,15 @@ impl TenantBalanceRepository {
         let balance_id=write(&db,Box::new(move|connection|Box::pin(async move{
             let transaction_valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transactions WHERE id=? AND player_id=? AND plan_id=? AND transaction_type='plan_purchase' AND deleted_at IS NULL)").bind(transaction.to_string()).bind(player.to_string()).bind(plan_id.to_string()).fetch_one(&mut *connection).await?;
             if !transaction_valid{return Err(AppError::Conflict("Transaction is not a tenant-local purchase for this player and plan".into()));}
-            let granted:Option<String>=sqlx::query_scalar("SELECT balance_id FROM player_plan_ledger WHERE transaction_id=? ORDER BY created_at,id LIMIT 1").bind(transaction.to_string()).fetch_optional(&mut *connection).await?;
-            if let Some(balance_id)=granted{return Uuid::parse_str(&balance_id).map_err(|error|AppError::Internal(error.to_string()));}
-            let plan:Option<(i32,i32,Option<String>,Option<String>,String,Option<String>,Option<String>,Option<String>,Option<String>,bool,Option<String>)>=sqlx::query_as("SELECT validity_days,time_credits,device_type,device_sub_type,plan_type,time_window_start,time_window_end,allowed_days,allowed_months,dynamic_deduction_enabled,deduction_profile FROM plans WHERE id=? AND is_active=1 AND deleted_at IS NULL").bind(plan_id.to_string()).fetch_optional(&mut *connection).await?;
-            let Some((validity,minutes,device_type,sub_type,plan_type,window_start,window_end,allowed_days,allowed_months,dynamic,deduction))=plan else{return Err(AppError::NotFound(format!("Plan with ID {plan_id} not found")))};
-            let kind=if plan_type=="weekend_special"{plan_kind::HAPPY_HOURS}else{plan_kind::TIME};
-            let existing:Option<(String,i32,String,String)>=sqlx::query_as("SELECT id,remaining_minutes,expiry_date,status FROM player_plan_balances WHERE player_id=? AND device_type IS ? AND device_sub_type IS ? AND kind=? AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 1").bind(player.to_string()).bind(&device_type).bind(&sub_type).bind(kind).fetch_optional(&mut *connection).await?;
-            let fresh=timestamp(&(at+Duration::days(i64::from(validity))))?;
-            let (id,after,expiry,reason)=if let Some((id,current,old_expiry,status))=existing{
-                let carry=status==balance_status::ACTIVE&&old_expiry>at_text;
-                let expiry=if kind==plan_kind::HAPPY_HOURS&&carry{old_expiry}else{fresh};
-                let after=if carry{current.saturating_add(minutes)}else{minutes};
-                sqlx::query("UPDATE player_plan_balances SET remaining_minutes=?,expiry_date=?,source_plan_id=?,deduction_profile=CASE WHEN ? THEN ? ELSE deduction_profile END,status='active',updated_by=COALESCE(?,updated_by),updated_at=? WHERE id=?")
-                    .bind(after).bind(&expiry).bind(plan_id.to_string()).bind(dynamic).bind(deduction).bind(actor.map(|v|v.to_string())).bind(&at_text).bind(&id).execute(&mut *connection).await?;
-                (Uuid::parse_str(&id).map_err(|e|AppError::Internal(e.to_string()))?,after,expiry,if carry{ledger_reason::RECHARGE}else{ledger_reason::PURCHASE})
-            }else{
-                let id=Uuid::now_v7();
-                sqlx::query("INSERT INTO player_plan_balances(id,player_id,device_type,device_sub_type,kind,remaining_minutes,expiry_date,window_start,window_end,status,source_plan_id,allowed_days,allowed_months,deduction_profile,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)")
-                    .bind(id.to_string()).bind(player.to_string()).bind(device_type).bind(sub_type).bind(kind).bind(minutes).bind(&fresh).bind(window_start).bind(window_end).bind(plan_id.to_string()).bind(allowed_days).bind(allowed_months).bind(dynamic.then_some(deduction).flatten()).bind(actor.map(|v|v.to_string())).bind(actor.map(|v|v.to_string())).bind(&at_text).bind(&at_text).execute(&mut *connection).await?;
-                (id,minutes,fresh,ledger_reason::PURCHASE)
-            };
-            append_ledger(connection,id,player,minutes,reason,Some(transaction),None,after,&expiry,actor,&at_text).await?;
-            event(connection,"balance",id,"balance.updated",None,json!({"id":id,"playerId":player,"remainingMinutes":after,"expiryDate":expiry,"reason":reason,"updatedAt":at_text})).await?;
-            Ok(id)
+            grant_balance_on_connection(
+                connection,
+                player,
+                plan_id,
+                transaction,
+                actor,
+                &at_text,
+            )
+            .await
         }))).await?;
         self.find_by_id(balance_id)
             .await?
@@ -544,6 +530,182 @@ impl TenantBalanceRepository {
             if changed.rows_affected()>0{event(connection,"balance",id,"balance.updated",None,json!({"id":id,"status":status,"updatedAt":at})).await?;}Ok(())
         }))).await
     }
+}
+
+/// Grants a purchased plan while the caller already owns the tenant writer transaction.
+///
+/// The ledger transaction ID is the idempotency key, so create and status-completion retries
+/// cannot grant the same purchase twice.
+pub(crate) async fn grant_balance_on_connection(
+    connection: &mut SqliteConnection,
+    player: Uuid,
+    plan_id: Uuid,
+    transaction: Uuid,
+    actor: Option<Uuid>,
+    at_text: &str,
+) -> Result<Uuid, AppError> {
+    let granted: Option<String> = sqlx::query_scalar(
+        "SELECT balance_id FROM player_plan_ledger
+         WHERE transaction_id=? ORDER BY created_at,id LIMIT 1",
+    )
+    .bind(transaction.to_string())
+    .fetch_optional(&mut *connection)
+    .await?;
+    if let Some(balance_id) = granted {
+        return Uuid::parse_str(&balance_id).map_err(|error| AppError::Internal(error.to_string()));
+    }
+    let at = at_text
+        .parse::<DateTime<Utc>>()
+        .map_err(|error| AppError::Internal(format!("invalid tenant timestamp: {error}")))?;
+    let plan: Option<(
+        i32,
+        i32,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        bool,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT validity_days,time_credits,device_type,device_sub_type,plan_type,
+                time_window_start,time_window_end,allowed_days,allowed_months,
+                dynamic_deduction_enabled,deduction_profile
+         FROM plans WHERE id=? AND is_active=1 AND deleted_at IS NULL",
+    )
+    .bind(plan_id.to_string())
+    .fetch_optional(&mut *connection)
+    .await?;
+    let Some((
+        validity,
+        minutes,
+        device_type,
+        sub_type,
+        plan_type,
+        window_start,
+        window_end,
+        allowed_days,
+        allowed_months,
+        dynamic,
+        deduction,
+    )) = plan
+    else {
+        return Err(AppError::NotFound(format!(
+            "Plan with ID {plan_id} not found"
+        )));
+    };
+    let kind = if plan_type == "weekend_special" {
+        plan_kind::HAPPY_HOURS
+    } else {
+        plan_kind::TIME
+    };
+    let existing: Option<(String, i32, String, String)> = sqlx::query_as(
+        "SELECT id,remaining_minutes,expiry_date,status FROM player_plan_balances
+         WHERE player_id=? AND device_type IS ? AND device_sub_type IS ? AND kind=?
+           AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 1",
+    )
+    .bind(player.to_string())
+    .bind(&device_type)
+    .bind(&sub_type)
+    .bind(kind)
+    .fetch_optional(&mut *connection)
+    .await?;
+    let fresh = timestamp(&(at + Duration::days(i64::from(validity))))?;
+    let (id, after, expiry, reason) = if let Some((id, current, old_expiry, status)) = existing {
+        let carry = status == balance_status::ACTIVE && old_expiry.as_str() > at_text;
+        let expiry = if kind == plan_kind::HAPPY_HOURS && carry {
+            old_expiry
+        } else {
+            fresh
+        };
+        let after = if carry {
+            current.checked_add(minutes).ok_or_else(|| {
+                AppError::Conflict("Plan balance would exceed supported range".into())
+            })?
+        } else {
+            minutes
+        };
+        sqlx::query(
+            "UPDATE player_plan_balances SET remaining_minutes=?,expiry_date=?,
+                 source_plan_id=?,deduction_profile=CASE WHEN ? THEN ? ELSE deduction_profile END,
+                 status='active',updated_by=COALESCE(?,updated_by),updated_at=? WHERE id=?",
+        )
+        .bind(after)
+        .bind(&expiry)
+        .bind(plan_id.to_string())
+        .bind(dynamic)
+        .bind(deduction)
+        .bind(actor.map(|value| value.to_string()))
+        .bind(at_text)
+        .bind(&id)
+        .execute(&mut *connection)
+        .await?;
+        (
+            Uuid::parse_str(&id).map_err(|error| AppError::Internal(error.to_string()))?,
+            after,
+            expiry,
+            if carry {
+                ledger_reason::RECHARGE
+            } else {
+                ledger_reason::PURCHASE
+            },
+        )
+    } else {
+        let id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO player_plan_balances(id,player_id,device_type,device_sub_type,kind,
+                 remaining_minutes,expiry_date,window_start,window_end,status,source_plan_id,
+                 allowed_days,allowed_months,deduction_profile,created_by,updated_by,created_at,
+                 updated_at) VALUES(?,?,?,?,?,?,?,?,?,'active',?,?,?,?,?,?,?,?)",
+        )
+        .bind(id.to_string())
+        .bind(player.to_string())
+        .bind(device_type)
+        .bind(sub_type)
+        .bind(kind)
+        .bind(minutes)
+        .bind(&fresh)
+        .bind(window_start)
+        .bind(window_end)
+        .bind(plan_id.to_string())
+        .bind(allowed_days)
+        .bind(allowed_months)
+        .bind(dynamic.then_some(deduction).flatten())
+        .bind(actor.map(|value| value.to_string()))
+        .bind(actor.map(|value| value.to_string()))
+        .bind(at_text)
+        .bind(at_text)
+        .execute(&mut *connection)
+        .await?;
+        (id, minutes, fresh, ledger_reason::PURCHASE)
+    };
+    append_ledger(
+        connection,
+        id,
+        player,
+        minutes,
+        reason,
+        Some(transaction),
+        None,
+        after,
+        &expiry,
+        actor,
+        at_text,
+    )
+    .await?;
+    event(
+        connection,
+        "balance",
+        id,
+        "balance.updated",
+        None,
+        json!({"id":id,"playerId":player,"remainingMinutes":after,
+               "expiryDate":expiry,"reason":reason,"updatedAt":at_text}),
+    )
+    .await?;
+    Ok(id)
 }
 
 fn balance_filters<'a>(

@@ -12,13 +12,14 @@ use crate::models::{
 };
 use crate::realtime::{publish_balance_updated_for_player, OutboxService};
 use crate::repositories::{
-    InventoryRepository, ProductRecipeRepository, TransactionProductRepository,
-    TransactionRepository,
+    InventoryRepository, ProductRecipeRepository, TenantTransactionRepository,
+    TransactionProductRepository, TransactionRepository,
 };
 use crate::services::{
     BalanceService, ConfigService, CreditService, EventService, NotificationService,
     PricingPolicyService, ProductRecipeService,
 };
+use crate::tenancy::TenantDb;
 use crate::validation::{
     optional_payment_status, require_payment_method, require_payment_status,
     require_transaction_type, validate_online_payment_ref_last4,
@@ -91,8 +92,28 @@ impl TransactionService {
         self.repo.list(&filters).await
     }
 
+    /// Staged tenant-cell path. Live handlers remain on PostgreSQL until the M5 cutover.
+    pub async fn list_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        filters: TransactionFilterDto,
+    ) -> Result<crate::dto::PaginationResult<TransactionResponse>, AppError> {
+        TenantTransactionRepository::new(db).list(&filters).await
+    }
+
     pub async fn get_by_id(&self, id: Uuid) -> Result<Transaction, AppError> {
         self.repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))
+    }
+
+    pub async fn get_by_id_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<Transaction, AppError> {
+        TenantTransactionRepository::new(db)
             .find_by_id(id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Transaction with ID {id} not found")))
@@ -108,6 +129,44 @@ impl TransactionService {
             transaction,
             line_items,
         ))
+    }
+
+    pub async fn get_by_id_with_items_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<TransactionWithLineItems, AppError> {
+        TenantTransactionRepository::new(db)
+            .get_with_items(id)
+            .await
+    }
+
+    pub async fn create_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        mut dto: CreateTransactionDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Transaction, AppError> {
+        sanitize_create_transaction(&mut dto)?;
+        TenantTransactionRepository::new(db)
+            .with_timezone(self.cafe_timezone.clone())
+            .create(dto, actor_id)
+            .await
+    }
+
+    pub async fn update_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+        mut dto: UpdateTransactionDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Transaction, AppError> {
+        if let Some(status) = dto.payment_status.take() {
+            dto.payment_status = Some(require_payment_status(Some(status))?);
+        }
+        TenantTransactionRepository::new(db)
+            .update(id, &dto, actor_id)
+            .await
     }
 
     fn compute_cash_portion(payment_method: &str, cash_amount: Option<f64>, amount: f64) -> f64 {

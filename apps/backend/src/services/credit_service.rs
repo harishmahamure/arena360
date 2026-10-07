@@ -10,9 +10,10 @@ use crate::models::{
     CreditPortfolioSummary, CreditSettlement, CreditSettlementDetail, CreditSettlementFilterDto,
     CreditSettlementListRow, CreditSummary, PlayerCreditDetail, SetCreditLimitDto, SettleCreditDto,
 };
-use crate::repositories::CreditRepository;
+use crate::repositories::{CreditRepository, TenantCreditRepository};
 use crate::services::CashRegisterService;
 use crate::services::{NotificationService, Recipients, RecordNotification};
+use crate::tenancy::TenantDb;
 use crate::validation::validate_online_payment_ref_last4;
 
 pub struct CreditService {
@@ -92,11 +93,38 @@ impl CreditService {
         })
     }
 
+    /// Staged tenant-cell path; it intentionally has no PostgreSQL cash-register side effects.
+    pub async fn summary_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+    ) -> Result<CreditSummary, AppError> {
+        TenantCreditRepository::new(db).summary(player_id).await
+    }
+
+    pub async fn get_player_credit_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+    ) -> Result<PlayerCreditDetail, AppError> {
+        TenantCreditRepository::new(db)
+            .player_detail(player_id)
+            .await
+    }
+
     pub async fn list_credit_players(
         &self,
         filters: CreditAccountFilterDto,
     ) -> Result<crate::dto::PaginationResult<CreditPlayerRow>, AppError> {
         self.repo.list_credit_players(&filters).await
+    }
+
+    pub async fn list_credit_players_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        filters: CreditAccountFilterDto,
+    ) -> Result<crate::dto::PaginationResult<CreditPlayerRow>, AppError> {
+        TenantCreditRepository::new(db).list_players(&filters).await
     }
 
     pub async fn portfolio_summary(&self) -> Result<CreditPortfolioSummary, AppError> {
@@ -121,8 +149,26 @@ impl CreditService {
         self.repo.list_settlements(&filters).await
     }
 
+    pub async fn list_settlements_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        filters: CreditSettlementFilterDto,
+    ) -> Result<crate::dto::PaginationResult<CreditSettlementListRow>, AppError> {
+        TenantCreditRepository::new(db)
+            .list_settlements(&filters)
+            .await
+    }
+
     pub async fn get_settlement(&self, id: Uuid) -> Result<CreditSettlementDetail, AppError> {
         self.repo.get_settlement_by_id(id).await
+    }
+
+    pub async fn get_settlement_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<CreditSettlementDetail, AppError> {
+        TenantCreditRepository::new(db).settlement_detail(id).await
     }
 
     pub async fn settle(
@@ -219,6 +265,18 @@ impl CreditService {
         Ok(settlement)
     }
 
+    pub async fn settle_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        dto: SettleCreditDto,
+        shift_id: Uuid,
+        actor_id: Uuid,
+    ) -> Result<CreditSettlement, AppError> {
+        TenantCreditRepository::new(db)
+            .settle(dto, shift_id, actor_id)
+            .await
+    }
+
     pub async fn set_limit(
         &self,
         player_id: Uuid,
@@ -237,6 +295,18 @@ impl CreditService {
 
         self.invalidate_credit(player_id).await?;
         self.summary(player_id).await
+    }
+
+    pub async fn set_limit_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+        dto: SetCreditLimitDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<CreditSummary, AppError> {
+        TenantCreditRepository::new(db)
+            .set_limit(player_id, &dto, actor_id)
+            .await
     }
 
     pub async fn invalidate_player_credit(&self, player_id: Uuid) -> Result<(), AppError> {

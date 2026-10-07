@@ -10,12 +10,15 @@ use crate::models::{
     KioskOrderWithItems,
 };
 use crate::realtime::OutboxService;
-use crate::repositories::{KioskOrderRepository, ProductRecipeRepository, SessionRepository};
+use crate::repositories::{
+    KioskOrderRepository, ProductRecipeRepository, SessionRepository, TenantKioskOrderRepository,
+};
 use crate::services::product_recipe_service::made_to_order_capacity;
 use crate::services::{
     ConfigService, NotificationService, PricingPolicyService, Recipients, RecordNotification,
     TransactionService,
 };
+use crate::tenancy::TenantDb;
 
 pub struct KioskOrderService {
     repo: KioskOrderRepository,
@@ -252,6 +255,20 @@ impl KioskOrderService {
         Ok(order)
     }
 
+    /// Staged tenant-cell path. Placement snapshots products but does not reserve stock.
+    pub async fn place_order_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+        device_id: Uuid,
+        dto: CreateKioskOrderDto,
+    ) -> Result<KioskOrderWithItems, AppError> {
+        TenantKioskOrderRepository::new(db)
+            .with_timezone(self.cafe_timezone.clone())
+            .place(player_id, device_id, dto)
+            .await
+    }
+
     async fn product_rules(
         &self,
         organization_id: Uuid,
@@ -355,6 +372,17 @@ impl KioskOrderService {
         }
     }
 
+    pub async fn current_order_for_player_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+        device_id: Uuid,
+    ) -> Result<Option<KioskOrderWithItems>, AppError> {
+        TenantKioskOrderRepository::new(db)
+            .current_for_player(player_id, device_id)
+            .await
+    }
+
     pub async fn list(
         &self,
         filters: KioskOrderFilterDto,
@@ -362,8 +390,24 @@ impl KioskOrderService {
         self.repo.list(&filters).await
     }
 
+    pub async fn list_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        filters: KioskOrderFilterDto,
+    ) -> Result<crate::dto::PaginationResult<KioskOrderWithItems>, AppError> {
+        TenantKioskOrderRepository::new(db).list(&filters).await
+    }
+
     pub async fn get_by_id(&self, id: Uuid) -> Result<KioskOrderWithItems, AppError> {
         self.repo.get_with_details(id).await
+    }
+
+    pub async fn get_by_id_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<KioskOrderWithItems, AppError> {
+        TenantKioskOrderRepository::new(db).get(id).await
     }
 
     pub async fn update_status(
@@ -395,6 +439,17 @@ impl KioskOrderService {
 
         self.repo.update_status(id, status).await?;
         self.repo.get_with_details(id).await
+    }
+
+    pub async fn update_status_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+        status: &str,
+    ) -> Result<KioskOrderWithItems, AppError> {
+        TenantKioskOrderRepository::new(db)
+            .update_status(id, status)
+            .await
     }
 
     pub async fn mark_fulfilled(
@@ -492,5 +547,27 @@ impl KioskOrderService {
             .create(dto, Some(actor_id), actor_role, cash_registers)
             .await?;
         Ok(tx)
+    }
+
+    pub async fn convert_to_sale_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        order_id: Uuid,
+        convert: ConvertKioskOrderDto,
+        shift_id: Uuid,
+        actor_id: Uuid,
+        transactions: &TransactionService,
+    ) -> Result<crate::models::Transaction, AppError> {
+        let repo = TenantKioskOrderRepository::new(db.clone());
+        let order = repo.get(order_id).await?;
+        if !kiosk_order_status::OPEN.contains(&order.status.as_str()) {
+            return Err(AppError::Conflict(
+                "Order is not open for conversion".to_string(),
+            ));
+        }
+        let mut dto = Self::build_transaction_dto(&order, &convert);
+        dto.venue_location_id = Some(repo.venue_for_order(order_id).await?);
+        dto.shift_id = Some(shift_id);
+        transactions.create_tenant(db, dto, Some(actor_id)).await
     }
 }
