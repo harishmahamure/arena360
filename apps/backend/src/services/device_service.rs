@@ -10,8 +10,9 @@ use crate::models::{
     CreateDeviceDto, Device, DeviceFilterDto, UpdateDeviceDto, UpdateDeviceStatusDto,
 };
 use crate::realtime::OutboxService;
-use crate::repositories::DeviceRepository;
+use crate::repositories::{DeviceRepository, TenantDeviceRepository};
 use crate::services::{EventService, NotificationService, Recipients, RecordNotification};
+use crate::tenancy::TenantDb;
 use crate::validation::{
     optional_device_status, optional_device_sub_type, optional_device_type,
     require_device_sub_type, require_device_type,
@@ -59,7 +60,183 @@ impl DeviceService {
         user_id: Uuid,
         admin: bool,
     ) -> Result<crate::dto::PaginationResult<Device>, AppError> {
-        self.repo.list(&filters, organization_id, user_id, admin).await
+        self.repo
+            .list(&filters, organization_id, user_id, admin)
+            .await
+    }
+
+    pub async fn list_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        filters: DeviceFilterDto,
+        allowed_locations: Vec<Uuid>,
+    ) -> Result<crate::dto::PaginationResult<Device>, AppError> {
+        TenantDeviceRepository::new(db)
+            .list(&filters, &allowed_locations)
+            .await
+    }
+
+    pub async fn get_tenant(&self, db: Arc<TenantDb>, id: Uuid) -> Result<Device, AppError> {
+        TenantDeviceRepository::new(db)
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Device with ID {id} not found")))
+    }
+
+    pub async fn create_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        dto: CreateDeviceDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
+        let dto = prepare_create_dto(dto)?;
+        let repo = TenantDeviceRepository::new(db);
+        if repo.name_exists(&dto.name, None).await? {
+            return Err(AppError::Conflict(format!(
+                "Device with name '{}' already exists",
+                dto.name
+            )));
+        }
+        let device = repo.create(&dto, actor_id).await?;
+        self.after_tenant_mutation(&device).await;
+        Ok(device)
+    }
+
+    pub async fn update_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+        dto: UpdateDeviceDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
+        let repo = TenantDeviceRepository::new(db);
+        if let Some(name) = dto.name.as_deref() {
+            if repo.name_exists(name, Some(id)).await? {
+                return Err(AppError::Conflict("Device name already exists".into()));
+            }
+        }
+        let device = repo.update(id, &prepare_update_dto(dto)?, actor_id).await?;
+        self.after_tenant_mutation(&device).await;
+        Ok(device)
+    }
+
+    pub async fn update_status_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+        dto: UpdateDeviceStatusDto,
+    ) -> Result<Device, AppError> {
+        let status = optional_device_status(Some(dto.status))?
+            .ok_or_else(|| AppError::BadRequest("Device status is required".into()))?;
+        let device = TenantDeviceRepository::new(db)
+            .update_status(id, &status)
+            .await?;
+        self.after_tenant_mutation(&device).await;
+        Ok(device)
+    }
+
+    pub async fn delete_tenant(&self, db: Arc<TenantDb>, id: Uuid) -> Result<(), AppError> {
+        // The repository performs the active-session check inside the fenced
+        // immediate transaction so a session cannot race this deletion.
+        TenantDeviceRepository::new(db).soft_delete(id).await?;
+        self.invalidate_device_cache(&id).await;
+        Ok(())
+    }
+
+    pub async fn provision_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        mut dto: ProvisionDeviceDto,
+        actor_id: Option<Uuid>,
+    ) -> Result<Device, AppError> {
+        if dto.name.trim().is_empty() {
+            return Err(AppError::BadRequest("Device name is required".into()));
+        }
+        dto.deviceType = Some(require_device_type(dto.deviceType)?);
+        dto.deviceSubType = Some(require_device_sub_type(dto.deviceSubType)?);
+        dto.serialNumber = Some(dto.fingerprint.mac.trim().to_string());
+        let fingerprint = serde_json::to_string(&dto.fingerprint)
+            .map_err(|error| AppError::BadRequest(error.to_string()))?;
+        let repo = TenantDeviceRepository::new(db);
+        let existing = if is_unusable_mac(&dto.fingerprint.mac) {
+            None
+        } else {
+            repo.find_registered_by_mac(&dto.fingerprint.mac).await?
+        };
+        if let Some(existing) = &existing {
+            let requested = dto
+                .locationId
+                .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID);
+            if requested != existing.location_id {
+                return Err(AppError::Conflict(
+                    "Move the device in admin before provisioning it at another location".into(),
+                ));
+            }
+            if !self.fingerprint_compatible(existing, &dto.fingerprint)? {
+                return Err(AppError::Conflict(
+                    "This hardware fingerprint does not match the registered device".into(),
+                ));
+            }
+        } else if repo.name_exists(&dto.name, None).await? {
+            return Err(AppError::Conflict(format!(
+                "Device with name '{}' already exists",
+                dto.name
+            )));
+        }
+        let device = repo
+            .provision(
+                existing.map(|value| value.id),
+                dto.name,
+                dto.serialNumber,
+                dto.deviceType.unwrap_or_else(|| "OTHER".into()),
+                dto.deviceSubType.unwrap_or_else(|| "OTHER".into()),
+                dto.location,
+                dto.locationId
+                    .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID),
+                fingerprint,
+                actor_id,
+            )
+            .await?;
+        self.after_tenant_mutation(&device).await;
+        Ok(device)
+    }
+
+    pub async fn verify_fingerprint_drift_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        device: &Device,
+        presented: &DeviceFingerprintDto,
+    ) -> Result<(), AppError> {
+        let Some(stored) = device.registered_kiosk.as_deref() else {
+            let json = serde_json::to_string(presented)
+                .map_err(|error| AppError::BadRequest(error.to_string()))?;
+            return TenantDeviceRepository::new(db)
+                .update_fingerprint(device.id, json)
+                .await;
+        };
+        let Ok(stored) = serde_json::from_str::<DeviceFingerprintDto>(stored) else {
+            return Ok(());
+        };
+        match fingerprint_drift_count(&stored, presented) {
+            0 => Ok(()),
+            1 => {
+                let json = serde_json::to_string(presented)
+                    .map_err(|error| AppError::BadRequest(error.to_string()))?;
+                TenantDeviceRepository::new(db)
+                    .update_fingerprint(device.id, json)
+                    .await
+            }
+            _ => Err(AppError::forbidden_code("DEVICE_FINGERPRINT_MISMATCH")),
+        }
+    }
+
+    pub(crate) async fn after_tenant_mutation(&self, device: &Device) {
+        self.events
+            .publish_device_status(&device.id.to_string(), &device.status);
+        // Until API-0032 consumes tenant outboxes directly, mirror the committed
+        // tenant mutation to the existing PostgreSQL realtime channels.
+        self.publish_device_ws(device).await;
+        self.invalidate_device_cache(&device.id).await;
     }
 
     pub async fn get_by_id(&self, id: Uuid) -> Result<Device, AppError> {
@@ -111,7 +288,9 @@ impl DeviceService {
 
         if let Some(existing) = self.find_existing_for_reprovision(&dto.fingerprint).await? {
             if existing.organization_id != organization_id {
-                return Err(AppError::Conflict("This hardware is registered to another organization".into()));
+                return Err(AppError::Conflict(
+                    "This hardware is registered to another organization".into(),
+                ));
             }
             if self.fingerprint_compatible(&existing, &dto.fingerprint)? {
                 return self
@@ -127,7 +306,11 @@ impl DeviceService {
             )));
         }
 
-        match self.repo.provision(&dto, &fingerprint_json, actor_id, organization_id).await {
+        match self
+            .repo
+            .provision(&dto, &fingerprint_json, actor_id, organization_id)
+            .await
+        {
             Ok(device) => {
                 self.events
                     .publish_device_status(&device.id.to_string(), &device.status);
@@ -157,8 +340,14 @@ impl DeviceService {
         fingerprint_json: &str,
         actor_id: Option<Uuid>,
     ) -> Result<Device, AppError> {
-        if dto.locationId.unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID) != existing.location_id {
-            return Err(AppError::Conflict("Move the device in admin before provisioning it at another location".into()));
+        if dto
+            .locationId
+            .unwrap_or(crate::models::DEFAULT_VENUE_LOCATION_ID)
+            != existing.location_id
+        {
+            return Err(AppError::Conflict(
+                "Move the device in admin before provisioning it at another location".into(),
+            ));
         }
         if !self.fingerprint_compatible(&existing, &dto.fingerprint)? {
             return Err(AppError::Conflict(format!(

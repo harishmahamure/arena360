@@ -14,11 +14,16 @@ use crate::dto::{
     RateLimitClaims, StaffLoginDto,
 };
 use crate::error::AppError;
-use crate::models::{deduction_profile::DeductionProfile, Device, User, DEFAULT_ORGANIZATION_ID};
-use crate::repositories::{SessionRepository, ShiftRepository};
+use crate::models::{
+    deduction_profile::DeductionProfile, Device, PlayerPlanBalance, User, DEFAULT_ORGANIZATION_ID,
+};
+use crate::repositories::{
+    SessionRepository, ShiftRepository, TenantBalanceRepository, TenantSessionRepository,
+};
 use crate::services::session_service::display_remaining_for_session;
 use crate::services::totp_util::verify_totp_code;
 use crate::services::{BalanceService, UserService};
+use crate::tenancy::TenantDb;
 use crate::validation::{normalize_username, trim_secret};
 
 pub struct AuthService {
@@ -414,6 +419,129 @@ impl AuthService {
             device.location_id,
         )?;
 
+        Ok(AuthResponseDto {
+            accessToken: token,
+            user: user.to_auth_user(),
+            shiftId: None,
+            activeSession: active_session,
+        })
+    }
+
+    pub async fn login_player_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        device: &Device,
+        dto: LoginDto,
+        timezone: String,
+    ) -> Result<AuthResponseDto, AppError> {
+        if device.registration_status != "registered" {
+            return Err(AppError::forbidden_code("DEVICE_NOT_REGISTERED"));
+        }
+        if device.status == "under_maintenance" {
+            return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
+        }
+        // Identity stays in PostgreSQL until API-0028 projects players and staff.
+        let user = self
+            .authenticate_kiosk_user(
+                &normalize_username(&dto.username),
+                &trim_secret(&dto.password),
+            )
+            .await?;
+        if user.role.as_deref() == Some("staff")
+            && self
+                .shift_repo
+                .find_active_by_user(user.id)
+                .await?
+                .is_some()
+        {
+            return Err(AppError::forbidden_code("STAFF_SHIFT_ACTIVE"));
+        }
+        let sessions = TenantSessionRepository::new(db.clone());
+        let active_session = if let Some(open) = sessions.find_open_for_player(user.id).await? {
+            if open.device_id != device.id {
+                return Err(AppError::conflict_code(
+                    "PLAYER_ALREADY_IN_SESSION",
+                    Some(
+                        json!({"deviceId":open.device_id,"deviceName":open.device_name,
+                        "sessionId":open.session_id,"sessionStartTime":crate::time::utc_timestamp(&open.start_time)}),
+                    ),
+                ));
+            }
+            let balance = TenantBalanceRepository::new(db.clone())
+                .find_by_id(open.balance_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Open balance record missing".into()))?;
+            let validation = BalanceService::validate_balance(&balance, Some(device), None);
+            if !validation.valid {
+                return Err(BalanceService::validation_to_app_error_for_balance(
+                    &balance, validation,
+                ));
+            }
+            let session = sessions
+                .find_by_id(open.session_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Open session record missing".into()))?;
+            Some(ActiveSessionDto {
+                id: session.id.to_string(),
+                startTime: session.start_time,
+                balanceId: balance.id.to_string(),
+                remainingMinutes: display_remaining_for_session(&balance, &session, &timezone)
+                    as f64,
+                walletBalanceMinutes: balance.remaining_minutes as f64,
+                deductionProfile: crate::services::session_service::session_profile_value(
+                    &balance, &session,
+                )
+                .and_then(|value| serde_json::from_value::<DeductionProfile>(value.clone()).ok()),
+                cafeTimezone: timezone,
+                timeCreditsConsumed: Some(session.time_credits_consumed.unwrap_or(0) as f64),
+                expiryDate: balance.expiry_date,
+            })
+        } else {
+            let balances = TenantBalanceRepository::new(db)
+                .list(&crate::models::BalanceFilterDto {
+                    player_id: Some(user.id),
+                    status: Some("active".into()),
+                    usable_only: Some(true),
+                    limit: Some(100),
+                    ..Default::default()
+                })
+                .await?;
+            let usable = balances.data.into_iter().any(|row| {
+                let raw: PlayerPlanBalance = PlayerPlanBalance {
+                    id: row.id,
+                    player_id: row.player_id,
+                    device_type: row.device_type,
+                    device_sub_type: row.device_sub_type,
+                    kind: row.kind,
+                    remaining_minutes: row.remaining_minutes,
+                    expiry_date: row.expiry_date,
+                    window_start: row.window_start,
+                    window_end: row.window_end,
+                    status: row.status,
+                    source_plan_id: row.source_plan_id,
+                    allowed_days: row.allowed_days,
+                    allowed_months: row.allowed_months,
+                    deduction_profile: row.deduction_profile,
+                    created_by: row.created_by,
+                    updated_by: row.updated_by,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    deleted_at: row.deleted_at,
+                };
+                BalanceService::device_scope_matches(&raw, device)
+                    && BalanceService::validate_balance(&raw, Some(device), None).valid
+            });
+            if !usable {
+                return Err(AppError::forbidden_code("PLAN_NOT_ACTIVATED"));
+            }
+            None
+        };
+        let token = self.generate_player_token_for(
+            &user,
+            device.id,
+            device.organization_id,
+            device.location_id,
+        )?;
         Ok(AuthResponseDto {
             accessToken: token,
             user: user.to_auth_user(),

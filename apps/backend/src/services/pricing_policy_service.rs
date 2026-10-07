@@ -720,6 +720,32 @@ impl PricingPolicyService {
         Ok(rules)
     }
 
+    pub async fn active_rules_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+        target: PricingTarget,
+    ) -> Result<Vec<PricingRule>, AppError> {
+        let mut rules = Vec::new();
+        for value in TenantPricingPolicyRepository::new(db)
+            .active_policies(organization_id, location_id)
+            .await?
+        {
+            let policy: PricingPolicy = serde_json::from_value(value).map_err(|error| {
+                AppError::Internal(format!("Published pricing policy is invalid: {error}"))
+            })?;
+            Self::validate_policy(&policy)?;
+            rules.extend(
+                policy
+                    .rules
+                    .into_iter()
+                    .filter(|rule| rule.target == target),
+            );
+        }
+        Ok(rules)
+    }
+
     /// Combine published plan rules in the same priority order as the preview.
     /// Limits from applicable rule sets form a shared price range.
     pub async fn active_plan_policy(&self) -> Result<PricingPolicy, AppError> {

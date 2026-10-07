@@ -9,7 +9,10 @@ use crate::models::{
     balance_status, ledger_reason, plan_kind, BalanceFilterDto, BalanceValidationResult, Device,
     Plan, PlayerPlanBalance, PlayerPlanBalanceResponse, PurchaseBalanceDto,
 };
-use crate::repositories::{BalanceRepository, LedgerRepository, PlanRepository};
+use crate::repositories::{
+    BalanceRepository, LedgerRepository, PlanRepository, TenantBalanceRepository,
+};
+use crate::tenancy::TenantDb;
 
 pub struct BalanceService {
     repo: BalanceRepository,
@@ -98,6 +101,34 @@ impl BalanceService {
         Ok(())
     }
 
+    pub async fn sync_tenant_balance_cache_after_mutation(
+        &self,
+        db: Arc<TenantDb>,
+        balance: &PlayerPlanBalance,
+    ) -> Result<(), AppError> {
+        self.invalidate_balance(balance).await?;
+        self.invalidate_balance_raw(balance.id).await?;
+        self.write_through_balance_raw(balance).await?;
+        if let Some((session_id, device_id)) = TenantBalanceRepository::new(db)
+            .find_open_session_ids(balance.player_id)
+            .await?
+        {
+            cache::invalidate(
+                &*self.cache,
+                &[
+                    keys::session_enriched(&session_id),
+                    keys::session_device(&device_id),
+                ],
+            )
+            .await?;
+        }
+        let _ = self
+            .cache
+            .invalidate_prefix(keys::SESSIONS_LIST_PREFIX)
+            .await;
+        Ok(())
+    }
+
     pub async fn get_raw(&self, id: Uuid) -> Result<PlayerPlanBalance, AppError> {
         let cache_key = keys::balance_raw(&id);
         get_or_set(&*self.cache, &cache_key, keys::ttl::SESSION, || async {
@@ -107,6 +138,88 @@ impl BalanceService {
                 .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))
         })
         .await
+    }
+
+    pub async fn get_raw_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        TenantBalanceRepository::new(db)
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))
+    }
+
+    pub async fn list_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        filters: BalanceFilterDto,
+    ) -> Result<crate::dto::PaginationResult<PlayerPlanBalanceResponse>, AppError> {
+        let mut result = TenantBalanceRepository::new(db.clone())
+            .list(&filters)
+            .await?;
+        let now = Utc::now();
+        for balance in &mut result.data {
+            if balance.status == balance_status::ACTIVE && balance.expiry_date < now {
+                TenantBalanceRepository::new(db.clone())
+                    .set_status(balance.id, balance_status::EXPIRED)
+                    .await?;
+                balance.status = balance_status::EXPIRED.into();
+            }
+        }
+        Ok(result)
+    }
+
+    pub async fn get_by_id_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+    ) -> Result<PlayerPlanBalanceResponse, AppError> {
+        Ok(self.get_raw_tenant(db, id).await?.into())
+    }
+
+    pub async fn purchase_or_recharge_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        dto: PurchaseBalanceDto,
+        actor: Option<Uuid>,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let balance = TenantBalanceRepository::new(db.clone())
+            .purchase_or_recharge(&dto, actor)
+            .await?;
+        self.sync_tenant_balance_cache_after_mutation(db, &balance)
+            .await?;
+        let _ = cache::invalidate_stats(&*self.cache).await;
+        Ok(balance)
+    }
+
+    pub async fn get_best_balance_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let result = self
+            .list_tenant(
+                db.clone(),
+                BalanceFilterDto {
+                    player_id: Some(player_id),
+                    status: Some(balance_status::ACTIVE.into()),
+                    usable_only: Some(true),
+                    limit: Some(100),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let id = result
+            .data
+            .into_iter()
+            .max_by_key(|balance| balance.remaining_minutes)
+            .map(|balance| balance.id)
+            .ok_or_else(|| {
+                AppError::NotFound(format!("No active balances found for player {player_id}"))
+            })?;
+        self.get_raw_tenant(db, id).await
     }
 
     pub async fn list(

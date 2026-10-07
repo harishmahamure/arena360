@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -16,12 +16,15 @@ use crate::realtime::{publish_balance_updated_for_session, OutboxService};
 const DEVICE_SESSION_ENDED_DURABLE: bool = true;
 use crate::cache::{self, get_or_set, keys, set_json, CacheService};
 use crate::models::activity_kind;
-use crate::repositories::SessionRepository;
+use crate::repositories::{
+    SessionRepository, TenantBalanceRepository, TenantDeviceRepository, TenantSessionRepository,
+};
 use crate::services::deduction_profile::{wall_minutes_between, weighted_minutes_between};
 use crate::services::{
     BalanceService, DeviceService, EventService, NotificationService, Recipients,
     RecordNotification,
 };
+use crate::tenancy::TenantDb;
 
 /// Result of starting (or resuming) a kiosk session for a player.
 pub struct KioskSessionStart {
@@ -71,6 +74,38 @@ fn parse_session_profile(
 ) -> Option<DeductionProfile> {
     let value = session_profile_value(balance, session)?;
     serde_json::from_value(value.clone()).ok()
+}
+
+fn effective_session_timezone(
+    balance: &PlayerPlanBalance,
+    session: &UsageSession,
+    fallback: &str,
+) -> String {
+    session
+        .deduction_profile_snapshot
+        .as_ref()
+        .and_then(|value| value.get("policyTimezone"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| {
+            balance
+                .deduction_profile
+                .as_ref()
+                .and_then(|value| value.get("policyTimezone"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| fallback.to_owned())
+}
+
+fn snapshot_timezone(session: &UsageSession, fallback: &str) -> String {
+    session
+        .deduction_profile_snapshot
+        .as_ref()
+        .and_then(|value| value.get("policyTimezone"))
+        .and_then(Value::as_str)
+        .unwrap_or(fallback)
+        .to_owned()
 }
 
 fn capture_deduction_profile(
@@ -132,7 +167,8 @@ pub fn effective_remaining_for_session(
     cafe_tz: &str,
 ) -> i32 {
     let profile = parse_session_profile(balance, session);
-    let total = weighted_consumption(session.start_time, Utc::now(), profile.as_ref(), cafe_tz);
+    let timezone = effective_session_timezone(balance, session, cafe_tz);
+    let total = weighted_consumption(session.start_time, Utc::now(), profile.as_ref(), &timezone);
     let owed = (total.ceil() as i32 - charged_wallet_minutes(session)).max(0);
     (balance.remaining_minutes - owed).max(0)
 }
@@ -244,6 +280,561 @@ impl SessionService {
             wallet_balance_minutes,
             remaining_minutes,
             resumed,
+        }
+    }
+
+    fn kiosk_session_start_tenant(
+        &self,
+        session: UsageSession,
+        balance: &PlayerPlanBalance,
+        resumed: bool,
+        fallback_timezone: String,
+    ) -> KioskSessionStart {
+        let timezone = effective_session_timezone(balance, &session, &fallback_timezone);
+        KioskSessionStart {
+            wallet_balance_minutes: balance.remaining_minutes,
+            remaining_minutes: display_remaining_for_session(balance, &session, &timezone),
+            time_credits_consumed: charged_wallet_minutes(&session) as f64,
+            deduction_profile: session_profile_value(balance, &session).cloned(),
+            cafe_timezone: timezone,
+            expiry_date: balance.expiry_date,
+            balance_id: balance.id,
+            session,
+            resumed,
+        }
+    }
+
+    async fn tenant_timezone(
+        &self,
+        db: Arc<TenantDb>,
+        location_id: Uuid,
+    ) -> Result<String, AppError> {
+        Ok(self
+            .settings
+            .venue_pricing_context_tenant(db.clone(), db.tenant_id(), Some(location_id))
+            .await?
+            .0)
+    }
+
+    async fn tenant_profile(
+        &self,
+        db: Arc<TenantDb>,
+        balance: &PlayerPlanBalance,
+        device: &Device,
+    ) -> Result<(Value, String), AppError> {
+        let rules = self
+            .pricing
+            .active_rules_tenant(
+                db.clone(),
+                db.tenant_id(),
+                Some(device.location_id),
+                crate::models::PricingTarget::Deduction,
+            )
+            .await?;
+        let mut snapshot = capture_deduction_profile(
+            balance.deduction_profile.as_ref(),
+            rules,
+            &device.device_type,
+        )?;
+        let timezone = self.tenant_timezone(db, device.location_id).await?;
+        snapshot["policyTimezone"] = Value::String(timezone.clone());
+        Ok((snapshot, timezone))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        dto: CreateSessionDto,
+        player_id: Uuid,
+        actor_id: Option<Uuid>,
+    ) -> Result<UsageSession, AppError> {
+        let balance = TenantBalanceRepository::new(db.clone())
+            .find_by_id(dto.balance_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Balance with ID {} not found", dto.balance_id))
+            })?;
+        let device = TenantDeviceRepository::new(db.clone())
+            .find_by_id(dto.device_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Device with ID {} not found", dto.device_id))
+            })?;
+        let validation = BalanceService::validate_balance(&balance, Some(&device), dto.start_time);
+        if !validation.valid {
+            return Err(BalanceService::validation_to_app_error_for_balance(
+                &balance, validation,
+            ));
+        }
+        let (snapshot, timezone) = self.tenant_profile(db.clone(), &balance, &device).await?;
+        // API-0030 owns shift projection. This remains connection-ready, but a
+        // caller may supply only a shift already present in this tenant database.
+        let mutation = TenantSessionRepository::new(db.clone())
+            .start(
+                player_id,
+                balance.id,
+                device.id,
+                device.location_id,
+                dto.shift_id,
+                dto.start_time.unwrap_or_else(Utc::now),
+                actor_id,
+                snapshot,
+            )
+            .await?;
+        self.after_tenant_session_mutation(db.clone(), &mutation.session, &mutation.balance)
+            .await;
+        self.publish_tenant_device_status(db, device.id).await;
+        self.publish_tenant_session_started(
+            &mutation.session,
+            &mutation.balance,
+            &device,
+            &timezone,
+        )
+        .await;
+        Ok(mutation.session)
+    }
+
+    pub async fn start_for_player_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+        device: &Device,
+        balance_id: Option<Uuid>,
+    ) -> Result<KioskSessionStart, AppError> {
+        let sessions = TenantSessionRepository::new(db.clone());
+        if let Some(open) = sessions.find_open_for_player(player_id).await? {
+            if open.device_id != device.id {
+                return Err(AppError::conflict_code(
+                    "PLAYER_ALREADY_IN_SESSION",
+                    Some(
+                        json!({"deviceId":open.device_id,"deviceName":open.device_name,
+                        "sessionId":open.session_id,"sessionStartTime":crate::time::utc_timestamp(&open.start_time)}),
+                    ),
+                ));
+            }
+            let session = sessions
+                .find_by_id(open.session_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Open session vanished".into()))?;
+            let balance = TenantBalanceRepository::new(db.clone())
+                .find_by_id(open.balance_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Open balance vanished".into()))?;
+            let fallback = self.tenant_timezone(db, device.location_id).await?;
+            return Ok(self.kiosk_session_start_tenant(session, &balance, true, fallback));
+        }
+        let balance = if let Some(id) = balance_id {
+            let balance = TenantBalanceRepository::new(db.clone())
+                .find_by_id(id)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Balance with ID {id} not found")))?;
+            if balance.player_id != player_id {
+                return Err(AppError::Forbidden(
+                    "Balance does not belong to this player".into(),
+                ));
+            }
+            let validation = BalanceService::validate_balance(&balance, Some(device), None);
+            if !validation.valid {
+                return Err(BalanceService::validation_to_app_error_for_balance(
+                    &balance, validation,
+                ));
+            }
+            balance
+        } else {
+            self.require_usable_balance_tenant(db.clone(), player_id, device)
+                .await?
+        };
+        let session = self
+            .start_tenant(
+                db.clone(),
+                CreateSessionDto {
+                    balance_id: balance.id,
+                    device_id: device.id,
+                    shift_id: None,
+                    start_time: None,
+                },
+                player_id,
+                None,
+            )
+            .await?;
+        let balance = TenantBalanceRepository::new(db.clone())
+            .find_by_id(balance.id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Balance disappeared".into()))?;
+        let fallback = self.tenant_timezone(db, device.location_id).await?;
+        Ok(self.kiosk_session_start_tenant(session, &balance, false, fallback))
+    }
+
+    async fn require_usable_balance_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+        device: &Device,
+    ) -> Result<PlayerPlanBalance, AppError> {
+        let rows = TenantBalanceRepository::new(db.clone())
+            .list(&crate::models::BalanceFilterDto {
+                player_id: Some(player_id),
+                status: Some("active".into()),
+                usable_only: Some(true),
+                limit: Some(100),
+                ..Default::default()
+            })
+            .await?;
+        let mut best = None;
+        for row in rows.data {
+            let balance = TenantBalanceRepository::new(db.clone())
+                .find_by_id(row.id)
+                .await?
+                .ok_or_else(|| AppError::Internal("Balance disappeared".into()))?;
+            if BalanceService::device_scope_matches(&balance, device)
+                && BalanceService::validate_balance(&balance, Some(device), None).valid
+                && best.as_ref().is_none_or(|current: &PlayerPlanBalance| {
+                    balance.remaining_minutes > current.remaining_minutes
+                })
+            {
+                best = Some(balance);
+            }
+        }
+        best.ok_or_else(|| AppError::forbidden_code("PLAN_NOT_ACTIVATED"))
+    }
+
+    pub async fn get_by_id_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+        timezone: String,
+    ) -> Result<UsageSessionResponse, AppError> {
+        let repo = TenantSessionRepository::new(db);
+        let raw = repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))?;
+        repo.find_enriched_by_id(id)
+            .await?
+            .map(|session| with_cafe_timezone(session, &snapshot_timezone(&raw, &timezone)))
+            .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))
+    }
+
+    pub async fn list_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        filters: SessionFilterDto,
+        locations: Vec<Uuid>,
+        timezone: String,
+    ) -> Result<crate::dto::PaginationResult<UsageSessionResponse>, AppError> {
+        let repo = TenantSessionRepository::new(db);
+        let mut result = repo.list(&filters, &locations).await?;
+        for session in &mut result.data {
+            let raw = repo.find_by_id(session.id).await?.ok_or_else(|| {
+                AppError::NotFound(format!("Session with ID {} not found", session.id))
+            })?;
+            session.cafe_timezone = snapshot_timezone(&raw, &timezone);
+        }
+        Ok(result)
+    }
+
+    pub async fn heartbeat_for_player_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        session_id: Uuid,
+        player_id: Uuid,
+        device_id: Uuid,
+    ) -> Result<KioskSessionStart, AppError> {
+        let repo = TenantSessionRepository::new(db.clone());
+        let session = repo
+            .find_by_id(session_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Session with ID {session_id} not found")))?;
+        if session.device_id != device_id {
+            return Err(AppError::Forbidden(
+                "Session does not belong to this device".into(),
+            ));
+        }
+        let balance = TenantBalanceRepository::new(db.clone())
+            .find_by_id(session.balance_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Session balance not found".into()))?;
+        if balance.player_id != player_id {
+            return Err(AppError::Forbidden(
+                "Session does not belong to this player".into(),
+            ));
+        }
+        let device = TenantDeviceRepository::new(db.clone())
+            .find_by_id(device_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Device not found".into()))?;
+        let fallback_timezone = self.tenant_timezone(db.clone(), device.location_id).await?;
+        let timezone = effective_session_timezone(&balance, &session, &fallback_timezone);
+        let profile = parse_session_profile(&balance, &session);
+        let total = weighted_consumption(
+            session.start_time,
+            Utc::now(),
+            profile.as_ref(),
+            &timezone,
+        )
+        .ceil() as i32;
+        let mutation = repo.charge(session_id, total, None, None).await?;
+        self.after_tenant_session_mutation(db.clone(), &mutation.session, &mutation.balance)
+            .await;
+        publish_balance_updated_for_session(
+            &self.outbox,
+            player_id,
+            device_id,
+            session_id,
+            &mutation.balance,
+        )
+        .await;
+        if mutation.session.end_time.is_some() {
+            self.publish_tenant_device_status(db, device_id).await;
+            self.publish_tenant_session_ended(&mutation.session, &mutation.balance, "auto")
+                .await;
+            return Err(AppError::NotFound(format!(
+                "Session with ID {session_id} has ended"
+            )));
+        }
+        Ok(self.kiosk_session_start_tenant(mutation.session, &mutation.balance, true, timezone))
+    }
+
+    pub async fn open_kiosk_session_for_player_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        player_id: Uuid,
+    ) -> Result<Option<KioskSessionStart>, AppError> {
+        let repo = TenantSessionRepository::new(db.clone());
+        let Some(open) = repo.find_open_for_player(player_id).await? else {
+            return Ok(None);
+        };
+        let session = repo
+            .find_by_id(open.session_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Open session vanished".into()))?;
+        let balance = TenantBalanceRepository::new(db.clone())
+            .find_by_id(open.balance_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Open balance vanished".into()))?;
+        let device = TenantDeviceRepository::new(db.clone())
+            .find_by_id(open.device_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Open device vanished".into()))?;
+        let fallback_timezone = self.tenant_timezone(db.clone(), device.location_id).await?;
+        let timezone = effective_session_timezone(&balance, &session, &fallback_timezone);
+        if display_remaining_for_session(&balance, &session, &timezone) <= 0 {
+            self.end_tenant(
+                db,
+                session.id,
+                EndSessionDto {
+                    reason: Some("auto".into()),
+                    ..Default::default()
+                },
+                None,
+            )
+            .await?;
+            return Ok(None);
+        }
+        Ok(Some(self.kiosk_session_start_tenant(
+            session, &balance, true, timezone,
+        )))
+    }
+
+    pub async fn end_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        id: Uuid,
+        dto: EndSessionDto,
+        actor: Option<Uuid>,
+    ) -> Result<UsageSession, AppError> {
+        let reason = dto.reason.unwrap_or_else(|| "voluntary".into());
+        if !SESSION_END_REASONS.contains(&reason.as_str()) {
+            return Err(AppError::BadRequest(format!(
+                "Invalid session end reason '{reason}'"
+            )));
+        }
+        if dto.time_credits_consumed.is_some() && reason != "offline_reconcile" {
+            return Err(AppError::BadRequest(
+                "Client timeCreditsConsumed is allowed only for offline_reconcile".into(),
+            ));
+        }
+        let repo = TenantSessionRepository::new(db.clone());
+        let session = repo
+            .find_by_id(id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Session with ID {id} not found")))?;
+        if session.end_time.is_some() {
+            return Ok(session);
+        }
+        let balance = TenantBalanceRepository::new(db.clone())
+            .find_by_id(session.balance_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Session balance not found".into()))?;
+        let device = TenantDeviceRepository::new(db.clone())
+            .find_by_id(session.device_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Device not found".into()))?;
+        let fallback_timezone = self.tenant_timezone(db.clone(), device.location_id).await?;
+        let timezone = effective_session_timezone(&balance, &session, &fallback_timezone);
+        let end = dto.end_time.unwrap_or_else(Utc::now);
+        let profile = parse_session_profile(&balance, &session);
+        let total = dto.time_credits_consumed.unwrap_or_else(|| {
+            weighted_consumption(session.start_time, end, profile.as_ref(), &timezone).ceil() as i32
+        });
+        let mutation = repo
+            .charge(
+                id,
+                total,
+                Some((
+                    end,
+                    elapsed_minutes_between(session.start_time, end),
+                    reason.clone(),
+                )),
+                actor,
+            )
+            .await?;
+        self.after_tenant_session_mutation(db.clone(), &mutation.session, &mutation.balance)
+            .await;
+        self.publish_tenant_device_status(db, session.device_id)
+            .await;
+        self.publish_tenant_session_ended(&mutation.session, &mutation.balance, &reason)
+            .await;
+        Ok(mutation.session)
+    }
+
+    async fn publish_tenant_session_started(
+        &self,
+        session: &UsageSession,
+        balance: &PlayerPlanBalance,
+        device: &Device,
+        timezone: &str,
+    ) {
+        let payload = json!({
+            "sessionId": session.id,
+            "deviceId": device.id,
+            "playerId": balance.player_id,
+            "balanceId": balance.id,
+            "startTime": crate::time::utc_timestamp(&session.start_time),
+            "walletMinutesAtStart": balance.remaining_minutes,
+            "sourcePlanIdAtStart": balance.source_plan_id,
+            "remainingMinutes": display_remaining_for_session(balance, session, timezone),
+            "deductionProfile": session_profile_value(balance, session),
+            "cafeTimezone": timezone,
+        });
+        let _ = self
+            .outbox
+            .publish(
+                "staff",
+                "session.started",
+                payload.clone(),
+                None,
+                None,
+                true,
+            )
+            .await;
+        let _ = self
+            .outbox
+            .publish(
+                &format!("device:{}", device.id),
+                "session.started",
+                payload.clone(),
+                None,
+                None,
+                false,
+            )
+            .await;
+        let _ = self
+            .notifications
+            .record_activity(RecordNotification {
+                kind: activity_kind::SESSION_STARTED.into(),
+                title: "Session started".into(),
+                summary: Some(format!(
+                    "Player session on {} · {} min at login",
+                    device.name, balance.remaining_minutes
+                )),
+                payload,
+                actor_user_id: None,
+                entity_type: Some("session".into()),
+                entity_id: Some(session.id),
+                recipients: Recipients::AllStaff,
+            })
+            .await;
+    }
+
+    async fn publish_tenant_session_ended(
+        &self,
+        session: &UsageSession,
+        balance: &PlayerPlanBalance,
+        reason: &str,
+    ) {
+        let payload = json!({
+            "sessionId": session.id,
+            "deviceId": session.device_id,
+            "playerId": balance.player_id,
+            "remainingMinutes": balance.remaining_minutes,
+            "endTime": session.end_time.as_ref().map(crate::time::utc_timestamp),
+            "reason": reason,
+        });
+        let _ = self
+            .outbox
+            .publish("staff", "session.ended", payload.clone(), None, None, true)
+            .await;
+        let _ = self
+            .outbox
+            .publish(
+                &format!("device:{}", session.device_id),
+                "session.ended",
+                payload.clone(),
+                None,
+                None,
+                DEVICE_SESSION_ENDED_DURABLE,
+            )
+            .await;
+        let _ = self
+            .outbox
+            .publish(
+                &format!("user:{}", balance.player_id),
+                "session.ended",
+                payload.clone(),
+                None,
+                Some(balance.player_id),
+                false,
+            )
+            .await;
+        let _ = self
+            .notifications
+            .record_activity(RecordNotification {
+                kind: activity_kind::SESSION_ENDED.into(),
+                title: "Session ended".into(),
+                summary: Some(reason.into()),
+                payload,
+                actor_user_id: None,
+                entity_type: Some("session".into()),
+                entity_id: Some(session.id),
+                recipients: Recipients::AllStaff,
+            })
+            .await;
+    }
+
+    async fn after_tenant_session_mutation(
+        &self,
+        db: Arc<TenantDb>,
+        session: &UsageSession,
+        balance: &PlayerPlanBalance,
+    ) {
+        if session.end_time.is_some() {
+            self.events.publish_session_ended(&session.id.to_string());
+        } else if session.time_credits_consumed.unwrap_or(0) == 0 {
+            self.events.publish_session_started(&session.id.to_string());
+        }
+        let _ = self.invalidate_session(session).await;
+        let _ = self
+            .balances
+            .sync_tenant_balance_cache_after_mutation(db, balance)
+            .await;
+        self.invalidate_stats_cache().await;
+    }
+
+    async fn publish_tenant_device_status(&self, db: Arc<TenantDb>, device_id: Uuid) {
+        if let Ok(Some(device)) = TenantDeviceRepository::new(db).find_by_id(device_id).await {
+            self.devices.after_tenant_mutation(&device).await;
         }
     }
 
@@ -838,6 +1429,73 @@ mod tests {
     }
 
     #[test]
+    fn session_snapshot_timezone_survives_venue_timezone_change() {
+        use chrono::TimeZone;
+
+        let start = Utc.with_ymd_and_hms(2026, 9, 24, 12, 0, 0).unwrap();
+        let snapshot = serde_json::json!({
+            "peakWindowStart": "12:00:00",
+            "peakWindowEnd": "13:00:00",
+            "peakRatio": 2.0,
+            "lowWindowStart": "00:00:00",
+            "lowWindowEnd": "00:00:00",
+            "lowRatio": 1.0,
+            "policyTimezone": "UTC"
+        });
+        let balance = PlayerPlanBalance {
+            id: Uuid::now_v7(),
+            player_id: Uuid::now_v7(),
+            device_type: Some("PC".into()),
+            device_sub_type: None,
+            kind: "time".into(),
+            remaining_minutes: 300,
+            expiry_date: start + chrono::Duration::days(30),
+            window_start: None,
+            window_end: None,
+            status: "active".into(),
+            source_plan_id: None,
+            allowed_days: None,
+            allowed_months: None,
+            deduction_profile: None,
+            created_by: None,
+            updated_by: None,
+            created_at: start,
+            updated_at: start,
+            deleted_at: None,
+        };
+        let session = UsageSession {
+            id: Uuid::now_v7(),
+            balance_id: balance.id,
+            device_id: Uuid::now_v7(),
+            shift_id: None,
+            start_time: start,
+            end_time: None,
+            duration_minutes: None,
+            time_credits_consumed: Some(0),
+            wallet_minutes_at_start: Some(300),
+            source_plan_id_at_start: None,
+            deduction_profile_snapshot: Some(snapshot),
+            created_by: None,
+            updated_by: None,
+            created_at: start,
+            updated_at: start,
+            deleted_at: None,
+        };
+        let timezone = effective_session_timezone(&balance, &session, "Asia/Kolkata");
+        let profile = parse_session_profile(&balance, &session).unwrap();
+        assert_eq!(timezone, "UTC");
+        assert_eq!(
+            weighted_consumption(
+                start,
+                start + chrono::Duration::minutes(60),
+                Some(&profile),
+                &timezone,
+            ),
+            120.0
+        );
+    }
+
+    #[test]
     fn device_session_ended_events_are_durable() {
         assert!(super::DEVICE_SESSION_ENDED_DURABLE);
     }
@@ -979,7 +1637,11 @@ mod tests {
     #[test]
     fn effective_remaining_subtracts_elapsed_minutes() {
         let start = Utc::now() - chrono::Duration::minutes(15);
-        assert_eq!(effective_remaining_minutes(60, start), 45);
+        let remaining = effective_remaining_minutes(60, start);
+        assert!(
+            (44..=45).contains(&remaining),
+            "clock advancement may cross the next ceil-minute boundary: {remaining}"
+        );
     }
 
     #[test]
