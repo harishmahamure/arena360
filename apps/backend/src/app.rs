@@ -217,7 +217,7 @@ pub async fn build_state() -> Arc<AppState> {
         notifications.clone(),
         cache.clone(),
     );
-    let player_plans = Arc::new(PlayerPlanService::new(pool.clone()));
+    let player_plans = Arc::new(PlayerPlanService::new());
     let balances = Arc::new(BalanceService::new(pool.clone(), cache.clone()));
     let balances_for_auth = balances.clone();
 
@@ -226,9 +226,7 @@ pub async fn build_state() -> Arc<AppState> {
             .with_notifications(notifications.clone()),
     );
 
-    let credit = Arc::new(
-        CreditService::new(pool.clone(), cache.clone()).with_notifications(notifications.clone()),
-    );
+    let credit = Arc::new(CreditService::new());
 
     // Spawn the realtime dispatcher
     let dispatcher = Dispatcher::new(

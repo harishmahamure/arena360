@@ -22,9 +22,8 @@ async fn list_settlements_returns_paginated_result() {
         return;
     };
 
-    let result = state
-        .credit
-        .list_settlements(CreditSettlementFilterDto {
+    let result = gaming_cafe_api::repositories::CreditRepository::new(state.db.clone())
+        .list_settlements(&CreditSettlementFilterDto {
             page: Some(1),
             limit: Some(10),
             ..Default::default()
@@ -44,9 +43,8 @@ async fn get_settlement_returns_not_found_for_missing_id() {
         return;
     };
 
-    let err = state
-        .credit
-        .get_settlement(Uuid::new_v4())
+    let err = gaming_cafe_api::repositories::CreditRepository::new(state.db.clone())
+        .get_settlement_by_id(Uuid::new_v4())
         .await
         .expect_err("missing settlement");
 

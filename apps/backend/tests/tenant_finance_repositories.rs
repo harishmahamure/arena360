@@ -244,6 +244,16 @@ async fn concurrent_start_and_handover_are_atomic() {
         1
     );
 
+    let approval_payload: String =
+        sqlx::query_scalar("SELECT payload FROM activity_log WHERE kind='approval_requested'")
+            .fetch_one(&f.db.read_pool().unwrap())
+            .await
+            .unwrap();
+    let approval: serde_json::Value = serde_json::from_str(&approval_payload).unwrap();
+    assert_eq!(approval["amount"], 20.0);
+    assert_eq!(approval["staff_id"], staff.to_string());
+    assert_eq!(approval["entity_type"], "cash_deposit");
+
     assert_eq!(register.opening_balance, 80.0001);
     assert_eq!(
         f.scalar(&format!(

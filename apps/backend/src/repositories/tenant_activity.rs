@@ -252,6 +252,11 @@ pub(crate) async fn record_canonical_on(
                     .fetch_one(&mut *c)
                     .await?
             };
+            let mut snapshot = payload.clone();
+            if requested && entity == "cash_deposit" {
+                snapshot["amount"] = json!(amount);
+                snapshot["staff_id"] = payload["requestedBy"].clone();
+            }
             insert(
                 c,
                 if requested {
@@ -265,7 +270,7 @@ pub(crate) async fn record_canonical_on(
                 } else {
                     format!("Status: {status}")
                 }),
-                payload.clone(),
+                snapshot,
                 actor.clone(),
                 entity,
                 id,

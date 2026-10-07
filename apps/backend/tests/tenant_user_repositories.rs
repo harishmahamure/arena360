@@ -1515,7 +1515,7 @@ async fn staged_services_do_not_connect_to_unreachable_lazy_postgres_and_reject_
         })
         .await
         .unwrap();
-    let result = PlayerPlanService::new(postgres)
+    let result = PlayerPlanService::new()
         .assign_plan_to_player_tenant(
             fixture.db.clone(),
             AssignPlanDto {
