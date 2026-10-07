@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::Arc;
 
 use chrono::{Datelike, Utc};
 use chrono_tz::Tz;
@@ -13,7 +14,8 @@ use crate::models::{
     PricingRule, PricingRuleSet, PricingRuleVersion, PricingSimulationDto, PricingSimulationResult,
     PricingTarget, PricingTraceStep, PublishPricingRuleVersionDto,
 };
-use crate::repositories::PricingPolicyRepository;
+use crate::repositories::{PricingPolicyRepository, TenantPricingPolicyRepository};
+use crate::tenancy::TenantDb;
 
 /// Values of the `products_category_enum` database type.
 const PRODUCT_CATEGORIES: [&str; 4] = ["beverage", "snack", "meal", "other"];
@@ -203,6 +205,187 @@ impl PricingPolicyService {
     pub async fn activate_due(&self) -> Result<u64, AppError> {
         let activated = self.repo.activate_due().await?;
         Ok(activated.len() as u64)
+    }
+
+    pub async fn list_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<Vec<PricingRuleSet>, AppError> {
+        TenantPricingPolicyRepository::new(db)
+            .list_sets(organization_id, location_id)
+            .await
+    }
+
+    pub async fn get_set_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        set_id: Uuid,
+    ) -> Result<PricingRuleSet, AppError> {
+        TenantPricingPolicyRepository::new(db)
+            .get_set(organization_id, set_id)
+            .await
+    }
+
+    pub async fn create_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        mut dto: CreatePricingRuleSetDto,
+        actor_id: Uuid,
+    ) -> Result<(PricingRuleSet, PricingRuleVersion), AppError> {
+        if let Some(id) = dto.location_id {
+            if !dto.location_ids.contains(&id) {
+                dto.location_ids.push(id);
+            }
+        }
+        if dto.name.trim().len() < 3 {
+            return Err(AppError::BadRequest(
+                "Pricing rule set name must contain at least 3 characters".into(),
+            ));
+        }
+        Self::validate_policy(&dto.policy)?;
+        let policy = serde_json::to_value(&dto.policy)
+            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
+        TenantPricingPolicyRepository::new(db)
+            .create_set(
+                organization_id,
+                dto.location_ids.first().copied().or(dto.location_id),
+                &dto.location_ids,
+                dto.name.trim(),
+                dto.description.as_deref(),
+                &policy,
+                actor_id,
+            )
+            .await
+    }
+
+    pub async fn create_version_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        set_id: Uuid,
+        dto: CreatePricingRuleVersionDto,
+        actor_id: Uuid,
+    ) -> Result<PricingRuleVersion, AppError> {
+        Self::validate_policy(&dto.policy)?;
+        let policy = serde_json::to_value(dto.policy)
+            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
+        TenantPricingPolicyRepository::new(db)
+            .create_version(organization_id, set_id, &policy, actor_id)
+            .await
+    }
+
+    pub async fn versions_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        set_id: Uuid,
+    ) -> Result<Vec<PricingRuleVersion>, AppError> {
+        TenantPricingPolicyRepository::new(db)
+            .versions(organization_id, set_id)
+            .await
+    }
+
+    pub async fn validate_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        set_id: Uuid,
+        version_id: Uuid,
+    ) -> Result<PricingRuleVersion, AppError> {
+        let repo = TenantPricingPolicyRepository::new(db);
+        let version = repo
+            .get_version(organization_id, set_id, version_id)
+            .await?;
+        let policy: PricingPolicy = serde_json::from_value(version.policy)
+            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
+        Self::validate_policy(&policy)?;
+        repo.mark_validated(organization_id, set_id, version_id)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn simulate_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        set_id: Uuid,
+        version_id: Uuid,
+        input: PricingSimulationDto,
+        timezone: &str,
+        currency: &str,
+    ) -> Result<PricingSimulationResult, AppError> {
+        let repo = TenantPricingPolicyRepository::new(db);
+        let rule_set = repo.get_set(organization_id, set_id).await?;
+        if let Some(requested) = input.location_id {
+            if !rule_set.location_ids.is_empty() && !rule_set.location_ids.contains(&requested) {
+                return Err(AppError::BadRequest(
+                    "Pricing rule set is not available for the requested location".into(),
+                ));
+            }
+        }
+        let version = repo
+            .get_version(organization_id, set_id, version_id)
+            .await?;
+        let policy: PricingPolicy = serde_json::from_value(version.policy)
+            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
+        Self::validate_policy(&policy)?;
+        let result = Self::evaluate(&policy, &input, timezone, currency)?;
+        repo.record_simulation(organization_id, set_id, version_id, &result.simulation_hash)
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn publish_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        set_id: Uuid,
+        version_id: Uuid,
+        dto: PublishPricingRuleVersionDto,
+        actor_id: Uuid,
+    ) -> Result<PricingRuleVersion, AppError> {
+        TenantPricingPolicyRepository::new(db)
+            .publish(
+                organization_id,
+                set_id,
+                version_id,
+                dto.effective_at.unwrap_or_else(Utc::now),
+                actor_id,
+            )
+            .await
+    }
+
+    pub async fn rollback_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        set_id: Uuid,
+        target_version_id: Uuid,
+        actor_id: Uuid,
+    ) -> Result<PricingRuleVersion, AppError> {
+        let repo = TenantPricingPolicyRepository::new(db);
+        let target = repo
+            .get_version(organization_id, set_id, target_version_id)
+            .await?;
+        let policy: PricingPolicy = serde_json::from_value(target.policy.clone())
+            .map_err(|error| AppError::BadRequest(format!("Invalid pricing policy: {error}")))?;
+        Self::validate_policy(&policy)?;
+        let draft = repo
+            .create_version(organization_id, set_id, &target.policy, actor_id)
+            .await?;
+        repo.mark_validated(organization_id, set_id, draft.id)
+            .await?;
+        let hash = target.simulation_hash.ok_or_else(|| {
+            AppError::Conflict("The target version has no successful simulation".into())
+        })?;
+        repo.record_simulation(organization_id, set_id, draft.id, &hash)
+            .await?;
+        repo.publish(organization_id, set_id, draft.id, Utc::now(), actor_id)
+            .await
     }
 
     pub fn validate_policy(policy: &PricingPolicy) -> Result<(), AppError> {

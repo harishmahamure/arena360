@@ -2,6 +2,7 @@
 //! the routing cache, the ownership lease client, and the signed entitlement cache.
 
 mod db;
+mod location_projection;
 mod migration;
 mod outbox;
 mod provisioning;
@@ -12,11 +13,16 @@ use sqlx::{migrate::Migrator, SqliteConnection, SqlitePool};
 
 pub use crate::time::{format_sqlite_timestamp, parse_sqlite_timestamp, SqliteTimestampError};
 pub use db::{tenant_path, TenantDb, TenantDbConfig, TenantDbManager, TenantLease};
+pub use location_projection::{
+    sync_venue_locations, LocationProjectionResult, ProjectedVenueLocation,
+};
 pub use migration::{
     MigrationContext, MigrationHook, MigrationOrchestrator, MigrationOrchestratorConfig,
     MigrationOutcome, MigrationState, PendingTenantMigration, PostgresMigrationState,
 };
-pub use outbox::{write_outbox_event, NewOutboxEvent, WrittenOutboxEvent};
+pub use outbox::{
+    write_outbox_event, write_outbox_event_on_connection, NewOutboxEvent, WrittenOutboxEvent,
+};
 pub use provisioning::{
     InitialSettingOverride, PostgresProvisioningControl, ProvisionTenant, ProvisionedTenant,
     ProvisioningControl, TenantProvisioner,

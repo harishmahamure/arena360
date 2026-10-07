@@ -20,6 +20,24 @@ use crate::openapi::responses::{
     ErrorEnvelope, ProductCurrentPriceListEnvelope, ProductEnvelope, ProductPaginationEnvelope,
     ProductRecipeEnvelope,
 };
+use crate::repositories::TenantProductRepository;
+
+async fn authorize_tenant_product(
+    db: Arc<crate::tenancy::TenantDb>,
+    id: Uuid,
+    scope: &LocationScope,
+    write: bool,
+) -> Result<(), AppError> {
+    let (all, rows) = TenantProductRepository::new(db).location_scope(id).await?;
+    let locations = if all {
+        vec![]
+    } else {
+        rows.into_iter()
+            .map(|(location_id, _)| location_id)
+            .collect()
+    };
+    catalog_scope::authorize(scope, &locations, write)
+}
 
 #[utoipa::path(
     get,
@@ -39,16 +57,18 @@ pub async fn list_products(
     State(state): State<Arc<AppState>>,
     Query(mut filters): Query<ProductFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<Product>> {
-    let scope = LocationScope::resolve(
-        &state.db,
-        &claims,
-        "products:read",
-        requested_location(&headers)?,
-    )
-    .await?;
+    let requested = filters.location_id.or(requested_location(&headers)?);
+    let scope = LocationScope::resolve(&state.db, &claims, "products:read", requested).await?;
     filters.organization_id = Some(scope.organization_id);
-    filters.allowed_location_ids = Some(scope.locations);
-    let result = state.products.list(filters).await?;
+    filters.allowed_location_ids = Some(scope.locations.clone());
+    let result = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        state
+            .products
+            .list_tenant(db, scope.locations, filters)
+            .await?
+    } else {
+        state.products.list(filters).await?
+    };
     ok(result)
 }
 
@@ -73,9 +93,13 @@ pub async fn get_product(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Product> {
     let scope = LocationScope::resolve(&state.db, &claims, "products:read", None).await?;
-    catalog_scope::get(&state.db, "products", id, &scope, false).await?;
-
-    let product = state.products.get_by_id(id).await?;
+    let product = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        authorize_tenant_product(db.clone(), id, &scope, false).await?;
+        state.products.get_tenant(db, id).await?
+    } else {
+        catalog_scope::get(&state.db, "products", id, &scope, false).await?;
+        state.products.get_by_id(id).await?
+    };
     ok(product)
 }
 
@@ -107,10 +131,17 @@ pub async fn create_product(
     });
     let locations = catalog_scope::create_locations(&state.db, &scope, requested).await?;
     let dto = payload.item;
-    let service = crate::services::ProductService::new(state.db.clone(), state.cache.clone())
-        .with_locations(locations);
-
-    let product = service.create(dto, claims.user_id_uuid()).await?;
+    let product = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        state
+            .products
+            .create_tenant(db, locations, dto, claims.user_id_uuid())
+            .await?
+    } else {
+        crate::services::ProductService::new(state.db.clone(), state.cache.clone())
+            .with_locations(locations)
+            .create(dto, claims.user_id_uuid())
+            .await?
+    };
     created(product)
 }
 
@@ -139,12 +170,19 @@ pub async fn update_product(
     Json(dto): Json<UpdateProductDto>,
 ) -> ApiResult<Product> {
     let scope = LocationScope::resolve(&state.db, &claims, "products:write", None).await?;
-    catalog_scope::get(&state.db, "products", id, &scope, true).await?;
-
-    let product = state
-        .products
-        .update(id, dto, claims.user_id_uuid())
-        .await?;
+    let product = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        authorize_tenant_product(db.clone(), id, &scope, true).await?;
+        state
+            .products
+            .update_tenant(db, id, dto, claims.user_id_uuid())
+            .await?
+    } else {
+        catalog_scope::get(&state.db, "products", id, &scope, true).await?;
+        state
+            .products
+            .update(id, dto, claims.user_id_uuid())
+            .await?
+    };
     ok(product)
 }
 
@@ -205,6 +243,14 @@ pub async fn current_prices(
             ));
         }
     }
+    let tenant_id = Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+    if let Some(db) = state.tenant_db(tenant_id).await? {
+        return ok(state
+            .products
+            .current_prices_tenant(db, query.location_id, venue_location_id, &state.config)
+            .await?);
+    }
     ok(state
         .transactions
         .current_product_prices(query.location_id, Some(venue_location_id))
@@ -230,9 +276,13 @@ pub async fn get_recipe(
     Path(id): Path<Uuid>,
 ) -> ApiResult<ProductRecipe> {
     let scope = LocationScope::resolve(&state.db, &claims, "products:read", None).await?;
-    catalog_scope::get(&state.db, "products", id, &scope, false).await?;
-
-    ok(state.product_recipes.get(id).await?)
+    if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        authorize_tenant_product(db.clone(), id, &scope, false).await?;
+        ok(state.product_recipes.get_tenant(db, id).await?)
+    } else {
+        catalog_scope::get(&state.db, "products", id, &scope, false).await?;
+        ok(state.product_recipes.get(id).await?)
+    }
 }
 
 #[utoipa::path(
@@ -258,9 +308,13 @@ pub async fn save_recipe(
     Json(recipe): Json<ProductRecipe>,
 ) -> ApiResult<ProductRecipe> {
     let scope = LocationScope::resolve(&state.db, &claims, "products:write", None).await?;
-    catalog_scope::get(&state.db, "products", id, &scope, true).await?;
-
-    ok(state.product_recipes.save(id, recipe).await?)
+    if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        authorize_tenant_product(db.clone(), id, &scope, true).await?;
+        ok(state.product_recipes.save_tenant(db, id, recipe).await?)
+    } else {
+        catalog_scope::get(&state.db, "products", id, &scope, true).await?;
+        ok(state.product_recipes.save(id, recipe).await?)
+    }
 }
 
 #[utoipa::path(
@@ -285,8 +339,12 @@ pub async fn delete_product(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Product> {
     let scope = LocationScope::resolve(&state.db, &claims, "products:write", None).await?;
-    catalog_scope::get(&state.db, "products", id, &scope, true).await?;
-
-    let product = state.products.delete(id).await?;
+    let product = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        authorize_tenant_product(db.clone(), id, &scope, true).await?;
+        state.products.delete_tenant(db, id).await?
+    } else {
+        catalog_scope::get(&state.db, "products", id, &scope, true).await?;
+        state.products.delete(id).await?
+    };
     ok(product)
 }

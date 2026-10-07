@@ -42,7 +42,14 @@ async fn require_rule_set(
     permission: &str,
 ) -> Result<Uuid, AppError> {
     let actor_id = require(state, claims, organization_id, permission).await?;
-    let rule_set = state.pricing_rules.get_set(organization_id, set_id).await?;
+    let rule_set = if let Some(db) = state.tenant_db(organization_id).await? {
+        state
+            .pricing_rules
+            .get_set_tenant(db, organization_id, set_id)
+            .await?
+    } else {
+        state.pricing_rules.get_set(organization_id, set_id).await?
+    };
     if permission == "rules:read" {
         if !rule_set.location_ids.is_empty() {
             let scope =
@@ -92,7 +99,14 @@ pub async fn list_rule_sets(
             .ensure_location_permission(org_id, location_id, actor_id, "rules:read")
             .await?;
     }
-    let mut rule_sets = state.pricing_rules.list(org_id, query.location_id).await?;
+    let mut rule_sets = if let Some(db) = state.tenant_db(org_id).await? {
+        state
+            .pricing_rules
+            .list_tenant(db, org_id, query.location_id)
+            .await?
+    } else {
+        state.pricing_rules.list(org_id, query.location_id).await?
+    };
     if query.location_id.is_none() {
         let assigned_locations: HashSet<Uuid> = state
             .config
@@ -153,7 +167,14 @@ pub async fn create_rule_set(
             .ensure_location_permission(org_id, *id, actor_id, "rules:edit")
             .await?;
     }
-    let (rule_set, version) = state.pricing_rules.create(org_id, dto, actor_id).await?;
+    let (rule_set, version) = if let Some(db) = state.tenant_db(org_id).await? {
+        state
+            .pricing_rules
+            .create_tenant(db, org_id, dto, actor_id)
+            .await?
+    } else {
+        state.pricing_rules.create(org_id, dto, actor_id).await?
+    };
     ok(PricingRuleSetDraft { rule_set, version })
 }
 
@@ -170,7 +191,14 @@ pub async fn list_versions(
     Path((org_id, set_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Vec<PricingRuleVersion>> {
     require_rule_set(&state, &claims, org_id, set_id, "rules:read").await?;
-    ok(state.pricing_rules.versions(org_id, set_id).await?)
+    if let Some(db) = state.tenant_db(org_id).await? {
+        ok(state
+            .pricing_rules
+            .versions_tenant(db, org_id, set_id)
+            .await?)
+    } else {
+        ok(state.pricing_rules.versions(org_id, set_id).await?)
+    }
 }
 
 #[utoipa::path(
@@ -188,10 +216,17 @@ pub async fn create_version(
     Json(dto): Json<CreatePricingRuleVersionDto>,
 ) -> ApiResult<PricingRuleVersion> {
     let actor_id = require_rule_set(&state, &claims, org_id, set_id, "rules:edit").await?;
-    ok(state
-        .pricing_rules
-        .create_version(org_id, set_id, dto, actor_id)
-        .await?)
+    if let Some(db) = state.tenant_db(org_id).await? {
+        ok(state
+            .pricing_rules
+            .create_version_tenant(db, org_id, set_id, dto, actor_id)
+            .await?)
+    } else {
+        ok(state
+            .pricing_rules
+            .create_version(org_id, set_id, dto, actor_id)
+            .await?)
+    }
 }
 
 #[utoipa::path(
@@ -207,10 +242,17 @@ pub async fn validate_version(
     Path((org_id, set_id, version_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> ApiResult<PricingRuleVersion> {
     require_rule_set(&state, &claims, org_id, set_id, "rules:edit").await?;
-    ok(state
-        .pricing_rules
-        .validate(org_id, set_id, version_id)
-        .await?)
+    if let Some(db) = state.tenant_db(org_id).await? {
+        ok(state
+            .pricing_rules
+            .validate_tenant(db, org_id, set_id, version_id)
+            .await?)
+    } else {
+        ok(state
+            .pricing_rules
+            .validate(org_id, set_id, version_id)
+            .await?)
+    }
 }
 
 #[utoipa::path(
@@ -241,17 +283,30 @@ pub async fn simulate_version(
         .as_str()
         .unwrap_or(&state.settings.cafe_timezone)
         .to_string();
-    let currency = state
-        .config
-        .resolve_value(org_id, dto.location_id, "pricing.currency")
-        .await?
-        .as_str()
-        .unwrap_or("INR")
-        .to_string();
-    ok(state
-        .pricing_rules
-        .simulate(org_id, set_id, version_id, dto, &timezone, &currency)
-        .await?)
+    let tenant_db = state.tenant_db(org_id).await?;
+    let currency_value = if let Some(db) = tenant_db.clone() {
+        state
+            .config
+            .resolve_pricing_value_tenant(db, org_id, dto.location_id, "pricing.currency")
+            .await?
+    } else {
+        state
+            .config
+            .resolve_value(org_id, dto.location_id, "pricing.currency")
+            .await?
+    };
+    let currency = currency_value.as_str().unwrap_or("INR").to_string();
+    if let Some(db) = tenant_db {
+        ok(state
+            .pricing_rules
+            .simulate_tenant(db, org_id, set_id, version_id, dto, &timezone, &currency)
+            .await?)
+    } else {
+        ok(state
+            .pricing_rules
+            .simulate(org_id, set_id, version_id, dto, &timezone, &currency)
+            .await?)
+    }
 }
 
 #[utoipa::path(
@@ -269,10 +324,17 @@ pub async fn publish_version(
     Json(dto): Json<PublishPricingRuleVersionDto>,
 ) -> ApiResult<PricingRuleVersion> {
     let actor_id = require_rule_set(&state, &claims, org_id, set_id, "rules:publish").await?;
-    ok(state
-        .pricing_rules
-        .publish(org_id, set_id, version_id, dto, actor_id)
-        .await?)
+    if let Some(db) = state.tenant_db(org_id).await? {
+        ok(state
+            .pricing_rules
+            .publish_tenant(db, org_id, set_id, version_id, dto, actor_id)
+            .await?)
+    } else {
+        ok(state
+            .pricing_rules
+            .publish(org_id, set_id, version_id, dto, actor_id)
+            .await?)
+    }
 }
 
 #[utoipa::path(
@@ -288,8 +350,15 @@ pub async fn rollback_version(
     Path((org_id, set_id, version_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> ApiResult<PricingRuleVersion> {
     let actor_id = require_rule_set(&state, &claims, org_id, set_id, "rules:publish").await?;
-    ok(state
-        .pricing_rules
-        .rollback(org_id, set_id, version_id, actor_id)
-        .await?)
+    if let Some(db) = state.tenant_db(org_id).await? {
+        ok(state
+            .pricing_rules
+            .rollback_tenant(db, org_id, set_id, version_id, actor_id)
+            .await?)
+    } else {
+        ok(state
+            .pricing_rules
+            .rollback(org_id, set_id, version_id, actor_id)
+            .await?)
+    }
 }

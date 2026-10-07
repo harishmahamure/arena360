@@ -1,11 +1,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{ProductRecipe, SelectedOption};
-use crate::repositories::ProductRecipeRepository;
+use crate::repositories::{ProductRecipeRepository, TenantProductRecipeRepository};
+use crate::tenancy::TenantDb;
 
 const MAX_NAME_LENGTH: usize = 120;
 const MAX_PRICE_DELTA: f64 = 1_000_000.0;
@@ -58,6 +60,95 @@ impl ProductRecipeService {
         self.assign_ids(product_id, &mut recipe).await?;
         self.repo.replace(product_id, &recipe).await?;
         self.repo.get(product_id).await
+    }
+
+    pub async fn get_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        product_id: Uuid,
+    ) -> Result<ProductRecipe, AppError> {
+        let repo = TenantProductRecipeRepository::new(db);
+        if repo.ingredient_info(&[product_id]).await?.is_empty() {
+            return Err(AppError::NotFound(format!(
+                "Product with ID {product_id} not found"
+            )));
+        }
+        repo.get(product_id).await
+    }
+
+    pub async fn save_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        product_id: Uuid,
+        mut recipe: ProductRecipe,
+    ) -> Result<ProductRecipe, AppError> {
+        let repo = TenantProductRecipeRepository::new(db);
+        let product = repo
+            .ingredient_info(&[product_id])
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::NotFound(format!("Product with ID {product_id} not found")))?;
+        if product.is_raw_material && !recipe.is_empty() {
+            return Err(AppError::BadRequest(
+                "Raw materials cannot have a recipe or options".into(),
+            ));
+        }
+        if recipe.is_made_to_order() && repo.is_used_as_ingredient(product_id).await? {
+            return Err(AppError::BadRequest(format!(
+                "{} is an ingredient of another product, so it cannot have its own recipe",
+                product.name
+            )));
+        }
+        Self::validate_shape(&recipe)?;
+        let ids = recipe
+            .items
+            .iter()
+            .chain(
+                recipe
+                    .option_groups
+                    .iter()
+                    .flat_map(|group| &group.options)
+                    .flat_map(|option| &option.ingredients),
+            )
+            .map(|item| item.ingredient_id)
+            .collect::<HashSet<_>>();
+        if ids.contains(&product_id) {
+            return Err(AppError::BadRequest(
+                "A product cannot be an ingredient of itself".into(),
+            ));
+        }
+        let ids = ids.into_iter().collect::<Vec<_>>();
+        let found = repo.ingredient_info(&ids).await?;
+        if found.len() != ids.len() {
+            return Err(AppError::BadRequest(
+                "One or more ingredients do not exist".into(),
+            ));
+        }
+        if let Some(nested) = found.iter().find(|info| info.has_recipe) {
+            return Err(AppError::BadRequest(format!(
+                "{} has its own recipe and cannot be used as an ingredient",
+                nested.name
+            )));
+        }
+        let owned = repo
+            .owned_ids(product_id)
+            .await?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let mut used = HashSet::new();
+        let mut keep = |id: Option<Uuid>| match id {
+            Some(id) if owned.contains(&id) && used.insert(id) => Some(id),
+            _ => Some(Uuid::now_v7()),
+        };
+        for group in &mut recipe.option_groups {
+            group.id = keep(group.id);
+            for option in &mut group.options {
+                option.id = keep(option.id);
+            }
+        }
+        repo.replace(product_id, &recipe).await?;
+        repo.get(product_id).await
     }
 
     async fn find_product(

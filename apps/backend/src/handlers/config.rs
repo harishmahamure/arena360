@@ -388,6 +388,14 @@ pub async fn effective_settings(
             .ensure_location_permission(org_id, location_id, actor_id, "settings:read")
             .await?;
     }
+    if query.category.is_none() || query.category.as_deref() == Some("pricing") {
+        if let Some(db) = state.tenant_db(org_id).await? {
+            return ok(state
+                .config
+                .effective_with_tenant_pricing(db, org_id, query)
+                .await?);
+        }
+    }
     ok(state.config.effective(org_id, query).await?)
 }
 
@@ -424,6 +432,14 @@ pub async fn upsert_setting_override(
     }
     if dto.location_id.is_none() {
         crate::access::scope::require_organization_admin(&state.db, org_id, actor_id).await?;
+    }
+    if key.starts_with("pricing.") {
+        if let Some(db) = state.tenant_db(org_id).await? {
+            return ok(state
+                .config
+                .upsert_pricing_tenant(db, org_id, &key, dto, actor_id, request_id(&headers))
+                .await?);
+        }
     }
     ok(state
         .config
@@ -463,18 +479,49 @@ pub async fn delete_setting_override(
     if query.location_id.is_none() {
         crate::access::scope::require_organization_admin(&state.db, org_id, actor_id).await?;
     }
-    let deleted = state
-        .config
-        .delete_override(
-            org_id,
-            query.location_id,
-            &key,
-            query.expected_revision,
-            &query.reason,
-            actor_id,
-            request_id(&headers),
-        )
-        .await?;
+    let deleted = if key.starts_with("pricing.") {
+        if let Some(db) = state.tenant_db(org_id).await? {
+            state
+                .config
+                .delete_pricing_tenant(
+                    db,
+                    org_id,
+                    query.location_id,
+                    &key,
+                    query.expected_revision,
+                    &query.reason,
+                    actor_id,
+                    request_id(&headers),
+                )
+                .await?
+        } else {
+            state
+                .config
+                .delete_override(
+                    org_id,
+                    query.location_id,
+                    &key,
+                    query.expected_revision,
+                    &query.reason,
+                    actor_id,
+                    request_id(&headers),
+                )
+                .await?
+        }
+    } else {
+        state
+            .config
+            .delete_override(
+                org_id,
+                query.location_id,
+                &key,
+                query.expected_revision,
+                &query.reason,
+                actor_id,
+                request_id(&headers),
+            )
+            .await?
+    };
     ok(serde_json::json!({"deleted": deleted}))
 }
 
@@ -510,7 +557,39 @@ pub async fn setting_history(
         query.location_id,
     )
     .await?;
-    let mut history = state.config.history(org_id, query).await?;
+    let tenant_db = state.tenant_db(org_id).await?;
+    let mut history = match query.key.as_deref() {
+        Some(key) if key.starts_with("pricing.") => {
+            if let Some(db) = tenant_db {
+                state
+                    .config
+                    .pricing_history_tenant(db, org_id, query.clone())
+                    .await?
+            } else {
+                state.config.history(org_id, query.clone()).await?
+            }
+        }
+        Some(_) => state.config.history(org_id, query.clone()).await?,
+        None => {
+            let mut combined = state.config.history(org_id, query.clone()).await?;
+            if let Some(db) = tenant_db {
+                combined.retain(|item| !item.key.starts_with("pricing."));
+                combined.extend(
+                    state
+                        .config
+                        .pricing_history_tenant(db, org_id, query.clone())
+                        .await?,
+                );
+                combined.sort_by(|a, b| {
+                    b.created_at
+                        .cmp(&a.created_at)
+                        .then_with(|| b.id.cmp(&a.id))
+                });
+                combined.truncate(query.limit.unwrap_or(100).clamp(1, 500) as usize);
+            }
+            combined
+        }
+    };
     if !scope.organization_admin {
         history.retain(|item| {
             item.location_id
@@ -545,7 +624,14 @@ pub async fn configuration_snapshot(
             .ensure_location_permission(org_id, location_id, actor_id, "settings:read")
             .await?;
     }
-    let mut snapshot = state.config.snapshot(org_id, query.location_id).await?;
+    let mut snapshot = if let Some(db) = state.tenant_db(org_id).await? {
+        state
+            .config
+            .snapshot_tenant(db, org_id, query.location_id)
+            .await?
+    } else {
+        state.config.snapshot(org_id, query.location_id).await?
+    };
     if query
         .since_revision
         .is_some_and(|revision| revision >= snapshot.revision)

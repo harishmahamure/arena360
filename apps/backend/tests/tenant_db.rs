@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use chrono::{TimeZone, Utc};
 use gaming_cafe_api::error::AppError;
 use gaming_cafe_api::tenancy::{
-    retry_foreground, tenant_path, SqliteBusyMetrics, SqliteRetryConfig, TenantDbConfig,
-    TenantDbManager, TenantLease,
+    retry_foreground, sync_venue_locations, tenant_path, ProjectedVenueLocation, SqliteBusyMetrics,
+    SqliteRetryConfig, TenantDbConfig, TenantDbManager, TenantLease,
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Connection, SqliteConnection};
@@ -71,7 +72,20 @@ async fn manager_requires_a_lease_and_reuses_one_handle_per_generation() {
     let second = second.unwrap();
     assert!(Arc::ptr_eq(&first, &second));
     assert_eq!(manager.open_count().await, 1);
+    let open = manager.open_handles().await;
+    assert_eq!(open.len(), 1);
+    assert!(Arc::ptr_eq(&first, &open[0]));
     assert_eq!(first.ownership_generation(), 7);
+
+    // Losing the lease is terminal for ordinary opens. The manager must not
+    // manufacture or reacquire ownership on behalf of a request path.
+    lease.set(tenant_id, None);
+    assert!(matches!(
+        manager.open(tenant_id).await,
+        Err(AppError::Forbidden(_))
+    ));
+    assert_eq!(manager.open_count().await, 1);
+    lease.set(tenant_id, Some(7));
 
     let journal_mode: String = sqlx::query_scalar("PRAGMA journal_mode")
         .fetch_one(&first.read_pool().unwrap())
@@ -99,12 +113,87 @@ async fn manager_requires_a_lease_and_reuses_one_handle_per_generation() {
     ));
     assert_eq!(manager.reap_idle().await.unwrap(), 1);
     assert_eq!(manager.open_count().await, 0);
+    assert!(manager.open_handles().await.is_empty());
 
     let replacement = manager.open(tenant_id).await.unwrap();
     assert_eq!(replacement.ownership_generation(), 8);
     assert!(!Arc::ptr_eq(&first, &replacement));
 
     replacement.close().await.unwrap();
+    remove_test_root(&root).await;
+}
+
+#[tokio::test]
+async fn location_projection_is_idempotent_and_deactivates_stale_rows() {
+    let (root, tenant_id) = provision_tenant().await;
+    let lease = Arc::new(FakeLease::default());
+    lease.set(tenant_id, Some(1));
+    let manager = TenantDbManager::new(test_config(root.clone()), lease).unwrap();
+    let db = manager.open(tenant_id).await.unwrap();
+    let location_a = Uuid::now_v7();
+    let location_b = Uuid::now_v7();
+    let created_at = Utc.with_ymd_and_hms(2026, 10, 1, 1, 2, 3).unwrap();
+    let updated_at = Utc.with_ymd_and_hms(2026, 10, 2, 4, 5, 6).unwrap();
+    let locations = vec![
+        ProjectedVenueLocation {
+            id: location_a,
+            slug: "alpha".into(),
+            name: "Alpha".into(),
+            is_active: true,
+            created_at,
+            updated_at,
+        },
+        ProjectedVenueLocation {
+            id: location_b,
+            slug: "beta".into(),
+            name: "Beta".into(),
+            is_active: true,
+            created_at,
+            updated_at,
+        },
+    ];
+
+    let first = sync_venue_locations(db.clone(), locations.clone())
+        .await
+        .unwrap();
+    assert_eq!(first.inserted_or_updated, 2);
+    assert_eq!(first.deactivated, 0);
+    let unchanged = sync_venue_locations(db.clone(), locations.clone())
+        .await
+        .unwrap();
+    assert_eq!(unchanged.inserted_or_updated, 0);
+    assert_eq!(unchanged.deactivated, 0);
+
+    let renamed_at = Utc.with_ymd_and_hms(2026, 10, 3, 7, 8, 9).unwrap();
+    let changed = sync_venue_locations(
+        db.clone(),
+        vec![ProjectedVenueLocation {
+            name: "Alpha Prime".into(),
+            updated_at: renamed_at,
+            ..locations[0].clone()
+        }],
+    )
+    .await
+    .unwrap();
+    assert_eq!(changed.inserted_or_updated, 1);
+    assert_eq!(changed.deactivated, 1);
+
+    let rows: Vec<(Uuid, String, bool, String, String)> = sqlx::query_as(
+        "SELECT unhex(replace(id,'-','')),name,is_active,created_at,updated_at
+         FROM venue_locations ORDER BY id",
+    )
+    .fetch_all(&db.read_pool().unwrap())
+    .await
+    .unwrap();
+    let alpha = rows.iter().find(|row| row.0 == location_a).unwrap();
+    assert_eq!(alpha.1, "Alpha Prime");
+    assert!(alpha.2);
+    assert_eq!(alpha.3.len(), 27);
+    assert_eq!(alpha.4, "2026-10-03T07:08:09.000000Z");
+    let beta = rows.iter().find(|row| row.0 == location_b).unwrap();
+    assert!(!beta.2);
+
+    db.close().await.unwrap();
     remove_test_root(&root).await;
 }
 
@@ -122,6 +211,48 @@ async fn manager_reaps_idle_handles() {
     assert_eq!(manager.reap_idle().await.unwrap(), 1);
     assert!(handle.read_pool().is_err());
 
+    remove_test_root(&root).await;
+}
+
+#[tokio::test]
+async fn immediate_writer_rolls_back_when_lease_changes_before_commit() {
+    let (root, tenant_id) = provision_tenant().await;
+    let lease = Arc::new(FakeLease::default());
+    lease.set(tenant_id, Some(1));
+    let manager = TenantDbManager::new(test_config(root.clone()), lease.clone()).unwrap();
+    let db = manager.open(tenant_id).await.unwrap();
+
+    db.with_writer(|connection| {
+        Box::pin(async move {
+            sqlx::query("CREATE TABLE fence_probe (value INTEGER NOT NULL)")
+                .execute(connection)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
+
+    let changed_lease = lease.clone();
+    let result = db
+        .with_immediate_writer(|connection| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO fence_probe(value) VALUES (1)")
+                    .execute(connection)
+                    .await?;
+                changed_lease.set(tenant_id, Some(2));
+                Ok(())
+            })
+        })
+        .await;
+    assert!(matches!(result, Err(AppError::Forbidden(_))));
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM fence_probe")
+        .fetch_one(&db.read_pool().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    db.close().await.unwrap();
     remove_test_root(&root).await;
 }
 

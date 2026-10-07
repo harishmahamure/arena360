@@ -17,6 +17,24 @@ use crate::models::{CreatePlanDto, Plan, PlanFilterDto, UpdatePlanDto};
 use crate::openapi::responses::{
     ActivePlansEnvelope, ErrorEnvelope, PlanEnvelope, PlanPaginationEnvelope,
 };
+use crate::repositories::TenantPlanRepository;
+
+async fn authorize_tenant_plan(
+    db: Arc<crate::tenancy::TenantDb>,
+    id: Uuid,
+    scope: &LocationScope,
+    write: bool,
+) -> Result<(), AppError> {
+    let (all, rows) = TenantPlanRepository::new(db).location_scope(id).await?;
+    let locations = if all {
+        vec![]
+    } else {
+        rows.into_iter()
+            .map(|(location_id, _)| location_id)
+            .collect()
+    };
+    catalog_scope::authorize(scope, &locations, write)
+}
 
 #[derive(serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -93,7 +111,11 @@ pub async fn list_plans(
         .or_else(|| (scope.locations.len() == 1).then(|| scope.locations[0]));
     filters.organization_id = Some(scope.organization_id);
     filters.allowed_location_ids = Some(scope.locations);
-    let result = state.plans.list(filters).await?;
+    let result = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        state.plans.list_tenant(db, filters).await?
+    } else {
+        state.plans.list(filters).await?
+    };
     ok(result)
 }
 
@@ -120,7 +142,13 @@ pub async fn get_active_plans(
         query.location_id.or(requested_location(&headers)?),
     )
     .await?;
-    let plans = state.plans.get_active_for(Some(location)).await?;
+    let tenant_id = Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+    let plans = if let Some(db) = state.tenant_db(tenant_id).await? {
+        state.plans.active_tenant(db, location).await?
+    } else {
+        state.plans.get_active_for(Some(location)).await?
+    };
     ok(plans)
 }
 
@@ -146,19 +174,26 @@ pub async fn get_plan(
     Query(query): Query<PlanLocationQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Plan> {
+    let tenant_id = Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| AppError::Forbidden("Select an organization".into()))?;
+    let requested = query.location_id.or(requested_location(&headers)?);
+    if let Some(db) = state.tenant_db(tenant_id).await? {
+        if claims.is_admin_or_staff() {
+            let scope = LocationScope::resolve(&state.db, &claims, "plans:read", requested).await?;
+            authorize_tenant_plan(db.clone(), id, &scope, false).await?;
+            return ok(state.plans.get_tenant(db, id, requested).await?);
+        }
+        let location = pricing_location(&state, &claims, requested).await?;
+        return ok(state.plans.get_tenant(db, id, Some(location)).await?);
+    }
     if claims.is_admin_or_staff() {
         let scope = LocationScope::resolve(&state.db, &claims, "plans:read", None).await?;
         catalog_scope::get(&state.db, "plans", id, &scope, false).await?;
-        if query.location_id.is_none() && requested_location(&headers)?.is_none() {
+        if requested.is_none() {
             return ok(state.plans.get_by_id(id).await?);
         }
     }
-    let location = pricing_location(
-        &state,
-        &claims,
-        query.location_id.or(requested_location(&headers)?),
-    )
-    .await?;
+    let location = pricing_location(&state, &claims, requested).await?;
     let plan = state.plans.get_by_id_for(id, Some(location)).await?;
     ok(plan)
 }
@@ -191,14 +226,21 @@ pub async fn create_plan(
     });
     let locations = catalog_scope::create_locations(&state.db, &scope, requested).await?;
     let dto = payload.item;
-    let service = crate::services::PlanService::new(
-        state.db.clone(),
-        state.cache.clone(),
-        state.config.clone(),
-    )
-    .with_locations(locations);
-
-    let plan = service.create(dto, claims.user_id_uuid()).await?;
+    let plan = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        state
+            .plans
+            .create_tenant(db, locations, dto, claims.user_id_uuid())
+            .await?
+    } else {
+        crate::services::PlanService::new(
+            state.db.clone(),
+            state.cache.clone(),
+            state.config.clone(),
+        )
+        .with_locations(locations)
+        .create(dto, claims.user_id_uuid())
+        .await?
+    };
     created(plan)
 }
 
@@ -227,9 +269,16 @@ pub async fn update_plan(
     Json(dto): Json<UpdatePlanDto>,
 ) -> ApiResult<Plan> {
     let scope = LocationScope::resolve(&state.db, &claims, "plans:write", None).await?;
-    catalog_scope::get(&state.db, "plans", id, &scope, true).await?;
-
-    let plan = state.plans.update(id, dto, claims.user_id_uuid()).await?;
+    let plan = if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        authorize_tenant_plan(db.clone(), id, &scope, true).await?;
+        state
+            .plans
+            .update_tenant(db, id, dto, claims.user_id_uuid())
+            .await?
+    } else {
+        catalog_scope::get(&state.db, "plans", id, &scope, true).await?;
+        state.plans.update(id, dto, claims.user_id_uuid()).await?
+    };
     ok(plan)
 }
 
@@ -255,8 +304,12 @@ pub async fn delete_plan(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, crate::error::AppError> {
     let scope = LocationScope::resolve(&state.db, &claims, "plans:write", None).await?;
-    catalog_scope::get(&state.db, "plans", id, &scope, true).await?;
-
-    state.plans.delete(id).await?;
+    if let Some(db) = state.tenant_db(scope.organization_id).await? {
+        authorize_tenant_plan(db.clone(), id, &scope, true).await?;
+        state.plans.delete_tenant(db, id).await?;
+    } else {
+        catalog_scope::get(&state.db, "plans", id, &scope, true).await?;
+        state.plans.delete(id).await?;
+    }
     Ok(StatusCode::NO_CONTENT)
 }

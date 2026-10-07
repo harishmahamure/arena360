@@ -19,6 +19,7 @@ pub mod product_repo;
 pub mod session_repo;
 pub mod settings_repo;
 pub mod shift_repo;
+pub mod tenant_catalog_repo;
 pub mod transaction_product_repo;
 pub mod transaction_repo;
 pub mod unit_repo;
@@ -46,6 +47,11 @@ pub use product_repo::ProductRepository;
 pub use session_repo::{PlayerOpenSession, SessionRepository};
 pub use settings_repo::SettingsRepository;
 pub use shift_repo::ShiftRepository;
+pub use tenant_catalog_repo::{
+    TenantGameRepository, TenantPlanCreateValues, TenantPlanRepository,
+    TenantPricingPolicyRepository, TenantProductRecipeRepository, TenantProductRepository,
+    TenantSettingsRepository, TenantUnitRepository,
+};
 pub use transaction_product_repo::TransactionProductRepository;
 pub use transaction_repo::TransactionRepository;
 pub use unit_repo::UnitRepository;

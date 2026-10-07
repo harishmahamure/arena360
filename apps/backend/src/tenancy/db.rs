@@ -117,6 +117,53 @@ impl TenantDb {
         operation(connection).await
     }
 
+    /// Runs a tenant mutation in an immediate SQLite transaction.
+    ///
+    /// The lease is checked by `with_writer` before the operation and again after the operation,
+    /// immediately before commit. A cell fenced while the operation is running therefore rolls
+    /// back instead of committing stale-generation data.
+    pub async fn with_immediate_writer<T: Send, F>(&self, operation: F) -> Result<T, AppError>
+    where
+        F: for<'connection> FnOnce(
+                &'connection mut SqliteConnection,
+            ) -> BoxFuture<'connection, Result<T, AppError>>
+            + Send,
+    {
+        self.lease
+            .ensure_writable(self.tenant_id, self.ownership_generation)?;
+        let mut writer = self.writer.lock().await;
+        self.lease
+            .ensure_writable(self.tenant_id, self.ownership_generation)?;
+        if self.closed.load(Ordering::Acquire) {
+            return Err(AppError::Forbidden("Tenant database is closed".into()));
+        }
+        let connection = writer
+            .as_mut()
+            .ok_or_else(|| AppError::Forbidden("Tenant writer is closed".into()))?;
+        self.touch()?;
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *connection)
+            .await?;
+        let result = operation(connection).await;
+        match result {
+            Ok(value) => {
+                if let Err(error) = self
+                    .lease
+                    .ensure_writable(self.tenant_id, self.ownership_generation)
+                {
+                    let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+                    return Err(error);
+                }
+                sqlx::query("COMMIT").execute(&mut *connection).await?;
+                Ok(value)
+            }
+            Err(error) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+                Err(error)
+            }
+        }
+    }
+
     pub async fn close(&self) -> Result<(), AppError> {
         if self.closed.swap(true, Ordering::AcqRel) {
             return Ok(());
@@ -241,6 +288,16 @@ impl TenantDbManager {
 
     pub async fn open_count(&self) -> usize {
         self.handles.read().await.len()
+    }
+
+    pub async fn open_handles(&self) -> Vec<Arc<TenantDb>> {
+        self.handles
+            .read()
+            .await
+            .values()
+            .filter(|handle| !handle.closed.load(Ordering::Acquire))
+            .cloned()
+            .collect()
     }
 }
 

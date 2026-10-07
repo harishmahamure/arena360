@@ -279,6 +279,29 @@ impl ProductRecipeRepository {
         .await?)
     }
 
+    /// Current PostgreSQL stock for tenant-local recipe ingredients during the
+    /// API-0024 expand/contract window. Missing rows (and no selected inventory
+    /// location) are intentionally reported as zero by the caller.
+    pub async fn ingredient_stock(
+        &self,
+        location_id: Option<Uuid>,
+        ingredient_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, i32>, AppError> {
+        if location_id.is_none() || ingredient_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows: Vec<(Uuid, i32)> = sqlx::query_as(
+            r#"SELECT "productId", "quantityPieces"
+               FROM location_stock
+               WHERE "locationId" = $1 AND "productId" = ANY($2)"#,
+        )
+        .bind(location_id)
+        .bind(ingredient_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().collect())
+    }
+
     pub async fn with_option_groups(&self) -> Result<Vec<Uuid>, AppError> {
         Ok(
             sqlx::query_scalar(r#"SELECT DISTINCT "productId" FROM product_option_groups"#)

@@ -111,7 +111,7 @@ pub struct EffectiveSettingsQuery {
     pub category: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, Default, ToSchema, IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingHistoryQuery {
     pub location_id: Option<Uuid>,

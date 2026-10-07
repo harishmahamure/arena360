@@ -29,11 +29,13 @@ pub async fn list_units(
     State(state): State<Arc<AppState>>,
     Query(mut filters): Query<UnitFilterDto>,
 ) -> ApiResult<crate::dto::PaginationResult<Unit>> {
-    filters.organization_id = Some(
-        Uuid::parse_str(&claims.tenantId)
-            .map_err(|_| crate::error::AppError::Forbidden("Select an organization".into()))?,
-    );
-    let result = state.units.list(filters).await?;
+    let tenant_id = tenant_id(&claims)?;
+    filters.organization_id = Some(tenant_id);
+    let result = if let Some(db) = state.tenant_db(tenant_id).await? {
+        state.units.list_tenant(db, filters).await?
+    } else {
+        state.units.list(filters).await?
+    };
     ok(result)
 }
 
@@ -52,8 +54,17 @@ pub async fn list_units(
     security(("bearer_auth" = [])),
     tag = "units"
 )]
-pub async fn get_unit(State(state): State<Arc<AppState>>, Path(id): Path<Uuid>) -> ApiResult<Unit> {
-    let unit = state.units.get_by_id(id).await?;
+pub async fn get_unit(
+    AuthUser(claims): AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Unit> {
+    let tenant_id = tenant_id(&claims)?;
+    let unit = if let Some(db) = state.tenant_db(tenant_id).await? {
+        state.units.get_tenant(db, id).await?
+    } else {
+        state.units.get_by_id(id).await?
+    };
     ok(unit)
 }
 
@@ -76,7 +87,14 @@ pub async fn create_unit(
     State(state): State<Arc<AppState>>,
     Json(dto): Json<CreateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = state.units.create(dto, claims.user_id_uuid()).await?;
+    let unit = if let Some(db) = state.tenant_db(tenant_id(&claims)?).await? {
+        state
+            .units
+            .create_tenant(db, dto, claims.user_id_uuid())
+            .await?
+    } else {
+        state.units.create(dto, claims.user_id_uuid()).await?
+    };
     created(unit)
 }
 
@@ -104,7 +122,14 @@ pub async fn update_unit(
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateUnitDto>,
 ) -> ApiResult<Unit> {
-    let unit = state.units.update(id, dto, claims.user_id_uuid()).await?;
+    let unit = if let Some(db) = state.tenant_db(tenant_id(&claims)?).await? {
+        state
+            .units
+            .update_tenant(db, id, dto, claims.user_id_uuid())
+            .await?
+    } else {
+        state.units.update(id, dto, claims.user_id_uuid()).await?
+    };
     ok(unit)
 }
 
@@ -125,10 +150,19 @@ pub async fn update_unit(
     tag = "units"
 )]
 pub async fn delete_unit(
-    AdminUser(_claims): AdminUser,
+    AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, crate::error::AppError> {
-    state.units.delete(id).await?;
+    if let Some(db) = state.tenant_db(tenant_id(&claims)?).await? {
+        state.units.delete_tenant(db, id).await?;
+    } else {
+        state.units.delete(id).await?;
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn tenant_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, crate::error::AppError> {
+    Uuid::parse_str(&claims.tenantId)
+        .map_err(|_| crate::error::AppError::Forbidden("Select an organization".into()))
 }

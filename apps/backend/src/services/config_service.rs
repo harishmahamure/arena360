@@ -10,8 +10,9 @@ use crate::models::{
     SettingOverride, SettingRevision, UpsertConfigDto, UpsertSettingOverrideDto, VenueLocation,
     DEFAULT_ORGANIZATION_ID,
 };
-use crate::repositories::{ConfigRepository, SettingsRepository};
+use crate::repositories::{ConfigRepository, SettingsRepository, TenantSettingsRepository};
 use crate::services::settings_catalog;
+use crate::tenancy::TenantDb;
 
 pub struct ConfigService {
     repo: ConfigRepository,
@@ -121,8 +122,13 @@ impl ConfigService {
             .await
     }
 
-    pub async fn list_managed_locations(&self, organization_id: Uuid) -> Result<Vec<VenueLocation>, AppError> {
-        self.settings_repo.list_managed_locations(organization_id).await
+    pub async fn list_managed_locations(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<Vec<VenueLocation>, AppError> {
+        self.settings_repo
+            .list_managed_locations(organization_id)
+            .await
     }
 
     pub async fn ensure_location_access(
@@ -143,7 +149,9 @@ impl ConfigService {
         user_id: Uuid,
         permission: &str,
     ) -> Result<(), AppError> {
-        self.settings_repo.ensure_location_permission(organization_id, location_id, user_id, permission).await
+        self.settings_repo
+            .ensure_location_permission(organization_id, location_id, user_id, permission)
+            .await
     }
 
     pub async fn effective(
@@ -373,6 +381,192 @@ impl ConfigService {
         self.settings_repo.history(organization_id, &query).await
     }
 
+    pub async fn effective_pricing_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        query: EffectiveSettingsQuery,
+    ) -> Result<Vec<ResolvedSetting>, AppError> {
+        let overrides = TenantSettingsRepository::new(db)
+            .list_overrides(organization_id, query.location_id)
+            .await?;
+        Ok(self.resolve(overrides, query.location_id, Some("pricing")))
+    }
+
+    pub async fn effective_with_tenant_pricing(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        query: EffectiveSettingsQuery,
+    ) -> Result<Vec<ResolvedSetting>, AppError> {
+        if query.category.as_deref() == Some("pricing") {
+            return self
+                .effective_pricing_tenant(db, organization_id, query)
+                .await;
+        }
+        if query.category.is_some() {
+            return self.effective(organization_id, query).await;
+        }
+        let location_id = query.location_id;
+        let mut values = self
+            .effective(
+                organization_id,
+                EffectiveSettingsQuery {
+                    location_id,
+                    category: None,
+                },
+            )
+            .await?;
+        values.retain(|setting| !setting.key.starts_with("pricing."));
+        values.extend(
+            self.effective_pricing_tenant(
+                db,
+                organization_id,
+                EffectiveSettingsQuery {
+                    location_id,
+                    category: Some("pricing".into()),
+                },
+            )
+            .await?,
+        );
+        values.sort_by(|left, right| left.key.cmp(&right.key));
+        Ok(values)
+    }
+
+    pub async fn resolve_pricing_value_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+        key: &str,
+    ) -> Result<serde_json::Value, AppError> {
+        require_pricing_key(key)?;
+        self.effective_pricing_tenant(
+            db,
+            organization_id,
+            EffectiveSettingsQuery {
+                location_id,
+                category: Some("pricing".into()),
+            },
+        )
+        .await?
+        .into_iter()
+        .find(|setting| setting.key == key)
+        .map(|setting| setting.value)
+        .ok_or_else(|| AppError::NotFound(format!("Setting '{key}' not found")))
+    }
+
+    pub async fn venue_pricing_context_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<(String, String, String), AppError> {
+        let settings = self
+            .effective_with_tenant_pricing(
+                db,
+                organization_id,
+                EffectiveSettingsQuery {
+                    location_id,
+                    category: None,
+                },
+            )
+            .await?;
+        let string_value = |key: &str, fallback: &str| {
+            settings
+                .iter()
+                .find(|setting| setting.key == key)
+                .and_then(|setting| setting.value.as_str())
+                .unwrap_or(fallback)
+                .to_string()
+        };
+        Ok((
+            string_value("venue.timezone", &self.default_timezone),
+            string_value("pricing.night_window_start", "23:00"),
+            string_value("pricing.night_window_end", "08:00"),
+        ))
+    }
+
+    pub async fn upsert_pricing_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        key: &str,
+        dto: UpsertSettingOverrideDto,
+        actor_id: Uuid,
+        request_id: Option<&str>,
+    ) -> Result<SettingOverride, AppError> {
+        require_pricing_key(key)?;
+        if dto.reason.trim().len() < 3 {
+            return Err(AppError::BadRequest(
+                "A change reason of at least 3 characters is required".into(),
+            ));
+        }
+        settings_catalog::validate(
+            &self.default_timezone,
+            key,
+            &dto.value,
+            dto.location_id.is_some(),
+        )?;
+        let row = TenantSettingsRepository::new(db)
+            .upsert_override(organization_id, key, &dto, actor_id, request_id, false)
+            .await?;
+        self.invalidate_scoped(organization_id, key, row.location_id)
+            .await?;
+        Ok(row)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn delete_pricing_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+        key: &str,
+        expected_revision: Option<i64>,
+        reason: &str,
+        actor_id: Uuid,
+        request_id: Option<&str>,
+    ) -> Result<bool, AppError> {
+        require_pricing_key(key)?;
+        if reason.trim().len() < 3 {
+            return Err(AppError::BadRequest(
+                "A change reason of at least 3 characters is required".into(),
+            ));
+        }
+        let deleted = TenantSettingsRepository::new(db)
+            .delete_override(
+                organization_id,
+                location_id,
+                key,
+                expected_revision,
+                reason,
+                actor_id,
+                request_id,
+                None,
+            )
+            .await?;
+        if deleted {
+            self.invalidate_scoped(organization_id, key, location_id)
+                .await?;
+        }
+        Ok(deleted)
+    }
+
+    pub async fn pricing_history_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        query: SettingHistoryQuery,
+    ) -> Result<Vec<SettingRevision>, AppError> {
+        if let Some(key) = query.key.as_deref() {
+            require_pricing_key(key)?;
+        }
+        TenantSettingsRepository::new(db)
+            .history(organization_id, &query)
+            .await
+    }
+
     pub async fn snapshot(
         &self,
         organization_id: Uuid,
@@ -388,19 +582,31 @@ impl ConfigService {
             )
             .await?;
         let revision = self.settings_repo.latest_revision(organization_id).await?;
-        let payload = serde_json::to_vec(&settings).map_err(|error| {
-            AppError::Internal(format!("Snapshot serialization failed: {error}"))
-        })?;
-        use sha2::{Digest, Sha256};
-        let etag = hex::encode(Sha256::digest(payload));
-        Ok(ConfigurationSnapshot {
-            organization_id,
-            location_id,
-            revision,
-            etag,
-            generated_at: chrono::Utc::now(),
-            settings,
-        })
+        snapshot_from_settings(organization_id, location_id, revision, settings)
+    }
+
+    pub async fn snapshot_tenant(
+        &self,
+        db: Arc<TenantDb>,
+        organization_id: Uuid,
+        location_id: Option<Uuid>,
+    ) -> Result<ConfigurationSnapshot, AppError> {
+        let settings = self
+            .effective_with_tenant_pricing(
+                db.clone(),
+                organization_id,
+                EffectiveSettingsQuery {
+                    location_id,
+                    category: None,
+                },
+            )
+            .await?;
+        let control_revision = self.settings_repo.latest_revision(organization_id).await?;
+        let tenant_revision = TenantSettingsRepository::new(db)
+            .latest_revision(organization_id)
+            .await?;
+        let revision = combined_snapshot_revision(control_revision, tenant_revision)?;
+        snapshot_from_settings(organization_id, location_id, revision, settings)
     }
 
     async fn invalidate_scoped(
@@ -417,5 +623,66 @@ impl ConfigService {
             tracing::warn!(%error, %organization_id, "Settings cache invalidation failed");
         }
         Ok(())
+    }
+}
+
+fn snapshot_from_settings(
+    organization_id: Uuid,
+    location_id: Option<Uuid>,
+    revision: i64,
+    settings: Vec<ResolvedSetting>,
+) -> Result<ConfigurationSnapshot, AppError> {
+    let payload = serde_json::to_vec(&settings)
+        .map_err(|error| AppError::Internal(format!("Snapshot serialization failed: {error}")))?;
+    use sha2::{Digest, Sha256};
+    let etag = hex::encode(Sha256::digest(payload));
+    Ok(ConfigurationSnapshot {
+        organization_id,
+        location_id,
+        revision,
+        etag,
+        generated_at: chrono::Utc::now(),
+        settings,
+    })
+}
+
+/// Cantor pairing gives one numeric cursor that strictly increases whenever
+/// either independently monotonic revision source increases.
+fn combined_snapshot_revision(control: i64, tenant: i64) -> Result<i64, AppError> {
+    if control < 0 || tenant < 0 {
+        return Err(AppError::Internal(
+            "Snapshot revisions must be nonnegative".into(),
+        ));
+    }
+    let control = i128::from(control);
+    let tenant = i128::from(tenant);
+    let sum = control + tenant;
+    let paired = sum
+        .checked_mul(sum + 1)
+        .and_then(|value| value.checked_div(2))
+        .and_then(|value| value.checked_add(tenant))
+        .ok_or_else(|| AppError::Internal("Snapshot revision overflow".into()))?;
+    i64::try_from(paired).map_err(|_| AppError::Internal("Snapshot revision overflow".into()))
+}
+
+fn require_pricing_key(key: &str) -> Result<(), AppError> {
+    if key.starts_with("pricing.") {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            "Only pricing.* settings are tenant-local during API-0024".into(),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod snapshot_revision_tests {
+    use super::combined_snapshot_revision;
+
+    #[test]
+    fn combined_revision_increases_with_either_store() {
+        let base = combined_snapshot_revision(10, 4).unwrap();
+        assert!(combined_snapshot_revision(11, 4).unwrap() > base);
+        assert!(combined_snapshot_revision(10, 5).unwrap() > base);
     }
 }

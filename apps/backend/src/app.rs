@@ -9,6 +9,7 @@ use tower::limit::ConcurrencyLimitLayer;
 use tower_http::{
     compression::CompressionLayer, cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer,
 };
+use uuid::Uuid;
 
 use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
 use crate::config::{create_pool, create_pool_for, load_dotenv, Settings};
@@ -70,6 +71,55 @@ pub struct AppState {
     pub outbox: OutboxService,
     pub rooms: RoomService,
     pub ws_connections: Arc<crate::realtime::registry::ConnectionRegistry>,
+}
+
+impl AppState {
+    pub async fn tenant_db(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<Option<Arc<crate::tenancy::TenantDb>>, crate::error::AppError> {
+        let Some(manager) = &self.tenant_dbs else {
+            return Ok(None);
+        };
+        // Request handling must never acquire ownership. A forbidden open means this
+        // cell is not the current writer (or has fenced itself); only provisioning
+        // and ownership orchestration may acquire a lease.
+        let db = manager.open(tenant_id).await?;
+        let locations: Vec<(
+            Uuid,
+            String,
+            String,
+            bool,
+            chrono::DateTime<chrono::Utc>,
+            chrono::DateTime<chrono::Utc>,
+        )> = sqlx::query_as(
+            r#"SELECT id,slug,name,"isActive","createdAt","updatedAt"
+                   FROM venue_locations
+                   WHERE "organizationId"=$1
+                   ORDER BY id"#,
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.db)
+        .await?;
+        crate::tenancy::sync_venue_locations(
+            db.clone(),
+            locations
+                .into_iter()
+                .map(|(id, slug, name, is_active, created_at, updated_at)| {
+                    crate::tenancy::ProjectedVenueLocation {
+                        id,
+                        slug,
+                        name,
+                        is_active,
+                        created_at,
+                        updated_at,
+                    }
+                })
+                .collect(),
+        )
+        .await?;
+        Ok(Some(db))
+    }
 }
 
 pub async fn build_state() -> Arc<AppState> {
@@ -210,6 +260,24 @@ pub async fn build_state() -> Arc<AppState> {
             }
         }
     });
+
+    if let Some(manager) = tenant_dbs.clone() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                for db in manager.open_handles().await {
+                    if let Err(error) = crate::repositories::TenantPricingPolicyRepository::new(db)
+                        .activate_due()
+                        .await
+                    {
+                        tracing::warn!(%error, "Tenant scheduled pricing activation failed");
+                    }
+                }
+            }
+        });
+    }
 
     let notifications_for_cleanup = notifications.clone();
     tokio::spawn(async move {

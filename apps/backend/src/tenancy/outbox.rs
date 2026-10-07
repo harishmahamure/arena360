@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use sqlx::{Sqlite, Transaction};
+use sqlx::{Sqlite, SqliteConnection, Transaction};
 use uuid::Uuid;
 
 use crate::error::AppError;
@@ -31,6 +31,17 @@ pub async fn write_outbox_event(
     transaction: &mut Transaction<'_, Sqlite>,
     event: NewOutboxEvent,
 ) -> Result<WrittenOutboxEvent, AppError> {
+    write_outbox_event_on_connection(&mut **transaction, event).await
+}
+
+/// Writes an event through a connection that is already inside an explicit transaction.
+///
+/// Tenant repositories use this with `BEGIN IMMEDIATE`, which SQLx's default transaction
+/// constructor does not guarantee.
+pub async fn write_outbox_event_on_connection(
+    connection: &mut SqliteConnection,
+    event: NewOutboxEvent,
+) -> Result<WrittenOutboxEvent, AppError> {
     validate_event(&event)?;
     let event_id = Uuid::now_v7();
     let occurred_at_text = format_sqlite_timestamp(&Utc::now())
@@ -55,7 +66,7 @@ pub async fn write_outbox_event(
     .bind(i64::from(event.schema_version))
     .bind(event.deleted)
     .bind(payload)
-    .fetch_one(&mut **transaction)
+    .fetch_one(&mut *connection)
     .await?;
 
     Ok(WrittenOutboxEvent {
