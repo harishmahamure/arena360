@@ -329,6 +329,7 @@ fn spawn_snapshots(manager: Arc<TenantDbManager>, worker: Arc<Worker>) {
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tick.tick().await;
+            if manager.background_jobs().is_some_and(|j|j.stats().disk_zone()>=2) {continue;}
             let tenants = match worker.ledger.daily_tenants().await {
                 Ok(t) => t,
                 Err(error) => {
@@ -340,6 +341,7 @@ fn spawn_snapshots(manager: Arc<TenantDbManager>, worker: Arc<Worker>) {
             for tenant in tenants {
                 let result = tokio::time::timeout(Duration::from_secs(120), async {
                     let db = manager.open(tenant).await?;
+                    if db.background_jobs().is_some_and(|j|j.stats().disk_zone()>=2) {return Ok::<_,AppError>(());}
                     let gate = worker.gates.lock().await.entry(tenant).or_default().clone();
                     let _serial = gate.lock().await;
                     let _job = match db.background_jobs() {
@@ -372,7 +374,10 @@ pub fn backlog(root: &Path) -> Result<(u64, u64), AppError> {
         return Ok((0, 0));
     }
     for tenant in std::fs::read_dir(root).map_err(io)? {
-        let spool = tenant.map_err(io)?.path().join("replication/spool");
+        let directory=tenant.map_err(io)?.path();
+        let batches=directory.join("replication/batches");
+        if batches.exists() {for file in std::fs::read_dir(batches).map_err(io)? {let path=file.map_err(io)?.path();if path.is_file(){bytes+=std::fs::metadata(path).map_err(io)?.len();}}}
+        let spool = directory.join("replication/spool");
         if !spool.exists() {
             continue;
         }

@@ -164,6 +164,10 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     #[cfg(feature = "duckdb-analytics")]
     let analytics = Arc::new(crate::analytics::registry::AnalyticsRegistry::default());
     let mut recoverer=None;
+    if tenant_dbs.is_some() && std::env::var("DISK_PRESSURE_MONITOR").as_deref()!=Ok("false") {
+        std::fs::create_dir_all(&settings.tenant_data_dir).expect("tenant disk monitor directory");
+        crate::disk::spawn(settings.tenant_data_dir.clone(),background_jobs.clone(),metrics.clone());
+    }
     if let Some(manager) = tenant_dbs.clone() {
         crate::replication::worker::spawn_capture(manager.clone(), metrics.clone(), settings.tenant_data_dir.clone());
         match crate::replication::configured_worker(control_db.clone(), settings.cell_id, metrics.clone()) {

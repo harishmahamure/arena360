@@ -137,7 +137,7 @@ impl Recoverer {
         let id: Uuid = job.get(0);
         let phase: String = job.get(1);
         let capture: Option<i64> = job.get(2);
-        let critical = match self.databases.recovery_jobs() {
+        let critical = match self.databases.background_jobs() {
             Some(j) => Some(
                 j.acquire(crate::background::Priority::CriticalRecovery)
                     .await?,
@@ -192,9 +192,9 @@ impl Recoverer {
                 if checks!=["ok"] {return Err(fail("Recovered operational database failed integrity check"));}
                 this.activate(tenant,generation,id).await?;
                 Ok(db)
-            })).await?;
+            })).await;
             if let Some(image)=image {if let Some(dir)=image.image.parent() {let _=std::fs::remove_dir_all(dir);}}
-            Ok::<_,AppError>(db)
+            Ok::<_,AppError>(db?)
         }.await;
         drop(critical);
         let db = match result {
@@ -213,7 +213,7 @@ impl Recoverer {
         let mut analytics_ready = false;
         let mut error = None;
         if let Some(analytics) = &self.analytics {
-            match analytics.rebuild(db).await {
+            match tokio::time::timeout(std::time::Duration::from_secs(120),analytics.rebuild(db)).await.map_err(fail).and_then(|r|r) {
                 Ok(()) => {
                     sqlx::query("UPDATE tenant_recovery_jobs SET analytics_ready_at=clock_timestamp(),last_error=NULL WHERE id=$1").bind(id).execute(&self.ledger.pool).await?;
                     analytics_ready = true;
@@ -283,6 +283,7 @@ impl RecoveryAnalytics for NativeAnalytics {
         .map_err(fail)?;
         let broker = async_nats::jetstream::new(client);
         let analytics = self.registry.get(db.clone()).await?;
+        if let Ok(reader)=crate::analytics::report_reader::ReportReader::new(analytics.clone()).await {if reader.ensure_ready().await.is_ok(){return Ok(());}}
         crate::analytics::rebuild::rebuild(db, analytics, &broker).await
     }
 }

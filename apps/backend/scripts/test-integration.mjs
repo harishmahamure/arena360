@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// Fixtures exercise disk zones explicitly; the host's unrelated disk occupancy
+// must not pause their background pipelines.
+process.env.DISK_PRESSURE_MONITOR = 'false';
+
 /** Run SQLite tests and control-plane tests without using an application database. */
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';

@@ -12,6 +12,7 @@ duckdb-analytics = ["dep:duckdb"]
 duckdb-bundled = ["duckdb-analytics", "duckdb/bundled"]
 
 [dependencies]
+fs2 = "=0.4.3"
 # Web framework
 axum = { version = "0.8", features = ["macros", "ws"] }
 axum-extra = { version = "0.10", features = ["typed-header"] }

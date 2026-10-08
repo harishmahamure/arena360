@@ -220,3 +220,38 @@ unexpired former lease, tests operational writes during an analytics failure and
 resumes a crash between activation commit and marker removal. This is local
 verification; staging full-cell recovery time and real storage outage alerts
 remain launch-gate evidence.
+
+## Disk-pressure zones
+
+The cell samples its tenant-root filesystem every 15 seconds. Allocation gauges
+separate SQLite (including outbox storage), SQLite WAL/SHM, durable spool/batches,
+DuckDB and private snapshot/recovery/rebuild/archive/export temporary files.
+Filesystem availability includes other consumers of the same volume. Component
+scans are bounded, report partial results, skip symlinks and count a hard-linked
+inode once. Sparse-file allocation uses actual blocks on Unix.
+
+| Used space | Zone | Automatic action |
+| --- | --- | --- |
+| Below 70% | 0, healthy | Normal admission |
+| 70–80% | 1, warning | Alert |
+| 80–90% | 2, corrective | Pause new backfills, archive staging, historical exports and maintenance; defer daily snapshots before opening tenants |
+| 90% or higher | 3, critical | Also pause new analytics ingestion |
+| Measurement unavailable | 4, unknown | Same admission pause as critical; alert |
+
+Two percentage points of recovery hysteresis prevent repeated pause/resume.
+Active batches finish normally. Operations bypass background admission; outbox,
+WAL capture/upload, critical recovery and verified archive purges remain
+eligible. Already verified purges can release local space. Generation baselines
+remain mandatory before WAL publication. Recovery's analytics stage times out
+and stays retryable when admission is paused, while operations remain online.
+
+`arena360_disk_zone`, filesystem capacity/availability/used ratio, component
+allocation, scan completeness and probe failures are exported in `/metrics`.
+Prometheus rules are in `infra/monitoring/replication-alerts.yml`. Move tenants or
+add capacity if usage stays high; this monitor never deletes operational data.
+
+`DISK_PRESSURE_MONITOR=false` disables the live host probe for isolated local
+fixtures. The integration runner sets it explicitly because host occupancy is
+unrelated to fixture workloads; disk/admission tests exercise thresholds and
+pressure directly. Production cells should use the default enabled probe and
+keep SQLite, spool and temporary work on the monitored tenant filesystem.

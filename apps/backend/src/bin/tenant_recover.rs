@@ -58,6 +58,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|_| "Set TENANT_DATA_DIR explicitly for the destination cell")?,
     );
     let jobs = gaming_cafe_api::background::BackgroundJobs::new(Default::default())?;
+    if std::env::var("DISK_PRESSURE_MONITOR").as_deref()!=Ok("false") {
+        std::fs::create_dir_all(&root)?;
+        gaming_cafe_api::disk::spawn(root.clone(),jobs.clone(),Arc::new(Metrics::default()));
+    }
     let leases = Arc::new(LeaseClient::new(
         pool.clone(),
         target,

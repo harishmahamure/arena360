@@ -13,6 +13,9 @@ use uuid::Uuid;
 use crate::control::LeaseClient;
 use crate::error::AppError;
 
+struct RecoveryTemporary(std::path::PathBuf);
+impl Drop for RecoveryTemporary {fn drop(&mut self) {let _=std::fs::remove_file(&self.0);}}
+
 pub trait TenantLease: Send + Sync {
     fn writable_generation(&self, tenant_id: Uuid) -> Result<i64, AppError>;
     fn ensure_writable(&self, tenant_id: Uuid, expected_generation: i64) -> Result<(), AppError>;
@@ -347,7 +350,7 @@ impl TenantDbManager {
         Ok(handle)
     }
 
-    pub(crate) fn recovery_jobs(&self)->Option<&Arc<crate::background::BackgroundJobs>> {self.background_jobs.as_ref()}
+    pub(crate) fn background_jobs(&self)->Option<&Arc<crate::background::BackgroundJobs>> {self.background_jobs.as_ref()}
     pub(crate) fn recovery_pending(&self,tenant:Uuid)->bool {tenant_path(&self.config.root,tenant).parent().unwrap().join("replication/recovery-pending.json").exists()}
     pub(crate) fn recovery_path(&self,tenant:Uuid)->PathBuf {tenant_path(&self.config.root,tenant)}
     /// Recovery alone may open a quarantined image. Business opens remain
@@ -363,6 +366,7 @@ impl TenantDbManager {
         if !installed {
             let source=source.ok_or_else(||AppError::Internal("Recovery image is missing".into()))?;
             let temporary=path.with_extension(format!("{}.tmp",Uuid::new_v4()));
+            let _temporary=RecoveryTemporary(temporary.clone());
             tokio::fs::copy(source,&temporary).await.map_err(|e|AppError::Internal(e.to_string()))?;
             std::fs::File::open(&temporary).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
             self.lease.ensure_writable(tenant,generation)?;

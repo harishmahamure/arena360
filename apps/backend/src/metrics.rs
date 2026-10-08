@@ -3,6 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Default)]
 pub struct Metrics {
+    disk_sample: std::sync::Mutex<Option<crate::disk::Sample>>,
+    disk_zone: AtomicU64,
+    disk_failures: AtomicU64,
     background_jobs: std::sync::Mutex<Option<std::sync::Arc<crate::background::JobStats>>>,
     rate_limit_allowed: AtomicU64,
     rate_limit_rejected: AtomicU64,
@@ -103,6 +106,8 @@ impl Metrics {
         self.analytics_rebuild_millis.fetch_add(millis, Ordering::Relaxed);
     }
     pub fn analytics_failed(&self) { self.analytics_failures.fetch_add(1, Ordering::Relaxed); }
+    pub fn set_disk(&self,sample:crate::disk::Sample,zone:u64) {if let Ok(mut current)=self.disk_sample.lock(){*current=Some(sample);}self.disk_zone.store(zone,Ordering::Relaxed);}
+    pub fn disk_failed(&self) {self.disk_failures.fetch_add(1,Ordering::Relaxed);self.disk_zone.store(4,Ordering::Relaxed);}
     pub fn replication_failed(&self) { self.replication_failures.fetch_add(1, Ordering::Relaxed); }
     pub fn set_replication_backlog(&self, bytes: u64, age: u64) { self.replication_spool_bytes.store(bytes, Ordering::Relaxed); self.replication_oldest_millis.store(age, Ordering::Relaxed); }
     pub fn render(&self) -> String {
@@ -183,7 +188,9 @@ impl Metrics {
             self.analytics_retention_rows.load(Ordering::Relaxed),
         );
         let replication = format!("# TYPE arena360_replication_spool_bytes gauge\narena360_replication_spool_bytes {}\n# TYPE arena360_replication_oldest_unshipped_milliseconds gauge\narena360_replication_oldest_unshipped_milliseconds {}\n# TYPE arena360_replication_failures_total counter\narena360_replication_failures_total {}\n",self.replication_spool_bytes.load(Ordering::Relaxed),self.replication_oldest_millis.load(Ordering::Relaxed),self.replication_failures.load(Ordering::Relaxed));
-        body + &background + &replication
+        let mut disk=format!("# TYPE arena360_disk_zone gauge\narena360_disk_zone {}\n# TYPE arena360_disk_monitor_failures_total counter\narena360_disk_monitor_failures_total {}\n",self.disk_zone.load(Ordering::Relaxed),self.disk_failures.load(Ordering::Relaxed));
+        if let Ok(sample)=self.disk_sample.lock() {if let Some(s)=sample.as_ref(){disk.push_str(&s.render());}}
+        body + &background + &replication + &disk
     }
 }
 

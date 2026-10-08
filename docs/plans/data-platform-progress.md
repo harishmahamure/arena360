@@ -60,8 +60,16 @@
 
 ## Current task
 
-- [ ] `API-0056` — Disk pressure monitoring and automatic background pauses (M8).
+- [ ] `TEST-0051` — Real process-kill, disk-loss and 30-day point-in-time recovery checks (M8).
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0056 completed
+
+- Fifteen-second filesystem probes and bounded allocation scans cover SQLite/outbox storage, WAL/SHM, raw/encoded spool batches, DuckDB and snapshot/recovery/rebuild/archive/export temporary files. Symlinks are skipped and hard-linked inodes counted once.
+- 70/80/90-percent warning/corrective/critical zones use two percentage points of recovery hysteresis. Corrective pressure pauses new backfills, exports, archive staging and maintenance, with daily snapshots deferred before tenant opening; critical/unknown pressure also pauses analytics ingestion. Operations, outbox, WAL transport, recovery and verified archive purges remain eligible.
+- Prometheus gauges and seven replication/disk alert rules are checked in. Failed recovery removes consumed staging images and copy temporaries; paused analytics recovery remains bounded and retryable.
+- Three disk checks, 23 focused scheduler/tenant/replication regressions, native library/binary compilation, integration-runner syntax and alert YAML parsing pass. Isolated fixtures explicitly disable the unrelated host occupancy probe and exercise forced zones themselves.
+- API-0052 implementation commit: `8f159fc`.
 
 ### API-0052 completed
 

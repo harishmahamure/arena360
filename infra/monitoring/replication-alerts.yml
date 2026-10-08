@@ -22,3 +22,33 @@ groups:
           severity: warning
         annotations:
           summary: "Cell WAL capture or upload is failing; inspect retained spool"
+  - name: arena360-disk
+    rules:
+      - alert: CellDiskWarning
+        expr: arena360_disk_zone == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cell filesystem is in the 70–80 percent warning zone"
+      - alert: CellDiskCorrective
+        expr: arena360_disk_zone == 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cell disk pressure has paused backfills, exports, archive staging and maintenance"
+      - alert: CellDiskCritical
+        expr: arena360_disk_zone >= 3
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cell disk is critical or cannot be measured; analytics growth is paused"
+      - alert: CellDiskComponentScanIncomplete
+        expr: arena360_disk_component_scan_complete == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cell component scan is partial; filesystem pressure measurement still controls admission"

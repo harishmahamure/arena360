@@ -49,8 +49,14 @@ pub struct JobStats {
     started: [AtomicU64; COUNT],
     finished: [AtomicU64; COUNT],
     wait_micros: [AtomicU64; COUNT],
+    disk_zone: AtomicU64,
 }
 impl JobStats {
+    pub fn disk_zone(&self)->u64 {self.disk_zone.load(Ordering::Acquire)}
+    pub fn disk_blocked(&self,p:Priority)->bool {
+        let zone=self.disk_zone();
+        (zone>=2 && matches!(p,Priority::HotBackfill|Priority::SchemaBackfill|Priority::ArchiveExport|Priority::HistoricalExport|Priority::Maintenance)) || (zone>=3 && p==Priority::AnalyticsIngestion)
+    }
     pub fn queued(&self, p: Priority) -> u64 {
         self.queued[p as usize].load(Ordering::Relaxed)
     }
@@ -162,6 +168,7 @@ impl BackgroundJobs {
                     let backfills: usize = active[5..].iter().sum();
                     let candidate = (1..COUNT).find(|&p| {
                         !queues[p].is_empty()
+                            && !((state.disk_zone()>=2 && matches!(p,5|6|7|9|10)) || (state.disk_zone()>=3 && p==4))
                             && if p == 1 {
                                 active[1] < limits.outbox_slots
                             } else {
@@ -208,6 +215,10 @@ impl BackgroundJobs {
             }
         });
         Ok(Arc::new(Self { sender, stats }))
+    }
+    pub fn set_disk_zone(&self,zone:u64) {
+        self.stats.disk_zone.store(zone,Ordering::Release);
+        let _=self.sender.send(Command::Wake);
     }
     pub fn stats(&self) -> Arc<JobStats> {
         self.stats.clone()
