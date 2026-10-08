@@ -73,6 +73,13 @@ pub async fn run(
     if !analytics.ensure_timezone().await? {
         return Ok(RetentionOutcome::Skipped);
     }
+    let _job = match analytics.owner().background_jobs() {
+        Some(jobs) => Some(
+            jobs.acquire(crate::background::Priority::Maintenance)
+                .await?,
+        ),
+        None => None,
+    };
     let _maintenance = analytics.rebuild_lock.lock().await;
     let source = super::rebuild::source_watermark(analytics.owner()).await?;
     let prepared = analytics
@@ -91,7 +98,7 @@ pub async fn run(
                     |r| r.get(0),
                 )
                 .map_err(error)?;
-            if status != "READY" || last < source {
+            if status != "READY" || last != source {
                 return Ok(None);
             }
             let zone = timezone.parse::<Tz>().map_err(|_| invalid())?;

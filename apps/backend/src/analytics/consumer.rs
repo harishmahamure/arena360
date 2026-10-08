@@ -255,11 +255,13 @@ fn apply_change(tx: &Transaction<'_>, change: Change, zone: Tz, hot: &str) -> Re
 /// facts, and collapses independent row/parent replacements to their last state.
 pub async fn apply_batch(
     analytics: Arc<TenantAnalytics>,
-    mut events: Vec<TenantEvent>,
+    events: Vec<TenantEvent>,
 ) -> Result<BatchOutcome, AppError> {
-    if events.len() > 1000 {
-        return Err(invalid("batch exceeds bounded capacity"));
-    }
+    let _job=match analytics.owner().background_jobs(){Some(jobs)=>Some(jobs.acquire(crate::background::Priority::AnalyticsIngestion).await?),None=>None};
+    apply_batch_inner(analytics,events).await
+}
+async fn apply_batch_inner(analytics: Arc<TenantAnalytics>, mut events: Vec<TenantEvent>) -> Result<BatchOutcome,AppError> {
+    if events.len() > 1000 {return Err(invalid("batch exceeds bounded capacity"));}
     if !analytics.ensure_timezone().await? {return Ok(BatchOutcome::RebuildRequired);}
     let tenant = analytics.tenant_id();
     analytics.write(move|tx|{
@@ -366,6 +368,18 @@ impl JetStreamConsumer {
             gap_attempts: 0,
         })
     }
+    /// Idle polling reads local watermarks without touching tenant activity or
+    /// allocating a pull buffer. A checkpoint ahead of SQLite needs recovery.
+    async fn has_pending_source(&self) -> Result<bool,AppError> {
+        let (source,timezone):(i64,String)=sqlx::query_as("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='outbox_events'),0),timezone FROM tenant_runtime WHERE singleton=1")
+            .fetch_one(&self.db.background_read_pool()?).await?;
+        let (last,status,stored):(i64,String,String)=self.analytics.read(|tx|tx.query_row("SELECT CAST(last_sequence AS BIGINT),status,timezone FROM _ingest_state",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(error)).await?;
+        if last>source && status=="READY" && super::rebuild::source_watermark(&self.db).await?<last {
+            self.analytics.write(|tx|{tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'").map_err(error)?;Ok(())}).await?;
+            return Ok(true);
+        }
+        Ok(source!=last || status!="READY" || stored!=timezone)
+    }
     pub async fn poll(&mut self, metrics: &Metrics) -> Result<BatchOutcome, AppError> {
         self.db.ensure_current_owner()?;
         if !self.analytics.ensure_timezone().await? {return Ok(BatchOutcome::RebuildRequired);}
@@ -383,6 +397,11 @@ impl JetStreamConsumer {
         if status != "READY" && status != "LAGGING" {
             return Ok(BatchOutcome::RebuildRequired);
         }
+        // Reserve before pulling so queued tenants cannot accumulate 8 MiB each.
+        let _job=match self.db.background_jobs(){Some(jobs)=>Some(jobs.acquire(crate::background::Priority::AnalyticsIngestion).await?),None=>None};
+        static BUFFERS: std::sync::LazyLock<tokio::sync::Semaphore> = std::sync::LazyLock::new(||tokio::sync::Semaphore::new(4));
+        let _buffer_slot=if self.db.background_jobs().is_none(){Some(BUFFERS.acquire().await.map_err(|_|invalid("buffer scheduler closed"))?)}else{None};
+        self.db.ensure_current_owner()?;
         let mut batch = self
             .consumer
             .batch()
@@ -424,15 +443,8 @@ impl JetStreamConsumer {
                 duplicates: 0,
             });
         }
-        static COMMITS: std::sync::LazyLock<tokio::sync::Semaphore> =
-            std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(4));
-        let permit = COMMITS
-            .acquire()
-            .await
-            .map_err(|_| invalid("commit scheduler closed"))?;
-        let mut result = apply_batch(self.analytics.clone(), events).await?;
+        let mut result = apply_batch_inner(self.analytics.clone(), events).await?;
         if let BatchOutcome::Applied{duplicates,..}=&mut result {*duplicates+=covered;}
-        drop(permit);
         match &result {
             BatchOutcome::Applied { events, .. } => {
                 self.gap_attempts = 0;
@@ -534,6 +546,8 @@ pub fn spawn(
                         let mut retention_due=chrono::Utc::now();
                         loop {
                             db.ensure_current_owner()?;
+                            // Check for a restored source before considering maintenance.
+                            let pending=consumer.has_pending_source().await?;
                             let now=chrono::Utc::now();
                             if now>=retention_due {
                                 match super::retention::run(consumer.analytics.clone(),now).await {
@@ -543,6 +557,10 @@ pub fn spawn(
                                     Ok(super::retention::RetentionOutcome::Skipped)=>retention_due=now+chrono::Duration::seconds(5),
                                     Err(error)=> {metrics.analytics_failed();tracing::warn!(tenant=%id,%error,"Analytics retention delayed");retention_due=now+chrono::Duration::seconds(5);}
                                 }
+                            }
+                            if !pending {
+                                tokio::time::sleep(Duration::from_millis(250)).await;
+                                continue;
                             }
                             match consumer.poll(&metrics).await {
                                 Ok(BatchOutcome::RebuildRequired) => {

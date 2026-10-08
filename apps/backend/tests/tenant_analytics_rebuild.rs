@@ -48,7 +48,8 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
         })
         .await
         .unwrap();
-    let f = TenantFixture::new().await;
+    let jobs=gaming_cafe_api::background::BackgroundJobs::new(gaming_cafe_api::background::Limits::default()).unwrap();
+    let f = TenantFixture::new_with_background_jobs(jobs).await;
     let player = f.player("snapshot-player").await;
     let a = TenantAnalytics::open(f.db.clone()).await.unwrap();
     a.write(|tx|{tx.execute_batch("INSERT INTO monthly_summary VALUES(DATE '2020-01-01','00000000-0000-0000-0000-000000000000',21.0101,20.0101,1.0000,2,3,4,5)").map_err(error)?;Ok(())}).await.unwrap();

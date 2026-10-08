@@ -122,6 +122,7 @@ pub async fn publish_batch(
     sink: &dyn EventSink,
     metrics: &Metrics,
 ) -> Result<(), AppError> {
+    let _job = match db.background_jobs() {Some(jobs)=>Some(jobs.acquire(crate::background::Priority::Outbox).await?),None=>None};
     db.ensure_current_owner()?;
     let pool = db.background_read_pool()?;
     let initial: i64 = sqlx::query_scalar(

@@ -96,6 +96,9 @@ pub async fn build_state() -> Arc<AppState> {
 /// Construct one process using explicit configuration; operational storage is tenant SQLite.
 pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState> {
     let realtime_hub = RealtimeHub::new(1024);
+    let metrics = Arc::new(crate::metrics::Metrics::default());
+    let background_jobs = crate::background::BackgroundJobs::new(crate::background::Limits::default()).expect("invalid background scheduler limits");
+    metrics.attach_background_jobs(background_jobs.stats());
     let control_db = if let Some(url) = settings.control_database_url.as_deref() {
         let control_pool = create_pool_for(url, settings.as_ref()).await;
         crate::control::migrate(&control_pool)
@@ -135,7 +138,8 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
                 leases.clone(),
             )
             .expect("invalid tenant database configuration")
-            .with_commit_notifier(Arc::new(realtime_hub.clone())),
+            .with_commit_notifier(Arc::new(realtime_hub.clone()))
+            .with_background_jobs(background_jobs.clone()),
         );
         manager.clone().spawn_reaper();
         manager
@@ -184,7 +188,6 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         None
     };
     let cache = create_cache(settings.redis_url.as_deref()).await;
-    let metrics = Arc::new(crate::metrics::Metrics::default());
     if let (Some(manager), Some(url)) = (tenant_dbs.clone(), settings.nats_url.clone()) {
         #[cfg(feature = "duckdb-analytics")]
         crate::analytics::consumer::spawn(manager.clone(), metrics.clone(), url.clone());

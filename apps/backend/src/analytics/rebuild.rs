@@ -395,6 +395,7 @@ where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = Result<(), AppError>>,
 {
+    let _job=match db.background_jobs(){Some(jobs)=>Some(jobs.acquire(crate::background::Priority::HotBackfill).await?),None=>None};
     static REBUILDS: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
     let _cell_slot = REBUILDS
         .get_or_init(|| tokio::sync::Semaphore::new(1))

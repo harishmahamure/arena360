@@ -31,6 +31,13 @@ impl TenantAnalytics {
         Self::open_internal(db, false).await
     }
     async fn open_internal(db: Arc<TenantDb>, require_latest: bool) -> Result<Arc<Self>, AppError> {
+        let _job = match db.background_jobs() {
+            Some(jobs) => Some(
+                jobs.acquire(crate::background::Priority::AnalyticsIngestion)
+                    .await?,
+            ),
+            None => None,
+        };
         db.ensure_current_owner()?;
         let timezone: String =
             sqlx::query_scalar("SELECT timezone FROM tenant_runtime WHERE singleton=1")

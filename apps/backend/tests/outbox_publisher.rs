@@ -332,3 +332,145 @@ async fn publishing_does_not_hold_the_operational_writer() {
     assert_eq!(ack(&f).await, 1);
     f.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires NATS_SERVER_BIN; starts and restarts its own disposable server"]
+async fn stopped_nats_preserves_source_writes_and_drains_on_same_store_recovery() {
+    use async_nats::jetstream::stream::{Config, RetentionPolicy, StorageType};
+    use gaming_cafe_api::{
+        analytics::publisher::{JetStreamSink, TENANT_EVENT_STREAM},
+        background::{BackgroundJobs, Limits},
+    };
+    struct Server {
+        child: Option<std::process::Child>,
+        root: std::path::PathBuf,
+        port: u16,
+        binary: String,
+    }
+    impl Server {
+        fn start(&mut self) {
+            assert!(self.child.is_none());
+            self.child = Some(
+                std::process::Command::new(&self.binary)
+                    .args(["-js", "-a", "127.0.0.1", "-p"])
+                    .arg(self.port.to_string())
+                    .arg("-sd")
+                    .arg(&self.root)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+        }
+        fn stop(&mut self) {
+            if let Some(mut child) = self.child.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+        async fn ready(&mut self) {
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    assert!(
+                        self.child.as_mut().unwrap().try_wait().unwrap().is_none(),
+                        "owned NATS server exited"
+                    );
+                    if tokio::net::TcpStream::connect(("127.0.0.1", self.port))
+                        .await
+                        .is_ok()
+                    {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .unwrap();
+        }
+    }
+    impl Drop for Server {
+        fn drop(&mut self) {
+            self.stop();
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let root = std::env::temp_dir().join(format!("arena360-nats-outage-{}", Uuid::new_v4()));
+    std::fs::create_dir(&root).unwrap();
+    let mut server = Server {
+        child: None,
+        root,
+        port,
+        binary: std::env::var("NATS_SERVER_BIN").unwrap(),
+    };
+    server.start();
+    server.ready().await;
+    let url = format!("nats://127.0.0.1:{port}");
+    let context = async_nats::jetstream::new(async_nats::connect(&url).await.unwrap());
+    context
+        .create_stream(Config {
+            name: TENANT_EVENT_STREAM.into(),
+            subjects: vec!["arena.tenant.*.events.v1".into()],
+            retention: RetentionPolicy::Limits,
+            storage: StorageType::File,
+            max_age: Duration::from_secs(7 * 86400),
+            duplicate_window: Duration::from_secs(120),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let jobs = BackgroundJobs::new(Limits::default()).unwrap();
+    let f = TenantFixture::new_with_background_jobs(jobs).await;
+    let metrics = Metrics::default();
+    let sink = JetStreamSink::connect(&url).await.unwrap();
+    f.player("before-outage").await;
+    project(&f, 1).await;
+    publish_batch(f.db.clone(), &sink, &metrics).await.unwrap();
+    assert_eq!(ack(&f).await, 1);
+    server.stop();
+    // Foreground commits continue without a broker; no source rows can be lost.
+    f.player("during-outage-one").await;
+    f.player("during-outage-two").await;
+    assert!(publish_batch(f.db.clone(), &sink, &metrics).await.is_err());
+    assert_eq!(ack(&f).await, 1);
+    assert_eq!(backlog(&f.db).await.unwrap().pending, 2);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM users WHERE role='player'")
+            .fetch_one(&f.db.read_pool().unwrap())
+            .await
+            .unwrap(),
+        3
+    );
+    server.start();
+    server.ready().await;
+    project(&f, 3).await;
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if publish_batch(f.db.clone(), &sink, &metrics).await.is_ok() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(ack(&f).await, 3);
+    assert_eq!(backlog(&f.db).await.unwrap().pending, 0);
+    let recovered = async_nats::jetstream::new(async_nats::connect(&url).await.unwrap());
+    let mut stream = recovered.get_stream(TENANT_EVENT_STREAM).await.unwrap();
+    assert_eq!(stream.info().await.unwrap().state.messages, 3);
+    for sequence in 1..=3 {
+        let message: async_nats::jetstream::message::StreamMessage = stream
+            .get_raw_message(sequence)
+            .await
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let event: Value = serde_json::from_slice(&message.payload).unwrap();
+        assert_eq!(event["sequence"], sequence);
+        assert_eq!(event["tenant_id"], json!(f.db.tenant_id()));
+    }
+    f.close().await;
+}

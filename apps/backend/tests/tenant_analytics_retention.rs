@@ -11,7 +11,22 @@ fn at(s: &str) -> chrono::DateTime<chrono::Utc> {
 }
 #[tokio::test]
 async fn rollover_seals_summaries_and_purges_in_batches_without_losing_open_or_crossing_work() {
-    let f = TenantFixture::new().await;
+    let jobs = gaming_cafe_api::background::BackgroundJobs::new(
+        gaming_cafe_api::background::Limits::default(),
+    )
+    .unwrap();
+    let f = TenantFixture::new_with_background_jobs(jobs).await;
+    // A fully ingested/purged source retains its AUTOINCREMENT watermark.
+    f.db.with_immediate_writer(|c| {
+        Box::pin(async move {
+            sqlx::query("INSERT INTO sqlite_sequence(name,seq) VALUES('outbox_events',42)")
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
     let a = TenantAnalytics::open(f.db.clone()).await.unwrap();
     a.write(|tx|{
   tx.execute_batch("UPDATE _ingest_state SET status='READY',last_sequence=42,hot_window_start=DATE '2025-03-01';
@@ -206,6 +221,31 @@ async fn nightly_schedule_survives_a_twenty_five_hour_dst_day() {
     .unwrap();
     assert!(
         matches!(run(a.clone(),at("2026-10-24T22:00:00Z")).await.unwrap(),RetentionOutcome::Applied{next_due,..} if next_due==at("2026-10-25T23:00:00Z"))
+    );
+    drop(a);
+    f.close().await;
+}
+
+#[tokio::test]
+async fn retention_cannot_seal_facts_when_the_checkpoint_is_ahead_of_restored_sqlite() {
+    let f = TenantFixture::new().await;
+    let a = TenantAnalytics::open(f.db.clone()).await.unwrap();
+    a.write(|tx|{tx.execute_batch("UPDATE _ingest_state SET status='READY',last_sequence=42,hot_window_start=DATE '2025-03-01'").map_err(error)?;Ok(())}).await.unwrap();
+    assert_eq!(
+        run(a.clone(), at("2026-10-01T00:00:00Z")).await.unwrap(),
+        RetentionOutcome::Skipped
+    );
+    assert_eq!(
+        a.read(|tx| tx
+            .query_row(
+                "SELECT CAST(hot_window_start AS VARCHAR) FROM _ingest_state",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .map_err(error))
+            .await
+            .unwrap(),
+        "2025-03-01"
     );
     drop(a);
     f.close().await;

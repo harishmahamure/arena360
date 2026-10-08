@@ -13,14 +13,14 @@
 - [x] M3 — Tenant storage foundation
 - [x] M4 — Core venue operations on SQLite
 - [x] M5 — Back office on SQLite
-- [ ] M6 — Analytics ingestion
+- [x] M6 — Analytics ingestion
 - [ ] M7 — Reports on DuckDB
 - [ ] M8 — Replication and recovery
 - [ ] M9 — Multiple cells
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through API-0045
+## Completed through M6
 
 - M0–M5 are complete; operational API cutover and local merge are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `API-0046` — Per-cell background scheduling and M6 completion gates.
+- [ ] `API-0043` — Rewrite tenant report queries and serving paths for DuckDB.
 
 ### API-0033 completed
 
@@ -137,7 +137,13 @@
 
 - Control timezone revisions project locally without synchronous business dependence on PostgreSQL. Live and restarted analytics preserve old facts/checkpoints in REBUILDING until labels are derived again from unchanged UTC instants. Signed entitlement revisions advance; stale/conflicting updates cannot revert calendars.
 - 20 targeted checks, nine disposable control checks and five live JetStream gates pass, including demo parity and a timezone change during a rebuild. Historical aggregates from a different calendar require archived facts for accurate relabeling (M11).
-- Next: `API-0046` per-cell scheduling, then final M6 outage/recovery gates.
+- Implementation: `fc68082`.
+
+### API-0046 and M6 completed
+
+- Per-cell priority/FIFO admission reserves outbox capacity and bounds background/backfill concurrency. Foreground writers bypass queues; pull buffers and DuckDB opens reserve capacity before allocation. Cancelled and fenced jobs cannot leak reservations or commit stale data. Queue/active/admission/release/wait metrics are exported by priority.
+- Full regression: 417 backend/control/live checks pass. Final targeted safeguards (21 checks) and all six live gates pass: 418 distinct checks across the runs. The actual NATS stop/restart preserves SQLite writes and drains the outbox without duplicate messages. Native demo counts/money/session-hour parity and scheduled concurrent rebuild/replay pass.
+- Next: local M6 merge, then M7 `API-0043` report migration and M0 fixture parity.
 
 ## M5 queue
 
@@ -171,7 +177,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed item: `API-0045`; targeted schema/consumer/retention/calendar regressions, all nine control checks and all five live JetStream gates pass. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
+- Latest completed item: `API-0046` / M6; 418 distinct backend/control/live checks pass across the full and final targeted runs. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

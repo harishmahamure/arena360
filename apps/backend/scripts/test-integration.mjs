@@ -230,7 +230,7 @@ async function runJetstream(env, required = false) {
             '--ignored',
             '--test-threads=1',
           ],
-          { env: { ...env, NATS_TEST_URL: nats.url } },
+          { env: { ...env, NATS_TEST_URL: nats.url, NATS_SERVER_BIN: bin } },
         );
       } finally {
         await nats.cleanup();

@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Default)]
 pub struct Metrics {
+    background_jobs: std::sync::Mutex<Option<std::sync::Arc<crate::background::JobStats>>>,
     rate_limit_allowed: AtomicU64,
     rate_limit_rejected: AtomicU64,
     rate_limit_fail_open: AtomicU64,
@@ -32,6 +33,10 @@ pub struct Metrics {
 }
 
 impl Metrics {
+    pub fn attach_background_jobs(&self, stats: std::sync::Arc<crate::background::JobStats>) {
+        *self.background_jobs.lock().expect("background metrics lock poisoned") = Some(stats);
+    }
+
     pub fn rate_allowed(&self) {
         self.rate_limit_allowed.fetch_add(1, Ordering::Relaxed);
     }
@@ -96,7 +101,8 @@ impl Metrics {
     }
     pub fn analytics_failed(&self) { self.analytics_failures.fetch_add(1, Ordering::Relaxed); }
     pub fn render(&self) -> String {
-        format!(
+        let background = self.background_jobs.lock().ok().and_then(|s|s.as_ref().map(|s|s.render())).unwrap_or_default();
+        let body = format!(
             concat!(
                 "# TYPE arena360_rate_limit_decisions_total counter\n",
                 "arena360_rate_limit_decisions_total{{decision=\"allowed\"}} {}\n",
@@ -170,7 +176,8 @@ impl Metrics {
             self.analytics_rebuild_millis.load(Ordering::Relaxed),
             self.analytics_retention_runs.load(Ordering::Relaxed),
             self.analytics_retention_rows.load(Ordering::Relaxed),
-        )
+        );
+        body + &background
     }
 }
 
