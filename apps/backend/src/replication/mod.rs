@@ -3,6 +3,7 @@ pub mod batch;
 pub mod crypto;
 pub mod ledger;
 pub mod retention;
+pub mod restore;
 pub mod snapshot;
 pub mod wal;
 pub mod worker;

@@ -900,7 +900,6 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
 #[ignore = "requires an isolated control-plane database"]
 async fn postgres_retention_preserves_restore_dependencies_resumes_intents_and_fences_owner() {
     use gaming_cafe_api::replication::{ledger::PostgresLedger, retention};
-    use object_store::ObjectStore;
     let pool=sqlx::postgres::PgPoolOptions::new().max_connections(3).connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap()).await.unwrap();
     gaming_cafe_api::control::migrate(&pool).await.unwrap();
     let (root,db,lease)=database().await;
@@ -954,4 +953,68 @@ async fn postgres_retention_preserves_restore_dependencies_resumes_intents_and_f
     sqlx::query("DELETE FROM tenants WHERE id=$1").bind(tenant).execute(&pool).await.unwrap();
     sqlx::query("DELETE FROM cells WHERE id=$1").bind(cell).execute(&pool).await.unwrap();
     pool.close().await;std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires an isolated control-plane database"]
+async fn postgres_restore_replays_encrypted_batches_and_stops_at_capture_utc() {
+    use gaming_cafe_api::replication::{ledger::PostgresLedger,restore,snapshot};
+    let pool=sqlx::postgres::PgPoolOptions::new().max_connections(4).connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap()).await.unwrap();
+    gaming_cafe_api::control::migrate(&pool).await.unwrap();
+    let (root,db,lease)=database().await;let tenant=db.tenant_id();let cell=Uuid::new_v4();
+    sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)").bind(cell).bind(format!("restore-{cell}")).bind(format!("http://{cell}.invalid")).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Restore','UTC',$3,1,'ACTIVE')").bind(tenant).bind(format!("restore-{tenant}")).bind(cell).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenant_leases(tenant_id,owner_cell,ownership_generation,expires_at) VALUES($1,$2,1,NOW()+INTERVAL '5 minutes')").bind(tenant).bind(cell).execute(&pool).await.unwrap();
+    let ledger=Arc::new(PostgresLedger{pool:pool.clone(),cell_id:cell});
+    let keys=TenantKeys::new(root.join("secrets"));wal::durable_create(&keys.path(tenant),&[42u8;32]).unwrap();
+    let store=Arc::new(InMemory::new());
+    let worker=Worker{gates:Default::default(),store:store.clone(),ledger:ledger.clone(),keys:keys.clone(),metrics:Arc::new(Metrics::default())};
+    snapshot::take(db.clone(),&ledger,store.as_ref(),&keys,snapshot::Kind::Baseline).await.unwrap();
+    insert(&db,"first").await;db.spool_wal().await.unwrap();
+    let first=worker::pending(&db).unwrap()[0].1.clone();
+    let target=gaming_cafe_api::time::parse_sqlite_timestamp(&first.captured_at).unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    insert(&db,"second").await;db.spool_wal().await.unwrap();
+    assert_eq!(worker.ship(db.clone(),true).await.unwrap(),2);
+    let staging=root.join("restore-staging");
+    let full=restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.unwrap();
+    let mut c=SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&full.image)).await.unwrap();
+    let values:Vec<String>=sqlx::query_scalar("SELECT value FROM durable ORDER BY rowid").fetch_all(&mut c).await.unwrap();assert_eq!(values,vec!["first","second"]);c.close().await.unwrap();
+    assert_eq!(full.capture_number,first.capture_number+1);
+    let point=restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,Some(target),restore::Limits::default()).await.unwrap();
+    let mut c=SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&point.image)).await.unwrap();
+    let values:Vec<String>=sqlx::query_scalar("SELECT value FROM durable ORDER BY rowid").fetch_all(&mut c).await.unwrap();assert_eq!(values,vec!["first"]);c.close().await.unwrap();
+    assert_eq!(point.recovered_at,target);
+    assert!(restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,Some(chrono::Utc::now()-chrono::Duration::days(91)),restore::Limits::default()).await.is_err());
+    // A shared restore pin must make retention skip this generation.
+    let mut pin=pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))").bind(full.generation.to_string()).execute(&mut *pin).await.unwrap();
+    sqlx::query("UPDATE snapshot_manifests SET snapshot_at=NOW()-INTERVAL '100 days' WHERE generation_id=$1").bind(full.generation).execute(&pool).await.unwrap();
+    let obsolete=Uuid::new_v4();
+    sqlx::query("INSERT INTO snapshot_manifests(id,tenant_id,generation_id,kind,schema_version,object_key,checksum_sha256,encrypted_size_bytes,snapshot_at,verified_at,capture_number,source_checksum_sha256) SELECT $1,tenant_id,generation_id,kind,schema_version,object_key||'/obsolete',checksum_sha256,encrypted_size_bytes,NOW()-INTERVAL '200 days',verified_at,capture_number,source_checksum_sha256 FROM snapshot_manifests WHERE id=$2").bind(obsolete).bind(full.snapshot).execute(&pool).await.unwrap();
+    assert_eq!(gaming_cafe_api::replication::retention::run(&db,&ledger,store.as_ref()).await.unwrap(),0);
+    let untouched:bool=sqlx::query_scalar("SELECT retired_at IS NULL FROM snapshot_manifests WHERE id=$1").bind(obsolete).fetch_one(&pool).await.unwrap();assert!(untouched);
+    pin.rollback().await.unwrap();
+    assert_eq!(gaming_cafe_api::replication::retention::run(&db,&ledger,store.as_ref()).await.unwrap(),1);
+    // Required WAL tombstones and capture gaps cannot silently return a snapshot.
+    sqlx::query("UPDATE replication_segments SET retired_at=NOW() WHERE generation_id=$1").bind(full.generation).execute(&pool).await.unwrap();
+    assert!(restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.is_err());
+    sqlx::query("UPDATE replication_segments SET retired_at=NULL WHERE generation_id=$1").bind(full.generation).execute(&pool).await.unwrap();
+    let original:serde_json::Value=sqlx::query_scalar("SELECT capture FROM replication_segments WHERE generation_id=$1 LIMIT 1").bind(full.generation).fetch_one(&pool).await.unwrap();
+    sqlx::query("UPDATE replication_segments SET capture=jsonb_set(capture,'{capture_number}','9999') WHERE generation_id=$1").bind(full.generation).execute(&pool).await.unwrap();
+    assert!(restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.is_err());
+    sqlx::query("UPDATE replication_segments SET capture=$2 WHERE generation_id=$1").bind(full.generation).bind(original).execute(&pool).await.unwrap();
+    let key:String=sqlx::query_scalar("SELECT object_key FROM replication_segments WHERE generation_id=$1 ORDER BY segment_number LIMIT 1").bind(full.generation).fetch_one(&pool).await.unwrap();
+    store.put(&ObjectPath::from(key),bytes::Bytes::from_static(b"corrupt").into()).await.unwrap();
+    assert!(restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.is_err());
+    // Only the two completed images survive a failed object verification.
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(),2);
+    lease.0.store(false,Ordering::SeqCst);
+    assert!(restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.is_err());
+    lease.0.store(true,Ordering::SeqCst);
+    sqlx::query("UPDATE tenant_leases SET expires_at=NOW()+INTERVAL '20 seconds' WHERE tenant_id=$1").bind(tenant).execute(&pool).await.unwrap();
+    assert!(restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.is_err());
+    db.close().await.unwrap();
+    sqlx::query("DELETE FROM tenants WHERE id=$1").bind(tenant).execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM cells WHERE id=$1").bind(cell).execute(&pool).await.unwrap();pool.close().await;std::fs::remove_dir_all(root).unwrap();
 }

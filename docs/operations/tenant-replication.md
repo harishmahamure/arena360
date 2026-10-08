@@ -153,3 +153,29 @@ intents pending. Each deletion requires a fresh owning lease and holds the
 control-plane tenant/lease locks across a bounded remote operation, preventing
 reassignment from racing a former owner's delete. Unverified objects, local
 spool and encryption keys are outside this retention job.
+
+## Restoring a verified image
+
+`replication::restore::restore` requires an existing local writable lease and a
+fresh matching PostgreSQL tenant/lease assignment. It selects only the control
+plane's current generation and the latest live verified snapshot before the
+requested UTC instant. The shared generation pin prevents retention from
+retiring its inputs during the download without blocking lease renewal.
+
+Downloads are streamed into a private staging directory and checked against the
+verified ledger size and SHA-256. Snapshots are authenticated, decompressed with
+a size limit and compared with their source checksum. WAL batches are decoded
+and verified capture by capture; missing captures and retired dependencies fail
+closed. Each WAL image is recovered/checkpointed through SQLite. Final
+`integrity_check`, file fsync and fresh ownership/generation checks precede the
+returned image. Corrupt downloads remove their incomplete staging directory.
+The image remains separate from a live tenant directory until recovery installs
+it under its write gate; this function does not acquire ownership or overwrite
+an operational database.
+
+Point-in-time recovery stops at the last complete durable capture at or before
+the requested UTC instant (normally one-second local capture intervals).
+SQLite WAL does not contain transaction UTC timestamps, so arbitrary instants
+within a capture are rounded down to that capture boundary. The result reports
+its actual `recovered_at` and capture position. A missing pre-instant snapshot,
+an instant outside 90 days, or nonmonotonic capture UTC rejects the request.

@@ -89,6 +89,15 @@ pub async fn run(
             break;
         }
         let id: Uuid = generation.get("id");
+        let available: bool =
+            sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))")
+                .bind(id.to_string())
+                .fetch_one(&mut *tx)
+                .await?;
+        if !available {
+            continue;
+        }
+
         let sealed: Option<DateTime<Utc>> = generation.get("sealed_at");
         let expired = Some(id) != current
             && generation.get::<String, _>("state") != "ACTIVE"

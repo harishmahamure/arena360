@@ -60,8 +60,16 @@
 
 ## Current task
 
-- [ ] `API-0051` — Lease-gated, integrity-checked latest and point-in-time restore (M8).
+- [ ] `API-0052` — Cell-loss reassignment, restoration and operational activation (M8).
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0051 completed
+
+- Lease-gated restore selects only the control plane's current generation and latest live verified snapshot before the requested instant. It verifies encrypted/source checksums and every ordered WAL capture, rejects missing/retired dependencies and checks SQLite integrity before returning a private staged image.
+- Point-in-time recovery reports its actual durable capture boundary; SQLite WAL has no transaction UTC timestamps. Nonmonotonic capture UTC and unsupported pre-snapshot/outside-90-day instants fail closed.
+- Shared generation pins exclude concurrent retirement while permitting lease renewal. Final local/control ownership and generation checks prevent stale-owner recovery results.
+- All 14 replication checks pass, including real PostgreSQL and SQLite latest/PIT batch replay, effective retention pins, missing/retired WAL rejection, corruption cleanup and lease guards. Operational installation/activation follows in API-0052.
+- API-0055 implementation commit: `0c4d58a`.
 
 ### API-0055 completed
 
