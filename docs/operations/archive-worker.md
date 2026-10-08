@@ -27,3 +27,11 @@ Replan creates a new revision and preserves older verified objects, including ro
 Inspect `archive_manifests.state`, `rows_purged`, `batch_rows`, `retry_after`, and `last_error`. Historical metrics expose `archive_export`, `archive_verify`, and `archive_purge`; `ArchiveWorkerFailing` alerts on repeated failures. Purge latency pauses are recorded in the job error.
 
 The `archive_worker` integration gate needs an isolated control database and native DuckDB. It covers exact monetary payloads, verification-before-purge, absent keys, live corrections, incoming references, latency backoff, interrupted control updates, checkpoint recovery, overlapping sessions/shifts and live writes during purge. Local timings do not establish production capacity or staging recovery targets.
+
+## Verified archive to hot handoff
+
+Before normal queued purge starts, the worker rechecks every remote archive object, retires the matching hot manifest, and deletes that exact tenant/month prefix, including superseded objects and unfinished uploads. Retirement is committed before deletion. `archive_manifests.hot_cleaned_at` is recorded after deletion succeeds; a retired month without that marker retries cleanup. Completed legacy jobs without a marker are also picked up. Missing or corrupt archive objects preserve the existing hot copy.
+
+`historical::handoff::lock_month` defines the coordination contract. Hot writers hold a shared PostgreSQL advisory transaction lock for each month through upload and publication. Historical export workers must hold the same shared lock while selecting and downloading a month's input objects, then release it once inputs are materialized locally. Handoff takes the exclusive lock before retirement, allowing existing readers to finish. New readers select verified archive revisions instead of retired hot manifests. Take this lock before acquiring a background slot so waiting on a hot writer cannot deadlock the admission queue.
+
+The hot writer checks all verified archive revisions before publication; it does not republish a retired month. Cleanup never deletes archive revisions or adjacent months. A lost ownership lease prevents progress from being acknowledged and cleanup remains retryable on the new owner.

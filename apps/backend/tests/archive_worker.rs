@@ -3,12 +3,14 @@ mod support;
 use gaming_cafe_api::{
     historical::{
         archive::{self, Worker},
+        handoff,
         objects::{self, Object},
         raw,
     },
     metrics::Metrics,
     replication::{crypto::TenantKeys, ledger::PostgresLedger, wal},
 };
+use object_store::{ObjectStore, ObjectStoreExt};
 use sqlx::Row;
 use std::{
     sync::{
@@ -73,7 +75,7 @@ async fn verified_archive_purges_in_batches_resumes_control_failure_and_preserve
     let keys = TenantKeys::new(root.join("keys"));
     wal::durable_create(&keys.path(tenant), &[61; 32]).unwrap();
     let store = Arc::new(object_store::memory::InMemory::new());
-    let worker = Worker {
+    let worker = Arc::new(Worker {
         ledger: Arc::new(PostgresLedger {
             pool: pool.clone(),
             cell_id: cell,
@@ -81,7 +83,7 @@ async fn verified_archive_purges_in_batches_resumes_control_failure_and_preserve
         store: store.clone(),
         keys: keys.clone(),
         metrics: Arc::new(Metrics::default()),
-    };
+    });
     assert!(
         archive::enqueue(&pool, tenant, "2026-09-01".parse().unwrap(), 100, 1)
             .await
@@ -90,6 +92,22 @@ async fn verified_archive_purges_in_batches_resumes_control_failure_and_preserve
     let job = archive::enqueue(&pool, tenant, "2024-01-01".parse().unwrap(), 100, 2)
         .await
         .unwrap();
+    let hot_key =
+        object_store::path::Path::from(format!("tenants/{tenant}/hot/2024/01/current.parquet"));
+    let orphan_key =
+        object_store::path::Path::from(format!("tenants/{tenant}/hot/2024/01/orphan.parquet"));
+    let adjacent_key =
+        object_store::path::Path::from(format!("tenants/{tenant}/hot/2024/02/other.parquet"));
+    for key in [&hot_key, &orphan_key, &adjacent_key] {
+        store
+            .put(key, b"rebuildable".to_vec().into())
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO hot_month_manifests(tenant_id,period_start,period_end,timezone,ownership_generation,source_watermark,projection_version,objects) VALUES($1,'2024-01-01','2024-02-01','UTC',1,0,1,'[]')")
+        .bind(tenant).execute(&pool).await.unwrap();
+    assert!(worker.handoff(db.clone(), job.id).await.is_err());
+    assert!(store.head(&hot_key).await.is_ok());
     assert!(worker.purge(db.clone(), job.id).await.is_err());
     worker.export(db.clone(), job.id).await.unwrap();
     let uploaded = archive::get(&pool, job.id).await.unwrap();
@@ -106,6 +124,77 @@ async fn verified_archive_purges_in_batches_resumes_control_failure_and_preserve
     }
     let evidence: Vec<Object> = serde_json::from_value(uploaded.objects).unwrap();
     let object = evidence.iter().find(|o| o.table == "transactions").unwrap();
+    // An unavailable verified archive must preserve the existing hot copy.
+    let archive_key = object_store::path::Path::from(object.key.as_str());
+    let encrypted = store
+        .get(&archive_key)
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    store
+        .put(&archive_key, b"corrupt".to_vec().into())
+        .await
+        .unwrap();
+    assert!(worker.handoff(db.clone(), job.id).await.is_err());
+    assert!(store.head(&hot_key).await.is_ok());
+    let state: String = sqlx::query_scalar(
+        "SELECT state FROM hot_month_manifests WHERE tenant_id=$1 AND period_start='2024-01-01'",
+    )
+    .bind(tenant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, "READY");
+    store.put(&archive_key, encrypted.into()).await.unwrap();
+    let mut reader = pool.begin().await.unwrap();
+    handoff::lock_month(&mut reader, tenant, job.period_start, true)
+        .await
+        .unwrap();
+    let task_worker = worker.clone();
+    let task_db = db.clone();
+    let archive_id = job.id;
+    let mut retirement =
+        tokio::spawn(async move { task_worker.handoff(task_db, archive_id).await });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), &mut retirement)
+            .await
+            .is_err()
+    );
+    assert!(store.head(&hot_key).await.is_ok());
+    reader.rollback().await.unwrap();
+    retirement.await.unwrap().unwrap();
+    worker.handoff(db.clone(), job.id).await.unwrap();
+    assert!(store.head(&hot_key).await.is_err());
+    assert!(store.head(&orphan_key).await.is_err());
+    assert!(store.head(&adjacent_key).await.is_ok());
+    assert!(archive::get(&pool, job.id)
+        .await
+        .unwrap()
+        .hot_cleaned_at
+        .is_some());
+    let state: String = sqlx::query_scalar(
+        "SELECT state FROM hot_month_manifests WHERE tenant_id=$1 AND period_start='2024-01-01'",
+    )
+    .bind(tenant)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, "RETIRED");
+    // A crash after retirement/deletion but before the progress update leaves a retryable prefix.
+    sqlx::query("UPDATE archive_manifests SET hot_cleaned_at=NULL WHERE id=$1")
+        .bind(job.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    store
+        .put(&orphan_key, b"remaining upload".to_vec().into())
+        .await
+        .unwrap();
+    worker.handoff(db.clone(), job.id).await.unwrap();
+    assert!(store.head(&orphan_key).await.is_err());
+    assert!(store.head(&adjacent_key).await.is_ok());
     let file = root.join("transactions.parquet");
     objects::download(store.as_ref(), &keys.read(tenant).unwrap(), object, &file)
         .await

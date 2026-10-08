@@ -258,6 +258,7 @@ impl Writer {
    let zone=timezone.parse::<Tz>().map_err(fail)?;let current=month(now.with_timezone(&zone).date_naive(),0)?;let hot=month(current,-18)?;
    for offset in -18..=0 {
     db.ensure_current_owner()?;let start=month(current,offset)?;let end=month(start,1)?;
+    let mut tx=self.ledger.pool.begin().await?;super::handoff::lock_month(&mut tx,db.tenant_id(),start,true).await?;
     let archived:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_manifests WHERE tenant_id=$1 AND period_start=$2 AND state IN ('VERIFIED','PURGING','COMPLETE'))").bind(db.tenant_id()).bind(start).fetch_one(&self.ledger.pool).await?;if archived{continue;}
     let old:Option<(serde_json::Value,i64)>=sqlx::query_as("SELECT objects,projection_version FROM hot_month_manifests WHERE tenant_id=$1 AND period_start=$2 AND state='READY' AND timezone=$3").bind(db.tenant_id()).bind(start).bind(&timezone).fetch_optional(&self.ledger.pool).await?;
     let old=old.filter(|(_,v)|*v==SNAPSHOT_VERSION as i64).map(|(v,_)|serde_json::from_value::<Vec<Object>>(v).map_err(fail)).transpose()?.unwrap_or_default();
@@ -275,9 +276,9 @@ impl Writer {
      for extension in ["parquet","ndjson","encrypted"]{let _=std::fs::remove_file(files.0.join(format!("{}.{}",spec.name,extension)));}
      tokio::task::yield_now().await;
     }
-    let mut tx=self.ledger.pool.begin().await?;self.ledger.lock_owner(&db,&mut tx).await?;
-    let archived:Option<String>=sqlx::query_scalar("SELECT state FROM archive_manifests WHERE tenant_id=$1 AND period_start=$2 FOR UPDATE").bind(db.tenant_id()).bind(start).fetch_optional(&mut *tx).await?;
-    if !matches!(archived.as_deref(),Some("VERIFIED"|"PURGING"|"COMPLETE")){
+    self.ledger.lock_owner(&db,&mut tx).await?;
+    let archived:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_manifests WHERE tenant_id=$1 AND period_start=$2 AND state IN ('VERIFIED','PURGING','COMPLETE'))").bind(db.tenant_id()).bind(start).fetch_one(&mut *tx).await?;
+    if !archived{
      sqlx::query("INSERT INTO hot_month_manifests(tenant_id,period_start,period_end,timezone,ownership_generation,source_watermark,projection_version,objects) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(tenant_id,period_start) DO UPDATE SET timezone=EXCLUDED.timezone,ownership_generation=EXCLUDED.ownership_generation,source_watermark=EXCLUDED.source_watermark,projection_version=EXCLUDED.projection_version,objects=EXCLUDED.objects,verified_at=clock_timestamp() WHERE hot_month_manifests.state='READY'").bind(db.tenant_id()).bind(start).bind(end).bind(&timezone).bind(db.ownership_generation()).bind(watermark).bind(SNAPSHOT_VERSION as i64).bind(serde_json::to_value(&objects).map_err(fail)?).execute(&mut *tx).await?;
     }
     tx.commit().await?;

@@ -11,3 +11,6 @@ pub mod policy;
 
 #[cfg(feature="duckdb-analytics")]
 pub mod archive;
+
+#[cfg(feature="duckdb-analytics")]
+pub mod handoff;

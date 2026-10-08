@@ -46,6 +46,7 @@ pub struct Job {
     pub batch_rows: i32,
     pub last_error: Option<String>,
     pub source_cutoff_at: Option<DateTime<Utc>>,
+    pub hot_cleaned_at: Option<DateTime<Utc>>,
 }
 pub async fn get(pool: &PgPool, id: Uuid) -> Result<Job, AppError> {
     sqlx::query_as("SELECT * FROM archive_manifests WHERE id=$1")
@@ -478,8 +479,14 @@ impl Worker {
                 self.verify(db, id).await?;
                 false
             }
-            "VERIFIED" | "PURGING" => self.purge(db, id).await?,
-            "COMPLETE" => true,
+            "VERIFIED" | "PURGING" => {
+                self.handoff(db.clone(), id).await?;
+                self.purge(db, id).await?
+            }
+            "COMPLETE" => {
+                self.handoff(db, id).await?;
+                true
+            }
             _ => return Err(fail("Unknown archive phase")),
         };
         serial.rollback().await?;
@@ -491,7 +498,7 @@ impl Worker {
             ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 ticks.tick().await;
-                let jobs=sqlx::query_as::<_,Job>("SELECT a.* FROM archive_manifests a JOIN tenants t ON t.id=a.tenant_id WHERE t.owner_cell=$1 AND t.state='ACTIVE' AND a.state<>'COMPLETE' AND a.superseded_at IS NULL AND a.retry_after<=clock_timestamp() ORDER BY a.created_at LIMIT 8").bind(self.ledger.cell_id).fetch_all(&self.ledger.pool).await;
+                let jobs=sqlx::query_as::<_,Job>("SELECT a.* FROM archive_manifests a JOIN tenants t ON t.id=a.tenant_id WHERE t.owner_cell=$1 AND t.state='ACTIVE' AND (a.state<>'COMPLETE' OR a.hot_cleaned_at IS NULL) AND a.superseded_at IS NULL AND a.retry_after<=clock_timestamp() ORDER BY a.created_at LIMIT 8").bind(self.ledger.cell_id).fetch_all(&self.ledger.pool).await;
                 let jobs = match jobs {
                     Ok(j) => j,
                     Err(error) => {
