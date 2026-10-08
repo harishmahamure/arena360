@@ -90,6 +90,7 @@ pub struct TenantDb {
     readers: SqlitePool,
     last_used: StdMutex<Instant>,
     closed: AtomicBool,
+    foreground_write_micros:StdMutex<std::collections::VecDeque<(Instant,u64)>>,
 }
 
 impl TenantDb {
@@ -177,7 +178,23 @@ impl TenantDb {
             ) -> BoxFuture<'connection, Result<T, AppError>>
             + Send,
     {
-        let _operational = self.background_jobs.as_ref().map(|jobs| jobs.operational());
+        let _operational=self.background_jobs.as_ref().map(|jobs|jobs.operational());
+        let started=Instant::now();
+        let result=self.with_background_immediate_writer(operation).await;
+        if let Ok(mut samples)=self.foreground_write_micros.lock(){if samples.len()==1024{samples.pop_front();}samples.push_back((Instant::now(),started.elapsed().as_micros().min(u64::MAX as u128) as u64));}
+        result
+    }
+    pub fn foreground_write_p99_micros(&self)->u64 {
+        let Ok(samples)=self.foreground_write_micros.lock() else{return u64::MAX;};
+        let mut sorted=samples.iter().filter(|(at,_)|at.elapsed()<Duration::from_secs(60)).map(|(_,micros)|*micros).collect::<Vec<_>>();if sorted.is_empty(){return 0;}sorted.sort_unstable();sorted[(sorted.len()*99).div_ceil(100).saturating_sub(1)]
+    }
+    pub(crate) async fn with_background_immediate_writer<T: Send, F>(&self, operation: F) -> Result<T, AppError>
+    where
+        F: for<'connection> FnOnce(
+                &'connection mut SqliteConnection,
+            ) -> BoxFuture<'connection, Result<T, AppError>>
+            + Send,
+    {
         self.lease
             .ensure_writable(self.tenant_id, self.ownership_generation)?;
         let mut writer = self.writer.lock().await;
@@ -651,6 +668,7 @@ async fn open_tenant(
         readers,
         last_used: StdMutex::new(Instant::now()),
         closed: AtomicBool::new(false),
+        foreground_write_micros:StdMutex::new(std::collections::VecDeque::new()),
     })
 }
 

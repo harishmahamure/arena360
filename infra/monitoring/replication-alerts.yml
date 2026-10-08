@@ -77,3 +77,10 @@ groups:
           severity: warning
         annotations:
           summary: "Hot Parquet publication or its consumer repeatedly fails; inspect keys, storage and ownership"
+      - alert: ArchiveWorkerFailing
+        expr: increase(arena360_historical_job_failures_total{task=~"archive_.*"}[10m]) >= 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Archive work repeatedly fails; inspect its manifest error, tenant key, storage and ownership"

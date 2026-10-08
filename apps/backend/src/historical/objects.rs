@@ -7,9 +7,17 @@ use futures::TryStreamExt;
 use object_store::{path::Path as ObjectPath, ObjectStore, ObjectStoreExt};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Write, path::Path};
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Column {
+    pub name: String,
+    pub kind: String,
+    pub primary: bool,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Object {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<Column>,
     pub table: String,
     pub key: String,
     pub rows: i64,
@@ -63,6 +71,7 @@ pub async fn upload(
         .await
         .map_err(fail)?;
     let object = Object {
+        columns: vec![],
         table,
         key: object_key,
         rows,
