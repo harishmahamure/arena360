@@ -96,6 +96,7 @@ jobs:
         env:
           CONTROL_DATABASE_URL: ${{ secrets.CONTROL_DATABASE_URL }}
           ARENA_CELL_ID: ${{ secrets.ARENA_CELL_ID }}
+          NATS_URL: ${{ secrets.NATS_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ZEPTOMAIL_TOKEN: ${{ secrets.ZEPTOMAIL_TOKEN }}
@@ -127,6 +128,10 @@ jobs:
             echo "::error::ARENA_CELL_ID must identify a registered storage cell"
             exit 1
           fi
+          if [ -z "$(strip_cr "$NATS_URL")" ]; then
+            echo "::error::NATS_URL is required for tenant event publication"
+            exit 1
+          fi
           if [ -z "$jwt_secret" ]; then
             echo "::error::JWT_SECRET secret is empty"
             exit 1
@@ -140,6 +145,7 @@ jobs:
           jq -n \
             --arg CONTROL_DATABASE_URL "$db_url" \
             --arg ARENA_CELL_ID "$(strip_cr "$ARENA_CELL_ID")" \
+            --arg NATS_URL "$(strip_cr "$NATS_URL")" \
             --arg REDIS_URL "$(strip_cr "$REDIS_URL")" \
             --arg JWT_SECRET "$jwt_secret" \
             --arg ZEPTOMAIL_TOKEN "$(strip_cr "$ZEPTOMAIL_TOKEN")" \
@@ -156,6 +162,7 @@ jobs:
                 {
                   CONTROL_DATABASE_URL: $CONTROL_DATABASE_URL,
                   ARENA_CELL_ID: $ARENA_CELL_ID,
+                  NATS_URL: $NATS_URL,
                   REDIS_URL: $REDIS_URL,
                   JWT_SECRET: $JWT_SECRET,
                   ZEPTOMAIL_TOKEN: $ZEPTOMAIL_TOKEN,

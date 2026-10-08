@@ -1833,6 +1833,10 @@ P9  historical export
 P10 maintenance/compaction
 ```
 
+The cell scheduler leaves operational SQLite writes outside background admission. Active writes delay new P3–P10 work. P1 outbox publication has one reserved slot; P2–P10 share two background slots, with at most one P5–P10 job active. Waiting jobs are ordered by priority and FIFO within a priority. Already active work is not preempted, so deletion and ingestion use bounded, fenced transactions.
+
+Ingestion reserves capacity before pulling an 8 MiB batch; queued tenants cannot accumulate one batch each. Idle workers compare local SQLite watermarks and calendars before pulling. A rebuild uses the single backfill slot while the remaining slot can ingest other tenants; publication retains its reserved slot. Cancellation releases reservations, and all mutating jobs check ownership after admission. Queue depth, active work, admitted/released reservations and queue wait time are exported by priority.
+
 Historical exports may receive higher priority when user initiated, but must remain resource constrained.
 
 ---

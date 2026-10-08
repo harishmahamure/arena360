@@ -135,6 +135,12 @@ async fn service_seed_reconciles_and_repeats_without_overwriting() {
         .await
         .unwrap();
     assert_eq!(preserved, hash);
+    #[cfg(feature = "duckdb-analytics")]
+    if let Ok(nats) = std::env::var("NATS_TEST_URL") {
+        verify_analytics(&pool, &local, &root, tenant, cell, &nats).await;
+    } else {
+        eprintln!("Demo analytics parity skipped: disposable JetStream runtime unavailable.");
+    }
     local.close().await;
     let staff = Uuid::parse_str(seeded["staffUserId"].as_str().unwrap()).unwrap();
     sqlx::query("DELETE FROM tenants WHERE id=$1")
@@ -156,4 +162,135 @@ async fn service_seed_reconciles_and_repeats_without_overwriting() {
         .unwrap();
     pool.close().await;
     tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[cfg(feature = "duckdb-analytics")]
+async fn verify_analytics(
+    pool: &sqlx::PgPool,
+    source: &sqlx::SqlitePool,
+    root: &Path,
+    tenant: Uuid,
+    cell: Uuid,
+    nats: &str,
+) {
+    use async_nats::jetstream::stream::{Config, RetentionPolicy, StorageType};
+    use gaming_cafe_api::{
+        analytics::{
+            publisher::TENANT_EVENT_STREAM,
+            rebuild::rebuild,
+            tenant_db::{error, TenantAnalytics},
+        },
+        control::{LeaseClient, LeaseConfig},
+        tenancy::{
+            analytics_snapshot::{ColumnKind, TABLES},
+            scale4_to_decimal, TenantDbConfig, TenantDbManager,
+        },
+    };
+    use std::sync::Arc;
+    let leases = Arc::new(LeaseClient::new(pool.clone(), cell, LeaseConfig::default()).unwrap());
+    leases.acquire_assigned(tenant).await.unwrap();
+    let manager = TenantDbManager::new(
+        TenantDbConfig {
+            root: root.to_owned(),
+            ..Default::default()
+        },
+        leases,
+    )
+    .unwrap();
+    let db = manager.open(tenant).await.unwrap();
+    let analytics = TenantAnalytics::open(db.clone()).await.unwrap();
+    let context = async_nats::jetstream::new(async_nats::connect(nats).await.unwrap());
+    context
+        .create_stream(Config {
+            name: TENANT_EVENT_STREAM.into(),
+            subjects: vec!["arena.tenant.*.events.v1".into()],
+            retention: RetentionPolicy::Limits,
+            storage: StorageType::File,
+            max_age: std::time::Duration::from_secs(7 * 86400),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    rebuild(db.clone(), analytics.clone(), &context)
+        .await
+        .unwrap();
+    let mut projected = 0;
+    for spec in TABLES {
+        let expected: i64 =
+            sqlx::query_scalar(&format!("SELECT count(*) FROM ({})", spec.select()))
+                .fetch_one(source)
+                .await
+                .unwrap();
+        let table = spec.name;
+        let actual = analytics
+            .read(move |tx| {
+                tx.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .map_err(error)
+            })
+            .await
+            .unwrap();
+        assert_eq!(actual, expected, "{table} row count");
+        projected += actual;
+        for column in spec.columns.iter().filter(|c| c.kind == ColumnKind::Money) {
+            let expected: i64 = sqlx::query_scalar(&format!(
+                "SELECT coalesce(sum({}),0) FROM {} WHERE {}",
+                column.source, spec.source, spec.predicate
+            ))
+            .fetch_one(source)
+            .await
+            .unwrap();
+            let name = column.name;
+            let actual = analytics
+                .read(move |tx| {
+                    tx.query_row(
+                        &format!("SELECT CAST(coalesce(sum({name}),0) AS VARCHAR) FROM {table}"),
+                        [],
+                        |r| r.get::<_, String>(0),
+                    )
+                    .map_err(error)
+                })
+                .await
+                .unwrap();
+            assert_eq!(
+                actual.parse::<rust_decimal::Decimal>().unwrap(),
+                scale4_to_decimal(expected),
+                "{table}.{name} exact total"
+            );
+        }
+    }
+    let expected_seconds:i64=sqlx::query_scalar("SELECT coalesce(sum(unixepoch(end_time)-unixepoch(start_time)),0) FROM usage_sessions WHERE end_time IS NOT NULL AND deleted_at IS NULL").fetch_one(source).await.unwrap();
+    let seconds = analytics
+        .read(|tx| {
+            tx.query_row(
+                "SELECT coalesce(sum(occupied_seconds),0) FROM session_hours",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(error)
+        })
+        .await
+        .unwrap();
+    assert_eq!(seconds, expected_seconds);
+    let watermark: i64 =
+        sqlx::query_scalar("SELECT seq FROM sqlite_sequence WHERE name='outbox_events'")
+            .fetch_one(source)
+            .await
+            .unwrap();
+    let checkpoint = analytics
+        .read(|tx| {
+            tx.query_row(
+                "SELECT CAST(last_sequence AS BIGINT),status FROM _ingest_state",
+                [],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+            )
+            .map_err(error)
+        })
+        .await
+        .unwrap();
+    assert_eq!(checkpoint, (watermark, "READY".into()));
+    eprintln!("Demo DuckDB parity: {projected} rows across 27 projections, exact money totals and {seconds} occupied seconds match SQLite.");
+    drop(analytics);
+    db.close().await.unwrap();
 }

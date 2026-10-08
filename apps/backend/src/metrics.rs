@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Default)]
 pub struct Metrics {
+    background_jobs: std::sync::Mutex<Option<std::sync::Arc<crate::background::JobStats>>>,
     rate_limit_allowed: AtomicU64,
     rate_limit_rejected: AtomicU64,
     rate_limit_fail_open: AtomicU64,
@@ -16,9 +17,26 @@ pub struct Metrics {
     protobuf_response_bytes: AtomicU64,
     gzip_responses: AtomicU64,
     outbox_lag_millis: AtomicU64,
+    publish_pending: AtomicU64,
+    publish_bytes: AtomicU64,
+    publish_oldest_millis: AtomicU64,
+    publish_failures: AtomicU64,
+    published: AtomicU64,
+    analytics_events: AtomicU64,
+    analytics_gaps: AtomicU64,
+    analytics_failures: AtomicU64,
+    analytics_rebuild_started: AtomicU64,
+    analytics_rebuild_completed: AtomicU64,
+    analytics_rebuild_millis: AtomicU64,
+    analytics_retention_runs: AtomicU64,
+    analytics_retention_rows: AtomicU64,
 }
 
 impl Metrics {
+    pub fn attach_background_jobs(&self, stats: std::sync::Arc<crate::background::JobStats>) {
+        *self.background_jobs.lock().expect("background metrics lock poisoned") = Some(stats);
+    }
+
     pub fn rate_allowed(&self) {
         self.rate_limit_allowed.fetch_add(1, Ordering::Relaxed);
     }
@@ -61,8 +79,30 @@ impl Metrics {
     pub fn set_outbox_lag(&self, millis: u64) {
         self.outbox_lag_millis.store(millis, Ordering::Relaxed);
     }
-    fn render(&self) -> String {
-        format!(
+    pub fn outbox_published(&self) {
+        self.published.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn outbox_publish_failed(&self) {
+        self.publish_failures.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn set_publish_backlog(&self, pending: u64, bytes: u64, oldest_millis: u64) {
+        self.publish_pending.store(pending, Ordering::Relaxed);
+        self.publish_bytes.store(bytes, Ordering::Relaxed);
+        self.publish_oldest_millis
+            .store(oldest_millis, Ordering::Relaxed);
+    }
+    pub fn analytics_ingested(&self, events: u64) { self.analytics_events.fetch_add(events, Ordering::Relaxed); }
+    pub fn analytics_gap(&self) { self.analytics_gaps.fetch_add(1, Ordering::Relaxed); }
+    pub fn analytics_retained(&self, rows:u64) { self.analytics_retention_runs.fetch_add(1,Ordering::Relaxed);self.analytics_retention_rows.fetch_add(rows,Ordering::Relaxed); }
+    pub fn analytics_rebuild_started(&self) { self.analytics_rebuild_started.fetch_add(1, Ordering::Relaxed); }
+    pub fn analytics_rebuild_finished(&self, success: bool, millis: u64) {
+        if success { self.analytics_rebuild_completed.fetch_add(1, Ordering::Relaxed); }
+        self.analytics_rebuild_millis.fetch_add(millis, Ordering::Relaxed);
+    }
+    pub fn analytics_failed(&self) { self.analytics_failures.fetch_add(1, Ordering::Relaxed); }
+    pub fn render(&self) -> String {
+        let background = self.background_jobs.lock().ok().and_then(|s|s.as_ref().map(|s|s.render())).unwrap_or_default();
+        let body = format!(
             concat!(
                 "# TYPE arena360_rate_limit_decisions_total counter\n",
                 "arena360_rate_limit_decisions_total{{decision=\"allowed\"}} {}\n",
@@ -82,7 +122,33 @@ impl Metrics {
                 "arena360_protobuf_response_bytes_total {}\n",
                 "arena360_gzip_responses_total {}\n",
                 "# TYPE arena360_outbox_lag_milliseconds gauge\n",
-                "arena360_outbox_lag_milliseconds {}\n"
+                "arena360_outbox_lag_milliseconds {}\n",
+                "# TYPE arena360_outbox_pending_events gauge\n",
+                "arena360_outbox_pending_events {}\n",
+                "# TYPE arena360_outbox_payload_bytes gauge\n",
+                "arena360_outbox_payload_bytes {}\n",
+                "# TYPE arena360_outbox_oldest_age_milliseconds gauge\n",
+                "arena360_outbox_oldest_age_milliseconds {}\n",
+                "# TYPE arena360_outbox_publish_failures_total counter\n",
+                "arena360_outbox_publish_failures_total {}\n",
+                "# TYPE arena360_outbox_published_total counter\n",
+                "arena360_outbox_published_total {}\n",
+                "# TYPE arena360_analytics_ingested_events_total counter\n",
+                "arena360_analytics_ingested_events_total {}\n",
+                "# TYPE arena360_analytics_sequence_gaps_total counter\n",
+                "arena360_analytics_sequence_gaps_total {}\n",
+                "# TYPE arena360_analytics_failures_total counter\n",
+                "arena360_analytics_failures_total {}\n",
+                "# TYPE arena360_analytics_rebuild_started_total counter\n",
+                "arena360_analytics_rebuild_started_total {}\n",
+                "# TYPE arena360_analytics_rebuild_completed_total counter\n",
+                "arena360_analytics_rebuild_completed_total {}\n",
+                "# TYPE arena360_analytics_rebuild_duration_milliseconds_total counter\n",
+                "arena360_analytics_rebuild_duration_milliseconds_total {}\n",
+                "# TYPE arena360_analytics_retention_runs_total counter\n",
+                "arena360_analytics_retention_runs_total {}\n",
+                "# TYPE arena360_analytics_retention_deleted_rows_total counter\n",
+                "arena360_analytics_retention_deleted_rows_total {}\n"
             ),
             self.rate_limit_allowed.load(Ordering::Relaxed),
             self.rate_limit_rejected.load(Ordering::Relaxed),
@@ -97,7 +163,21 @@ impl Metrics {
             self.protobuf_response_bytes.load(Ordering::Relaxed),
             self.gzip_responses.load(Ordering::Relaxed),
             self.outbox_lag_millis.load(Ordering::Relaxed),
-        )
+            self.publish_pending.load(Ordering::Relaxed),
+            self.publish_bytes.load(Ordering::Relaxed),
+            self.publish_oldest_millis.load(Ordering::Relaxed),
+            self.publish_failures.load(Ordering::Relaxed),
+            self.published.load(Ordering::Relaxed),
+            self.analytics_events.load(Ordering::Relaxed),
+            self.analytics_gaps.load(Ordering::Relaxed),
+            self.analytics_failures.load(Ordering::Relaxed),
+            self.analytics_rebuild_started.load(Ordering::Relaxed),
+            self.analytics_rebuild_completed.load(Ordering::Relaxed),
+            self.analytics_rebuild_millis.load(Ordering::Relaxed),
+            self.analytics_retention_runs.load(Ordering::Relaxed),
+            self.analytics_retention_rows.load(Ordering::Relaxed),
+        );
+        body + &background
     }
 }
 

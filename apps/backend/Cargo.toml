@@ -9,6 +9,7 @@ default-run = "gaming-cafe-api"
 [features]
 default = []
 duckdb-analytics = ["dep:duckdb"]
+duckdb-bundled = ["duckdb-analytics", "duckdb/bundled"]
 
 [dependencies]
 # Web framework
@@ -26,7 +27,7 @@ ipnet = "2"
 
 # Database: PostgreSQL control plane, per-tenant SQLite and DuckDB (ADR-0043)
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json"] }
-duckdb = { version = "1.10506", features = ["bundled"], optional = true }
+duckdb = { version = "~1.10506", optional = true }
 
 # Object storage for WAL replication, snapshots, Parquet (Wasabi, S3-compatible; ADR-0043)
 object_store = { version = "0.14", features = ["aws"] }

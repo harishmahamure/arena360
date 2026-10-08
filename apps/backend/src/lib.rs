@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod background;
 pub mod app;
 pub mod cache;
 pub mod config;

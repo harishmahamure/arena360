@@ -915,6 +915,7 @@ mod access_token_tests {
             database_acquire_timeout_seconds: 2,
             database_idle_timeout_seconds: 600,
             database_max_lifetime_seconds: 1800,
+            nats_url: None,
             redis_url: None,
             jwt_secret: "your-jwt-secret-change-this-my-secret-sova".to_string(),
             jwt_access_expiration: jwt_access_expiration.to_string(),

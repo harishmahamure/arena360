@@ -1,6 +1,7 @@
 //! Run against an empty database migrated with `migrations/control`:
 //! CONTROL_TEST_DATABASE_URL=... cargo test --test control_plane -- --ignored
 
+mod support;
 use chrono::{Duration, Utc};
 use gaming_cafe_api::control::{
     entitlement::EntitlementCache, CreateTenant, LeaseClient, LeaseConfig, LeaseRepository,
@@ -485,6 +486,7 @@ fn test_settings(database_url: String) -> Settings {
         database_acquire_timeout_seconds: 2,
         database_idle_timeout_seconds: 600,
         database_max_lifetime_seconds: 1800,
+        nats_url: None,
         redis_url: None,
         jwt_secret: "control-auth-test-secret-at-least-32-bytes".into(),
         jwt_access_expiration: "15m".into(),
@@ -498,4 +500,34 @@ fn test_settings(database_url: String) -> Settings {
         trusted_proxy_cidrs: Vec::new(),
         max_concurrent_requests: 256,
     }
+}
+
+#[tokio::test]
+#[ignore="requires an isolated control-plane database"]
+async fn timezone_updates_are_revisioned_validated_and_survive_direct_administration(){
+ let pool=PgPoolOptions::new().max_connections(2).connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap()).await.unwrap();
+ gaming_cafe_api::control::migrate(&pool).await.unwrap();
+ let repo=Repository::new(pool.clone());let now=Utc::now();
+ let tenant=repo.create_tenant(CreateTenant{slug:format!("timezone-{}",uuid::Uuid::new_v4()),name:"Timezone test".into(),timezone:"UTC".into(),owner_cell:None,subscription_plan:"trial".into(),entitlements:json!({}),trial_ends_at:now+Duration::days(30),entitlement_grace_until:now+Duration::days(37)}).await.unwrap();
+ let secret=b"timezone-control-test-secret-32-bytes";
+ let old=repo.signed_entitlement(tenant.id,secret).await.unwrap();
+ assert!(repo.update_timezone(tenant.id,"invalid-zone").await.is_err());
+ repo.update_timezone(tenant.id,"Asia/Kolkata").await.unwrap();
+ repo.update_timezone(tenant.id,"Asia/Kolkata").await.unwrap();
+ let rev:i64=sqlx::query_scalar("SELECT timezone_revision FROM tenants WHERE id=$1").bind(tenant.id).fetch_one(&pool).await.unwrap();assert_eq!(rev,1);
+ let cache=EntitlementCache::new(secret.as_slice());cache.update(&repo.signed_entitlement(tenant.id,secret).await.unwrap()).await.unwrap();assert!(cache.update(&old).await.is_err());
+ sqlx::query("UPDATE tenants SET timezone='Europe/Berlin',timezone_revision=0 WHERE id=$1").bind(tenant.id).execute(&pool).await.unwrap();
+ let rev:i64=sqlx::query_scalar("SELECT timezone_revision FROM tenants WHERE id=$1").bind(tenant.id).fetch_one(&pool).await.unwrap();assert_eq!(rev,2);
+ let mut tx=pool.begin().await.unwrap();sqlx::query("UPDATE tenants SET timezone='UTC' WHERE id=$1").bind(tenant.id).execute(&mut *tx).await.unwrap();tx.rollback().await.unwrap();
+ let timezone:String=sqlx::query_scalar("SELECT timezone FROM tenants WHERE id=$1").bind(tenant.id).fetch_one(&pool).await.unwrap();assert_eq!(timezone,"Europe/Berlin");
+ let f=support::TenantFixture::new().await;
+ sqlx::query("INSERT INTO tenants(id,slug,name,state,timezone) VALUES($1,$2,'Local calendar projection','PROVISIONING','UTC')").bind(f.db.tenant_id()).bind(format!("timezone-local-{}",f.db.tenant_id())).execute(&pool).await.unwrap();
+ repo.update_timezone(f.db.tenant_id(),"Europe/Berlin").await.unwrap();
+ assert!(gaming_cafe_api::control::timezone::sync(&pool,f.db.clone()).await.unwrap());
+ assert!(!gaming_cafe_api::control::timezone::sync(&pool,f.db.clone()).await.unwrap());
+ pool.close().await;
+ assert!(gaming_cafe_api::control::timezone::sync(&pool,f.db.clone()).await.is_err());
+ assert_eq!(f.db.timezone().await.unwrap(),"Europe/Berlin");
+ f.player("control-outage-calendar-player").await;
+ f.close().await;
 }

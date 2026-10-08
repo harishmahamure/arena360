@@ -112,13 +112,15 @@ env:
   STORAGE_PRESIGN_EXPIRY_SECS: "900"
 
 envFromSecrets:
-  - envName: DATABASE_URL
+  - envName: CONTROL_DATABASE_URL
     name: arena360-backend-secrets
-    key: DATABASE_URL
-  - envName: DATABASE_LISTENER_URL
+    key: CONTROL_DATABASE_URL
+  - envName: ARENA_CELL_ID
     name: arena360-backend-secrets
-    key: DATABASE_LISTENER_URL
-    optional: true
+    key: ARENA_CELL_ID
+  - envName: NATS_URL
+    name: arena360-backend-secrets
+    key: NATS_URL
   - envName: REDIS_URL
     name: arena360-redis-secrets
     key: REDIS_URL

@@ -38,6 +38,7 @@
     "backend:run": "cargo run --manifest-path apps/backend/Cargo.toml",
     "backend:test": "cargo test --manifest-path apps/backend/Cargo.toml",
     "backend:test:integration": "node apps/backend/scripts/test-integration.mjs",
+    "analytics:stream:init": "cargo run --manifest-path apps/backend/Cargo.toml --bin tenant_events_setup",
     "backend:clippy": "cargo clippy --all-targets --manifest-path apps/backend/Cargo.toml -- -D warnings",
     "backend:fmt": "cargo fmt --manifest-path apps/backend/Cargo.toml",
     "kiosk:dev": "pnpm --filter @gaming-cafe/kiosk tauri:dev",

@@ -336,6 +336,22 @@ CREATE TABLE monthly_summary (
 );
 ```
 
+### Rebuild replay metadata (schema v2)
+
+Migration `0002_rebuild_replay_floor.sql` leaves v1 fact tables unchanged and adds:
+
+```sql
+ALTER TABLE _ingest_state ADD COLUMN replay_start_sequence UBIGINT;
+```
+
+This is the global broker position recorded **before** the SQLite snapshot.
+The rebuild commits it with T0 and its final checkpoint when switching files.
+Live ingestion acknowledges deliveries below that position without applying them,
+including after restart. This prevents retained, unreplicated writes newer than a
+restored SQLite file from resurrecting lost operational data. Stream history is
+retained. Existing v1 files preserve their facts/checkpoints on migration and move
+to REBUILDING until a snapshot installs the broker position.
+
 Tables in the ClickHouse schema with no current report consumer are not carried over: `games`, `organization_memberships`, and `analytics_ready` (replaced by `_ingest_state.status`). Add a table only when a report needs it.
 
 ## Report coverage
@@ -459,8 +475,13 @@ These differences exist in today's queries and are kept as-is so reports don't c
   4. advance `_ingest_state.last_sequence`.
 
   The JetStream acknowledgement happens after the commit.
-- **Initial build and rebuild**: follow ADR-0043 decision 21. Take a `VACUUM INTO` snapshot, read T0 = `MAX(sequence)` from it, `ATTACH` it read-only (DuckDB `sqlite` extension), and run one `INSERT … SELECT` per table for rows inside the hot window. Then build `session_hours`, rebuild `monthly_summary`, replay events with sequence > T0, and set status `READY`.
-- **Retention**: nightly, in batches. Delete fact rows older than `hot_window_start`, then refresh `monthly_summary` for the current and previous month.
+- **Canonical snapshots**: tenant migration 0015 adds a separate `analytics_snapshot` column to the outbox envelope. The outbox writer captures an explicit, secret-free row projection inside the business transaction; public/realtime payloads are unchanged. Money travels as exact decimal text converted from scale-4 SQLite integers. Child collections are complete parent replacements, and stock changes include the current composite stock row alongside each immutable movement. `analytics_snapshot.rs` shares the source projection with rebuilds. Pre-upgrade rows without a full projection require a consistent rebuild; the consumer never substitutes a later read of live SQLite. Derived stock IDs are deterministic UUIDs made from the location/product key.
+- **Replay and isolation**: a filtered durable consumer per tenant buffers up to 500 messages or one second (with an eight-MiB byte cap), validates tenant/subject/version/sequences, and collapses replacements within one fenced DuckDB transaction. Old sequences are skipped; ACKs follow the commit. A gap leaves facts/checkpoints unchanged, marks LAGGING and re-fetches unacknowledged messages. A second gap requests REBUILDING. Empty polling does not keep tenant handles alive. Ingestion/event-gap/failure counters are exported. Production feature activation and initial/recovery builds follow in API-0042.
+- **Initial build and rebuild**: follow ADR-0043 decision 21. Take a `VACUUM INTO` snapshot, read T0 from the snapshot's `sqlite_sequence` watermark for `outbox_events` (zero before the first event), `ATTACH` it read-only (DuckDB `sqlite` extension), and run one `INSERT … SELECT` per table for rows inside the hot window. Then build `session_hours`, rebuild `monthly_summary`, replay events with sequence > T0, and set status `READY`.
+- **Rebuild implementation**: the owning tenant worker uses a private read-only SQLite `VACUUM INTO` snapshot and a separate shadow DuckDB file. The matching signed SQLite extension is cached in deployment images; local caches require official HTTPS installation once. Explicit projections normalize exact money and derive labels in bounded Rust chunks, followed by one bulk `INSERT … SELECT` per table. Child collections are restricted to retained parents. Session hours and hot monthly aggregates are rebuilt; existing older monthly rows are preserved for the same timezone. A lost/corrupt derived database reconstructs hot data rather than pulling all historical facts into normal DuckDB.
+- **Rebuild replay and switch**: a global stream position is recorded before the SQLite snapshot establishes T0. An independent filtered ephemeral consumer starts after that broker position, skips tenant sequences covered by T0, and replays to a finite post-backfill SQLite source watermark. This covers concurrent commits without scanning pre-snapshot stream history or relying on clock alignment. Gaps, incomplete projections, timezone drift, broker failures and fencing prevent the switch. Live status remains REBUILDING throughout. Both DuckDB connections checkpoint and close before the shadow atomically replaces the canonical file; a temporary hard-link backup permits rollback on switch failure. The per-cell scheduler permits one backfill/maintenance job alongside higher-priority ingestion; outbox publication has reserved capacity. Rebuild starts, completions, total duration and failures are observable.
+- **Timezone changes**: every control-plane timezone update increments a revision, including direct administrative SQL. The owning cell projects newer revisions into SQLite, rejects stale/conflicting calendars, and preserves the cached timezone through control outages. Ingestion and maintenance detect mismatches and mark analytics REBUILDING. Restart recovery preserves the old facts/checkpoint while requesting a shadow rebuild; UTC instants remain unchanged and calendar labels are derived again. A calendar change during rebuilding prevents installation. Older monthly summaries from a different timezone are not copied because those aggregates cannot be accurately relabelled without archived facts (M11).
+- **Retention**: nightly on the tenant calendar, with at most 1,000 deletions per transaction. Seal expiring monthly summaries before advancing `hot_window_start` and deleting facts, then refresh the current and previous month. Preserve unfinished sessions/shifts, intervals crossing the cutoff and pending waste approvals; expired session-hour buckets and parent collections are purged. Maintenance waits until ingestion covers the current SQLite watermark. Lease fencing and READY-state checks apply to every batch, and the source checkpoint never advances.
 - **Schema change** (§32 Case C): create the new version's tables alongside, backfill, validate, switch, then drop the old tables.
 
 ## Parity tests

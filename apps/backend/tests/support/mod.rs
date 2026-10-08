@@ -39,6 +39,12 @@ impl TenantFixture {
         self.lease.1.store(true, std::sync::atomic::Ordering::Release);
     }
     pub async fn new_with_idle(idle_timeout: Duration) -> Self {
+        Self::new_configured(idle_timeout,None).await
+    }
+    pub async fn new_with_background_jobs(jobs: Arc<gaming_cafe_api::background::BackgroundJobs>) -> Self {
+        Self::new_configured(Duration::from_secs(60),Some(jobs)).await
+    }
+    async fn new_configured(idle_timeout: Duration, jobs: Option<Arc<gaming_cafe_api::background::BackgroundJobs>>) -> Self {
         let tenant = Uuid::now_v7();
         let root = std::env::temp_dir().join(format!("arena360-service-test-{tenant}"));
         let path = tenant_path(&root, tenant);
@@ -61,8 +67,7 @@ impl TenantFixture {
             .unwrap();
         pool.close().await;
         let lease = Arc::new(Lease(tenant, std::sync::atomic::AtomicBool::new(false)));
-        let manager = Arc::new(
-            TenantDbManager::new(
+        let mut manager = TenantDbManager::new(
                 TenantDbConfig {
                     root: root.clone(),
                     read_connections: 2,
@@ -72,8 +77,9 @@ impl TenantFixture {
                 },
                 lease.clone(),
             )
-            .unwrap(),
-        );
+            .unwrap();
+        if let Some(jobs)=jobs {manager=manager.with_background_jobs(jobs);}
+        let manager=Arc::new(manager);
         let db = manager.open(tenant).await.unwrap();
         Self { db, root, manager, lease }
     }
@@ -315,6 +321,7 @@ pub fn settings() -> gaming_cafe_api::config::Settings {
         database_acquire_timeout_seconds: 1,
         database_idle_timeout_seconds: 60,
         database_max_lifetime_seconds: 600,
+        nats_url: None,
         redis_url: None,
         jwt_secret: "arena360-test-secret-at-least-thirty-two-characters".into(),
         jwt_access_expiration: "15m".into(),

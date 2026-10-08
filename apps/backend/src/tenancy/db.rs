@@ -82,6 +82,7 @@ pub struct TenantDb {
     path: PathBuf,
     lease: Arc<dyn TenantLease>,
     notifier: Arc<dyn TenantCommitNotifier>,
+    background_jobs: Option<Arc<crate::background::BackgroundJobs>>,
     writer: Mutex<Option<SqliteConnection>>,
     readers: SqlitePool,
     last_used: StdMutex<Instant>,
@@ -103,6 +104,7 @@ impl TenantDb {
         Ok(timezone)
     }
 
+    pub fn background_jobs(&self) -> Option<&Arc<crate::background::BackgroundJobs>> { self.background_jobs.as_ref() }
     pub fn tenant_id(&self) -> Uuid {
         self.tenant_id
     }
@@ -144,6 +146,7 @@ impl TenantDb {
             &'connection mut SqliteConnection,
         ) -> BoxFuture<'connection, Result<T, AppError>>,
     {
+        let _operational = self.background_jobs.as_ref().map(|jobs| jobs.operational());
         self.lease
             .ensure_writable(self.tenant_id, self.ownership_generation)?;
         let mut writer = self.writer.lock().await;
@@ -171,6 +174,7 @@ impl TenantDb {
             ) -> BoxFuture<'connection, Result<T, AppError>>
             + Send,
     {
+        let _operational = self.background_jobs.as_ref().map(|jobs| jobs.operational());
         self.lease
             .ensure_writable(self.tenant_id, self.ownership_generation)?;
         let mut writer = self.writer.lock().await;
@@ -260,6 +264,7 @@ pub struct TenantDbManager {
     handles: Arc<RwLock<HashMap<Uuid, Arc<TenantDb>>>>,
     open_gate: Arc<Mutex<()>>,
     notifier: Arc<dyn TenantCommitNotifier>,
+    background_jobs: Option<Arc<crate::background::BackgroundJobs>>,
 }
 
 impl TenantDbManager {
@@ -270,6 +275,7 @@ impl TenantDbManager {
             handles: Arc::new(RwLock::new(HashMap::new())),
             open_gate: Arc::new(Mutex::new(())),
             notifier: Arc::new(NoopTenantCommitNotifier),
+            background_jobs: None,
         })
     }
 
@@ -278,6 +284,9 @@ impl TenantDbManager {
         self
     }
 
+    pub fn with_background_jobs(mut self, jobs: Arc<crate::background::BackgroundJobs>) -> Self {
+        self.background_jobs = Some(jobs); self
+    }
     pub async fn open(&self, tenant_id: Uuid) -> Result<Arc<TenantDb>, AppError> {
         let generation = self.lease.writable_generation(tenant_id)?;
         if let Some(handle) = self.handles.read().await.get(&tenant_id).cloned() {
@@ -306,6 +315,7 @@ impl TenantDbManager {
                 &self.config,
                 self.lease.clone(),
                 self.notifier.clone(),
+                self.background_jobs.clone(),
             )
             .await?,
         );
@@ -383,6 +393,7 @@ async fn open_tenant(
     config: &TenantDbConfig,
     lease: Arc<dyn TenantLease>,
     notifier: Arc<dyn TenantCommitNotifier>,
+    background_jobs: Option<Arc<crate::background::BackgroundJobs>>,
 ) -> Result<TenantDb, AppError> {
     let path = tenant_path(&config.root, tenant_id);
     if !path.is_file() {
@@ -429,6 +440,7 @@ async fn open_tenant(
         path,
         lease,
         notifier,
+        background_jobs,
         writer: Mutex::new(Some(writer)),
         readers,
         last_used: StdMutex::new(Instant::now()),

@@ -1,4 +1,4 @@
-# Storage-cell development (M5)
+# Storage-cell development (M6)
 
 Operational APIs use one SQLite file per tenant. PostgreSQL stores control-plane
 metadata and global staff credentials. The shared operational PostgreSQL schema,
@@ -90,3 +90,114 @@ address in that control database. The chart mounts tenant files at
 Replication, cell-loss recovery and backup drills are M8 work; distinct-cell
 orchestration and rebalancing are M9 work. Docker builds embed both active migration
 families and include the API and demo seed binaries.
+## Tenant outbox publishing
+
+Owning cells publish canonical event envelopes in sequence order every 250 ms when
+`NATS_URL` is configured. Startup and operational commits do not wait for NATS.
+The publisher expects stream `ARENA_TENANT_EVENTS` on
+`arena.tenant.*.events.v1`; stream provisioning is OPS-0020. Missing or unavailable
+streams retain SQLite rows. Message IDs combine tenant ID and event ID for server
+deduplication; consumers must also deduplicate by per-tenant sequence.
+
+Tenant migration 0014 persists the acknowledged sequence. Acknowledged source rows
+remain until the durable realtime projection cursor covers them. SQLite cleanup
+uses the current ownership lease and an immediate transaction. Network requests
+never hold the SQLite writer. Lost acknowledgements and checkpoint failures replay
+stable events; a sequence gap fails closed.
+
+`/metrics` exposes retained event count, estimated envelope/payload bytes, oldest
+retained event age, publication acknowledgement count and publication failures.
+Counts aggregate locally owned tenants; they include acknowledged rows waiting for
+realtime. Reopening a pending tenant requires an existing valid lease. Empty polls
+allow idle eviction. Publishers do not provision tenants or acquire ownership.
+
+### Provision the replay stream
+
+Start the Compose NATS service, then run:
+
+```sh
+NATS_URL=nats://127.0.0.1:4222 pnpm analytics:stream:init
+NATS_URL=nats://127.0.0.1:4222 pnpm analytics:stream:init -- --check
+```
+
+The native `tenant_events_setup` command creates `ARENA_TENANT_EVENTS` on
+`arena.tenant.*.events.v1` with file storage, limits retention of seven days,
+unlimited message/byte counts and a two-minute message-ID deduplication window.
+Consumer acknowledgements retain replay history. New streams prohibit individual
+message deletion and purging. Repeating setup verifies the existing stream without
+changing its configuration or messages; incompatible retention, storage, subjects,
+count/byte limits, replica settings, sealing or disabled acknowledgements fail.
+Reconcile incompatible streams explicitly before publication.
+
+`NATS_STREAM_REPLICAS` defaults to 1 for the standalone development server; use
+3 or 5 only with a suitably sized NATS cluster. Production deployment requires
+`NATS_URL`; provision the stream with the native command in the backend image from
+a network that can reach NATS. Setup is separate from API startup, so a NATS outage
+does not prevent operational startup. The publisher retains failed publications.
+
+The integration runner starts and removes a fresh, empty JetStream server per gate
+when `nats-server` is installed or `NATS_SERVER_BIN` points to it. CI uses a pinned,
+checksum-verified server runtime. Without a local runtime the JetStream gates
+are explicitly reported as skipped; the SQLite/control checks still run.
+
+Run only the disposable JetStream checks with `pnpm backend:test:integration --jetstream-only`; this mode requires a local server runtime and does not create a control database.
+
+### DuckDB development builds
+
+DuckDB's Rust dependency is pinned to the native 1.5.6 release family. Build with
+`--features duckdb-bundled` to compile its bundled source. For faster local builds,
+use the official matching shared library and `--features duckdb-analytics`:
+
+```sh
+DUCKDB_LIB_DIR=/path/to/duckdb-1.5.6 pnpm backend:test:integration
+```
+
+The runner enables the feature and assigns the native loader path after Cargo
+launches each test. For direct Cargo runs, use a target runner that assigns
+`DYLD_LIBRARY_PATH` on macOS or `LD_LIBRARY_PATH` on Linux; shell launchers and
+Cargo can filter externally supplied loader paths. Supply a matching
+native library, not a different DuckDB version. No system library is installed by
+the repository commands. The two feature choices use the same Rust implementation
+and schema; bundled builds require a cached target directory for practical rebuilds.
+
+
+### Analytics ingestion and rebuilds
+
+Run owning cells with `duckdb-analytics` (matching native SDK) or `duckdb-bundled`
+and explicit `NATS_URL`. Production images compile analytics in, download the
+checksum-pinned native 1.5.6 SDK for their architecture, and install the matching
+signature-verified SQLite extension during image construction. Runtime rebuilds
+use the cached extension at `DUCKDB_EXTENSION_DIR`; unsigned extensions stay disabled.
+Without that setting, the extension cache is inside the tenant directory and the
+first rebuild requires HTTPS access to the official DuckDB extension repository.
+
+Fresh analytics start REBUILDING. The tenant worker takes a private `VACUUM INTO`
+snapshot through a read-only SQLite connection, records its persistent outbox
+watermark, and attaches that snapshot read-only. It builds a shadow DuckDB file,
+projects explicit columns with exact money, derives tenant calendar labels in
+Rust, builds closed session hours and monthly aggregates, and replays retained
+events after T0 to a finite post-backfill source watermark. Its replay consumer
+starts after a broker position recorded before the SQLite snapshot, so earlier
+stream history is covered by the snapshot rather than scanned again. Schema v2
+persists that broker position; live consumers skip and acknowledge earlier
+deliveries even after a restart, including writes lost from restored SQLite. Operational writes
+continue while this happens. Live ingestion resumes after the canonical file
+switch; reports remain unavailable until M7.
+
+Failures leave the canonical state REBUILDING and preserve its facts. Rebuild
+consumers have independent cursors and do not remove stream history. Temporary
+snapshot/shadow files are removed when the job ends. Corrupt or outdated derived
+files are quarantined for inspection before an initial rebuild; a newer schema
+requires upgrading the binary. A DuckDB failure closes the worker for recovery;
+failed opens and background polling do not keep an idle tenant open. Existing older monthly aggregates survive a normal
+rebuild in the same timezone. A lost/corrupt analytics file reconstructs the hot
+window from SQLite; historical raw facts are not pulled into the hot database.
+
+`pnpm backend:test:integration --jetstream-only` includes the live consumer and
+rebuild gates when `DUCKDB_LIB_DIR` is supplied. The runner creates isolated
+JetStream storage and removes it after each target. Optional extension cache:
+`DUCKDB_EXTENSION_DIR=/path/to/matching/signed/extensions`.
+
+The native demo-seed control gate also rebuilds DuckDB when the SDK and disposable
+NATS runtime are available. It compares all 27 projection row counts, every
+scale-4 money-column total and closed session occupied seconds with SQLite.

@@ -6,3 +6,19 @@ pub mod worker;
 pub use client::{query_as, ClickHouse};
 
 pub mod scope;
+
+pub mod publisher;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod tenant_db;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod consumer;
+#[cfg(feature = "duckdb-analytics")]
+pub mod session_hours;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod rebuild;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod retention;

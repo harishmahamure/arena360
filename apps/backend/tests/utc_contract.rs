@@ -34,7 +34,7 @@ fn api_and_outbox_payload_timestamps_end_in_z() {
 
 #[test]
 fn postgres_migrations_only_use_timezone_aware_timestamps() {
-    let migrations = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let migrations = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations/control");
     for path in files_with_extension(&migrations, "sql") {
         let sql = fs::read_to_string(&path).unwrap();
         for (line_number, line) in sql.lines().enumerate() {

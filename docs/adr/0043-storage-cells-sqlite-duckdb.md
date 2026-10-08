@@ -54,7 +54,7 @@ Adopt `docs/architecture/data-platform.md` in full. The implementation decisions
 19. Events are published to subject `arena.tenant.<tenant_id>.events.v1`. The stream uses limits retention (time-based, initially 7 days) instead of work-queue retention, so rebuilds can replay events after the boundary T0. Outbox rows are deleted only after JetStream acknowledges publication.
 20. DuckDB ingestion is idempotent by per-tenant `sequence`: events at or below `_ingest_state.last_sequence` are skipped. A gap (sequence > last + 1) stops ingestion for that tenant and triggers a re-fetch, then a rebuild if the gap persists.
 21. Initial build and rebuild (data-platform §32–35):
-    1. Take a consistent SQLite snapshot with `VACUUM INTO` a temporary file and read `MAX(sequence)` from it as T0.
+    1. Take a consistent SQLite snapshot with `VACUUM INTO` a temporary file and read the committed `outbox_events` AUTOINCREMENT watermark from its `sqlite_sequence` row as T0 (zero before the first event). `MAX(sequence)` over retained rows is insufficient because acknowledged events are purged.
     2. `ATTACH` the snapshot to DuckDB read-only and transform the last 18 months into the analytical schema.
     3. Replay JetStream events with sequence > T0, then mark the tenant `READY`.
 
