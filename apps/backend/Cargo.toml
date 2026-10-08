@@ -33,6 +33,8 @@ duckdb = { version = "~1.10506", optional = true }
 object_store = { version = "0.14", features = ["aws"] }
 zstd = "0.13"
 aes-gcm = "0.10"
+bytes = "1"
+memmap2 = "0.9"
 libsqlite3-sys = "=0.30.1"
 
 # Cache (DRAFT-0043)

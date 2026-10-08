@@ -1,6 +1,7 @@
 //! Tenant backup transport and durable WAL capture (ADR-0043 decision 26).
 pub mod crypto;
 pub mod ledger;
+pub mod snapshot;
 pub mod wal;
 pub mod worker;
 
@@ -34,6 +35,7 @@ pub fn configured_worker(
         .build()
         .map_err(|e| AppError::Internal(format!("Replication object storage: {e}")))?;
     Ok(Some(worker::Worker {
+        gates: Default::default(),
         store: std::sync::Arc::new(store),
         ledger: std::sync::Arc::new(ledger::PostgresLedger {
             pool: pool.ok_or_else(required)?,

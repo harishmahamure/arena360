@@ -22,6 +22,11 @@ fn io(e: std::io::Error) -> AppError {
     fail(format!("Replication spool: {e}"))
 }
 pub struct Worker {
+    pub gates: std::sync::Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<uuid::Uuid, std::sync::Arc<tokio::sync::Mutex<()>>>,
+        >,
+    >,
     pub store: Arc<dyn ObjectStore>,
     pub ledger: Arc<dyn Ledger>,
     pub keys: TenantKeys,
@@ -62,6 +67,14 @@ pub fn pending(db: &TenantDb) -> Result<Vec<(PathBuf, Capture)>, AppError> {
 }
 impl Worker {
     pub async fn ship(&self, db: Arc<TenantDb>, force: bool) -> Result<usize, AppError> {
+        let gate = self
+            .gates
+            .lock()
+            .await
+            .entry(db.tenant_id())
+            .or_default()
+            .clone();
+        let _serial = gate.lock().await;
         let captures = pending(&db)?;
         let bytes = captures.iter().try_fold(0u64, |sum, (p, _)| {
             std::fs::metadata(p).map(|m| sum + m.len()).map_err(io)
@@ -90,6 +103,14 @@ impl Worker {
         db.ensure_current_owner()?;
         let segment = self.ledger.reserve(&db, capture).await?;
         if !segment.verified {
+            self.ledger
+                .baseline(
+                    db.clone(),
+                    segment.generation,
+                    self.store.as_ref(),
+                    &self.keys,
+                )
+                .await?;
             let source = std::fs::read(path).map_err(io)?;
             if wal::checksum(&source) != capture.checksum {
                 return Err(fail("Spool checksum mismatch"));
@@ -144,29 +165,7 @@ impl Worker {
         Ok(1)
     }
     pub async fn put_verified(&self, key: &str, bytes: &[u8]) -> Result<(), AppError> {
-        let path = ObjectPath::from(key);
-        match self
-            .store
-            .put_opts(&path, bytes.to_vec().into(), PutMode::Create.into())
-            .await
-        {
-            Ok(_) => {}
-            Err(object_store::Error::AlreadyExists { .. }) => {}
-            Err(e) => return Err(fail(format!("Immutable backup upload failed: {e}"))),
-        }
-        let received = self
-            .store
-            .get(&path)
-            .await
-            .map_err(|e| fail(e.to_string()))?;
-        if received.meta.size != bytes.len() as u64 {
-            return Err(fail("Backup upload size verification failed"));
-        }
-        let received = received.bytes().await.map_err(|e| fail(e.to_string()))?;
-        if received.as_ref() != bytes {
-            return Err(fail("Backup upload checksum verification failed"));
-        }
-        Ok(())
+        put_verified(self.store.as_ref(), key, bytes).await
     }
     async fn publish_manifest(
         &self,
@@ -174,59 +173,104 @@ impl Worker {
         segment: &Segment,
         bytes: &[u8],
     ) -> Result<(), AppError> {
-        let prefix = format!(
-            "tenants/{}/replication/generations/{}",
-            db.tenant_id(),
-            segment.generation
-        );
-        // Revisions are immutable evidence. The well-known pointer uses CAS so
-        // delayed requests cannot replace a newer generation manifest revision.
-        self.put_verified(
-            &format!("{prefix}/manifests/{:010}.json", segment.number),
-            bytes,
-        )
-        .await?;
-        let path = ObjectPath::from(format!("{prefix}/manifest.json"));
-        let mode = match self.store.get(&path).await {
-            Ok(existing) => {
-                let version = UpdateVersion {
-                    e_tag: existing.meta.e_tag.clone(),
-                    version: existing.meta.version.clone(),
-                };
-                let old = existing.bytes().await.map_err(|e| fail(e.to_string()))?;
-                if old.as_ref() == bytes {
-                    return Ok(());
-                }
-                let document: serde_json::Value =
-                    serde_json::from_slice(&old).map_err(|e| fail(e.to_string()))?;
-                if document["segments"].as_array().map_or(usize::MAX, Vec::len)
-                    >= segment.number as usize
-                {
-                    return Err(fail("Remote manifest is ahead or incompatible"));
-                }
-                PutMode::Update(version)
-            }
-            Err(object_store::Error::NotFound { .. }) => PutMode::Create,
-            Err(e) => return Err(fail(e.to_string())),
-        };
-        db.ensure_current_owner()?;
-        self.store
-            .put_opts(&path, bytes.to_vec().into(), mode.into())
-            .await
-            .map_err(|e| fail(e.to_string()))?;
-        let remote = self
-            .store
-            .get(&path)
-            .await
-            .map_err(|e| fail(e.to_string()))?
-            .bytes()
-            .await
-            .map_err(|e| fail(e.to_string()))?;
-        if remote.as_ref() != bytes {
-            return Err(fail("Generation manifest verification failed"));
-        }
-        Ok(())
+        publish_document(self.store.as_ref(), db, segment.generation, bytes).await
     }
+}
+
+pub async fn put_verified(
+    store: &dyn ObjectStore,
+    key: &str,
+    bytes: &[u8],
+) -> Result<(), AppError> {
+    let path = ObjectPath::from(key);
+    match store
+        .put_opts(&path, bytes.to_vec().into(), PutMode::Create.into())
+        .await
+    {
+        Ok(_) => {}
+        Err(object_store::Error::AlreadyExists { .. }) => {}
+        Err(e) => return Err(fail(format!("Immutable backup upload failed: {e}"))),
+    }
+    let received = store.get(&path).await.map_err(|e| fail(e.to_string()))?;
+    if received.meta.size != bytes.len() as u64 {
+        return Err(fail("Backup upload size verification failed"));
+    }
+    let received = received.bytes().await.map_err(|e| fail(e.to_string()))?;
+    if received.as_ref() != bytes {
+        return Err(fail("Backup upload checksum verification failed"));
+    }
+    Ok(())
+}
+pub async fn publish_document(
+    store: &dyn ObjectStore,
+    db: &TenantDb,
+    generation: uuid::Uuid,
+    bytes: &[u8],
+) -> Result<(), AppError> {
+    let document: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|e| fail(e.to_string()))?;
+    let revision = document["revision"]
+        .as_i64()
+        .filter(|r| *r > 0)
+        .ok_or_else(|| fail("Missing manifest revision"))?;
+    let prefix = format!(
+        "tenants/{}/replication/generations/{}",
+        db.tenant_id(),
+        generation
+    );
+    // Revisions are immutable evidence. The well-known pointer uses CAS so
+    // delayed requests cannot replace a newer generation manifest revision.
+    put_verified(
+        store,
+        &format!("{prefix}/manifests/{:010}.json", revision),
+        bytes,
+    )
+    .await?;
+    let path = ObjectPath::from(format!("{prefix}/manifest.json"));
+    let mode = match store.get(&path).await {
+        Ok(existing) => {
+            let version = UpdateVersion {
+                e_tag: existing.meta.e_tag.clone(),
+                version: existing.meta.version.clone(),
+            };
+            let old = existing.bytes().await.map_err(|e| fail(e.to_string()))?;
+            if old.as_ref() == bytes {
+                return Ok(());
+            }
+            let document: serde_json::Value =
+                serde_json::from_slice(&old).map_err(|e| fail(e.to_string()))?;
+            let previous = document["revision"]
+                .as_i64()
+                .or_else(|| {
+                    document["segments"]
+                        .as_array()
+                        .and_then(|rows| rows.iter().filter_map(|s| s["number"].as_i64()).max())
+                })
+                .unwrap_or(i64::MAX);
+            if previous >= revision {
+                return Err(fail("Remote manifest is ahead or incompatible"));
+            }
+            PutMode::Update(version)
+        }
+        Err(object_store::Error::NotFound { .. }) => PutMode::Create,
+        Err(e) => return Err(fail(e.to_string())),
+    };
+    db.ensure_current_owner()?;
+    store
+        .put_opts(&path, bytes.to_vec().into(), mode.into())
+        .await
+        .map_err(|e| fail(e.to_string()))?;
+    let remote = store
+        .get(&path)
+        .await
+        .map_err(|e| fail(e.to_string()))?
+        .bytes()
+        .await
+        .map_err(|e| fail(e.to_string()))?;
+    if remote.as_ref() != bytes {
+        return Err(fail("Generation manifest verification failed"));
+    }
+    Ok(())
 }
 
 /// Capture is independent of object storage/control availability. Local NVMe
@@ -234,6 +278,7 @@ impl Worker {
 pub fn spawn_capture(manager: Arc<TenantDbManager>, metrics: Arc<Metrics>, root: PathBuf) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(1));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tick.tick().await;
             for db in manager.open_handles().await {
@@ -250,10 +295,12 @@ pub fn spawn_capture(manager: Arc<TenantDbManager>, metrics: Arc<Metrics>, root:
     });
 }
 pub fn spawn_upload(manager: Arc<TenantDbManager>, worker: Arc<Worker>) {
+    spawn_snapshots(manager.clone(), worker.clone());
     tokio::spawn(async move {
         let mut running =
             std::collections::HashMap::<uuid::Uuid, tokio::task::JoinHandle<()>>::new();
         let mut tick = tokio::time::interval(Duration::from_secs(1));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tick.tick().await;
             running.retain(|_, task| !task.is_finished());
@@ -281,6 +328,48 @@ pub fn spawn_upload(manager: Arc<TenantDbManager>, worker: Arc<Worker>) {
                         }
                     }),
                 );
+            }
+        }
+    });
+}
+fn spawn_snapshots(manager: Arc<TenantDbManager>, worker: Arc<Worker>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(60));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tick.tick().await;
+            let tenants = match worker.ledger.daily_tenants().await {
+                Ok(t) => t,
+                Err(error) => {
+                    worker.metrics.replication_failed();
+                    tracing::warn!(%error,"Daily snapshot registry failed");
+                    continue;
+                }
+            };
+            for tenant in tenants {
+                let result = tokio::time::timeout(Duration::from_secs(120), async {
+                    let db = manager.open(tenant).await?;
+                    let gate = worker.gates.lock().await.entry(tenant).or_default().clone();
+                    let _serial = gate.lock().await;
+                    let _job = match db.background_jobs() {
+                        Some(j) => Some(j.acquire(crate::background::Priority::Backup).await?),
+                        None => None,
+                    };
+                    worker
+                        .ledger
+                        .snapshot(
+                            db,
+                            worker.store.as_ref(),
+                            &worker.keys,
+                            super::snapshot::Kind::Daily,
+                        )
+                        .await
+                })
+                .await;
+                if !matches!(result, Ok(Ok(()))) {
+                    worker.metrics.replication_failed();
+                    tracing::warn!(%tenant,?result,"Daily snapshot failed; evidence retained");
+                }
             }
         }
     });

@@ -60,8 +60,17 @@
 
 ## Current task
 
-- [ ] `API-0050` — Verified daily and migration snapshots (M8).
+- [ ] `API-0055` — Dependency-aware 90-day retention (M8).
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0050 completed
+
+- Every replication generation gets a verified consistent baseline before WAL publication; active tenants get daily snapshots with a 24-hour deduplication guard.
+- API-0021 hooks take and verify pre/post snapshots around real migrations using the already gated writer. Ownership loss rejects immediately without reopening or deadlocking the migration handle.
+- Snapshot metadata captures schema version, durable event watermark, WAL capture position, UTC instant, source/encrypted checksums and size. Source copies, authenticated streaming zstd/AES chunks, immutable conditional uploads and downloaded-stream hashing precede manifest/control verification and local cleanup.
+- Snapshot/WAL manifests share monotonically allocated revisions, with migration support for existing WAL-only immutable revision names. Keys fail closed before temporary copies; snapshot temporary directories are private.
+- Verified: ten replication checks, including real PostgreSQL baseline/daily/pre/post manifest records, decoding a valid SQLite image, lease-change/restore/gap rotation, missing keys, legacy manifests, stream corruption/truncation and migration ownership loss. The 50-tenant migration/retry regression also passes.
+- Live Wasabi and staging recovery evidence remain part of the M8 launch gate.
 
 ### API-0054 completed
 

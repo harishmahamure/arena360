@@ -398,6 +398,14 @@ impl TenantDbManager {
         self.handles.read().await.len()
     }
 
+    /// A migration hook already holds this handle's writer. Reopening a changed
+    /// generation here would try to close that same writer and deadlock.
+    pub(crate) async fn migration_handle(&self,tenant:Uuid,generation:i64)->Result<Arc<TenantDb>,AppError> {
+        let db=self.handles.read().await.get(&tenant).cloned().ok_or_else(||AppError::Forbidden("Migration handle is unavailable".into()))?;
+        if db.ownership_generation()!=generation {return Err(AppError::Conflict("Migration ownership generation changed".into()));}
+        db.ensure_current_owner()?;Ok(db)
+    }
+
     /// Closed tenants with unshipped WAL remain eligible for background upload.
     /// This checks an existing lease and never acquires ownership.
     pub async fn open_spooled(&self) -> Result<(), AppError> {
@@ -520,7 +528,7 @@ fn sqlite_options(path: &Path, busy_timeout: Duration, read_only: bool) -> Sqlit
     }
 }
 
-async fn spool_wal(connection: &mut SqliteConnection, path: &Path, generation: i64) -> Result<Option<PathBuf>, AppError> {
+pub(crate) async fn spool_wal(connection: &mut SqliteConnection, path: &Path, generation: i64) -> Result<Option<PathBuf>, AppError> {
     let mut transaction = connection.begin_with("BEGIN IMMEDIATE").await?;
     // Ensure SQLite has initialized the WAL index. The transaction's Drop
     // queues rollback if this future is cancelled during the SQL read.

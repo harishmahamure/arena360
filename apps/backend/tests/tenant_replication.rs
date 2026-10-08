@@ -15,17 +15,17 @@ use sqlx::{sqlite::SqliteConnectOptions, Connection, SqliteConnection};
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicI64, Ordering},
         Arc, Mutex,
     },
 };
 use uuid::Uuid;
 
-struct Lease(AtomicBool);
+struct Lease(AtomicBool, AtomicI64);
 impl TenantLease for Lease {
     fn writable_generation(&self, _: Uuid) -> Result<i64, AppError> {
         if self.0.load(Ordering::SeqCst) {
-            Ok(1)
+            Ok(self.1.load(Ordering::SeqCst))
         } else {
             Err(AppError::Forbidden("fenced".into()))
         }
@@ -55,7 +55,7 @@ async fn database() -> (PathBuf, Arc<TenantDb>, Arc<Lease>) {
         .await
         .unwrap();
     connection.close().await.unwrap();
-    let lease = Arc::new(Lease(AtomicBool::new(true)));
+    let lease = Arc::new(Lease(AtomicBool::new(true), AtomicI64::new(1)));
     let manager = TenantDbManager::new(
         TenantDbConfig {
             root: root.clone(),
@@ -98,6 +98,15 @@ impl Default for TestLedger {
 }
 #[async_trait]
 impl Ledger for TestLedger {
+    async fn baseline(
+        &self,
+        _db: Arc<TenantDb>,
+        _generation: Uuid,
+        _store: &dyn object_store::ObjectStore,
+        _keys: &TenantKeys,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
     async fn reserve(&self, db: &TenantDb, capture: &Capture) -> Result<Segment, AppError> {
         let mut entries = self.entries.lock().unwrap();
         if let Some(existing) = entries
@@ -134,7 +143,12 @@ impl Ledger for TestLedger {
         if let Some(lease) = &self.fence {
             lease.0.store(false, Ordering::SeqCst);
         }
-        Ok(serde_json::to_vec(&serde_json::json!({"segments":[segment]})).unwrap())
+        Ok(
+            serde_json::to_vec(
+                &serde_json::json!({"revision":segment.number,"segments":[segment]}),
+            )
+            .unwrap(),
+        )
     }
     async fn verified(
         &self,
@@ -157,6 +171,7 @@ fn worker(root: &std::path::Path, db: &TenantDb, ledger: Arc<TestLedger>) -> Wor
     let keys = TenantKeys::new(root.join("secrets"));
     wal::durable_create(&keys.path(db.tenant_id()), &[42u8; 32]).unwrap();
     Worker {
+        gates: Default::default(),
         store: Arc::new(InMemory::new()),
         ledger,
         keys,
@@ -340,6 +355,112 @@ fn encryption_authenticates_tenant_path_and_key_and_bounds_decompression() {
     assert!(crypto::decode(&key, "tenant/one", &corrupt, 100).is_err());
 }
 
+#[test]
+fn streaming_snapshot_envelope_rejects_truncation_tampering_and_wrong_tenant() {
+    let key = [9u8; 32];
+    let source = (0..200_000u32)
+        .flat_map(|i| i.wrapping_mul(2_654_435_761).to_le_bytes())
+        .collect::<Vec<_>>();
+    let mut encoded = vec![];
+    crypto::encode_file(&key, "snapshot/one", source.as_slice(), &mut encoded).unwrap();
+    let mut output = vec![];
+    assert_eq!(
+        crypto::decode_file(
+            &key,
+            "snapshot/one",
+            encoded.as_slice(),
+            &mut output,
+            source.len() as u64
+        )
+        .unwrap(),
+        source.len() as u64
+    );
+    assert_eq!(output, source);
+    for invalid in [
+        &encoded[..encoded.len() - 20],
+        &encoded[..encoded.len() - 1],
+    ] {
+        assert!(crypto::decode_file(
+            &key,
+            "snapshot/one",
+            invalid,
+            std::io::sink(),
+            source.len() as u64
+        )
+        .is_err());
+    }
+    assert!(crypto::decode_file(
+        &key,
+        "snapshot/two",
+        encoded.as_slice(),
+        std::io::sink(),
+        source.len() as u64
+    )
+    .is_err());
+    assert!(crypto::decode_file(
+        &key,
+        "snapshot/one",
+        encoded.as_slice(),
+        std::io::sink(),
+        10
+    )
+    .is_err());
+    encoded[30] ^= 1;
+    assert!(crypto::decode_file(
+        &key,
+        "snapshot/one",
+        encoded.as_slice(),
+        std::io::sink(),
+        source.len() as u64
+    )
+    .is_err());
+}
+
+#[tokio::test]
+async fn legacy_wal_manifest_advances_without_reusing_an_immutable_revision() {
+    let (root, db, _) = database().await;
+    let store = InMemory::new();
+    let generation = Uuid::new_v4();
+    let prefix = format!(
+        "tenants/{}/replication/generations/{generation}",
+        db.tenant_id()
+    );
+    let old = serde_json::to_vec(&serde_json::json!({"segments":[{"number":9}]})).unwrap();
+    worker::put_verified(&store, &format!("{prefix}/manifest.json"), &old)
+        .await
+        .unwrap();
+    worker::put_verified(&store, &format!("{prefix}/manifests/0000000009.json"), &old)
+        .await
+        .unwrap();
+    let next = serde_json::to_vec(
+        &serde_json::json!({"revision":10,"segments":[{"number":9}],"snapshots":[]}),
+    )
+    .unwrap();
+    worker::publish_document(&store, &db, generation, &next)
+        .await
+        .unwrap();
+    let immutable = store
+        .get(&ObjectPath::from(format!(
+            "{prefix}/manifests/0000000009.json"
+        )))
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(immutable.as_ref(), old);
+    let current = store
+        .get(&ObjectPath::from(format!("{prefix}/manifest.json")))
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(current.as_ref(), next);
+    db.close().await.unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 #[tokio::test]
 async fn restart_reopens_pending_spool_and_capture_order_survives_clock_changes() {
     let (root, db, lease) = database().await;
@@ -381,7 +502,7 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
         .await
         .unwrap();
     gaming_cafe_api::control::migrate(&pool).await.unwrap();
-    let (root, db, _) = database().await;
+    let (root, db, lease) = database().await;
     let tenant = db.tenant_id();
     let cell = Uuid::new_v4();
     sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)")
@@ -400,11 +521,28 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
     let keys = TenantKeys::new(root.join("secrets"));
     wal::durable_create(&keys.path(tenant), &[42u8; 32]).unwrap();
     let worker = Worker {
+        gates: Default::default(),
         store: Arc::new(InMemory::new()),
         ledger: ledger.clone(),
         keys,
         metrics: Arc::new(Metrics::default()),
     };
+    let missing_keys = TenantKeys::new(root.join("missing-keys"));
+    assert!(gaming_cafe_api::replication::snapshot::take(
+        db.clone(),
+        &ledger,
+        worker.store.as_ref(),
+        &missing_keys,
+        gaming_cafe_api::replication::snapshot::Kind::Baseline
+    )
+    .await
+    .is_err());
+    assert!(!db
+        .path()
+        .parent()
+        .unwrap()
+        .join("replication/snapshots")
+        .exists());
     insert(&db, "one").await;
     db.spool_wal().await.unwrap();
     let capture = worker::pending(&db).unwrap()[0].1.clone();
@@ -430,6 +568,131 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
     assert_eq!(worker.ship(db.clone(), true).await.unwrap(), 1);
     let verified:i64=sqlx::query_scalar("SELECT count(*) FROM replication_segments WHERE generation_id=$1 AND verified_at IS NOT NULL").bind(first.generation).fetch_one(&pool).await.unwrap();
     assert_eq!(verified, 2);
+    use gaming_cafe_api::replication::snapshot::{self, Kind, SnapshotHook};
+    snapshot::take(
+        db.clone(),
+        &ledger,
+        worker.store.as_ref(),
+        &worker.keys,
+        Kind::Daily,
+    )
+    .await
+    .unwrap();
+    snapshot::take(
+        db.clone(),
+        &ledger,
+        worker.store.as_ref(),
+        &worker.keys,
+        Kind::Daily,
+    )
+    .await
+    .unwrap();
+    let daily:i64=sqlx::query_scalar("SELECT count(*) FROM snapshot_manifests WHERE generation_id=$1 AND kind='DAILY' AND verified_at IS NOT NULL").bind(first.generation).fetch_one(&pool).await.unwrap();
+    assert_eq!(daily, 1);
+    let row:(String,String,i64)=sqlx::query_as("SELECT object_key,source_checksum_sha256,capture_number FROM snapshot_manifests WHERE generation_id=$1 AND kind='DAILY'").bind(first.generation).fetch_one(&pool).await.unwrap();
+    let bytes = worker
+        .store
+        .get(&ObjectPath::from(row.0.clone()))
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let mut image = vec![];
+    crypto::decode_file(
+        &worker.keys.read(tenant).unwrap(),
+        &row.0,
+        bytes.as_ref(),
+        &mut image,
+        64 * 1024 * 1024,
+    )
+    .unwrap();
+    assert_eq!(wal::checksum(&image), row.1);
+    assert!(row.2 >= 2);
+    let restored_file = root.join("snapshot-restored.sqlite");
+    std::fs::write(&restored_file, image).unwrap();
+    let mut restored_connection =
+        SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&restored_file))
+            .await
+            .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM durable")
+            .fetch_one(&mut restored_connection)
+            .await
+            .unwrap(),
+        2
+    );
+    restored_connection.close().await.unwrap();
+    db.close().await.unwrap();
+    let manager = Arc::new(
+        TenantDbManager::new(
+            TenantDbConfig {
+                root: root.clone(),
+                ..Default::default()
+            },
+            lease.clone(),
+        )
+        .unwrap(),
+    );
+    let db = manager.open(tenant).await.unwrap();
+    let hook = Arc::new(SnapshotHook {
+        databases: manager.clone(),
+        ledger: ledger.clone(),
+        store: worker.store.clone(),
+        keys: Arc::new(worker.keys.clone()),
+    });
+    let orchestrator = gaming_cafe_api::tenancy::MigrationOrchestrator::new(
+        cell,
+        manager,
+        Arc::new(gaming_cafe_api::tenancy::PostgresMigrationState::new(
+            pool.clone(),
+        )),
+        vec![hook.clone()],
+        Default::default(),
+    )
+    .unwrap();
+    let migrated = orchestrator.run_pending().await.unwrap();
+    assert_eq!(migrated.len(), 1);
+    assert!(migrated[0].succeeded(), "{:?}", migrated);
+    let migration_snapshots:Vec<(String,i64)>=sqlx::query_as("SELECT kind,schema_version FROM snapshot_manifests WHERE generation_id=$1 AND kind IN ('PRE_MIGRATION','POST_MIGRATION') AND verified_at IS NOT NULL ORDER BY snapshot_at").bind(first.generation).fetch_all(&pool).await.unwrap();
+    assert_eq!(
+        migration_snapshots,
+        vec![
+            ("PRE_MIGRATION".into(), 0),
+            (
+                "POST_MIGRATION".into(),
+                gaming_cafe_api::tenancy::target_schema_version()
+            )
+        ]
+    );
+    let hook_copy = hook.clone();
+    let lease_copy = lease.clone();
+    db.with_writer(move |connection| {
+        Box::pin(async move {
+            use gaming_cafe_api::tenancy::{MigrationContext, MigrationHook};
+            lease_copy.1.store(2, Ordering::SeqCst);
+            let result = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                hook_copy.before(
+                    MigrationContext {
+                        tenant_id: tenant,
+                        ownership_generation: 1,
+                        from_version: 16,
+                        to_version: 16,
+                    },
+                    connection,
+                ),
+            )
+            .await;
+            lease_copy.1.store(1, Ordering::SeqCst);
+            assert!(result
+                .expect("Ownership loss must not deadlock a migration hook")
+                .is_err());
+            Ok(())
+        })
+    })
+    .await
+    .unwrap();
     use gaming_cafe_api::replication::ledger::GenerationReason;
     let transition = Uuid::new_v4();
     let restored = ledger
@@ -496,6 +759,33 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
         .await
         .is_err());
     db.close().await.unwrap();
+    lease.1.store(2, Ordering::SeqCst);
+    sqlx::query("UPDATE tenant_leases SET ownership_generation=2,renewed_at=NOW(),expires_at=NOW()+INTERVAL '5 minutes' WHERE tenant_id=$1").bind(tenant).execute(&pool).await.unwrap();
+    let next_manager = TenantDbManager::new(
+        TenantDbConfig {
+            root: root.clone(),
+            ..Default::default()
+        },
+        lease,
+    )
+    .unwrap();
+    let next_db = next_manager.open(tenant).await.unwrap();
+    insert(&next_db, "new owner").await;
+    next_db.spool_wal().await.unwrap();
+    let next = ledger
+        .reserve(&next_db, &worker::pending(&next_db).unwrap()[0].1)
+        .await
+        .unwrap();
+    assert_ne!(next.generation, gap.generation);
+    assert_eq!(next.number, 1);
+    let ownership: i64 =
+        sqlx::query_scalar("SELECT ownership_generation FROM replication_generations WHERE id=$1")
+            .bind(next.generation)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(ownership, 2);
+    next_db.close().await.unwrap();
     sqlx::query("DELETE FROM tenants WHERE id=$1")
         .bind(tenant)
         .execute(&pool)

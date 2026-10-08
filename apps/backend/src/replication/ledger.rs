@@ -3,6 +3,7 @@ use crate::{error::AppError, tenancy::TenantDb};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +16,30 @@ pub struct Segment {
 }
 #[async_trait]
 pub trait Ledger: Send + Sync {
+    async fn daily_tenants(&self) -> Result<Vec<Uuid>, AppError> {
+        Err(AppError::Internal("Snapshot registry unavailable".into()))
+    }
+    async fn snapshot(
+        &self,
+        _db: Arc<TenantDb>,
+        _store: &dyn object_store::ObjectStore,
+        _keys: &super::crypto::TenantKeys,
+        _kind: super::snapshot::Kind,
+    ) -> Result<(), AppError> {
+        Err(AppError::Internal(
+            "Snapshot provider is unavailable".into(),
+        ))
+    }
+    async fn baseline(
+        &self,
+        db: Arc<TenantDb>,
+        _generation: Uuid,
+        store: &dyn object_store::ObjectStore,
+        keys: &super::crypto::TenantKeys,
+    ) -> Result<(), AppError> {
+        self.snapshot(db, store, keys, super::snapshot::Kind::Baseline)
+            .await
+    }
     async fn reserve(&self, db: &TenantDb, capture: &Capture) -> Result<Segment, AppError>;
     async fn manifest(
         &self,
@@ -58,6 +83,24 @@ impl GenerationReason {
     }
 }
 impl PostgresLedger {
+    pub async fn ensure_generation(&self, db: &TenantDb) -> Result<Uuid, AppError> {
+        let mut tx = self.pool.begin().await?;
+        let current = self.lock_owner(db, &mut tx).await?;
+        if let Some(id) = current {
+            let matching:bool=sqlx::query_scalar("SELECT ownership_generation=$2 AND state='ACTIVE' FROM replication_generations WHERE id=$1").bind(id).bind(db.ownership_generation()).fetch_one(&mut *tx).await?;
+            if matching {
+                db.ensure_current_owner()?;
+                tx.commit().await?;
+                return Ok(id);
+            }
+        }
+        let id = self
+            .rotate_locked(db, current, GenerationReason::LeaseChange, None, &mut tx)
+            .await?;
+        db.ensure_current_owner()?;
+        tx.commit().await?;
+        Ok(id)
+    }
     /// Caller persists the transition ID before starting restore/gap handling.
     /// Repeating the same transition is idempotent; a superseded transition
     /// cannot make an old generation current again.
@@ -107,7 +150,7 @@ impl PostgresLedger {
         .await?;
         Ok(id)
     }
-    async fn lock_owner(
+    pub(crate) async fn lock_owner(
         &self,
         db: &TenantDb,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -139,6 +182,32 @@ impl PostgresLedger {
 }
 #[async_trait]
 impl Ledger for PostgresLedger {
+    async fn daily_tenants(&self) -> Result<Vec<Uuid>, AppError> {
+        Ok(sqlx::query_scalar("SELECT t.id FROM tenants t WHERE t.owner_cell=$1 AND t.state='ACTIVE' AND NOT EXISTS(SELECT 1 FROM snapshot_manifests s WHERE s.generation_id=t.current_replication_generation AND s.kind='DAILY' AND s.verified_at IS NOT NULL AND s.snapshot_at>clock_timestamp()-INTERVAL '1 day') ORDER BY t.id").bind(self.cell_id).fetch_all(&self.pool).await?)
+    }
+    async fn snapshot(
+        &self,
+        db: Arc<TenantDb>,
+        store: &dyn object_store::ObjectStore,
+        keys: &super::crypto::TenantKeys,
+        kind: super::snapshot::Kind,
+    ) -> Result<(), AppError> {
+        super::snapshot::take(db, self, store, keys, kind).await
+    }
+    async fn baseline(
+        &self,
+        db: Arc<TenantDb>,
+        generation: Uuid,
+        store: &dyn object_store::ObjectStore,
+        keys: &super::crypto::TenantKeys,
+    ) -> Result<(), AppError> {
+        let ready:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL)").bind(generation).fetch_one(&self.pool).await?;
+        if ready {
+            return Ok(());
+        }
+        self.snapshot(db, store, keys, super::snapshot::Kind::Baseline)
+            .await
+    }
     async fn reserve(&self, db: &TenantDb, capture: &Capture) -> Result<Segment, AppError> {
         if capture.ownership_generation != db.ownership_generation() {
             return Err(AppError::Conflict(
@@ -221,12 +290,14 @@ impl Ledger for PostgresLedger {
         }
         let mut list = previous;
         list.push(serde_json::json!({"number":segment.number,"object_key":segment.object_key,"capture":segment.capture,"checksum_sha256":checksum,"encrypted_size_bytes":size}));
+        let snapshots:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'object_key',object_key,'kind',kind,'schema_version',schema_version,'snapshot_at',snapshot_at,'capture_number',capture_number,'event_sequence',event_sequence,'source_checksum_sha256',source_checksum_sha256,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes) FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL ORDER BY snapshot_at,id").bind(segment.generation).fetch_all(&mut *tx).await?;
+        let revision:i64=sqlx::query_scalar("UPDATE replication_generations SET manifest_revision=manifest_revision+1 WHERE id=$1 RETURNING manifest_revision").bind(segment.generation).fetch_one(&mut *tx).await?;
         let reason: String =
             sqlx::query_scalar("SELECT start_reason FROM replication_generations WHERE id=$1")
                 .bind(segment.generation)
                 .fetch_one(&mut *tx)
                 .await?;
-        let bytes=serde_json::to_vec(&serde_json::json!({"version":1,"tenant_id":db.tenant_id(),"generation_id":segment.generation,"ownership_generation":db.ownership_generation(),"start_reason":reason,"segments":list})).map_err(|e|AppError::Internal(e.to_string()))?;
+        let bytes=serde_json::to_vec(&serde_json::json!({"version":1,"tenant_id":db.tenant_id(),"generation_id":segment.generation,"ownership_generation":db.ownership_generation(),"start_reason":reason,"revision":revision,"segments":list,"snapshots":snapshots})).map_err(|e|AppError::Internal(e.to_string()))?;
         db.ensure_current_owner()?;
         tx.commit().await?;
         Ok(bytes)

@@ -13,6 +13,7 @@ mod values;
 use sqlx::{migrate::Migrator, SqliteConnection, SqlitePool};
 
 pub use crate::time::{format_sqlite_timestamp, parse_sqlite_timestamp, SqliteTimestampError};
+pub(crate) use db::spool_wal as spool_connection_wal;
 pub use db::{
     tenant_path, TenantCommitNotifier, TenantDb, TenantDbConfig, TenantDbManager, TenantLease,
 };

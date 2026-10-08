@@ -90,3 +90,31 @@ Manifest reservation and verification lock the tenant and lease rows, then
 recheck the actual database clock and the process's monotonic lease after lock
 acquisition. A locally cached former owner's lease cannot authorize control-plane
 manifest writes after reassignment.
+
+## Snapshot protocol
+
+Each generation receives a verified baseline before its WAL is published. Active
+tenants are checked every minute for a daily snapshot; an already verified daily
+snapshot within 24 hours suppresses another copy. `SnapshotHook` integrates with
+the API-0021 migration orchestrator and verifies pre/post snapshots around the
+actual schema migration. An unavailable backup prevents migration from proceeding.
+
+A consistent `VACUUM INTO` copy is taken while the tenant writer is gated. The
+gate is released before normal daily/baseline compression and network upload.
+Migration hooks use their already gated writer and reject a changed ownership
+generation without reopening it. Snapshot metadata records the schema version,
+durable event sequence, capture position, UTC snapshot instant, source SHA-256,
+encrypted SHA-256 and encrypted size.
+
+Compression and encryption stream through 64-KiB authenticated chunks. Chunk
+position and an authenticated final marker detect rearrangement and truncation.
+Completed encrypted artifacts are read-only mapped for conditional upload;
+verification hashes the downloaded stream. Source and encrypted temporary files
+remain available until remote object, generation manifest and control-plane
+verification succeed. Retries retain the same object key and ciphertext.
+
+Snapshot and WAL manifests share a monotonically allocated revision namespace.
+Each revision lists verified snapshots and segments, plus the artifact being
+verified. Conditional pointer updates prevent a delayed request from replacing a
+newer revision. Recovery must also use the control-plane verification records;
+an uploaded object alone is not a completed backup.
