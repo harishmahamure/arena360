@@ -16,8 +16,30 @@ pub struct PendingTenantMigration {
     pub schema_version: i64,
 }
 
+/// Holds process-independent admission (for example a PostgreSQL advisory lock).
+pub struct MigrationAdmission {
+    pub(crate) _guard: Option<Box<dyn Send>>,
+}
 #[async_trait]
 pub trait MigrationState: Send + Sync {
+    async fn admit(
+        &self,
+        _cell: Uuid,
+        _migration: PendingTenantMigration,
+        _target: i64,
+    ) -> Result<MigrationAdmission, AppError> {
+        Ok(MigrationAdmission { _guard: None })
+    }
+    async fn record_failure(
+        &self,
+        _cell: Uuid,
+        _migration: PendingTenantMigration,
+        _target: i64,
+        _error: &str,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+
     async fn pending(
         &self,
         cell_id: Uuid,
@@ -215,6 +237,38 @@ impl MigrationOrchestrator {
 }
 
 async fn migrate_one(
+    cell_id: Uuid,
+    target_version: i64,
+    migration: PendingTenantMigration,
+    databases: Arc<TenantDbManager>,
+    state: Arc<dyn MigrationState>,
+    hooks: Vec<Arc<dyn MigrationHook>>,
+) -> Result<MigrationOutcome, AppError> {
+    let _permit = match databases.background_jobs() {
+        Some(j) => Some(
+            j.acquire(crate::background::Priority::SchemaBackfill)
+                .await?,
+        ),
+        None => None,
+    };
+    let _admission = state.admit(cell_id, migration, target_version).await?;
+    let result = migrate_admitted(
+        cell_id,
+        target_version,
+        migration,
+        databases,
+        state.clone(),
+        hooks,
+    )
+    .await;
+    if let Err(error) = &result {
+        state
+            .record_failure(cell_id, migration, target_version, &error.to_string())
+            .await?;
+    }
+    result
+}
+async fn migrate_admitted(
     cell_id: Uuid,
     target_version: i64,
     migration: PendingTenantMigration,

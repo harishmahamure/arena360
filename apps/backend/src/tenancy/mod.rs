@@ -5,6 +5,7 @@ pub mod analytics_snapshot;
 mod db;
 mod location_projection;
 mod migration;
+pub mod rollout;
 mod outbox;
 mod provisioning;
 mod retry;
@@ -21,7 +22,7 @@ pub use location_projection::{
     sync_venue_locations, LocationProjectionResult, ProjectedVenueLocation,
 };
 pub use migration::{
-    MigrationContext, MigrationHook, MigrationOrchestrator, MigrationOrchestratorConfig,
+    MigrationAdmission, MigrationContext, MigrationHook, MigrationOrchestrator, MigrationOrchestratorConfig,
     MigrationOutcome, MigrationState, PendingTenantMigration, PostgresMigrationState,
 };
 pub use outbox::{

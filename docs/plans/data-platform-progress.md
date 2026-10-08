@@ -60,15 +60,22 @@
 
 ## Current task
 
-- [ ] `API-0062` — Staged schema migration rollout with automatic halt on failure (M9).
+- [ ] `TEST-0050` — Capacity benchmark workflow and hardware measurements (M9); production profile, staging connection and workload/latency targets are pending.
 - M8 staging launch gate remains pending: full-cell operational/analytics recovery within published RTO and actual alert firing during a Wasabi outage. No staging cell IDs, control-plane URL or backup credentials are configured locally.
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0062 completed
+
+- Durable canary/1%/10%/25%/100% cohorts have per-stage observation intervals, exact current ownership admission, advisory execution locks, automatic global failure halt and explicit resume.
+- Replication-enabled cells run one P6 migration at a time through the existing verified pre/post snapshot hooks. No rollout enrollment means no automatic fleet migration on startup.
+- All 18 selected rollout/runner/replication checks pass, including a real SQLite canary failure/resume and soak timing. Native analytics library/binary check passes. CLI and runbook: `docs/operations/schema-rollouts.md`.
 
 ### API-0061 completed
 
 - Measured multi-resource placement uses benchmark profiles and fresh complete tenant/cell overhead inputs. Incoming copies reserve target resources; retained source storage is never treated as immediately freed.
 - The preview/apply/drain/decommission command locks budgets and ownership, recomputes placement before atomic enqueue, and rejects occupied-cell decommissioning. Three tests pass, including concurrent apply without overbooking, rollback and retention accounting; the move regression also passes. Production hardware measurements remain TEST-0050.
 - Runbook: `docs/operations/cell-rebalancing.md`.
+- Implementation commit: `009f33f`.
 
 ### API-0060 completed
 

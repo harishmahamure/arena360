@@ -209,6 +209,12 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");
         tracing::info!(recovered, "Recovered assigned tenant databases");
     }
+    if let Some(recovery)=&recoverer {
+        let state=Arc::new(crate::tenancy::rollout::State{pool:recovery.ledger.pool.clone()});
+        let hooks=vec![Arc::new(crate::replication::snapshot::SnapshotHook{databases:recovery.databases.clone(),ledger:recovery.ledger.clone(),store:recovery.store.clone(),keys:Arc::new(recovery.keys.clone())}) as Arc<dyn crate::tenancy::MigrationHook>];
+        let migrations=Arc::new(crate::tenancy::MigrationOrchestrator::new(recovery.ledger.cell_id,recovery.databases.clone(),state,hooks,Default::default()).expect("staged migration configuration"));
+        crate::tenancy::rollout::spawn(recovery.ledger.pool.clone(),migrations);
+    }
     if let (Some(control), Some(manager)) = (control_db.clone(), tenant_dbs.clone()) {
         crate::control::timezone::spawn(control.clone(), manager.clone());
         crate::control::staff_projection::spawn(control, manager);
