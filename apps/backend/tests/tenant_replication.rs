@@ -462,6 +462,96 @@ async fn legacy_wal_manifest_advances_without_reusing_an_immutable_revision() {
 }
 
 #[tokio::test]
+async fn two_minute_upload_combines_captures_and_resumes_partial_verified_cleanup() {
+    use gaming_cafe_api::replication::batch;
+    let (root, db, _) = database().await;
+    for value in ["one", "two", "three"] {
+        insert(&db, value).await;
+        db.spool_wal().await.unwrap();
+    }
+    let ledger = Arc::new(TestLedger::default());
+    let worker = worker(&root, &db, ledger.clone());
+    assert_eq!(worker.ship(db.clone(), false).await.unwrap(), 0);
+    let pending = worker::pending(&db).unwrap();
+    let metadata = pending[0].0.with_extension("json");
+    let mut old = pending[0].1.clone();
+    old.captured_at = gaming_cafe_api::time::format_sqlite_timestamp(
+        &(chrono::Utc::now() - chrono::Duration::seconds(121)),
+    )
+    .unwrap();
+    std::fs::write(metadata, serde_json::to_vec(&old).unwrap()).unwrap();
+    let prepared = batch::prepare(&db, &worker::pending(&db).unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(prepared.files.len(), 3);
+    assert_eq!(worker.ship(db.clone(), false).await.unwrap(), 3);
+    assert!(worker::pending(&db).unwrap().is_empty());
+    let entry = ledger.entries.lock().unwrap()[0].clone();
+    assert_eq!(ledger.entries.lock().unwrap().len(), 1);
+    assert_eq!(entry.capture.range_end(), 3);
+    let encoded = worker
+        .store
+        .get(&ObjectPath::from(entry.object_key.clone()))
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let source = crypto::decode(
+        &worker.keys.read(db.tenant_id()).unwrap(),
+        &entry.object_key,
+        &encoded,
+        16 * 1024 * 1024,
+    )
+    .unwrap();
+    let records = batch::decode(&source).unwrap();
+    assert_eq!(records.len(), 3);
+    assert_eq!(
+        records
+            .iter()
+            .map(|(c, _)| c.capture_number)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3]
+    );
+    // A crash after source deletion but before descriptor cleanup must not
+    // trigger another upload or wait for new writes to resume cleanup.
+    wal::durable_create(
+        &batch::descriptor(&db),
+        &serde_json::to_vec(&prepared).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(worker.ship(db.clone(), false).await.unwrap(), 3);
+    assert!(!batch::descriptor(&db).exists());
+    assert_eq!(ledger.entries.lock().unwrap().len(), 1);
+    db.close().await.unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn acknowledged_reader_pinned_wal_does_not_upload_again_without_new_writes() {
+    let (root, db, _) = database().await;
+    insert(&db, "one").await;
+    let mut reader = db.read_pool().unwrap().acquire().await.unwrap();
+    sqlx::query("BEGIN").execute(&mut *reader).await.unwrap();
+    let _: i64 = sqlx::query_scalar("SELECT count(*) FROM durable")
+        .fetch_one(&mut *reader)
+        .await
+        .unwrap();
+    db.spool_wal().await.unwrap();
+    let ledger = Arc::new(TestLedger::default());
+    let worker = worker(&root, &db, ledger.clone());
+    assert_eq!(worker.ship(db.clone(), true).await.unwrap(), 1);
+    assert!(db.spool_wal().await.unwrap().is_none());
+    assert!(worker::pending(&db).unwrap().is_empty());
+    assert_eq!(worker.ship(db.clone(), true).await.unwrap(), 0);
+    assert_eq!(ledger.entries.lock().unwrap().len(), 1);
+    sqlx::query("ROLLBACK").execute(&mut *reader).await.unwrap();
+    drop(reader);
+    db.close().await.unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
 async fn restart_reopens_pending_spool_and_capture_order_survives_clock_changes() {
     let (root, db, lease) = database().await;
     insert(&db, "first").await;
@@ -545,7 +635,10 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
         .exists());
     insert(&db, "one").await;
     db.spool_wal().await.unwrap();
-    let capture = worker::pending(&db).unwrap()[0].1.clone();
+    let capture = gaming_cafe_api::replication::batch::prepare(&db, &worker::pending(&db).unwrap())
+        .unwrap()
+        .unwrap()
+        .capture;
     let first = ledger.reserve(&db, &capture).await.unwrap();
     let retry = ledger.reserve(&db, &capture).await.unwrap();
     assert_eq!(first.number, retry.number);
@@ -553,7 +646,10 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
     assert_eq!(worker.ship(db.clone(), true).await.unwrap(), 1);
     insert(&db, "two").await;
     db.spool_wal().await.unwrap();
-    let capture = worker::pending(&db).unwrap()[0].1.clone();
+    let capture = gaming_cafe_api::replication::batch::prepare(&db, &worker::pending(&db).unwrap())
+        .unwrap()
+        .unwrap()
+        .capture;
     let second = ledger.reserve(&db, &capture).await.unwrap();
     assert_eq!(second.number, 2);
     assert_eq!(second.generation, first.generation);

@@ -73,6 +73,15 @@ pub struct Capture {
     pub page_size: u32,
     pub frames: u32,
     pub checksum: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_capture_number: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_captured_at: Option<String>,
+}
+impl Capture {
+    pub fn range_end(&self) -> u64 {
+        self.last_capture_number.unwrap_or(self.capture_number)
+    }
 }
 
 /// A capture contains the complete committed prefix of one WAL incarnation.
@@ -131,6 +140,29 @@ pub fn capture(database: &Path, ownership_generation: i64) -> Result<Option<Path
         .join("replication/spool");
     let path = directory.join(format!("{ownership_generation}-{digest}.wal"));
     let metadata_path = path.with_extension("json");
+    let cursor_path = directory.parent().unwrap().join("last-capture.json");
+    let cursor = match fs::read(&cursor_path) {
+        Ok(bytes) => {
+            Some(serde_json::from_slice::<Capture>(&bytes).map_err(|e| fail(e.to_string()))?)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(io(e)),
+    };
+    let acknowledged =
+        match fs::read_to_string(directory.parent().unwrap().join("acknowledged-capture")) {
+            Ok(n) => n
+                .parse::<u64>()
+                .map_err(|_| fail("Invalid capture acknowledgement"))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(e) => return Err(io(e)),
+        };
+    if cursor.as_ref().is_some_and(|c| {
+        c.ownership_generation == ownership_generation
+            && c.checksum == digest
+            && acknowledged >= c.capture_number
+    }) {
+        return Ok(None);
+    }
     // Metadata must survive before WAL is eligible for checkpoint. On a retry,
     // preserve its original capture time rather than claiming a fresh RPO.
     if !metadata_path.exists() {
@@ -163,6 +195,8 @@ pub fn capture(database: &Path, ownership_generation: i64) -> Result<Option<Path
             page_size,
             frames,
             checksum: digest,
+            last_capture_number: None,
+            last_captured_at: None,
         };
         durable_create(
             &metadata_path,
@@ -170,6 +204,23 @@ pub fn capture(database: &Path, ownership_generation: i64) -> Result<Option<Path
         )?;
     }
     durable_create(&path, &bytes)?;
+    let metadata = fs::read(&metadata_path).map_err(io)?;
+    let capture: Capture = serde_json::from_slice(&metadata).map_err(|e| fail(e.to_string()))?;
+    if capture.version != 1
+        || capture.checksum != checksum(&bytes)
+        || capture.ownership_generation != ownership_generation
+    {
+        return Err(fail("WAL capture metadata mismatch"));
+    }
+    if cursor.as_ref() != Some(&capture) {
+        let temporary = cursor_path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+        durable_create(&temporary, &metadata)?;
+        fs::rename(temporary, &cursor_path).map_err(io)?;
+        File::open(cursor_path.parent().unwrap())
+            .map_err(io)?
+            .sync_all()
+            .map_err(io)?;
+    }
     Ok(Some(path))
 }
 

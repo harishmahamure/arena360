@@ -415,6 +415,7 @@ impl TenantDbManager {
             let name=entry.file_name();
             let Some(tenant)=name.to_str().and_then(|s|s.strip_prefix("tenant-")).and_then(|s|Uuid::parse_str(s).ok()) else {continue;};
             let Ok(generation)=self.lease.writable_generation(tenant) else {continue;};
+            if entry.path().join(format!("replication/batch-{generation}.json")).exists() {self.open(tenant).await?;continue;}
             let spool=entry.path().join("replication/spool");
             if !spool.exists() {continue;}
             let mut pending=false;
@@ -537,7 +538,7 @@ pub(crate) async fn spool_wal(connection: &mut SqliteConnection, path: &Path, ge
     // cannot release the writer while a detached task is still copying frames.
     let captured = crate::replication::wal::capture(path, generation)?;
     transaction.rollback().await?;
-    if captured.is_some() {
+    {
         // TRUNCATE may report busy when readers pin older frames. That is safe:
         // the complete prefix is already durable, and next capture may repeat it.
         sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").fetch_one(connection).await?;

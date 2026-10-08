@@ -87,6 +87,7 @@
 - zstd plus AES-256-GCM authenticates the tenant object key. Separate durable per-tenant key mount; persisted ciphertext makes retries exact. Immutable uploads, read-back verification, conditional generation manifest updates and PostgreSQL lease fencing precede spool deletion.
 - Exposes spool bytes, oldest unshipped capture age and failures; alert rules and configuration/runbook are checked in. The object-store outage retains local evidence.
 - Verified 2026-10-08: eight replication tests (including the isolated PostgreSQL guard) and seven tenant database regressions pass. Captured WAL restores a real SQLite database with `integrity_check=ok`; no live Wasabi or staging drill is claimed.
+- Follow-up verified 2026-10-08: two-minute uploads combine contiguous captures in one persisted, authenticated batch; interrupted verified cleanup resumes, and reader-pinned acknowledged prefixes do not upload again. Immutable manifest revisions store compact deltas. All 12 replication checks pass, including real PostgreSQL.
 - Snapshots and the remaining M8 launch gates follow in plan order.
 
 ### M7 completed

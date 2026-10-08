@@ -88,20 +88,25 @@ impl Worker {
             .transpose()
             .map_err(|e| fail(e.to_string()))?
             .unwrap_or(0);
-        if !force && bytes < 8 * 1024 * 1024 && age < 120_000 {
+        if !force
+            && !super::batch::descriptor(&db).exists()
+            && bytes < 8 * 1024 * 1024
+            && age < 120_000
+        {
             return Ok(0);
         }
-        // Each admitted upload handles at most one 256-MiB capture. Capture and
-        // operations continue while this bounded network batch is in flight.
-        let Some((path, capture)) = captures.first() else {
-            return Ok(0);
-        };
         let _job = match db.background_jobs() {
             Some(j) => Some(j.acquire(crate::background::Priority::Backup).await?),
             None => None,
         };
         db.ensure_current_owner()?;
-        let segment = self.ledger.reserve(&db, capture).await?;
+        let Some(batch) = super::batch::prepare(&db, &captures)? else {
+            return Ok(0);
+        };
+        let segment = self.ledger.reserve(&db, &batch.capture).await?;
+        let artifact = batch
+            .raw
+            .with_extension(format!("{}.encoded", segment.generation));
         if !segment.verified {
             self.ledger
                 .baseline(
@@ -111,30 +116,26 @@ impl Worker {
                     &self.keys,
                 )
                 .await?;
-            let source = std::fs::read(path).map_err(io)?;
-            if wal::checksum(&source) != capture.checksum {
-                return Err(fail("Spool checksum mismatch"));
-            }
-            wal::validate(&source, capture.frames)?;
-            let artifact = path.with_extension(format!("{}.encoded", segment.generation));
+            let source = super::batch::read(&batch)?;
             if !artifact.exists() {
-                let encrypted = super::crypto::encode(
-                    &self.keys.read(db.tenant_id())?,
-                    &segment.object_key,
-                    &source,
+                wal::durable_create(
+                    &artifact,
+                    &super::crypto::encode(
+                        &self.keys.read(db.tenant_id())?,
+                        &segment.object_key,
+                        &source,
+                    )?,
                 )?;
-                wal::durable_create(&artifact, &encrypted)?;
             }
             let encoded = std::fs::read(&artifact).map_err(io)?;
-            // A persisted artifact is authenticated on retries before sending.
             if super::crypto::decode(
                 &self.keys.read(db.tenant_id())?,
                 &segment.object_key,
                 &encoded,
-                256 * 1024 * 1024,
+                512 * 1024 * 1024,
             )? != source
             {
-                return Err(fail("Encoded spool mismatch"));
+                return Err(fail("Encoded batch mismatch"));
             }
             let digest = wal::checksum(&encoded);
             self.put_verified(&segment.object_key, &encoded).await?;
@@ -148,21 +149,10 @@ impl Worker {
             self.ledger
                 .verified(&db, &segment, &digest, encoded.len() as i64)
                 .await?;
-            db.ensure_current_owner()?;
         }
         db.ensure_current_owner()?;
-        // Only an already verified manifest entry permits deletion. A crash
-        // anywhere earlier leaves source and encoded bytes available to retry.
-        let artifact = path.with_extension(format!("{}.encoded", segment.generation));
-        if artifact.exists() {
-            std::fs::remove_file(artifact).map_err(io)?;
-        }
-        std::fs::remove_file(path).map_err(io)?;
-        std::fs::remove_file(path.with_extension("json")).map_err(io)?;
-        std::fs::File::open(spool_directory(&db))
-            .and_then(|f| f.sync_all())
-            .map_err(io)?;
-        Ok(1)
+        super::batch::remove(&db, &batch, &artifact)?;
+        Ok(batch.files.len())
     }
     pub async fn put_verified(&self, key: &str, bytes: &[u8]) -> Result<(), AppError> {
         put_verified(self.store.as_ref(), key, bytes).await
@@ -223,7 +213,7 @@ pub async fn publish_document(
     put_verified(
         store,
         &format!("{prefix}/manifests/{:010}.json", revision),
-        bytes,
+        &serde_json::to_vec(&serde_json::json!({"version":1,"revision":revision,"tenant_id":db.tenant_id(),"generation_id":generation,"ownership_generation":db.ownership_generation(),"document_sha256":wal::checksum(bytes),"delta":document["delta"]})).map_err(|e|fail(e.to_string()))?,
     )
     .await?;
     let path = ObjectPath::from(format!("{prefix}/manifest.json"));

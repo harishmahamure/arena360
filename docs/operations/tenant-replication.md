@@ -32,7 +32,10 @@ provider exposes a durable deletion operation. Lifecycle wiring is still part
 of subsequent platform work.
 
 Uploads start when the oldest capture reaches 120 seconds or the pending source
-bytes reach 8 MiB. Each upload batch handles one capture, bounded at 256 MiB.
+bytes reach 8 MiB. Each upload batch combines a contiguous prefix of captures,
+targeting 8 MiB (at most 4,096 captures); an individual large capture remains
+bounded at 256 MiB. Batch descriptors and raw bytes are durable before upload,
+and retries preserve the batch boundary even while more writes arrive.
 Segments use tenant and generation prefixes with monotonically numbered,
 immutable keys. Their zstd bytes are encrypted with AES-256-GCM, authenticating
 the complete object key. Encoded retry bytes are persisted locally, so retries
@@ -118,3 +121,14 @@ Each revision lists verified snapshots and segments, plus the artifact being
 verified. Conditional pointer updates prevent a delayed request from replacing a
 newer revision. Recovery must also use the control-plane verification records;
 an uploaded object alone is not a completed backup.
+
+Immutable revision objects contain the changed entry and the full manifest's
+checksum, rather than duplicating its complete history on every upload. The
+well-known manifest contains the current verified index. WAL batch metadata
+records its first and last capture positions; each enclosed capture keeps its
+own timestamp, WAL header and frame checksum chain for ordered/PIT replay.
+
+Local acknowledgement is persisted before capture cleanup. An acknowledged WAL
+prefix pinned by an old reader does not create a new upload when there are no
+writes. A pending batch descriptor also resumes cleanup if the process stops
+after source files were removed.

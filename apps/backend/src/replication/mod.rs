@@ -1,4 +1,5 @@
 //! Tenant backup transport and durable WAL capture (ADR-0043 decision 26).
+pub mod batch;
 pub mod crypto;
 pub mod ledger;
 pub mod snapshot;

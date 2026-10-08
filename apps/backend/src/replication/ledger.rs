@@ -239,8 +239,11 @@ impl Ledger for PostgresLedger {
         } else {
             let previous:Option<sqlx::types::Json<Capture>>=sqlx::query_scalar("SELECT capture FROM replication_segments WHERE generation_id=$1 ORDER BY segment_number DESC LIMIT 1").bind(generation).fetch_optional(&mut *tx).await?;
             if previous.as_ref().is_some_and(|p| {
-                p.capture_number.checked_add(1) != Some(capture.capture_number)
-                    || (p.salt == capture.salt && capture.frames < p.frames)
+                p.range_end().checked_add(1) != Some(capture.capture_number)
+                    || (p.version == 1
+                        && capture.version == 1
+                        && p.salt == capture.salt
+                        && capture.frames < p.frames)
             }) {
                 // A missing/reordered capture or backwards frame boundary is
                 // conservative evidence of a gap. Never append it to the old
@@ -297,7 +300,7 @@ impl Ledger for PostgresLedger {
                 .bind(segment.generation)
                 .fetch_one(&mut *tx)
                 .await?;
-        let bytes=serde_json::to_vec(&serde_json::json!({"version":1,"tenant_id":db.tenant_id(),"generation_id":segment.generation,"ownership_generation":db.ownership_generation(),"start_reason":reason,"revision":revision,"segments":list,"snapshots":snapshots})).map_err(|e|AppError::Internal(e.to_string()))?;
+        let bytes=serde_json::to_vec(&serde_json::json!({"version":1,"tenant_id":db.tenant_id(),"generation_id":segment.generation,"ownership_generation":db.ownership_generation(),"start_reason":reason,"revision":revision,"delta":{"segment":list.last()},"segments":list,"snapshots":snapshots})).map_err(|e|AppError::Internal(e.to_string()))?;
         db.ensure_current_owner()?;
         tx.commit().await?;
         Ok(bytes)
