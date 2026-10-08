@@ -1,7 +1,7 @@
 # Data Platform Progress
 
 **Updated:** 2026-10-08
-**Branch:** `codex/m6-analytics-ingestion`
+**Branch:** `codex/m7-duckdb-reports`
 **Source plan:** `docs/plans/data-platform-build-plan.md`  
 **Architecture source:** `docs/architecture/data-platform.md`
 
@@ -22,7 +22,7 @@
 
 ## Completed through M6
 
-- M0–M5 are complete; operational API cutover and local merge are verified.
+- M0–M6 are complete; operational cutover, analytics ingestion and local milestone merges are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -143,7 +143,8 @@
 
 - Per-cell priority/FIFO admission reserves outbox capacity and bounds background/backfill concurrency. Foreground writers bypass queues; pull buffers and DuckDB opens reserve capacity before allocation. Cancelled and fenced jobs cannot leak reservations or commit stale data. Queue/active/admission/release/wait metrics are exported by priority.
 - Full regression: 417 backend/control/live checks pass. Final targeted safeguards (21 checks) and all six live gates pass: 418 distinct checks across the runs. The actual NATS stop/restart preserves SQLite writes and drains the outbox without duplicate messages. Native demo counts/money/session-hour parity and scheduled concurrent rebuild/replay pass.
-- Next: local M6 merge, then M7 `API-0043` report migration and M0 fixture parity.
+- Implementation: `a8469b9`; M6 merged locally to `main`. No remote push or deployment.
+- Next: M7 `API-0043` report migration and M0 fixture parity.
 
 ## M5 queue
 
