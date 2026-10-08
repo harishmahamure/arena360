@@ -83,6 +83,8 @@ async fn enqueue_locked(
         ));
     }
     let row=sqlx::query("SELECT t.owner_cell,t.ownership_generation,t.state,t.timezone,t.schema_version,clock_timestamp() AS now FROM tenants t WHERE id=$1 FOR UPDATE").bind(tenant).fetch_optional(&mut **tx).await?.ok_or_else(||AppError::NotFound("Tenant not found".into()))?;
+    let backfill_active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM historical_backfills WHERE tenant_id=$1 AND state<>'COMPLETE')").bind(tenant).fetch_one(&mut **tx).await?;
+    if backfill_active {return Err(AppError::Conflict("Finish the tenant backfill before archiving again".into()));}
     let owner: Option<Uuid> = row.get(0);
     let generation: i64 = row.get(1);
     let timezone: String = row.get(3);

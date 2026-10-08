@@ -108,7 +108,7 @@ async fn historical_states_guard_verified_evidence_and_tenant_boundaries() {
         backfill,
     )
     .await;
-    sqlx::query("UPDATE historical_backfills SET state='BACKFILLING',validation_checksum=repeat('c',64),rows_processed=1,checkpoint='{\"facts\":\"first\"}' WHERE id=$1").bind(backfill).execute(&pool).await.unwrap();
+    sqlx::query("UPDATE historical_backfills SET state='BACKFILLING',validation_checksum=repeat('c',64),expected_rows=2,rows_processed=1,checkpoint='{\"facts\":\"first\"}' WHERE id=$1").bind(backfill).execute(&pool).await.unwrap();
     rejected(
         &pool,
         "UPDATE historical_backfills SET rows_processed=0 WHERE id=$1",
@@ -121,6 +121,8 @@ async fn historical_states_guard_verified_evidence_and_tenant_boundaries() {
         backfill,
     )
     .await;
+    rejected(&pool,"UPDATE historical_backfills SET expected_rows=3 WHERE id=$1",backfill).await;
+    rejected(&pool,"UPDATE historical_backfills SET source_objects='[{}]' WHERE id=$1",backfill).await;
     sqlx::query("UPDATE historical_backfills SET state='VERIFYING',rows_processed=2 WHERE id=$1")
         .bind(backfill)
         .execute(&pool)

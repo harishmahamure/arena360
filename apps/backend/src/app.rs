@@ -222,6 +222,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     #[cfg(feature="duckdb-analytics")]
     if let Some(recovery)=&recoverer {
         Arc::new(crate::historical::archive::Worker{ledger:recovery.ledger.clone(),store:recovery.store.clone(),keys:recovery.keys.clone(),metrics:metrics.clone()}).spawn(recovery.databases.clone());
+        Arc::new(crate::historical::backfill::Worker{ledger:recovery.ledger.clone(),store:recovery.store.clone(),keys:recovery.keys.clone(),metrics:metrics.clone()}).spawn(recovery.databases.clone());
     }
     if let Some(recovery)=&recoverer {
         let state=Arc::new(crate::tenancy::rollout::State{pool:recovery.ledger.pool.clone()});

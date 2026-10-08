@@ -19,3 +19,6 @@ pub mod exports;
 
 #[cfg(feature="duckdb-analytics")]
 pub mod export_worker;
+
+#[cfg(feature="duckdb-analytics")]
+pub mod backfill;

@@ -1,6 +1,6 @@
 # Historical job manifests
 
-Migration `0018_historical_jobs.sql` stores archive, backfill, and export jobs in the PostgreSQL control plane. These tables record durable progress; creating a row alone does not run a worker. Subsequent M11 workers own execution, object verification, ownership checks, and admission limits.
+Migration `0018_historical_jobs.sql` stores archive, backfill, and export jobs in the PostgreSQL control plane. These tables record durable progress; creating a row alone does not run a worker. The archive, backfill and isolated export workers own execution, object verification, ownership checks, and admission limits. See `archive-worker.md`, `archive-backfill.md` and `historical-exports.md` for operation.
 
 ## Archive
 
@@ -14,7 +14,7 @@ Verification is performed by the archive worker against SQLite and the uploaded 
 
 `historical_backfills` references an archive using a composite tenant/archive foreign key. New jobs require a VERIFIED, PURGING, or COMPLETE source, preventing cross-tenant source references and unverified imports.
 
-Phases are `PLANNED → DOWNLOADING → TRANSFORMING → VALIDATING → BACKFILLING → VERIFYING → COMPLETE`. Store per-table checkpoints, processed/failed counts, staging objects, the target schema, validation checksum, and timestamps. Validation evidence freezes before operational batches begin. Counters cannot regress. Completion requires no failed rows.
+Phases are `PLANNED → DOWNLOADING → TRANSFORMING → VALIDATING → BACKFILLING → VERIFYING → COMPLETE`. Store per-table checkpoints, processed/failed counts, staging objects, the target schema, validation checksum, and timestamps. Validation evidence freezes before operational batches begin. Counters cannot regress. Completion requires no failed rows and a processed count equal to the frozen validated count. Source revision inputs and validated staging evidence are immutable; staging objects belong to the tenant/job prefix. Local SQLite checkpoints commit with imported rows before control-plane progress is mirrored.
 
 ## Export
 

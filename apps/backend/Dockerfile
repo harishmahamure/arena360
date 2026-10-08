@@ -29,7 +29,7 @@ COPY --from=builder /opt/duckdb-sdk/libduckdb.so /usr/local/lib/
 COPY --from=builder /opt/duckdb-extensions /opt/duckdb-extensions
 ENV LD_LIBRARY_PATH=/usr/local/lib DUCKDB_EXTENSION_DIR=/opt/duckdb-extensions
 
-COPY --from=builder /app/target/release/gaming-cafe-api /app/target/release/demo_seed /app/target/release/tenant_events_setup /app/target/release/analytics_extensions_setup /app/target/release/archive_month /app/target/release/export_worker /usr/local/bin/
+COPY --from=builder /app/target/release/gaming-cafe-api /app/target/release/demo_seed /app/target/release/tenant_events_setup /app/target/release/analytics_extensions_setup /app/target/release/archive_month /app/target/release/archive_backfill /app/target/release/export_worker /usr/local/bin/
 
 EXPOSE 3000
 
