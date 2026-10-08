@@ -390,6 +390,25 @@ impl TenantDbManager {
         std::fs::File::open(directory).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
         Ok(())
     }
+    pub(crate) async fn cleanup_cold_copy(&self,tenant:Uuid,job:Uuid,generation:i64,remove_main:bool)->Result<(),AppError>{
+        let _open=self.open_gate.lock().await;
+        let directory=tenant_path(&self.config.root,tenant).parent().unwrap().to_path_buf();
+        let retired=self.config.root.join(format!("cold-retired-{tenant}-{job}"));
+        if remove_main && directory.exists() && !retired.exists(){
+            let metadata=std::fs::symlink_metadata(&directory).map_err(|e|AppError::Internal(e.to_string()))?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink(){return Err(AppError::Conflict("Cold cleanup refuses a symlink or non-directory".into()));}
+            let expected=serde_json::to_vec(&serde_json::json!({"cold_job_id":job,"ownership_generation":generation})).map_err(|e|AppError::Internal(e.to_string()))?;
+            if std::fs::read(directory.join("replication/cold-pending.json")).map_err(|e|AppError::Internal(e.to_string()))?!=expected{return Err(AppError::Conflict("Cold cleanup identity changed".into()));}
+            let old=self.handles.write().await.remove(&tenant);if let Some(old)=old{old.close().await?;}
+            std::fs::rename(&directory,&retired).map_err(|e|AppError::Internal(e.to_string()))?;
+        }
+        if retired.exists(){
+            let metadata=std::fs::symlink_metadata(&retired).map_err(|e|AppError::Internal(e.to_string()))?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink(){return Err(AppError::Conflict("Cold cleanup refuses a symlink or non-directory".into()));}
+            std::fs::remove_dir_all(&retired).map_err(|e|AppError::Internal(e.to_string()))?;
+        }
+        std::fs::File::open(&self.config.root).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;Ok(())
+    }
     /// Caller holds the tenant control row through the filesystem operation.
     pub(crate) async fn cleanup_move_copy(&self,tenant:Uuid,job:Uuid,main:bool,cancelled:bool)->Result<(),AppError> {
         let _open=self.open_gate.lock().await;

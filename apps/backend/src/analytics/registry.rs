@@ -53,6 +53,15 @@ impl AnalyticsRegistry {
         Ok(handle)
     }
 
+    pub async fn retire(&self,tenant:Uuid,generation:i64)->Result<(),AppError>{
+        let entry=self.entry(tenant)?;
+        let mut cached=entry.lock().await;
+        if let Some(handle)=cached.upgrade(){
+            if handle.owner().ownership_generation()==generation {handle.close().await?;*cached=Weak::new();}
+        }
+        Ok(())
+    }
+
     /// A failed worker must not invalidate a replacement worker's connection.
     pub async fn invalidate(&self, handle: &Arc<TenantAnalytics>) -> Result<(), AppError> {
         let entry = self.entry(handle.tenant_id())?;

@@ -335,7 +335,9 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
 
 **Goal:** inactive tenants cost nothing on cells and come back on their next request.
 
-- [ ] API-0070: `COLD` state. Snapshot, release the lease, and remove the local files after verification. On the first request, assign a cell, acquire the lease, download, verify, hydrate, and set `ACTIVE` (§11). — M
+- [x] API-0070: `COLD` state. Snapshot, release the lease, and remove the local files after verification. On the first request, assign a cell, acquire the lease, download, verify, hydrate, and set `ACTIVE` (§11). — M
+
+  - Verified: durable snapshot/WAL handoff, source fencing and resumable cleanup, ready-cell assignment and first-request hydration through existing recovery. Missing keys preserve the live source; simultaneous requests cannot reset ACTIVE; completion reconciles after a bookkeeping crash. All 22 selected checks and the native analytics build pass. Local operations hydration: **1,213 ms** (real SQLite, memory object store; not a staging SLA). Operator command and runbook: `docs/operations/cold-tenants.md`.
 
 **Done when:** a tenant goes cold and back with no data loss, and the first-request hydration time is measured and recorded.
 

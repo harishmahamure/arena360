@@ -19,6 +19,7 @@ fn fail(e: impl std::fmt::Display) -> AppError {
 }
 #[async_trait]
 pub trait RecoveryAnalytics: Send + Sync {
+    async fn retire(&self,_tenant:Uuid,_generation:i64)->Result<(),AppError>{Ok(())}
     async fn rebuild(&self, db: Arc<TenantDb>) -> Result<(), AppError>;
 }
 pub struct Recoverer {
@@ -131,7 +132,9 @@ impl Recoverer {
                     .into(),
             ));
         }
-        let grant = self.leases.acquire_for_recovery(tenant).await?;
+        let operational = previous.as_deref()==Some("COMPLETE") && self.databases.recovery_path(tenant).is_file() && !self.databases.recovery_pending(tenant)
+            && sqlx::query_scalar::<_,String>("SELECT state FROM tenants WHERE id=$1").bind(tenant).fetch_one(&self.ledger.pool).await?=="ACTIVE";
+        let grant = if operational {self.leases.acquire_assigned(tenant).await?} else {self.leases.acquire_for_recovery(tenant).await?};
         let generation = grant.ownership_generation;
         let job=sqlx::query("INSERT INTO tenant_recovery_jobs(id,tenant_id,cell_id,ownership_generation,source_generation) SELECT $1,id,$2,$3,current_replication_generation FROM tenants WHERE id=$4 AND owner_cell=$2 AND ownership_generation=$3 AND current_replication_generation IS NOT NULL ON CONFLICT(tenant_id,ownership_generation) DO UPDATE SET last_error=NULL RETURNING id,phase,capture_number,source_generation").bind(Uuid::new_v4()).bind(self.ledger.cell_id).bind(generation).bind(tenant).fetch_optional(&self.ledger.pool).await?.ok_or_else(||fail("No selected backup generation exists for this tenant"))?;
         let id: Uuid = job.get(0);
@@ -274,6 +277,7 @@ pub struct NativeAnalytics {
 #[cfg(feature = "duckdb-analytics")]
 #[async_trait]
 impl RecoveryAnalytics for NativeAnalytics {
+    async fn retire(&self,tenant:Uuid,generation:i64)->Result<(),AppError>{self.registry.retire(tenant,generation).await}
     async fn rebuild(&self, db: Arc<TenantDb>) -> Result<(), AppError> {
         let client = tokio::time::timeout(
             std::time::Duration::from_secs(3),

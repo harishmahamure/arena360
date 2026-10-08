@@ -61,6 +61,8 @@ pub(crate) async fn enqueue_locked(
             "Move requires an active tenant and a different cell".into(),
         ));
     }
+    let cooling:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_cold_jobs WHERE tenant_id=$1 AND (phase='SNAPSHOTTING' OR (source_cell=$2 AND released_at IS NOT NULL AND source_cleaned_at IS NULL)))").bind(tenant).bind(target).fetch_one(&mut **tx).await?;
+    if cooling {return Err(AppError::Conflict("Tenant cold transition or target cleanup is pending".into()));}
     let fresh:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_leases WHERE tenant_id=$1 AND owner_cell=$2 AND ownership_generation=$3 AND expires_at>clock_timestamp()+INTERVAL '30 seconds')").bind(tenant).bind(source).bind(generation).fetch_one(&mut **tx).await?;
     if !fresh {
         return Err(AppError::Forbidden(

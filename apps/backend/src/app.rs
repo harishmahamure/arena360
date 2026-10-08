@@ -165,6 +165,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     let analytics = Arc::new(crate::analytics::registry::AnalyticsRegistry::default());
     let mut recoverer=None;
     let mut move_agent=None;
+    let mut cold_agent=None;
     if tenant_dbs.is_some() && std::env::var("DISK_PRESSURE_MONITOR").as_deref()!=Ok("false") {
         std::fs::create_dir_all(&settings.tenant_data_dir).expect("tenant disk monitor directory");
         crate::disk::spawn(settings.tenant_data_dir.clone(),background_jobs.clone(),metrics.clone());
@@ -185,6 +186,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
                 }));
                 let worker=Arc::new(worker);
                 move_agent=Some(Arc::new(crate::moving::agent::Agent{recovery:recoverer.as_ref().expect("move recovery context").clone(),worker:worker.clone()}));
+                cold_agent=Some(Arc::new(crate::cold::Agent{recovery:recoverer.as_ref().expect("cold recovery context").clone(),worker:worker.clone()}));
                 crate::replication::worker::spawn_upload(manager,worker);
             },
             Ok(None) => tracing::warn!("Remote replication disabled: configure REPLICATION_BUCKET and REPLICATION_KEY_DIR before production onboarding"),
@@ -208,6 +210,10 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     if let (Some(control), Some(client), Some(manager)) = (control_db.as_ref(), leases.as_ref(), tenant_dbs.as_ref()) {
         let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");
         tracing::info!(recovered, "Recovered assigned tenant databases");
+    }
+    if let Some(agent)=&cold_agent {
+        agent.heartbeat().await.expect("cold hydration readiness");
+        agent.clone().spawn();
     }
     if let Some(recovery)=&recoverer {
         let state=Arc::new(crate::tenancy::rollout::State{pool:recovery.ledger.pool.clone()});
@@ -235,7 +241,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     let routing = if settings.roles.router {
         match (control_db.clone(), settings.control_database_url.clone()) {
             (Some(control_pool), Some(control_url)) => {
-                let cache = Arc::new(crate::routing::RoutingCache::new(control_pool));
+                let cache = Arc::new(crate::routing::RoutingCache::new(control_pool.clone()));
                 cache
                     .refresh_all()
                     .await
@@ -246,7 +252,8 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
                 cache.clone().spawn_invalidation_listener(control_url);
                 Some(Arc::new(
                     crate::routing::TenantRouter::new(cache, settings.cell_id)
-                        .expect("routing proxy initialization failed"),
+                        .expect("routing proxy initialization failed")
+                        .with_cold(crate::cold::Coordinator{pool:control_pool,wait_limit:std::time::Duration::from_secs(60)}),
                 ))
             }
             _ => None,

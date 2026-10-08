@@ -26,6 +26,7 @@ pub struct TenantRouter {
     cache: Arc<RoutingCache>,
     local_cell: Option<Uuid>,
     http: reqwest::Client,
+    cold: Option<crate::cold::Coordinator>,
 }
 
 impl TenantRouter {
@@ -38,14 +39,23 @@ impl TenantRouter {
             cache,
             local_cell,
             http,
+            cold: None,
         })
     }
 
+    pub fn with_cold(mut self, coordinator: crate::cold::Coordinator) -> Self {
+        self.cold = Some(coordinator);
+        self
+    }
     pub async fn remote_address(&self, tenant_id: Uuid) -> Result<Option<String>, AppError> {
-        let target =
-            self.cache.resolve(tenant_id).await?.ok_or_else(|| {
-                AppError::Forbidden("Tenant has no active storage-cell owner".into())
-            })?;
+        let mut target = self.cache.resolve(tenant_id).await?;
+        if target.is_none() {
+            if let Some(cold) = &self.cold {
+                cold.wake(tenant_id).await?;
+                target = self.cache.refresh_tenant(tenant_id).await?;
+            }
+        }
+        let target = target.ok_or_else(|| AppError::Forbidden("Tenant has no active storage-cell owner".into()))?;
         Ok((Some(target.owner_cell) != self.local_cell).then_some(target.address))
     }
     /// Finish authentication using the selected tenant's current grants on its owner.

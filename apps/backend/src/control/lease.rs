@@ -87,7 +87,7 @@ impl LeaseRepository {
         cell_id: Uuid,
         config: LeaseConfig,
     ) -> Result<LeaseGrant, AppError> {
-        self.acquire_with_activation(tenant_id, cell_id, config, true, false, false)
+        self.acquire_with_activation(tenant_id, cell_id, config, true, false, false, false)
             .await
     }
 
@@ -97,7 +97,7 @@ impl LeaseRepository {
         cell_id: Uuid,
         config: LeaseConfig,
     ) -> Result<LeaseGrant, AppError> {
-        self.acquire_with_activation(tenant_id, cell_id, config, false, false, false)
+        self.acquire_with_activation(tenant_id, cell_id, config, false, false, false, false)
             .await
     }
 
@@ -108,13 +108,15 @@ impl LeaseRepository {
         cell_id: Uuid,
         config: LeaseConfig,
     ) -> Result<LeaseGrant, AppError> {
-        self.acquire_with_activation(tenant_id, cell_id, config, false, true, false)
+        self.acquire_with_activation(tenant_id, cell_id, config, false, true, false, false)
             .await
     }
 
     pub async fn acquire_for_recovery(&self, tenant_id: Uuid, cell_id: Uuid, config: LeaseConfig) -> Result<LeaseGrant,AppError> {
-        self.acquire_with_activation(tenant_id,cell_id,config,false,false,true).await
+        self.acquire_with_activation(tenant_id,cell_id,config,false,false,true,false).await
     }
+
+    pub async fn acquire_for_cold(&self,tenant_id:Uuid,cell_id:Uuid,config:LeaseConfig)->Result<LeaseGrant,AppError>{self.acquire_with_activation(tenant_id,cell_id,config,false,false,true,true).await}
 
     async fn acquire_with_activation(
         &self,
@@ -124,6 +126,7 @@ impl LeaseRepository {
         activate: bool,
         require_assignment: bool,
         restoring: bool,
+        require_cold: bool,
     ) -> Result<LeaseGrant, AppError> {
         let config = config.validate()?;
         let mut tx = self.pool.begin().await?;
@@ -156,6 +159,7 @@ impl LeaseRepository {
             ));
         }
 
+        if require_cold && tenant_state!="COLD" {return Err(AppError::Conflict("Cold tenant was already assigned".into()));}
         let existing: Option<(Uuid, i64, DateTime<Utc>)> = sqlx::query_as(
             "SELECT owner_cell, ownership_generation, expires_at \
              FROM tenant_leases WHERE tenant_id = $1 FOR UPDATE",
@@ -570,7 +574,7 @@ impl LeaseClient {
             .ok_or_else(|| AppError::Forbidden("Tenant has no ownership lease".into()))
     }
 
-    fn fence_for_handoff(&self, tenant_id: Uuid) -> Result<i64, AppError> {
+    pub(crate) fn fence_for_handoff(&self, tenant_id: Uuid) -> Result<i64, AppError> {
         let mut leases = self
             .leases
             .write()
