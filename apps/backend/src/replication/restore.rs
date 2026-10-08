@@ -281,7 +281,9 @@ pub async fn restore(
                 if c.capture_number != number + 1 {
                     return Err(fail("WAL capture order is incomplete"));
                 }
-                apply(&image, &c, &bytes).await?;
+                apply(&image, &c, &bytes).await.map_err(|e| {
+                    fail(format!("Capture {} replay failed: {e}", c.capture_number))
+                })?;
                 number = c.capture_number;
                 recovered = instant;
             }

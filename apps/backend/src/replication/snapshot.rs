@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{Row, SqliteConnection};
+use sqlx::{sqlite::SqliteConnectOptions, Connection, Row, SqliteConnection};
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 use uuid::Uuid;
 fn fail(e: impl std::fmt::Display) -> AppError {
@@ -86,14 +86,49 @@ async fn copy(
 ) -> Result<(i64, i64, i64, chrono::DateTime<chrono::Utc>), AppError> {
     db.ensure_current_owner()?;
     crate::tenancy::spool_connection_wal(connection, db.path(), db.ownership_generation()).await?;
-    sqlx::query("VACUUM INTO ?")
-        .bind(
-            target
-                .to_str()
-                .ok_or_else(|| fail("Invalid snapshot path"))?,
-        )
-        .execute(&mut *connection)
-        .await?;
+    // WAL frames address physical source pages. VACUUM INTO renumbers them
+    // and produces a logically valid snapshot that cannot safely replay WAL.
+    // The backup API preserves those pages, including the freelist, and sees
+    // committed WAL pages even when a reader prevents checkpoint completion.
+    let mut destination = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new()
+            .filename(target)
+            .create_if_missing(true),
+    )
+    .await?;
+    {
+        let mut source_handle = connection.lock_handle().await?;
+        let mut destination_handle = destination.lock_handle().await?;
+        // SAFETY: both SQLx handles exclude their worker threads. The backup
+        // never escapes this scope, and finish runs on every initialized path.
+        let result = unsafe {
+            let destination = destination_handle.as_raw_handle().as_ptr();
+            let backup = libsqlite3_sys::sqlite3_backup_init(
+                destination,
+                c"main".as_ptr(),
+                source_handle.as_raw_handle().as_ptr(),
+                c"main".as_ptr(),
+            );
+            if backup.is_null() {
+                Err(fail(format!(
+                    "Cannot initialize page-preserving backup: {}",
+                    libsqlite3_sys::sqlite3_errcode(destination)
+                )))
+            } else {
+                let step = libsqlite3_sys::sqlite3_backup_step(backup, -1);
+                let finish = libsqlite3_sys::sqlite3_backup_finish(backup);
+                if step == libsqlite3_sys::SQLITE_DONE && finish == libsqlite3_sys::SQLITE_OK {
+                    Ok(())
+                } else {
+                    Err(fail(format!(
+                        "Page-preserving backup failed: step={step}, finish={finish}"
+                    )))
+                }
+            }
+        };
+        result?;
+    }
+    destination.close().await?;
     File::open(target)
         .and_then(|f| f.sync_all())
         .map_err(fail)?;

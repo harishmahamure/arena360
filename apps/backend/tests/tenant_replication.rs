@@ -969,13 +969,30 @@ async fn postgres_restore_replays_encrypted_batches_and_stops_at_capture_utc() {
     let keys=TenantKeys::new(root.join("secrets"));wal::durable_create(&keys.path(tenant),&[42u8;32]).unwrap();
     let store=Arc::new(InMemory::new());
     let worker=Worker{gates:Default::default(),store:store.clone(),ledger:ledger.clone(),keys:keys.clone(),metrics:Arc::new(Metrics::default())};
+    // A populated freelist makes physical page preservation observable: a
+    // vacuumed baseline would renumber pages addressed by subsequent WAL.
+    db.with_writer(|c|Box::pin(async move {
+        sqlx::query("CREATE TABLE discarded(payload BLOB)").execute(&mut *c).await?;
+        sqlx::query("INSERT INTO discarded VALUES(zeroblob(1048576))").execute(&mut *c).await?;
+        sqlx::query("DROP TABLE discarded").execute(&mut *c).await?;
+        Ok(())
+    })).await.unwrap();
     snapshot::take(db.clone(),&ledger,store.as_ref(),&keys,snapshot::Kind::Baseline).await.unwrap();
     insert(&db,"first").await;db.spool_wal().await.unwrap();
-    let first=worker::pending(&db).unwrap()[0].1.clone();
+    // Explicitly dated fixture history, encrypted after setting capture UTC.
+    // It exercises a 30-day PIT without pretending to be a month-old live drill.
+    let point_at=chrono::Utc::now()-chrono::Duration::days(30);
+    let (path,mut first)=worker::pending(&db).unwrap().pop().unwrap();
+    first.captured_at=gaming_cafe_api::time::format_sqlite_timestamp(&point_at).unwrap();
+    std::fs::write(path.with_extension("json"),serde_json::to_vec(&first).unwrap()).unwrap();
     let target=gaming_cafe_api::time::parse_sqlite_timestamp(&first.captured_at).unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    sqlx::query("UPDATE snapshot_manifests SET snapshot_at=$2 WHERE tenant_id=$1")
+        .bind(tenant).bind(point_at-chrono::Duration::days(1)).execute(&pool).await.unwrap();
     insert(&db,"second").await;db.spool_wal().await.unwrap();
-    assert_eq!(worker.ship(db.clone(),true).await.unwrap(),2);
+    let (path,mut second)=worker::pending(&db).unwrap().pop().unwrap();
+    second.captured_at=gaming_cafe_api::time::format_sqlite_timestamp(&(point_at+chrono::Duration::days(1))).unwrap();
+    std::fs::write(path.with_extension("json"),serde_json::to_vec(&second).unwrap()).unwrap();
+    assert_eq!(worker.ship(db.clone(),true).await.unwrap(),3);
     let staging=root.join("restore-staging");
     let full=restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.unwrap();
     let mut c=SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&full.image)).await.unwrap();

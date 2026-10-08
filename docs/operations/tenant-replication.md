@@ -102,7 +102,9 @@ snapshot within 24 hours suppresses another copy. `SnapshotHook` integrates with
 the API-0021 migration orchestrator and verifies pre/post snapshots around the
 actual schema migration. An unavailable backup prevents migration from proceeding.
 
-A consistent `VACUUM INTO` copy is taken while the tenant writer is gated. The
+A consistent SQLite backup API copy preserves physical pages for WAL replay,
+including freelist pages and committed WAL not yet checkpointed. The tenant
+writer is gated while copying. The
 gate is released before normal daily/baseline compression and network upload.
 Migration hooks use their already gated writer and reject a changed ownership
 generation without reopening it. Snapshot metadata records the schema version,

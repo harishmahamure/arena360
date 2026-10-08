@@ -35,6 +35,7 @@ const controlTargets = [
   'ownership_fencing',
   'tenant_bootstrap',
   'tenant_replication',
+  'tenant_recovery_process',
   'tenant_user_repositories',
   'demo_seed',
 ];
