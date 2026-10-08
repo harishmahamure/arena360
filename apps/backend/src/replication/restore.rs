@@ -34,7 +34,7 @@ impl Default for Limits {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Restored {
     pub tenant: Uuid,
     pub generation: Uuid,
@@ -42,6 +42,7 @@ pub struct Restored {
     pub snapshot: Uuid,
     pub image: PathBuf,
     pub capture_number: u64,
+    pub image_checksum: String,
     pub recovered_at: DateTime<Utc>,
 }
 // Cancellation (including a drill timeout) must remove private staging too.
@@ -151,9 +152,90 @@ pub async fn restore(
     at: Option<DateTime<Utc>>,
     limits: Limits,
 ) -> Result<Restored, AppError> {
+    restore_inner(
+        tenant,
+        lease,
+        ledger,
+        store,
+        keys,
+        staging_root,
+        at,
+        limits,
+        None,
+    )
+    .await
+}
+/// Advance an already verified private image through newly published captures.
+/// The durable image checksum detects interrupted replay or external changes
+/// before a retry can skip captures based on an old position.
+pub async fn advance(
+    previous: Restored,
+    lease: Arc<dyn TenantLease>,
+    ledger: &PostgresLedger,
+    store: &dyn ObjectStore,
+    keys: &TenantKeys,
+    limits: Limits,
+) -> Result<Restored, AppError> {
+    let tenant = previous.tenant;
+    lease.ensure_writable(tenant, previous.ownership_generation)?;
+    let parent = previous
+        .image
+        .parent()
+        .ok_or_else(|| fail("Missing private image directory"))?;
+    let prefix = format!("restore-{tenant}-");
+    let private = parent
+        .file_name()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.strip_prefix(&prefix))
+        .is_some_and(|s| Uuid::parse_str(s).is_ok());
+    if !private || previous.image.file_name().and_then(|s| s.to_str()) != Some("tenant.db") {
+        return Err(fail(
+            "Incremental replay requires an original private restore image",
+        ));
+    }
+    if snapshot::hash_file(&previous.image)? != previous.image_checksum {
+        return Err(fail(
+            "Incremental image checksum changed; discard the stale receipt and pre-copy again",
+        ));
+    }
+    let root = parent
+        .parent()
+        .ok_or_else(|| fail("Missing staging root"))?
+        .to_path_buf();
+    restore_inner(
+        tenant,
+        lease,
+        ledger,
+        store,
+        keys,
+        &root,
+        None,
+        limits,
+        Some(previous),
+    )
+    .await
+}
+async fn restore_inner(
+    tenant: Uuid,
+    lease: Arc<dyn TenantLease>,
+    ledger: &PostgresLedger,
+    store: &dyn ObjectStore,
+    keys: &TenantKeys,
+    staging_root: &Path,
+    at: Option<DateTime<Utc>>,
+    limits: Limits,
+    previous: Option<Restored>,
+) -> Result<Restored, AppError> {
     let ownership = lease.writable_generation(tenant)?;
     let key = keys.read(tenant)?;
     let generation = current(ledger, tenant, ownership).await?;
+    if previous.as_ref().is_some_and(|p| {
+        p.tenant != tenant || p.generation != generation || p.ownership_generation != ownership
+    }) {
+        return Err(fail(
+            "Incremental image belongs to a different tenant or generation",
+        ));
+    }
     let mut tx = ledger.pool.begin().await?;
     pin(&mut tx, generation).await?;
     if current(ledger, tenant, ownership).await? != generation {
@@ -172,57 +254,70 @@ pub async fn restore(
             .bind(generation)
             .fetch_one(&mut *tx)
             .await?;
-    let row=sqlx::query("SELECT id,object_key,checksum_sha256,encrypted_size_bytes,source_checksum_sha256,capture_number,snapshot_at FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL AND retired_at IS NULL AND source_checksum_sha256 IS NOT NULL AND capture_number IS NOT NULL AND ($2::timestamptz IS NULL OR snapshot_at <= $2) ORDER BY snapshot_at DESC,capture_number DESC,id DESC LIMIT 1").bind(generation).bind(at).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::Conflict("No verified live snapshot exists before the requested instant in the selected generation".into()))?;
+    let row=sqlx::query("SELECT id,object_key,checksum_sha256,encrypted_size_bytes,source_checksum_sha256,capture_number,snapshot_at FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL AND retired_at IS NULL AND source_checksum_sha256 IS NOT NULL AND capture_number IS NOT NULL AND ($2::timestamptz IS NULL OR snapshot_at <= $2) AND ($3::uuid IS NULL OR id=$3) ORDER BY snapshot_at DESC,capture_number DESC,id DESC LIMIT 1").bind(generation).bind(at).bind(previous.as_ref().map(|p|p.snapshot)).fetch_optional(&mut *tx).await?.ok_or_else(||AppError::Conflict("No verified live snapshot exists before the requested instant in the selected generation".into()))?;
     let snapshot_id: Uuid = row.get(0);
     let object: String = row.get(1);
     let checksum: String = row.get(2);
     let size: i64 = row.get(3);
     let source_checksum: String = row.get(4);
-    let mut number = row.get::<i64, _>(5) as u64;
-    let mut recovered: DateTime<Utc> = row.get(6);
+    let mut number = previous
+        .as_ref()
+        .map_or(row.get::<i64, _>(5) as u64, |p| p.capture_number);
+    let mut recovered: DateTime<Utc> = previous.as_ref().map_or(row.get(6), |p| p.recovered_at);
     let rows=sqlx::query("SELECT segment_number,object_key,capture,checksum_sha256,encrypted_size_bytes,retired_at,verified_at FROM replication_segments WHERE generation_id=$1 ORDER BY segment_number").bind(generation).fetch_all(&mut *tx).await?;
-    let directory = staging_root.join(format!("restore-{tenant}-{}", Uuid::new_v4()));
+    let directory = match &previous {
+        Some(p) => p
+            .image
+            .parent()
+            .ok_or_else(|| fail("Missing private image directory"))?
+            .to_path_buf(),
+        None => staging_root.join(format!("restore-{tenant}-{}", Uuid::new_v4())),
+    };
     std::fs::create_dir_all(&directory).map_err(fail)?;
+    let mut cleanup = StagingDirectory(Some(directory.clone()));
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
             .map_err(fail)?;
     }
-    let mut cleanup = StagingDirectory(Some(directory.clone()));
-    let image = directory.join("tenant.db");
+    let image = previous
+        .as_ref()
+        .map_or_else(|| directory.join("tenant.db"), |p| p.image.clone());
     let result = async {
-        let encoded = directory.join("snapshot.encoded");
-        download(
-            store,
-            &object,
-            &checksum,
-            size,
-            &encoded,
-            limits.snapshot_bytes,
-        )
-        .await?;
-        lease.ensure_writable(tenant, ownership)?;
-        let input = std::fs::File::open(&encoded).map_err(fail)?;
-        let output = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&image)
-            .map_err(fail)?;
-        let object_copy = object.clone();
-        let image_copy = image.clone();
-        let limit = limits.snapshot_bytes;
-        tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-            super::crypto::decode_file(&key, &object_copy, input, &output, limit)?;
-            output.sync_all().map_err(fail)?;
-            if snapshot::hash_file(&image_copy)? != source_checksum {
-                return Err(fail("Snapshot source checksum mismatch"));
-            }
-            Ok(())
-        })
-        .await
-        .map_err(fail)??;
-        std::fs::remove_file(encoded).map_err(fail)?;
+        if previous.is_none() {
+            let encoded = directory.join("snapshot.encoded");
+            download(
+                store,
+                &object,
+                &checksum,
+                size,
+                &encoded,
+                limits.snapshot_bytes,
+            )
+            .await?;
+            lease.ensure_writable(tenant, ownership)?;
+            let input = std::fs::File::open(&encoded).map_err(fail)?;
+            let output = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&image)
+                .map_err(fail)?;
+            let object_copy = object.clone();
+            let image_copy = image.clone();
+            let limit = limits.snapshot_bytes;
+            tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+                super::crypto::decode_file(&key, &object_copy, input, &output, limit)?;
+                output.sync_all().map_err(fail)?;
+                if snapshot::hash_file(&image_copy)? != source_checksum {
+                    return Err(fail("Snapshot source checksum mismatch"));
+                }
+                Ok(())
+            })
+            .await
+            .map_err(fail)??;
+            std::fs::remove_file(encoded).map_err(fail)?;
+        }
         let mut stopped = false;
         for row in rows {
             let capture: Capture = serde_json::from_value(row.get(2)).map_err(fail)?;
@@ -329,6 +424,7 @@ pub async fn restore(
         return Err(error);
     }
     tx.commit().await?;
+    let image_checksum = snapshot::hash_file(&image)?;
     cleanup.0 = None;
     Ok(Restored {
         tenant,
@@ -337,6 +433,7 @@ pub async fn restore(
         snapshot: snapshot_id,
         image,
         capture_number: number,
+        image_checksum,
         recovered_at: recovered,
     })
 }

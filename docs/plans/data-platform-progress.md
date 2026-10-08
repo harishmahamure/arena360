@@ -60,7 +60,8 @@
 
 ## Current task
 
-- [ ] M8 staging launch gate — full-cell operational/analytics recovery within published RTO and actual alert firing during a Wasabi outage. Staging cell IDs and environment configuration have been requested.
+- [ ] `API-0060` — Tenant movement with verified pre-copy, incremental WAL catch-up and explicit atomic lease handoff (M9).
+- M8 staging launch gate remains pending: full-cell operational/analytics recovery within published RTO and actual alert firing during a Wasabi outage. No staging cell IDs, control-plane URL or backup credentials are configured locally.
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
 
 ### OPS-0030 completed

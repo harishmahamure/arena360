@@ -994,10 +994,25 @@ async fn postgres_restore_replays_encrypted_batches_and_stops_at_capture_utc() {
     std::fs::write(path.with_extension("json"),serde_json::to_vec(&second).unwrap()).unwrap();
     assert_eq!(worker.ship(db.clone(),true).await.unwrap(),3);
     let staging=root.join("restore-staging");
-    let full=restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.unwrap();
+    let mut full=restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,None,restore::Limits::default()).await.unwrap();
     let mut c=SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&full.image)).await.unwrap();
     let values:Vec<String>=sqlx::query_scalar("SELECT value FROM durable ORDER BY rowid").fetch_all(&mut c).await.unwrap();assert_eq!(values,vec!["first","second"]);c.close().await.unwrap();
     assert_eq!(full.capture_number,first.capture_number+1);
+    // Pre-copy advances only the new WAL, without downloading its baseline again.
+    insert(&db,"third").await;db.spool_wal().await.unwrap();assert_eq!(worker.ship(db.clone(),true).await.unwrap(),1);
+    let baseline:String=sqlx::query_scalar("SELECT object_key FROM snapshot_manifests WHERE id=$1").bind(full.snapshot).fetch_one(&pool).await.unwrap();
+    let baseline=ObjectPath::from(baseline);let saved=store.get(&baseline).await.unwrap().bytes().await.unwrap();
+    store.put(&baseline,bytes::Bytes::from_static(b"unavailable baseline during incremental copy").into()).await.unwrap();
+    let old_hash=full.image_checksum.clone();let old_path=full.image.clone();
+    full=restore::advance(full,lease.clone(),&ledger,store.as_ref(),&keys,restore::Limits::default()).await.unwrap();
+    assert_eq!(full.image,old_path);assert_ne!(full.image_checksum,old_hash);assert_eq!(full.capture_number,first.capture_number+2);
+    let mut c=SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&full.image)).await.unwrap();
+    let values:Vec<String>=sqlx::query_scalar("SELECT value FROM durable ORDER BY rowid").fetch_all(&mut c).await.unwrap();assert_eq!(values,["first","second","third"]);c.close().await.unwrap();
+    let mut stale=full.clone();stale.image_checksum="0".repeat(64);
+    assert!(restore::advance(stale,lease.clone(),&ledger,store.as_ref(),&keys,restore::Limits::default()).await.is_err());assert!(full.image.exists());
+    // Retry at the same receipt replays no captures and retains the same facts.
+    full=restore::advance(full,lease.clone(),&ledger,store.as_ref(),&keys,restore::Limits::default()).await.unwrap();
+    store.put(&baseline,saved.into()).await.unwrap();
     let point=restore::restore(tenant,lease.clone(),&ledger,store.as_ref(),&keys,&staging,Some(target),restore::Limits::default()).await.unwrap();
     let mut c=SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&point.image)).await.unwrap();
     let values:Vec<String>=sqlx::query_scalar("SELECT value FROM durable ORDER BY rowid").fetch_all(&mut c).await.unwrap();assert_eq!(values,vec!["first"]);c.close().await.unwrap();
