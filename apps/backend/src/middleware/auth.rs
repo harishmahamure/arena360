@@ -26,7 +26,7 @@ const PUBLIC_EXACT: &[&str] = &[
     "/realtime",
 ];
 
-const PUBLIC_PREFIX: &[&str] = &["/health", "/api/docs"];
+const PUBLIC_PREFIX: &[&str] = &["/health", "/api/docs", "/historical/downloads"];
 
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
@@ -76,6 +76,10 @@ pub async fn authorize_tenant_request(
         return Err(AppError::Forbidden(
             "Use a panel session for staff operations".into(),
         ));
+    }
+    if path=="/historical/exports"||path.starts_with("/historical/exports/") {
+        crate::handlers::historical_exports::authorize(&state,&claims).await?;
+        return Ok(next.run(req).await);
     }
     if claims.is_admin_or_staff() {
         let db = state.business_db(&claims).await?;

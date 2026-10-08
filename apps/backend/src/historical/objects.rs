@@ -53,23 +53,7 @@ pub async fn upload(
     drop(output);
     let checksum_sha256 = snapshot::hash_file(&encoded)?;
     let bytes = std::fs::metadata(&encoded).map_err(fail)?.len();
-    let mapped = unsafe {
-        memmap2::MmapOptions::new()
-            .map(&File::open(&encoded).map_err(fail)?)
-            .map_err(fail)?
-    };
-    let payload = object_store::PutPayload::from(bytes::Bytes::from_owner(mapped));
-    store
-        .put_opts(
-            &ObjectPath::from(object_key.as_str()),
-            payload,
-            object_store::PutOptions {
-                mode: object_store::PutMode::Create,
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(fail)?;
+    put_file(store, &ObjectPath::from(object_key.as_str()), &encoded).await?;
     let object = Object {
         columns: vec![],
         table,
@@ -139,6 +123,74 @@ pub async fn download(
     let _ = std::fs::remove_file(encoded);
     if result.is_err() {
         let _ = std::fs::remove_file(target);
+    }
+    result
+}
+
+/// Generated object keys contain a fresh UUID or a fenced worker token. Large
+/// uploads stream multipart data, so neither RAM nor the single-PUT limit bounds exports.
+pub(crate) async fn put_file(
+    store: &dyn ObjectStore,
+    path: &ObjectPath,
+    file: &Path,
+) -> Result<(), AppError> {
+    match store.head(path).await {
+        Ok(_) => return Err(AppError::Conflict("Immutable object already exists".into())),
+        Err(object_store::Error::NotFound { .. }) => {}
+        Err(error) => return Err(fail(error)),
+    }
+    let size = std::fs::metadata(file).map_err(fail)?.len();
+    if size <= 16 * 1024 * 1024 {
+        let mapped = unsafe { memmap2::MmapOptions::new().map(&File::open(file).map_err(fail)?) }
+            .map_err(fail)?;
+        store
+            .put_opts(
+                path,
+                object_store::PutPayload::from(bytes::Bytes::from_owner(mapped)),
+                object_store::PutMode::Create.into(),
+            )
+            .await
+            .map_err(|error| match error {
+                object_store::Error::AlreadyExists { .. } => {
+                    AppError::Conflict("Immutable object already exists".into())
+                }
+                other => fail(other),
+            })?;
+        return Ok(());
+    }
+    let mut upload = store.put_multipart(path).await.map_err(fail)?;
+    let result = async {
+        use tokio::io::AsyncReadExt;
+        let mut source = tokio::fs::File::open(file).await.map_err(fail)?;
+        let mut parts = 0;
+        loop {
+            let mut data = vec![0u8; 64 * 1024 * 1024];
+            let mut used = 0;
+            while used < data.len() {
+                let n = source.read(&mut data[used..]).await.map_err(fail)?;
+                if n == 0 {
+                    break;
+                }
+                used += n;
+            }
+            if used == 0 {
+                break;
+            }
+            parts += 1;
+            if parts > 10000 {
+                return Err(fail(
+                    "Object exceeds multipart part limit; use a smaller export range",
+                ));
+            }
+            data.truncate(used);
+            upload.put_part(data.into()).await.map_err(fail)?;
+        }
+        upload.complete().await.map_err(fail)?;
+        Ok::<_, AppError>(())
+    }
+    .await;
+    if result.is_err() {
+        let _ = upload.abort().await;
     }
     result
 }

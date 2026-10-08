@@ -174,3 +174,23 @@ persistence:
   size: 20Gi
   storageClass: ""
   mountPath: /var/lib/arena360/tenants
+
+# Existing durable key PVC, separate from tenant database storage. The backend can
+# destroy keys on tenant deletion; isolated export workers mount it read-only.
+replicationKeys:
+  existingClaim: ""
+  mountPath: /var/lib/arena360/keys
+
+# Enable after configuring CELL_ID, control/replication credentials and the key PVC.
+# A supervisor launches separately fenced child processes; PostgreSQL admission
+# limits remain authoritative across all cells and supervisors.
+exportWorkers:
+  enabled: false
+  stagingDir: /var/lib/arena360/tenants/export-staging
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

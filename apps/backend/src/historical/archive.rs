@@ -47,6 +47,9 @@ pub struct Job {
     pub last_error: Option<String>,
     pub source_cutoff_at: Option<DateTime<Utc>>,
     pub hot_cleaned_at: Option<DateTime<Utc>>,
+    pub analytics_objects: serde_json::Value,
+    pub analytics_checksum_sha256: Option<String>,
+    pub analytics_projection_version: Option<i64>,
 }
 pub async fn get(pool: &PgPool, id: Uuid) -> Result<Job, AppError> {
     sqlx::query_as("SELECT * FROM archive_manifests WHERE id=$1")
@@ -136,6 +139,8 @@ pub async fn replan(pool: &PgPool, id: Uuid) -> Result<Job, AppError> {
 struct Capture {
     watermark: i64,
     objects: Vec<Object>,
+    #[serde(default)]
+    projections: Vec<Object>,
 }
 fn save(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
     let temp = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
@@ -237,7 +242,7 @@ impl Worker {
    let result=async{
     let (watermark,zone):(i64,String)=sqlx::query_as("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='outbox_events'),0),timezone FROM tenant_runtime WHERE singleton=1").fetch_one(&source).await?;let version:i64=sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations WHERE success=1").fetch_one(&source).await?;
     if version!=job.schema_version||zone!=job.timezone{return Err(AppError::Conflict("Archive source schema or calendar changed; replan".into()));}
-    let mut capture=if capture_path.exists(){serde_json::from_slice::<Capture>(&std::fs::read(&capture_path).map_err(fail)?).map_err(fail)?}else{Capture{watermark,objects:vec![]}};
+    let mut capture=if capture_path.exists(){serde_json::from_slice::<Capture>(&std::fs::read(&capture_path).map_err(fail)?).map_err(fail)?}else{Capture{watermark,objects:vec![],projections:vec![]}};
     let zone=zone.parse::<Tz>().map_err(fail)?;let start=crate::time::format_sqlite_timestamp(&calendar::boundary(job.period_start,zone)?).map_err(fail)?;let end=crate::time::format_sqlite_timestamp(&calendar::boundary(job.period_end,zone)?).map_err(fail)?;
     for spec in policy::TABLES{
      if capture.objects.iter().any(|o|o.table==spec.name){continue;}
@@ -245,6 +250,15 @@ impl Worker {
      let columns=raw::columns(&source,spec.name).await?;let predicate=policy::predicate(spec,&start,&end,&cutoff(&job)?)?;let (file,rows,source_checksum)=raw::parquet(&source,spec.name,&columns,&predicate,&root).await?;
      let object_key=format!("tenants/{}/archive/{}/{:02}/{}-{}-{}.parquet",job.tenant_id,job.period_start.year(),job.period_start.month(),job.id,spec.name,Uuid::new_v4());
      let mut object=objects::upload(self.store.as_ref(),&key,object_key,spec.name.into(),rows,source_checksum,&file).await?;object.columns=columns;capture.objects.push(object);save(&capture_path,&serde_json::to_vec(&capture).map_err(fail)?)?;
+    }
+    let projection_root=root.join("analytics");std::fs::create_dir_all(&projection_root).map_err(fail)?;
+    for spec in crate::tenancy::analytics_snapshot::TABLES {
+     if capture.projections.iter().any(|o|o.table==spec.name){continue;}
+     let _permit=match db.background_jobs(){Some(j)=>Some(j.acquire(crate::background::Priority::ArchiveExport).await?),None=>None};
+     let (file,rows,source_checksum)=hot::parquet(&source,spec,&start,&end,zone,&projection_root).await?;
+     let object_key=format!("tenants/{}/archive/{}/{:02}/{}-analytics-{}-{}.parquet",job.tenant_id,job.period_start.year(),job.period_start.month(),job.id,spec.name,Uuid::new_v4());
+     let object=objects::upload(self.store.as_ref(),&key,object_key,spec.name.into(),rows,source_checksum,&file).await?;
+     capture.projections.push(object);save(&capture_path,&serde_json::to_vec(&capture).map_err(fail)?)?;
     }Ok::<_,AppError>(capture)
    }.await;source.close().await;result
   }.await?;
@@ -262,7 +276,7 @@ impl Worker {
                 .execute(&mut *tx)
                 .await?;
         }
-        sqlx::query("UPDATE archive_manifests SET state='UPLOADED',source_watermark=$2,row_count=$3,checksum_sha256=$4,objects=$5,last_error=NULL,updated_at=clock_timestamp() WHERE id=$1 AND state='EXPORTING'").bind(id).bind(capture_result.watermark).bind(capture_result.objects.iter().map(|o|o.rows).sum::<i64>()).bind(checksum(&capture_result.objects)?).bind(serde_json::to_value(&capture_result.objects).map_err(fail)?).execute(&mut *tx).await?;
+        sqlx::query("UPDATE archive_manifests SET state='UPLOADED',source_watermark=$2,row_count=$3,checksum_sha256=$4,objects=$5,analytics_objects=$6,analytics_checksum_sha256=$7,analytics_projection_version=$8,last_error=NULL,updated_at=clock_timestamp() WHERE id=$1 AND state='EXPORTING'").bind(id).bind(capture_result.watermark).bind(capture_result.objects.iter().map(|o|o.rows).sum::<i64>()).bind(checksum(&capture_result.objects)?).bind(serde_json::to_value(&capture_result.objects).map_err(fail)?).bind(serde_json::to_value(&capture_result.projections).map_err(fail)?).bind(checksum(&capture_result.projections)?).bind(crate::tenancy::analytics_snapshot::SNAPSHOT_VERSION as i64).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -316,6 +330,17 @@ impl Worker {
     let spec=policy::table(&object.table)?;if object.columns!=raw::columns(&source,spec.name).await?{return Err(AppError::Conflict("Archive source columns changed; replan".into()));}
     objects::download(self.store.as_ref(),&key,object,&root.join(format!("verified-{}.parquet",spec.name))).await?;
     let (rows,hash)=raw::fingerprint(&source,spec.name,&object.columns,&policy::predicate(spec,&start,&end,&cutoff(&job)?)?).await?;if rows!=object.rows||hash!=object.source_checksum{return Err(AppError::Conflict("Archive source rows changed; replan".into()));}
+   }
+   let projections:Vec<Object>=serde_json::from_value(job.analytics_objects.clone()).map_err(fail)?;
+   if job.analytics_checksum_sha256.as_deref()!=Some(&checksum(&projections)?)||job.analytics_projection_version!=Some(crate::tenancy::analytics_snapshot::SNAPSHOT_VERSION as i64){return Err(fail("Archive projection evidence differs; replan"));}
+   if projections.len()!=crate::tenancy::analytics_snapshot::TABLES.len()||crate::tenancy::analytics_snapshot::TABLES.iter().any(|t|projections.iter().filter(|o|o.table==t.name).count()!=1){return Err(fail("Archive projection is incomplete"));}
+   let projection_root=root.join("verify-analytics");std::fs::create_dir_all(&projection_root).map_err(fail)?;
+   for object in &projections {
+    let spec=crate::tenancy::analytics_snapshot::TABLES.iter().find(|t|t.name==object.table).ok_or_else(||fail("Unknown archive projection"))?;
+    objects::download(self.store.as_ref(),&key,object,&projection_root.join(format!("remote-{}.parquet",spec.name))).await?;
+    if spec.time.is_none()&&spec.parent.is_none(){continue;}
+    let (_,rows,hash)=hot::parquet(&source,spec,&start,&end,zone,&projection_root).await?;
+    if rows!=object.rows||hash!=object.source_checksum{return Err(AppError::Conflict("Archive analytics source changed; replan".into()));}
    }
    let mut tx=self.ledger.pool.begin().await?;self.ledger.lock_owner(&db,&mut tx).await?;
    let changed=sqlx::query("UPDATE archive_manifests SET state='VERIFIED',verified_at=clock_timestamp(),last_error=NULL,updated_at=clock_timestamp() WHERE id=$1 AND state='UPLOADED' AND superseded_at IS NULL AND checksum_sha256=$2").bind(id).bind(&job.checksum_sha256).execute(&mut *tx).await?.rows_affected();if changed!=1{return Err(AppError::Conflict("Archive changed during verification".into()));}tx.commit().await?;Ok::<_,AppError>(())

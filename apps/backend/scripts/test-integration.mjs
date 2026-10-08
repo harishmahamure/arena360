@@ -41,7 +41,7 @@ const controlTargets = [
   'schema_rollouts',
   'cold_tenants',
   'historical_manifests',
-  ...(process.env.DUCKDB_LIB_DIR ? ['archive_worker'] : []),
+  ...(process.env.DUCKDB_LIB_DIR ? ['archive_worker', 'historical_exports'] : []),
   'tenant_user_repositories',
   'demo_seed',
 ];

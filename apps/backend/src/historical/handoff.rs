@@ -67,11 +67,23 @@ impl Worker {
             None => None,
         };
         let key = self.keys.read(job.tenant_id)?;
-        let evidence: Vec<Object> = serde_json::from_value(job.objects.clone()).map_err(fail)?;
+        let mut evidence: Vec<Object> =
+            serde_json::from_value(job.objects.clone()).map_err(fail)?;
         let sum = raw::row_hash(&serde_json::to_string(&evidence).map_err(fail)?);
         if evidence.is_empty() || job.checksum_sha256.as_deref() != Some(&sum) {
             return Err(fail("Archive manifest checksum differs"));
         }
+        let projections: Vec<Object> =
+            serde_json::from_value(job.analytics_objects.clone()).map_err(fail)?;
+        if !projections.is_empty()
+            && job.analytics_checksum_sha256.as_deref()
+                != Some(&raw::row_hash(
+                    &serde_json::to_string(&projections).map_err(fail)?,
+                ))
+        {
+            return Err(fail("Archive analytics checksum differs"));
+        }
+        evidence.extend(projections);
         let root = db
             .path()
             .parent()
@@ -87,7 +99,7 @@ impl Worker {
         }
         // Revalidate remote availability before removing the rebuildable copy.
         for object in &evidence {
-            let path = root.join(format!("{}.parquet", object.table));
+            let path = root.join(format!("{}.parquet", Uuid::new_v4()));
             objects::download(self.store.as_ref(), &key, object, &path).await?;
             std::fs::remove_file(path).map_err(fail)?;
         }

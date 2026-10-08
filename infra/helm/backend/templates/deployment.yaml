@@ -6,6 +6,17 @@
 {{- if and $cell (ne .Values.env.TENANT_DATA_DIR .Values.persistence.mountPath) -}}
 {{- fail "TENANT_DATA_DIR must equal persistence.mountPath for owning-cell deployments" -}}
 {{- end -}}
+{{- if .Values.exportWorkers.enabled -}}
+{{- if or (not $cell) (not .Values.persistence.enabled) (not .Values.configMap.enabled) (not .Values.replicationKeys.existingClaim) -}}
+{{- fail "Export workers require an owning cell, its ConfigMap, persistent staging and a separate durable replication key PVC" -}}
+{{- end -}}
+{{- if not (hasPrefix (printf "%s/" .Values.persistence.mountPath) .Values.exportWorkers.stagingDir) -}}
+{{- fail "Export worker stagingDir must be inside the persistent tenant mount" -}}
+{{- end -}}
+{{- if ne .Values.env.REPLICATION_KEY_DIR .Values.replicationKeys.mountPath -}}
+{{- fail "REPLICATION_KEY_DIR must match the separate durable replication key mount" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -82,10 +93,16 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if .Values.persistence.enabled }}
+          {{- if or .Values.persistence.enabled .Values.replicationKeys.existingClaim }}
           volumeMounts:
+            {{- if .Values.persistence.enabled }}
             - name: tenant-storage
               mountPath: {{ .Values.persistence.mountPath | quote }}
+            {{- end }}
+            {{- if .Values.replicationKeys.existingClaim }}
+            - name: replication-keys
+              mountPath: {{ .Values.replicationKeys.mountPath | quote }}
+            {{- end }}
           {{- end }}
           envFrom:
             {{- if .Values.configMap.enabled }}
@@ -109,11 +126,59 @@ spec:
                   {{- end }}
             {{- end }}
           {{- end }}
-      {{- if .Values.persistence.enabled }}
+      {{- if .Values.exportWorkers.enabled }}
+        - name: historical-exports
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["export_worker"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.exportWorkers.resources | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "arena360-backend.configMapName" . }}
+          env:
+            - name: EXPORT_STAGING_DIR
+              value: {{ .Values.exportWorkers.stagingDir | quote }}
+            {{- $exportEnv := list "CONTROL_DATABASE_URL" "CELL_ID" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "AWS_SESSION_TOKEN" "AWS_REGION" "AWS_DEFAULT_REGION" "REPLICATION_BUCKET" "REPLICATION_ENDPOINT" "REPLICATION_KEY_DIR" "REPLICATION_ALLOW_HTTP" -}}
+            {{- range $name, $value := .Values.inlineSecretEnv }}
+            {{- if has $name $exportEnv }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.envFromSecrets }}
+            {{- if has .envName $exportEnv }}
+            - name: {{ .envName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+                  {{- if hasKey . "optional" }}
+                  optional: {{ .optional }}
+                  {{- end }}
+            {{- end }}
+            {{- end }}
+          volumeMounts:
+            - name: tenant-storage
+              mountPath: {{ .Values.persistence.mountPath | quote }}
+            - name: replication-keys
+              mountPath: {{ .Values.replicationKeys.mountPath | quote }}
+              readOnly: true
+      {{- end }}
+      {{- if or .Values.persistence.enabled .Values.replicationKeys.existingClaim }}
       volumes:
+        {{- if .Values.persistence.enabled }}
         - name: tenant-storage
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim | default (printf "%s-tenants" (include "arena360-backend.fullname" .)) | quote }}
+        {{- end }}
+        {{- if .Values.replicationKeys.existingClaim }}
+        - name: replication-keys
+          persistentVolumeClaim:
+            claimName: {{ .Values.replicationKeys.existingClaim | quote }}
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

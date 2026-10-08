@@ -133,7 +133,7 @@ pub async fn route_tenant_request(
     let Some(router) = &state.routing else {
         return Ok(next.run(request).await);
     };
-    if is_control_auth_path(request.uri().path()) {
+    if is_control_auth_path(request.uri().path()) || request.uri().path()=="/historical/exports" || request.uri().path().starts_with("/historical/exports/") || request.uri().path().starts_with("/historical/downloads/") {
         return Ok(next.run(request).await);
     }
     let Some(claims) = request.extensions().get::<JwtUserClaims>() else {

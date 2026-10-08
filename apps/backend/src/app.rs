@@ -378,6 +378,10 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
 
 pub fn build_router(state: Arc<AppState>) -> Router {
     let api = Router::new()
+        .route("/historical/exports",post(handlers::historical_exports::create))
+        .route("/historical/exports/{id}",get(handlers::historical_exports::get).delete(handlers::historical_exports::cancel))
+        .route("/historical/exports/{id}/download",get(handlers::historical_exports::download_link))
+        .route("/historical/downloads/{tenant}/{id}",get(handlers::historical_exports::download))
         .route("/", get(|| async { "Game Zone API" }))
         .route("/health", get(handlers::health::health_check_legacy))
         .route("/health/live", get(handlers::health::live_check))
@@ -991,6 +995,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             .merge(rpc)
     };
 
+    if !state.settings.legacy_rest_enabled {
+        router=router.merge(crate::handlers::historical_exports::router(state.clone()));
+    }
     if state.settings.legacy_rest_enabled && !state.settings.is_production() {
         router = router
             .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", ApiDoc::openapi()));

@@ -14,3 +14,8 @@ pub mod archive;
 
 #[cfg(feature="duckdb-analytics")]
 pub mod handoff;
+
+pub mod exports;
+
+#[cfg(feature="duckdb-analytics")]
+pub mod export_worker;

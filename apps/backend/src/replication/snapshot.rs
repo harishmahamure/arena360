@@ -311,8 +311,8 @@ async fn take_with_connection(
 }
 
 /// The generated artifact is immutable: create_new, a unique snapshot UUID,
-/// and no writer after its fsync. Bytes owns the mapping throughout the async
-/// conditional PUT; unlinking an artifact cannot invalidate an existing map.
+/// and no writer after its fsync. Uploads use a conditional PUT for small files
+/// or bounded multipart streaming for large files; retries verify existing objects.
 async fn put_file_verified(
     store: &dyn ObjectStore,
     key: &str,
@@ -320,18 +320,13 @@ async fn put_file_verified(
     checksum: &str,
 ) -> Result<(), AppError> {
     use futures::TryStreamExt;
-    use object_store::{path::Path as ObjectPath, ObjectStoreExt, PutMode};
+    use object_store::{path::Path as ObjectPath, ObjectStoreExt};
     let input = File::open(file).map_err(fail)?;
     let size = input.metadata().map_err(fail)?.len();
-    // SAFETY: this subsystem owns the uniquely named, completed artifact and
-    // never writes or truncates it after encoding. The mapping outlives PUT.
-    let mapped = unsafe { memmap2::MmapOptions::new().map(&input) }.map_err(fail)?;
-    let payload = object_store::PutPayload::from(bytes::Bytes::from_owner(mapped));
     let path = ObjectPath::from(key);
-    match store.put_opts(&path, payload, PutMode::Create.into()).await {
-        Ok(_) => {}
-        Err(object_store::Error::AlreadyExists { .. }) => {}
-        Err(e) => return Err(fail(e)),
+    match crate::historical::objects::put_file(store,&path,file).await {
+        Ok(()) | Err(AppError::Conflict(_))=>{},
+        Err(error)=>return Err(error),
     }
     let remote = store.get(&path).await.map_err(fail)?;
     if remote.meta.size != size {

@@ -98,7 +98,7 @@ fn source_select(spec: &Table, start: &str, end: &str) -> Result<String, AppErro
     query.push_str(" ORDER BY json_extract(payload,'$.id')");
     Ok(query)
 }
-async fn parquet(
+pub(crate) async fn parquet(
     source: &sqlx::SqlitePool,
     spec: &'static Table,
     start: &str,
