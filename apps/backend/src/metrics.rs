@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Default)]
 pub struct Metrics {
+    historical: std::sync::Mutex<std::collections::BTreeMap<&'static str,(u64,u64,u64,u64)>>,
     disk_sample: std::sync::Mutex<Option<crate::disk::Sample>>,
     disk_zone: AtomicU64,
     restore_drill_enabled: AtomicU64,
@@ -41,6 +42,9 @@ pub struct Metrics {
 }
 
 impl Metrics {
+    pub fn historical_finished(&self,task:&'static str,success:bool,millis:u64) {
+        if let Ok(mut jobs)=self.historical.lock(){let value=jobs.entry(task).or_default();if success{value.0=value.0.saturating_add(1);value.3=chrono::Utc::now().timestamp().max(0) as u64;}else{value.1=value.1.saturating_add(1);}value.2=value.2.saturating_add(millis);}
+    }
     pub fn attach_background_jobs(&self, stats: std::sync::Arc<crate::background::JobStats>) {
         *self.background_jobs.lock().expect("background metrics lock poisoned") = Some(stats);
     }
@@ -198,7 +202,9 @@ impl Metrics {
         if let Ok(value)=self.restore_drill.lock() {if let Some((passed,elapsed,finished))=*value {
             drill.push_str(&format!("# TYPE arena360_restore_drill_success gauge\narena360_restore_drill_success {}\n# TYPE arena360_restore_drill_elapsed_milliseconds gauge\narena360_restore_drill_elapsed_milliseconds {}\n# TYPE arena360_restore_drill_finished_timestamp_seconds gauge\narena360_restore_drill_finished_timestamp_seconds {}\n",u8::from(passed),elapsed,finished));
         }}
-        body + &background + &replication + &disk + &drill
+        let mut historical=String::from("# TYPE arena360_historical_job_completed_total counter\n# TYPE arena360_historical_job_failures_total counter\n# TYPE arena360_historical_job_elapsed_milliseconds_total counter\n# TYPE arena360_historical_job_last_success_timestamp_seconds gauge\n");
+        if let Ok(jobs)=self.historical.lock(){for (task,(completed,failed,millis,last)) in jobs.iter(){historical.push_str(&format!("arena360_historical_job_completed_total{{task=\"{task}\"}} {completed}\narena360_historical_job_failures_total{{task=\"{task}\"}} {failed}\narena360_historical_job_elapsed_milliseconds_total{{task=\"{task}\"}} {millis}\narena360_historical_job_last_success_timestamp_seconds{{task=\"{task}\"}} {last}\n"));}}
+        body + &background + &replication + &disk + &drill + &historical
     }
 }
 

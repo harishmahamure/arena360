@@ -68,3 +68,12 @@ groups:
           severity: warning
         annotations:
           summary: "Cell has no completed restore drill in eight days"
+  - name: arena360-historical
+    rules:
+      - alert: HotParquetPublicationFailing
+        expr: increase(arena360_historical_job_failures_total{task=~"hot_.*"}[10m]) >= 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hot Parquet publication or its consumer repeatedly fails; inspect keys, storage and ownership"

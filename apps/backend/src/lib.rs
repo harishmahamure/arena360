@@ -32,3 +32,5 @@ pub mod demo;
 pub mod moving;
 
 pub mod cold;
+
+pub mod historical;

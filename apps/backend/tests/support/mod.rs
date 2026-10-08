@@ -173,7 +173,9 @@ pub struct SessionFixture {
     pub cache: Arc<MemoryCache>,
 }
 impl SessionFixture {
-    pub async fn new() -> Self {
+    pub async fn new() -> Self {Self::new_with_tenant(TenantFixture::new().await).await}
+    pub async fn new_with_background_jobs(jobs:Arc<gaming_cafe_api::background::BackgroundJobs>)->Self {Self::new_with_tenant(TenantFixture::new_with_background_jobs(jobs).await).await}
+    async fn new_with_tenant(tenant:TenantFixture) -> Self {
         use gaming_cafe_api::{
             cache::CacheService,
             models::PurchaseBalanceDto,
@@ -184,7 +186,6 @@ impl SessionFixture {
             },
             sse::Broadcaster,
         };
-        let tenant = TenantFixture::new().await;
         let venue = Uuid::now_v7();
         tenant.db.with_immediate_writer(move |c| Box::pin(async move {
             let at = gaming_cafe_api::time::format_sqlite_timestamp(&chrono::Utc::now()).unwrap();

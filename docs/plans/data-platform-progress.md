@@ -61,15 +61,22 @@
 ## Current task
 
 - [ ] `TEST-0050` — Capacity benchmark workflow and hardware measurements (M9); production profile, staging connection and workload/latency targets are pending.
-- Capacity workflow is prepared and three harness checks pass. Actual measurements await environment details; local implementation continues with API-0074 while this external gate is pending.
+- Capacity workflow is prepared and three harness checks pass. Actual measurements await environment details; local implementation continues with API-0071 while this external gate is pending.
 - M8 staging launch gate remains pending: full-cell operational/analytics recovery within published RTO and actual alert firing during a Wasabi outage. No staging cell IDs, control-plane URL or backup credentials are configured locally.
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0074 completed
+
+- JetStream-triggered monthly hot Parquet copies use the canonical secret-free projection, exact money, tenant-calendar boundaries and consistent SQLite backfill. Per-table admission yields to queued backups; conversion is bounded to one thread and 128 MB.
+- Tenant-key encrypted objects are verified on upload/read-back. Source checksums reuse unchanged objects; missing objects rebuild. Cursor publication and broker ACKs follow all-month verification under current ownership.
+- The live broker integration gate passes calendar, values, retries, missing-object repair, wrong/missing keys, one background slot and emitted metrics. Native library/binaries compile.
+- Runbook: `docs/operations/hot-parquet.md`. Next: API-0071 archive worker and safe purge.
 
 ### DB-0070 completed
 
 - Control-plane archive, backfill and export manifests have durable checkpoints, object evidence, worker reservation fields and guarded state transitions.
 - The integration gate passes complete phase sequences and rejected unsafe updates, including purge before verification, changed evidence and cross-tenant object/archive references.
-- Runbook: `docs/operations/historical-jobs.md`. Next: API-0074 monthly hot Parquet writer.
+- Runbook: `docs/operations/historical-jobs.md`. Implementation commit: `f3642f1`.
 
 ### API-0070 completed
 
