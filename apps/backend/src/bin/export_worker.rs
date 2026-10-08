@@ -89,15 +89,54 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .run(id, token)
             .await
         };
-        tokio::pin!(work);
-        let mut ticks = tokio::time::interval(Duration::from_secs(20));
-        loop {
-            tokio::select! {
-             result=&mut work=>return result.map_err(Into::into),
-             _=ticks.tick()=>if !matches!(tokio::time::timeout(Duration::from_secs(15),exports::renew(&pool,id,token)).await,Ok(Ok(()))){eprintln!("Export heartbeat failed or timed out; fencing this process");std::process::exit(1);},
-             _=tokio::signal::ctrl_c()=>std::process::exit(130),
+        // Renewal must run independently of blocking encoding/hash work on the main thread.
+        let heartbeat_pool = pool.clone();
+        let heartbeat = tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(Duration::from_secs(20));
+            loop {
+                ticks.tick().await;
+                if matches!(
+                    tokio::time::timeout(
+                        Duration::from_secs(15),
+                        exports::renew(&heartbeat_pool, id, token)
+                    )
+                    .await,
+                    Ok(Ok(()))
+                ) {
+                    continue;
+                }
+                // Publication can race the final renewal. A matching READY result is already fenced.
+                let ready = tokio::time::timeout(Duration::from_secs(1),sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM historical_exports WHERE id=$1 AND worker_token=$2 AND state='READY')").bind(id).bind(token).fetch_one(&heartbeat_pool)).await;
+                if matches!(ready, Ok(Ok(true))) {
+                    return;
+                }
+                eprintln!("Export heartbeat failed or timed out; fencing this process");
+                std::process::exit(1);
             }
+        });
+        if let Ok(delay) = std::env::var("EXPORT_TEST_BLOCK_MS") {
+            if !cfg!(debug_assertions)
+                || std::env::var("RUST_ENV").as_deref() != Ok("test")
+                || ["NODE_ENV", "RUST_ENV", "ENVIRONMENT"]
+                    .into_iter()
+                    .any(|name| std::env::var(name).as_deref() == Ok("production"))
+            {
+                heartbeat.abort();
+                return Err(
+                    "Main-thread blocking fixtures require a debug test environment".into(),
+                );
+            }
+            let delay = delay.parse::<u64>()?;
+            if delay > 60000 {
+                heartbeat.abort();
+                return Err("Blocking fixture exceeds sixty seconds".into());
+            }
+            std::thread::sleep(Duration::from_millis(delay));
         }
+        let result = tokio::select! { result=work=>result, _=tokio::signal::ctrl_c()=>std::process::exit(130) };
+        heartbeat.abort();
+        let _ = heartbeat.await;
+        return result.map_err(Into::into);
     }
     if token.is_some() {
         return Err("--token requires --run-job".into());

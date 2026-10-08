@@ -28,6 +28,16 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
             return Some(String::new())
         }
         "branding" => return Some(String::new()),
+        // These control-plane handlers check current organization membership or a download MAC.
+        "historical"
+            if p.get(1) == Some(&"exports")
+                && (p.len() == 2 || p.len() == 3 || (p.len() == 4 && last == "download")) =>
+        {
+            return Some(String::new())
+        }
+        "historical" if p.get(1) == Some(&"downloads") && read && p.len() == 4 => {
+            return Some(String::new())
+        }
         "auth" if path == "/auth/register" => "players:write",
         "auth" if path == "/auth/staff-shift" => "shifts:write",
         "notifications" => "notifications:read",
@@ -136,6 +146,13 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
     Some(exact.into())
 }
 pub fn authorize(claims: &JwtUserClaims, method: &str, path: &str) -> Result<(), AppError> {
+    if (path == "/historical/exports" || path.starts_with("/historical/exports/"))
+        && (!claims.is_admin() || claims.deviceId.is_some())
+    {
+        return Err(AppError::Forbidden(
+            "Organization admin access required".into(),
+        ));
+    }
     // Each upload purpose enforces its own permission in the presign handler.
     if path == "/uploads/presign" {
         return Ok(());
@@ -161,6 +178,28 @@ pub fn authorize(claims: &JwtUserClaims, method: &str, path: &str) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn historical_exports_require_an_organization_admin_and_downloads_have_a_signed_boundary() {
+        let tenant = uuid::Uuid::now_v7().to_string();
+        for role in ["admin", "staff"] {
+            let claims: JwtUserClaims = serde_json::from_value(serde_json::json!({"sub":"actor","userId":"actor","tenantId":tenant,"allowedTenants":[tenant],"orgIds":[tenant],"roles":[role],"permissions":["access:manage"],"appId":"admin","iss":"gamezone","aud":"gamezone"})).unwrap();
+            for (method, path) in [
+                ("POST", "/historical/exports"),
+                ("GET", "/historical/exports/job"),
+                ("DELETE", "/historical/exports/job"),
+                ("GET", "/historical/exports/job/download"),
+            ] {
+                assert_eq!(authorize(&claims, method, path).is_ok(), role == "admin");
+            }
+        }
+        assert_eq!(
+            permission("GET", "/historical/downloads/tenant/job", "actor"),
+            Some(String::new())
+        );
+        assert!(permission("POST", "/historical/downloads/tenant/job", "actor").is_none());
+        assert!(permission("GET", "/historical/unknown", "actor").is_none());
+        assert!(permission("GET", "/historical/exports/job/unknown", "actor").is_none());
+    }
     #[test]
     fn specific_actions_do_not_fall_back_to_generic_write() {
         for (method, path, expected) in [

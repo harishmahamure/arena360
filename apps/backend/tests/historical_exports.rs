@@ -226,8 +226,22 @@ async fn isolated_exports_combine_hot_and_archive_revisions_with_exact_money_and
             .env("NODE_ENV", "test")
             .env("ENVIRONMENT", "test")
             .kill_on_drop(true);
+        if format == "CSV" {
+            command.env("EXPORT_TEST_BLOCK_MS", "25000");
+        } else {
+            command.env_remove("EXPORT_TEST_BLOCK_MS");
+        }
         let child = command.spawn().unwrap();
         assert_ne!(child.id().unwrap(), std::process::id());
+        if format == "CSV" {
+            tokio::time::sleep(Duration::from_secs(22)).await;
+            let renewed = exports::get(&pool, tenant, job.id).await.unwrap();
+            assert!(
+                renewed.worker_expires_at.unwrap()
+                    > claimed.worker_expires_at.unwrap() + chrono::Duration::seconds(10),
+                "an independent heartbeat must renew while the worker main thread is blocked"
+            );
+        }
         let output = tokio::time::timeout(Duration::from_secs(90), child.wait_with_output())
             .await
             .unwrap()
