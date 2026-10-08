@@ -364,6 +364,8 @@ Must complete before the oldest paying tenant's data reaches 18 months.
 
 **Done when:** archiving a test tenant's oldest month purges SQLite only after verification; operational write p99 stays within target during purge; an export spanning archived and hot months matches the source totals.
 
+**Local completion verification (2026-10-08):** the full `pnpm backend:test:integration` gate passes (464 checks, zero failures) with native DuckDB, disposable PostgreSQL and disposable JetStream. This includes archive/backfill/export, recovery, ownership, report parity and live hot publication checks. The export child also renews its lease during a deliberately blocked main thread. An earlier hot-publication ownership failure did not reproduce in its isolated rerun or the final full run; no ownership checks were relaxed. Production staging cell-loss/Wasabi-outage drills and TEST-0050 hardware measurements remain open pending environment details.
+
 ---
 
 ## Risk register
