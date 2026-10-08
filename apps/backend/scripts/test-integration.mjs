@@ -40,6 +40,7 @@ const controlTargets = [
   'cell_rebalancing',
   'schema_rollouts',
   'cold_tenants',
+  'historical_manifests',
   'tenant_user_repositories',
   'demo_seed',
 ];

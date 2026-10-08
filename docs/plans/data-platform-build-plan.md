@@ -349,7 +349,8 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
 
 Must complete before the oldest paying tenant's data reaches 18 months.
 
-- [ ] DB-0070: Archive, backfill, and export manifests and state machines in the control plane (§26, §30, §41). — S
+- [x] DB-0070: Archive, backfill, and export manifests and state machines in the control plane (§26, §30, §41). — S
+  - Verified: control-plane archive/backfill/export manifests enforce ordered phases, immutable verified evidence, purge checkpoints, validated staging and tenant/job object boundaries. Integration coverage checks successful completion plus unsafe transitions and cross-tenant references. See `docs/operations/historical-jobs.md`.
 - [ ] API-0074: `hot/` Parquet writer. A JetStream consumer writes monthly Parquet partitions to `tenants/{id}/hot/{yyyy}/{mm}/`, with a backfill from SQLite for months written before it existed. It is non-authoritative and rebuildable (ADR-0043 decision 31). — M
 - [ ] API-0071: Archive worker: month-sized chunks exported from SQLite to Parquet in `archive/`, uploaded, verified, then purged in small batches with back-off driven by OLTP p99. No automatic `VACUUM` (§24–28). — L
 - [ ] API-0071a: Archive hand-off. After an `archive/` month is verified against SQLite, delete the matching `hot/` month. — XS

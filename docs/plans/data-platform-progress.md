@@ -61,16 +61,22 @@
 ## Current task
 
 - [ ] `TEST-0050` — Capacity benchmark workflow and hardware measurements (M9); production profile, staging connection and workload/latency targets are pending.
-- Capacity workflow is prepared and three harness checks pass. Actual measurements await environment details; local implementation continues with DB-0070 while this external gate is pending.
+- Capacity workflow is prepared and three harness checks pass. Actual measurements await environment details; local implementation continues with API-0074 while this external gate is pending.
 - M8 staging launch gate remains pending: full-cell operational/analytics recovery within published RTO and actual alert firing during a Wasabi outage. No staging cell IDs, control-plane URL or backup credentials are configured locally.
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### DB-0070 completed
+
+- Control-plane archive, backfill and export manifests have durable checkpoints, object evidence, worker reservation fields and guarded state transitions.
+- The integration gate passes complete phase sequences and rejected unsafe updates, including purge before verification, changed evidence and cross-tenant object/archive references.
+- Runbook: `docs/operations/historical-jobs.md`. Next: API-0074 monthly hot Parquet writer.
 
 ### API-0070 completed
 
 - Verified remote snapshot/WAL before lease release and local removal; durable cleanup resumes safely. Tenant keys remain available.
 - First router request waits for operations recovery; analytics resumes separately. Ready-cell heartbeats, concurrent wake fencing and completion reconciliation handle retries and restarts.
 - 22 selected cold/control/move/replication checks and native analytics build pass. Local operations hydration is **1,213 ms**; staging measurements remain external.
-- Runbook: `docs/operations/cold-tenants.md`. Next: DB-0070 manifest state machines.
+- Runbook: `docs/operations/cold-tenants.md`. Implementation commit: `062f72e`.
 
 ### API-0062 completed
 
