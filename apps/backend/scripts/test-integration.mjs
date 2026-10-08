@@ -252,7 +252,7 @@ async function main() {
   if (args.length > 1 || args.some((arg) => !['--control-only', '--jetstream-only'].includes(arg)))
     throw new Error('Usage: pnpm backend:test:integration [--control-only|--jetstream-only]');
   if (args.includes('--jetstream-only'))
-    return runJetstream({ ...process.env, NATS_URL: '', REDIS_URL: '', CLICKHOUSE_URL: '' }, true);
+    return runJetstream({ ...process.env, NATS_URL: '', REDIS_URL: '' }, true);
   const local = process.env.CONTROL_TEST_ADMIN_DATABASE_URL ? undefined : await localPostgres();
   const admin = new pg.Client({
     connectionString: process.env.CONTROL_TEST_ADMIN_DATABASE_URL || local.url,
@@ -275,7 +275,6 @@ async function main() {
         'postgres://invalid:invalid@127.0.0.1:1/operational_database_is_not_a_test_fixture',
       NATS_URL: '',
       REDIS_URL: '',
-      CLICKHOUSE_URL: '',
       TENANT_DATA_DIR: tenantFiles,
       TMPDIR: tenantFiles,
       TMP: tenantFiles,
@@ -286,7 +285,7 @@ async function main() {
     );
     if (!args.includes('--control-only'))
       await command('cargo', ['test', '--manifest-path', manifest, ...analyticsFeatures], { env });
-    // Only control targets include ignored tests; external analytics/Redis suites retain their explicit gates.
+    // Control targets include their isolated infrastructure gates; live broker checks run separately.
     const targets = controlTargets.flatMap((target) => ['--test', target]);
     const controlNatsBinary = process.env.DUCKDB_LIB_DIR ? await natsBinary() : undefined;
     const controlNats = controlNatsBinary ? await localNats(controlNatsBinary) : undefined;

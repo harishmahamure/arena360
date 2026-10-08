@@ -23,7 +23,7 @@ Constraints that drive this decision:
 - **Operational load.** The company is a single developer. Managed databases are preferred over self-hosting database servers.
 - **Isolation.** Physically separate databases remove the class of bugs where a missing `organizationId` predicate leaks data, and make per-tenant export, deletion, and restore simple.
 
-Analytics (outbox to NATS JetStream to ClickHouse) and caching (Redis) stay as they are and remain on the application VM for now.
+Analytics (outbox to NATS JetStream to legacy reporting pipeline) and caching (Redis) stay as they are and remain on the application VM for now.
 
 ## Decision
 
@@ -40,7 +40,7 @@ Analytics (outbox to NATS JetStream to ClickHouse) and caching (Redis) stay as t
    - `plpgsql` triggers (audit columns, `updatedAt`, outbox capture) move into repository code, or into plain SQLite triggers where the logic is a single statement.
    - `SELECT ... FOR UPDATE` becomes a write transaction started with `BEGIN IMMEDIATE`. Turso serializes writers per database, which is acceptable at venue scale.
 7. **Realtime.** PostgreSQL `LISTEN`/`NOTIFY` is replaced by Redis pub/sub after commit, with the per-tenant `realtime_outbox` table kept for durable replay.
-8. **Analytics.** Each tenant database keeps an `analytics_outbox` written in the same transaction as the business change. The analytics worker iterates active tenants from the registry, polls each outbox every 5–10 seconds, adds the organization ID, and publishes to JetStream as today. The PostgreSQL advisory lock that keeps a single worker active is replaced by a Redis lease. ClickHouse projections and report queries are unchanged.
+8. **Analytics.** Each tenant database keeps an `analytics_outbox` written in the same transaction as the business change. The analytics worker iterates active tenants from the registry, polls each outbox every 5–10 seconds, adds the organization ID, and publishes to JetStream as today. The PostgreSQL advisory lock that keeps a single worker active is replaced by a Redis lease. legacy reporting pipeline projections and report queries are unchanged.
 9. **Plans.** Turso Free during development, Developer ($4.99/month) from the first paying venue, Scaler once Developer quotas are exceeded (about 40–50 venues).
 
 ## Consequences
@@ -58,7 +58,7 @@ Analytics (outbox to NATS JetStream to ClickHouse) and caching (Redis) stay as t
 - One-time rewrite of 119 migrations into a new baseline and porting of 461 runtime SQLx queries across 26 repositories (about 69 files reference PostgreSQL types).
 - SQLite `ALTER TABLE` limits mean some future migrations require table rebuilds.
 - Schema changes fan out to every tenant database; partial failure and version drift must be handled.
-- No cross-tenant SQL. Platform-wide reporting comes only from ClickHouse.
+- No cross-tenant SQL. Platform-wide reporting comes only from legacy reporting pipeline.
 - Two databases per request path (control plane for identity, tenant for data), mitigated by caching.
 - Turso bills rows scanned, so unindexed queries and polling directly increase cost.
 
@@ -68,7 +68,7 @@ Analytics (outbox to NATS JetStream to ClickHouse) and caching (Redis) stay as t
 |---|---|
 | Money precision loss during migration | Fixed-point integer columns at scale 4; property tests comparing ported calculations against current results |
 | Failed migration on some tenants | Orchestrator records per-tenant version, retries idempotently, blocks requests for tenants on an incompatible version |
-| Row-read cost spikes | Index every hot query, serve dashboards from ClickHouse and Redis, alert on Turso usage |
+| Row-read cost spikes | Index every hot query, serve dashboards from legacy reporting pipeline and Redis, alert on Turso usage |
 | Free-plan 1-day restore window | Move to Developer (10-day restore) before onboarding the first paying venue |
 | Turso vendor or product direction changes | Keep SQL portable SQLite; document export and self-host path (SQLite with Litestream) |
 | Outbox polling cost and lag at many tenants | 5–10 second interval, indexed outbox, only poll tenants marked active |
@@ -107,7 +107,7 @@ Not implemented. The estimated effort was 9–12 developer-weeks: a 1–2 week s
 ## References
 
 - `docs/architecture/tenancy.md` (current shared-table tenancy)
-- `docs/architecture/analytics.md` (outbox, JetStream, ClickHouse pipeline)
+- `docs/architecture/analytics.md` (outbox, JetStream, legacy reporting pipeline pipeline)
 - `apps/backend/src/realtime/dispatcher.rs` (`PgListener` usage to replace)
 - Turso pricing: https://turso.tech/pricing (checked 2026-10-03)
 - Neon pricing: https://neon.com/pricing (checked 2026-10-03)

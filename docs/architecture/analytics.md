@@ -1,82 +1,63 @@
-> M5 status: the PostgreSQL operational schema and writer are retired. Live reporting
-> returns `503 ANALYTICS_UNAVAILABLE` until M7. Sections describing the old
-> PostgreSQL/ClickHouse pipeline are retained as historical report-parity context.
-> Use [storage-cell development](storage-cell-development.md) for current setup and
-> [Demo data](#demo-data) below for the tenant SQLite seed.
+# Tenant reporting with DuckDB
 
-# Reporting with JetStream and ClickHouse
+Operations commit to tenant SQLite. A canonical, secret-free snapshot is captured
+with each outbox event in the same transaction. The owning cell publishes events
+to NATS JetStream and consumes them into that tenant’s `analytics.duckdb` file.
+PostgreSQL stores control metadata and global staff credentials.
 
-> **Superseded** by `docs/architecture/data-platform.md`, ADR-0043, and `docs/architecture/duckdb-analytics-schema.md` (per-tenant DuckDB; ClickHouse removed). This describes the current code until milestone M7 of `docs/plans/data-platform-build-plan.md` completes.
+## Setup
 
-PostgreSQL owns transactions, payment and credit validation, session state, stock mutations, authentication, configuration, and operational record lookups. ClickHouse owns every `/stats/*` query, finance report, expense category summary, credit portfolio summary, inventory overview, receipt summary, and waste summary. Pagination counts, unread notification counts, per-player credit headroom, and reorder actions remain transactional PostgreSQL queries.
+Follow [storage-cell development](storage-cell-development.md) to register the cell,
+configure durable tenant storage, provision `ARENA_TENANT_EVENTS`, and select the
+matching DuckDB SDK or bundled build. Production builds enable native analytics.
+A default development build without `duckdb-analytics` serves operational APIs and
+returns `503 ANALYTICS_UNAVAILABLE` for reports.
 
-```mermaid
-flowchart LR
-    Transaction[PostgreSQL transaction] --> Outbox[Analytics outbox]
-    Outbox --> Relay[Rust outbox relay]
-    Relay --> JetStream[NATS JetStream]
-    JetStream --> Consumer[One durable Rust consumer]
-    Consumer --> ClickHouse[ClickHouse typed projections]
-    ClickHouse --> Reports[Reports and dashboards]
-```
+Run `pnpm demo:seed` after configuring the registered owning cell and JetStream.
+The in-process consumer builds missing or incompatible projections from a consistent
+SQLite snapshot, replays subsequent events, and switches the shadow file atomically.
+No separate reporting service or legacy worker is required.
 
-The relay and consumer run in one `analytics_worker` process, separate from API replicas. A PostgreSQL session advisory lock prevents a second active worker. `ANALYTICS_DATABASE_URL` must connect directly to PostgreSQL, not a PgBouncer transaction pool. The worker does not need JWT credentials.
+## Serving and correctness
 
-## Local startup and cutover
+Every `/stats/*` route, finance report, expense summary, credit portfolio summary,
+inventory overview, receipt summary and waste summary reads tenant DuckDB.
+Current local permission and venue grants are resolved before a reader or cache is
+consulted. Fact venue snapshots keep historical usage at its original venue even
+when a device moves; child records are constrained to their scoped parents.
 
-1. Configure `apps/backend/.env` using the analytics variables in `.env.example`.
-2. Start dependencies: `docker compose up -d postgres redis nats clickhouse`.
-3. Apply PostgreSQL migrations: `pnpm migration run`. This installs the analytics outbox and allowlisted row triggers before backfill begins.
-4. Run `pnpm analytics:backfill`. This creates ClickHouse tables/views, enqueues existing rows, and continues consuming live changes. Keep it running. Reports return `503 ANALYTICS_UNAVAILABLE` until the snapshot has been acknowledged into ClickHouse.
-5. For subsequent starts, use `pnpm analytics:dev` (no snapshot required). Start the API with the same ClickHouse database configuration.
+Native reads are fenced and use parameterized SQL. Money stays DECIMAL until public
+floating-point DTO presentation; finance exports return exact decimal strings.
+Business calendar bounds use the tenant’s IANA timezone, including daylight-saving
+changes. Finance exports retain their existing UTC date contract. Normal report
+ranges must fit the hot window; retained monthly summaries survive fact retention.
 
-Container alternative after migration: `docker compose --profile analytics run --rm analytics-worker analytics_worker --backfill`. Stop that foreground process after readiness, then start the supervised worker with `docker compose --profile analytics up -d analytics-worker`. Do not run both simultaneously. The normal worker service deliberately does not rerun backfill at every restart.
+Unready, rebuilding or restored-ahead projections return `503 ANALYTICS_UNAVAILABLE`
+with `report temporarily rebuilding`. Cache identity includes tenant, ownership
+generation, schema, timezone, hot boundary, ingestion checkpoint and selected venues.
+Readiness and date bounds are checked before cached results. Reporting failures are
+explicit; operational aggregate queries are never substituted.
 
-The ClickHouse database must already exist; Compose creates `arena360`. The worker initializes its tables and views. Production should provision a reporting user with SELECT only, a separate writer/schema user for the worker, authenticated TLS NATS connections, persistent volumes, and `NATS_ANALYTICS_REPLICAS=3` on a three-node JetStream cluster. Development Compose exposes NATS and ClickHouse only on localhost.
+Reports are eventually consistent. Each query uses a native read snapshot; multiple
+queries composing a dashboard may observe intervening ingestion. A freshly read
+SQLite watermark validates the sequence actually observed, so ordinary ingestion
+advancing while a report waits does not resemble a restore-ahead condition.
 
-## Delivery and correctness
+## Recovery and verification
 
-- Row triggers write the outbox inside the business transaction. Rollbacks also roll back analytics events. No network service is called from a PostgreSQL transaction.
-- The relay deletes an outbox row only after JetStream confirms durable publication. It polls pending rows rather than a sequence watermark, so transactions that commit out of sequence are not lost.
-- One durable pull consumer (`clickhouse-v1`) reads `ARENA360_ANALYTICS`, subject `arena360.analytics.v1.rows`. It batches up to 500 messages, groups inserts by table, and acknowledges only after all synchronous inserts succeed.
-- Events carry schema version, source table, row ID, row version, deletion flag, and explicitly allowlisted fields. Passwords, OTPs, tokens, and arbitrary metadata are excluded at capture and ingestion.
-- Each typed `*_versions` table uses `ReplacingMergeTree(_version)`. Reporting views use `FINAL` before filtering tombstones. Duplicate and out-of-order delivery cannot inflate counts or resurrect deleted rows. Tombstones must not be TTL-deleted without a replay-safe retention design.
-- Backfill rows use version zero, so concurrent live updates and deletes always win. Interrupted backfill can be rerun with `--backfill`; the readiness gate opens only after all previously published messages are acknowledged. Stock balance composite keys use a stable UUID derived from both source key columns.
-- Hard and soft deletes, refunds, approvals, and later corrections are reflected. Do not bypass capture with `TRUNCATE` or disabled triggers; use normal row mutations or rebuild the projection afterward.
-- Money remains Decimal at the ledger's scale. Finance exports return decimal strings; existing dashboard DTOs retain their floating-point presentation fields.
-- Reports are eventually consistent, including joins across tables. They are not a transaction snapshot across an entire report. Redis may cache ClickHouse aggregates for the existing aggregate TTL. Cache keys were versioned at cutover so old PostgreSQL results cannot leak through.
-- The operational source tables are still shared by the original venue. Report handlers explicitly reject other organizations using the existing venue boundary. Supporting multiple venue ledgers requires adding source tenant keys and including them in every projection key, query, and cache key; this change does not claim that migration is complete.
+Monitor outbox age/count, publish failures, consumer lag, sequence gaps, rebuild
+failures and background admission. NATS outages retain writes in SQLite. Duplicate
+and older sequences cannot inflate aggregates; gaps stop ingestion and require a
+consistent rebuild. The shadow rebuild preserves sealed monthly summaries for the
+same calendar, catches up to a finite source watermark and switches only after all
+checks pass. Operational writes remain available during rebuilding.
 
-## Recovery and monitoring
-
-An unavailable ClickHouse produces an explicit analytics error, with no PostgreSQL reporting fallback. NATS or ClickHouse outages leave changes durable in the outbox or JetStream. The worker exits on errors; Compose restarts it. Malformed or unsupported events remain unacknowledged for diagnosis and retry rather than being silently discarded. Monitor worker restarts, JetStream consumer pending/ack-pending/redelivery counts, and PostgreSQL outbox count/oldest age. Alert on sustained lag and storage growth.
-
-The stream uses work-queue retention: acknowledged messages are removed. Its 10 GiB limit rejects new messages rather than evicting unprocessed data; PostgreSQL then holds the backlog. Provision and monitor both stores. ClickHouse replacement history persists until merges; deduplication is enforced on reads regardless of merge progress.
-
-For complete ClickHouse loss, stop the worker, provision a fresh ClickHouse database, preserve the outbox/JetStream backlog, and run `--backfill` against the new database. Switch the API to that database only after readiness. Do not rebuild over a populated projection with version-zero snapshots: use a fresh database so rows removed while capture was bypassed cannot survive. Back up ClickHouse and JetStream volumes and never reset the outbox sequence while reusing a JetStream stream.
-
-Check initial readiness:
-
-```sql
-SELECT completed_at FROM analytics_ready FINAL WHERE id = 1;
-```
-
-Inspect transactional delivery lag (an operational queue query, not a business report):
-
-```sql
-SELECT count(*), min(created_at) FROM analytics_outbox;
-```
-
-## Validation
-
-`cargo test --manifest-path apps/backend/Cargo.toml --test analytics` runs projection, precision, and unavailable-store checks. Two opt-in tests use disposable services:
-
-- `clickhouse_replay_deletion_precision_and_all_report_queries`: duplicate/out-of-order events, tombstones, refunds, exact totals, and every reporting query.
-- `committed_changes_flow_through_jetstream_and_survive_worker_restart`: transactional rollback, snapshot readiness, live delivery, singleton exclusion, restart recovery, and hard deletion.
-
-Set `ANALYTICS_TEST_CLICKHOUSE_URL`, `ANALYTICS_TEST_CLICKHOUSE_DATABASE`, optional `ANALYTICS_TEST_CLICKHOUSE_USER` and `ANALYTICS_TEST_CLICKHOUSE_PASSWORD`. The pipeline test also requires `ANALYTICS_TEST_DATABASE_URL` pointing at a disposable fully migrated PostgreSQL database and `ANALYTICS_TEST_NATS_URL` pointing at an isolated JetStream server. Each test requires a fresh ClickHouse database. Run an individual test with `cargo test --manifest-path apps/backend/Cargo.toml --test analytics <test-name> -- --ignored`.
-
-Delivery semantics follow [NATS durable consumers](https://docs.nats.io/nats-concepts/jetstream/consumers) and [ClickHouse replacement tables](https://clickhouse.com/docs/engines/table-engines/mergetree-family/replacingmergetree).
+`pnpm backend:test:integration` runs native report parity when `DUCKDB_LIB_DIR` is
+configured, plus disposable control and JetStream gates. See the development guide
+for signed SQLite extensions and loader paths. `tests/report_parity.rs` verifies all
+31 unchanged M0 fixtures using original input, fixed observation time, canonical UTC
+normalization and a documented inventory tie boundary. Native tests also cover
+scope, readiness, revocation, retention, exact money, refunds, delivery and recovery.
 
 ## Demo data
 
@@ -100,9 +81,8 @@ products, 430 sales, 270 completed sessions, five active sessions, two pending k
 orders, partial credit settlements, kitchen tickets, expenses, stock receipts,
 a partially received purchase order, reorder rules, and reconciled cash registers.
 Every business command commits its own records, ledger effects, and canonical outbox
-snapshots atomically. M6 will deliver this SQLite outbox to DuckDB; reports remain
-`503 ANALYTICS_UNAVAILABLE` until M7. The retired PostgreSQL/ClickHouse worker does
-not consume this tenant dataset.
+snapshots atomically. Owning cells publish the outbox through JetStream and build
+the tenant DuckDB projection. Reports become available once its status is READY.
 
 Global demo owner/counter accounts and local player accounts have unusable password
 hashes by default. Set `DEMO_OWNER_USER_ID` (or `--owner-user-id`) to an existing active
@@ -121,7 +101,8 @@ Only ACTIVE tenants owned by the selected cell can be reopened.
 
 `pnpm demo:test` checks the deterministic legacy report fixture generator and the Node
 command adapter. The fixture generator remains available for M0 report baselines; the
-new operational seed is version `arena360-demo-v2` and report parity is verified in M7.
+new operational seed is version `arena360-demo-v2`. Native projection parity and
+report serving are verified by the integration runner.
 The production binary integration test checks real provisioning, service writes, wallet
 and cash reconciliation, secret-free outbox payloads, credential preservation and repeat
 behavior against temporary tenant files:
@@ -133,26 +114,13 @@ CONTROL_TEST_DATABASE_URL=postgres://.../isolated_control \
 
 ## Advanced analytics workspace
 
-`/analytics` is the report directory, with eleven explicit subpage routes such as
-`/analytics/executive`. The Business dashboard sidebar group and page search expose every
-subpage; each report has its own heading and breadcrumb back to the directory. Applied
-start/end dates and comparison settings carry between business subpages. All reports use
-`GET /stats/business` and require the existing `finance:read` permission and original-venue
-boundary. PostgreSQL remains the transactional store. Dates are inclusive IST calendar days,
-limited to 366 days, with an exclusive observed end clipped at the current time. Reports are
-cached for 30 seconds; the generated timestamp is not a source ingestion watermark.
-
-The additional projection includes transaction creators, device area labels, plan credits,
-wallet expiry/balances, POS lines, shifts, and the game catalog. No credentials or free-form
-notes are captured. Apply `20261003010000_business_analytics.sql` with the old worker stopped,
-then start the updated worker. It adds nullable columns to existing ClickHouse tables and
-rebuilds views. The migration takes source-table write locks while replacing triggers and
-queuing versioned snapshots, so concurrent writes cannot overtake an older upgrade snapshot.
-Unlike a version-zero initial backfill, these refresh already-replicated rows. Business
-reports stay unavailable until readiness marker `analytics_ready.id = 2` is consumed after
-all preceding messages have been acknowledged. A complete new backfill opens both markers.
-Before rolling back, drain the outbox and JetStream with the upgraded worker, stop it, then
-revert the migration; do not run an old worker against events from new source tables.
+`/analytics` contains eleven report subpages. The sidebar and page search expose each
+one; dates and comparison settings carry across subpages. Reports use
+`GET /stats/business`, current `finance:read` permission and the selected venue scope.
+Dates are inclusive tenant calendar days, bounded to 366 days, with an exclusive
+observed end clipped to the current time. Reports cache for 30 seconds; the generated
+timestamp is not an ingestion watermark. Current display contracts and metric
+limitations are preserved by M0 parity tests.
 
 ### Metric definitions and limits
 
@@ -160,7 +128,7 @@ revert the migration; do not run an old worker against events from new source ta
 | --- | --- | --- |
 | Executive Overview | Completed + credit sales once, session starts, occupied hours, average ticket, repeat-visitor share | Credit collections are excluded. Capacity uses current inventory. Prepaid holders are a current snapshot. |
 | Location Performance | Session hours, starts, and inventory grouped by device area label | These are not tenant/branch accounts. No branch revenue, ticket, or growth attribution without immutable venue IDs on facts. |
-| Busy Hours & Capacity | Session intervals clipped to period and split at IST hour boundaries; weekday/hour heatmap | Operating window is an assumption. Capacity = current inventory × elapsed selected operating hours. No waiting-demand events. |
+| Busy Hours & Capacity | Session intervals clipped to period and split at tenant-calendar hour boundaries; weekday/hour heatmap | Operating window is an assumption. Capacity = current inventory × elapsed selected operating hours. No waiting-demand events. |
 | Revenue Opportunity | max(0, capacity − occupied hours) × assumed hourly rate × target fill share | Gross scenario, not observed lost revenue; excludes costs, downtime, and demand constraints. |
 | Dynamic Pricing | Occupied-hour and price-change scenarios, capped by estimated capacity | No inferred price elasticity and no automatic live price changes. |
 | Customer Retention | New = first recorded session in period; repeat = a prior session plus current visit; retention = prior-period visitors returning / prior-period visitors | Sessions are visits, not unique visit-days. Staff-allowance wallets excluded. At-risk rule: absent 30–89 days at period end. Detail is most recent 500 customers; summaries cover all. |
@@ -175,9 +143,7 @@ needs offline/online/maintenance intervals. Add immutable organization and venue
 to transactional facts before enabling multi-branch revenue comparisons; do not infer tenant
 ownership from free-text station locations or inventory warehouse IDs.
 
-Validation: `pnpm --filter @gaming-cafe/admin test -- src/pages/dashboard/analytics` checks
-metric grains, scenario caps, zero-day forecasts, navigation, and Apply semantics.
-`cargo test --manifest-path apps/backend/Cargo.toml --test business_analytics -- --ignored`
-uses a disposable ClickHouse database (`ANALYTICS_TEST_CLICKHOUSE_URL` and
-`ANALYTICS_TEST_CLICKHOUSE_DATABASE`) to validate empty reports, overnight clipping,
-repurchase/retention/attach definitions, and exclusion of refunded sales and credit collections.
+Validation: `pnpm --filter @gaming-cafe/admin test -- src/pages/dashboard/analytics`
+checks metric grains, scenario caps, forecasts, navigation and Apply semantics.
+Native `business_analytics`, `location_reporting`, `report_cutover` and
+`report_parity` tests cover report behavior without an external reporting database.

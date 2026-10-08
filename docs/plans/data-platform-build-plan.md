@@ -4,7 +4,7 @@ Implements `docs/architecture/data-platform.md` under `docs/adr/0043-storage-cel
 
 ## Goal
 
-Replace the shared PostgreSQL operational database and the ClickHouse pipeline with:
+Replace the shared PostgreSQL operational database and the legacy reporting pipeline pipeline with:
 
 - a PostgreSQL control plane,
 - Storage Cells holding one SQLite and one DuckDB database per tenant,
@@ -46,7 +46,7 @@ The public HTTP API (OpenAPI) stays stable, so the admin and kiosk apps keep wor
 | M4 | Core venue operations on SQLite | Sessions, wallets, plan purchases, POS checkout, credit, realtime | M3 | 3 weeks |
 | M5 | Back office on SQLite (operational cutover) | Every business API on SQLite; demo seed ported; `platform-v2` merged | M4 | 4 weeks |
 | M6 | Analytics ingestion | Outbox → JetStream → per-tenant DuckDB, with rebuilds | M5 | 2 weeks |
-| M7 | Reports on DuckDB | Every report matches the golden fixtures; ClickHouse removed | M6 | 2 weeks |
+| M7 | Reports on DuckDB | Every report matches the golden fixtures; legacy reporting pipeline removed | M6 | 2 weeks |
 | M8 | Replication and recovery (launch gate) | WAL replication to Wasabi, snapshots, restore, cell-loss drill | M5 | 3–4 weeks |
 | | **MVP: single cell, ready for paying venues (M0–M8)** | | | **~20–23 weeks** |
 | M9 | Multiple cells | Tenant moves, rebalancing, staged migrations, capacity benchmarks | M8 | 3–4 weeks |
@@ -64,18 +64,18 @@ M8 depends only on M5, so it can run before M6 and M7 if launch timing calls for
 
 - [x] OPS-0001: Record golden outputs of every current report (`/stats/*`, `/stats/business`, finance report, expense, credit, inventory, receipt, and waste summaries). Use the demo dataset seeded with `pnpm demo:seed --date 2026-10-02` and save the JSON fixtures under `apps/backend/tests/fixtures/reports/`. — S
   - Done: 31 fixtures (month, week, and day windows) captured with `pnpm report:fixtures` from the committed code, with Redis caching disabled. The script captures twice and fails on any difference. `generatedAt` is stripped as volatile. `/inventory/overview` `recentMovements` is ordered only by `createdAt`, so ties come back in any order; fixtures sort ties by `id`. The SQLite port should add `id` as a tie-breaker to every `ORDER BY "createdAt"` list.
-  - Re-capture: migrate and seed an empty database, run `analytics_worker --backfill`, run the backend with `LEGACY_REST_ENABLED=true` and `REDIS_URL=` (empty), then `pnpm report:fixtures` (or `--check`).
+  - Reproduction: `tests/report_parity.rs` loads the immutable M0 source input and golden reports. Run the native integration suite using the matching SDK and signed extensions documented in the storage-cell development guide.
 - [x] API-0001: Add crates per ADR-0043: `sqlx` `sqlite` feature, `duckdb` (bundled), `object_store` (S3-compatible, for Wasabi). Measure the clean and incremental build-time impact. — S
   - Done: `duckdb` 1.10506 (bundled), `object_store` 0.14 (`aws`), `sqlx` `sqlite`. The first build after adding them took about 57 minutes on a heavily loaded development machine, almost all of it compiling DuckDB's bundled C++. Incremental builds are unchanged (15 s vs 22 s baseline). A later `cargo check` started another cold C++ build because Cargo uses a separate profile, so DuckDB is opt-in as `duckdb-analytics` until M6. Release, CI, and Docker builds with that feature need a cached Cargo target directory; if linking remains slow, link a prebuilt `libduckdb` locally instead of `bundled`.
 - [x] API-0002: Module layout inside `apps/backend/src`, keeping the handler → service → repository layering:
   - `control/`: control-plane repositories and services;
   - `tenancy/`: tenant context, routing cache, lease client;
   - `storage/`: tenant SQLite handles, migration runner, outbox;
-  - `analytics/`: DuckDB, replacing the ClickHouse client.
+  - `analytics/`: DuckDB, replacing the legacy reporting pipeline client.
 
   Role flags for `control`, `cell`, and `router`, all enabled in one process by default. — M
   - Done: `ARENA_ROLES` (default `control,cell,router`) parsed into `config::Roles` and logged at startup; invalid lists stop startup. Module skeletons for `control`, `tenancy`, and `storage`.
-- [x] OPS-0002: Local stack in Compose: PostgreSQL (control plane), NATS JetStream, and an S3-compatible local stand-in for Wasabi. ClickHouse stays until M7. — S
+- [x] OPS-0002: Local stack in Compose: PostgreSQL (control plane), NATS JetStream, and an S3-compatible local stand-in for Wasabi. The legacy reporting service was retained through M6 and removed in M7. — S
   - Done: `object-storage` (SeaweedFS 4.48, S3 on `127.0.0.1:8333`) plus `object-storage-init`, which creates the `arena360` bucket idempotently. MinIO no longer publishes community images, so SeaweedFS (Apache-2.0) replaced it. S3 auth is disabled locally; signed requests are exercised against Wasabi in M8.
 - [x] TEST-0001: Benchmark harness skeleton that replays a synthetic 20-PC venue day (session starts and ends, checkouts, POS) against one tenant. Reused in M9. — S
   - Done: `pnpm bench:venue-day [--pcs 20] [--sessions 8] [--sales 6] [--json out.json]` drives the public HTTP API, so it works unchanged against the SQLite cells. It creates its own staff, shift, plan, product, stock, PCs, and players, then runs one concurrent lane per PC and reports p50, p95, p99, and maximum latency per operation. First run against the current backend: 800 operations, 0 failures, 24 s. The latencies (debug build, loaded machine, 20 lanes sharing one staff shift) are not a capacity baseline; M9 measures on a release build and production-like hardware.
@@ -196,7 +196,7 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
   - Verification: six Node generator/adapter tests, the real binary provisioning/reconciliation/idempotency test, and three tenant provisioning/schema tests pass. The operational dataset has 430 sales, 275 sessions (five active), two kiosk orders, financial/stock/wallet ledgers and more than 2,300 secret-free outbox events. The legacy deterministic generator remains for M0 fixtures; operational seed v2 report parity is an M7 gate. Setup documentation is updated.
 - [x] TEST-0020: All backend integration tests run against temporary tenant SQLite files and a test control-plane database. — M
   - Done: `pnpm backend:test:integration` runs the normal SQLite suite and all eight gated control/ownership/bootstrap/staff/demo checks. It creates a disposable database and tenant directory, starts local PostgreSQL when no explicit test admin target is supplied, and cleans up on success, failure or interruption. CI supplies an isolated PostgreSQL service and runs the same command.
-  - Obsolete PostgreSQL trigger pipeline and dashboard-cache tests are retired. Nine live report routes return 503 under authorized tenant scope, and revoking local access returns 403. Five external ClickHouse/Redis gates remain separate; JetStream and report parity coverage is rebuilt in M6/M7.
+  - Obsolete PostgreSQL trigger pipeline and dashboard-cache tests are retired. Nine live report routes return 503 under authorized tenant scope, and revoking local access returns 403. The former external reporting gates are replaced by native report tests in M7; JetStream gates run against disposable servers.
   - Verification: 360 normal tests and all eight control-backed checks pass (368 total). Local PostgreSQL and tenant directories are removed after the run; the explicit admin-database path and cleanup after interruption/missing Cargo are verified. Eight control gates are exercised by the runner, leaving five optional external-service gates.
 - [x] OPS-0011: Retire the PostgreSQL operational schema and its 119 migrations, then merge `platform-v2` into `main`. — S
   - Retirement implemented: removed all 118 tracked operational SQL migration files (the original count of 119 included the README), direct PostgreSQL wallet import tools, operational database settings and the legacy analytics worker. Control and tenant migration families remain explicit; migration generation uses sequential versions and tenant execution requires the fenced orchestrator.
@@ -226,7 +226,7 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
   - Verification: 394 checks pass across the regular suite, eight disposable control gates and three real JetStream gates. Coverage includes exact maximum money, immutable stock snapshots, collection replacement/deletion, session attribution and DST hour splitting, malformed/foreign events, fencing, crash-before-ACK replay, retained history and persistent gaps. Deployment activation and initial rebuild follow in API-0042.
 - [x] API-0042: Rebuild: `VACUUM INTO` snapshot, T0, `ATTACH` the snapshot read-only, hot-window `INSERT … SELECT`, `session_hours`, `monthly_summary`, replay events after T0, then `READY`. Covers §32 cases A, B, and C. — L
   - Done: private read-only `VACUUM INTO` snapshots, persistent SQLite T0, signed SQLite extension attachment, bounded normalization and one bulk insert/select per projection, shadow DuckDB files, tenant-calendar session hours and monthly aggregates. Independent replay starts at a broker position recorded before the snapshot and catches up through a finite post-backfill SQLite watermark. Checkpointed files switch atomically under ownership fencing; failures preserve the canonical facts in REBUILDING.
-  - Schema v2 persists the broker replay position so live consumers also skip superseded retained deliveries after a restore/restart. v1 upgrades preserve facts/checkpoints and require rebuilding; corrupt/outdated files are quarantined, and newer binary schemas are preserved. Rebuild concurrency, starts/completions/duration/failures and idle behavior are covered.
+  - Schema v2 persists the broker replay position so live consumers also skip superseded retained deliveries after a restore/restart. v1 upgrades preserve facts/checkpoints and require rebuilding; corrupt or changed-history files are quarantined, and newer binary schemas are preserved. Rebuild concurrency, starts/completions/duration/failures and idle behavior are covered.
   - Verification: 401 backend/control/live checks pass. The actual native demo rebuild matches all 27 projection counts (1,419 rows), every money-column total and 486,000 occupied seconds against SQLite. Live checks cover writes after T0, crash/retry, source cleanup, superseded retained events, old summaries and self-fencing. The signed extension setup binary, Biome and CI YAML checks pass. Docker enables analytics with pinned native SDKs and cached signed extensions; the image build is unverified here because Docker is unavailable.
 - [x] API-0044: Nightly retention: batched deletion of facts older than the hot window, and refresh of `monthly_summary`. — S
   - Done: tenant-local nightly maintenance seals expiring monthly summaries before advancing the 18-month boundary, then purges at most 1,000 rows per fenced transaction. Parent collections and expired session hours are removed; unfinished/overlapping sessions and shifts and pending waste approvals survive. Maintenance waits for the SQLite source watermark and never changes the ingest checkpoint.
@@ -247,7 +247,7 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
 
 ## M7: Reports on DuckDB
 
-**Goal:** every report reads from DuckDB and matches today's output, and ClickHouse is gone.
+**Goal:** every report reads from DuckDB and matches today's output, and the legacy reporting pipeline is gone.
 
 - [x] API-0043: Rewrite the report queries for DuckDB:
   - `analytics/business.rs`;
@@ -261,9 +261,14 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
 - [x] TEST-0030: Report parity against the M0 golden fixtures, plus the test cases listed in the schema doc. — M
   - Completed: all 31 immutable M0 reports, native business/settlement/location cases, reader/registry isolation and readiness, canonical timestamps, schema upgrade preservation and the M6 delivery/rebuild/retention cases.
   - Verification: the normal regression run and final focused fixes pass across the recorded runs; all nine disposable control-backed checks and six live JetStream checks pass. The operational v2 seed matches all 27 source projections (1,419 rows), exact money columns and 486,000 occupied seconds. Thirteen admin analytics tests pass; actual browser checks cover the overview and all eleven analytics pages.
-- [ ] OPS-0021: Remove ClickHouse entirely: client, `schema.sql`, `schema.json`, the old worker binary, the Compose service, environment variables, tests, and the `docs/architecture/analytics.md` content. — S
+- [x] OPS-0021: Remove the legacy reporting pipeline entirely: client, `schema.sql`, `schema.json`, the old worker binary, the Compose service, environment variables, tests, and the `docs/architecture/analytics.md` content. — S
 
-**Done when:** every report matches its golden fixture; the admin analytics pages work on the demo seed; nothing in the repository references ClickHouse.
+  - Completed: deleted the retired client, schema files, SQL scope rewriter, projection worker module and obsolete tests; the old worker binary was already retired in M5. Removed its Compose service/volume and environment settings, updated the integration runner, and replaced setup/recovery documentation with the tenant-native path.
+  - Verification: repository searches find no retired engine references; Compose YAML and the integration script parse. Default-feature all-target compilation passes. The final native integration run passes all 427 backend/control/live checks, including all 31 golden reports, fourteen HTTP routes, source/demo parity, rebuild/recovery and timezone gates. Thirteen admin analytics tests and actual browser checks pass.
+
+**M7 completion:** all report cutover and removal gates pass. Native deployment builds serve reports; ordinary default builds return explicit unavailability when analytics is disabled. M8 next requires the owner decisions listed below.
+
+**Done when:** every report matches its golden fixture; the admin analytics pages work on the demo seed; the retired engine’s code, dependencies, configuration and operational setup are absent.
 
 ---
 
@@ -344,7 +349,7 @@ Must complete before the oldest paying tenant's data reaches 18 months.
 |---|---|---|---|
 | Repository porting runs long (461 queries) | High | High | Port by domain behind tests; re-estimate at the end of M4 |
 | `platform-v2` drifts from `main` during M1–M5 | Medium | Medium | Freeze feature work on `main` during the port, or port any change made there immediately |
-| Report regressions after the DuckDB rewrite | Medium | High | Golden fixtures (M0) and parity tests (M7) before ClickHouse removal |
+| Report regressions after the DuckDB rewrite | Medium | High | Golden fixtures (M0) and parity tests (M7) before legacy reporting pipeline removal |
 | Split-brain ownership bugs | Low | Critical | Lease self-fencing, generation in manifests, TEST-0010, conflict alerts |
 | Payment loss on cell failure | Low | High | WAL replication every 2 minutes bounds loss to about 2 minutes (M8), TEST-0051, restore drills |
 | Wasabi outage fills the spool | Low | Medium | Spool disk alerts; pause background work; writes continue until the disk zones in §57 are reached |

@@ -1,10 +1,10 @@
-# Storage-cell development (M6)
+# Storage-cell development (M7)
 
 Operational APIs use one SQLite file per tenant. PostgreSQL stores control-plane
 metadata and global staff credentials. The shared operational PostgreSQL schema,
 its migrations, the old analytics writer, and direct PostgreSQL wallet imports are
-retired. ClickHouse report definitions remain only for M7 parity; live reports return
-`503 ANALYTICS_UNAVAILABLE` until tenant DuckDB reporting is ready.
+retired. Reports read the owning tenant’s DuckDB file; unready or disabled native
+analytics returns `503 ANALYTICS_UNAVAILABLE` with `report temporarily rebuilding`.
 
 ## Local setup
 
@@ -68,7 +68,7 @@ The integration runner creates a disposable control database and temporary tenan
 root, enables all control-backed integration tests, and removes its resources on
 completion or failure. It can start local PostgreSQL using `pg_config`/`PG_BINDIR`, or
 use an explicit `CONTROL_TEST_ADMIN_DATABASE_URL`. The application database URL is
-never a test target. Five optional external ClickHouse/Redis gates remain separate.
+never a test target. Native report parity runs in the normal suite. Control and JetStream gates use disposable infrastructure.
 
 The kiosk HTTP smoke script accepts `KIOSK_VENUE_ID` for explicit device provisioning;
 use a demo player whose seeded floor session is not already active.

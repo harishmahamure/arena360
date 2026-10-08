@@ -60,23 +60,6 @@ services:
       timeout: 3s
       retries: 10
 
-  clickhouse:
-    image: clickhouse/clickhouse-server:25.8
-    ports:
-      - "127.0.0.1:8123:8123"
-    environment:
-      CLICKHOUSE_DB: arena360
-      CLICKHOUSE_USER: arena360
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-arena360}
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
-    volumes:
-      - clickhousedata:/var/lib/clickhouse
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8123/ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   # Local stand-in for Wasabi (S3-compatible; ADR-0043). Development only: S3 auth is disabled.
   object-storage:
     image: chrislusf/seaweedfs:4.48
@@ -104,5 +87,4 @@ volumes:
   pgdata:
   redisdata:
   natsdata:
-  clickhousedata:
   objectdata:

@@ -56,11 +56,11 @@ The workspace location selector sends `X-Location-Id`, including through the RPC
 bridge. An unselected location means all accessible locations for reports; server
 queries resolve current permission grants and restrict aggregation accordingly.
 Organization administrators can aggregate the whole organization. `/stats` and the
-finance report are tenant-scoped, including ClickHouse reads and cache keys, and
+finance report are tenant-scoped, including physical DuckDB files and cache keys, and
 are available to other organizations. Other legacy operational routes retain the
 existing tenant rollout restrictions described above.
 
-Reports project organization IDs and location relationships into ClickHouse.
+Reports select the owning tenant’s DuckDB file and filter facts by stored venue IDs.
 Transactions record their venue; usage sessions snapshot the device's venue so a
 later device move does not reattribute historical usage. Finance CSV exports name
 the reporting locations. Customer and wallet counts represent the customers who
