@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomInt, randomUUID } from 'node:crypto';
 /**
  * Venue-day benchmark (TEST-0001). Replays a compressed day for one tenant through the
  * public HTTP API: for every PC lane, plan purchase -> session start -> session end,
@@ -13,18 +14,20 @@
  * Run it against disposable databases only.
  */
 import { writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 
 const API = process.env.BENCH_API_URL ?? 'http://localhost:3000';
 const PASSWORD = 'Bench@12345';
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = { pcs: 20, sessions: 8, sales: 6, json: null };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i].replace(/^--/, '');
     if (!(flag in options)) throw new Error(`Unknown argument: ${argv[i]}`);
     const value = argv[++i];
-    options[flag] = flag === 'json' ? value : Number.parseInt(value, 10);
-    if (flag !== 'json' && !(options[flag] > 0)) throw new Error(`--${flag} must be positive`);
+    options[flag] = flag === 'json' ? value : Number(value);
+    if (flag !== 'json' && (!Number.isSafeInteger(options[flag]) || !(options[flag] > 0)))
+      throw new Error(`--${flag} must be positive`);
   }
   return options;
 }
@@ -51,10 +54,17 @@ async function call(token, method, path, body, op) {
   return text ? JSON.parse(text).data : null;
 }
 
-const login = async (path, username, password) =>
-  (await call(null, 'POST', path, { username, password })).accessToken;
+const login = async (path, username, password) => {
+  const token = (await call(null, 'POST', path, { username, password })).accessToken;
+  if (process.env.BENCH_TENANT_ID) {
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    if (claims.tenantId !== process.env.BENCH_TENANT_ID)
+      throw new Error('Benchmark credentials selected a different tenant');
+  }
+  return token;
+};
 
-const phone = (n) => `9${String(Date.now() % 1e5).padStart(5, '0')}${String(n).padStart(4, '0')}`;
+const phone = () => `9${String(randomInt(0, 1_000_000_000)).padStart(9, '0')}`;
 
 async function setup(admin, run, pcs) {
   const register = (username, role, n) =>
@@ -114,6 +124,9 @@ async function setup(admin, run, pcs) {
   return { staff, planId: plan.id, productId: product.id, storeId: store.id, lanes };
 }
 
+export const salesInSession = (session, sessions, sales) =>
+  Math.floor(((session + 1) * sales) / sessions) - Math.floor((session * sales) / sessions);
+
 async function runLane(ctx, lane, sessions, sales) {
   const { staff, planId, productId, storeId } = ctx;
   for (let s = 0; s < sessions; s++) {
@@ -145,7 +158,7 @@ async function runLane(ctx, lane, sessions, sales) {
       { balanceId, deviceId: lane.deviceId },
       'session_start',
     );
-    for (let k = 0; k < Math.ceil(sales / sessions); k++) {
+    for (let k = 0; k < salesInSession(s, sessions, sales); k++) {
       await call(
         staff,
         'POST',
@@ -198,13 +211,22 @@ function summarize(wallMs) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2).filter((a) => a !== '--'));
-  const run = Date.now().toString(36);
+  const run = randomUUID().slice(0, 13).replaceAll('-', '');
   const admin = await login(
     '/auth/login/admin',
     process.env.BENCH_ADMIN_USERNAME ?? 'superadmin',
     process.env.BENCH_ADMIN_PASSWORD ?? 'SuperAdmin@123',
   );
   const ctx = await setup(admin, run, options.pcs);
+  if (process.env.BENCH_WAIT_FOR_START === '1') {
+    if (!process.send) throw new Error('Capacity benchmark requires an IPC parent');
+    process.send({ ready: true });
+    await new Promise((resolve, reject) =>
+      process.once('message', (message) =>
+        message === 'start' ? resolve() : reject(new Error('Invalid capacity start signal')),
+      ),
+    );
+  }
   const started = performance.now();
   const results = await Promise.allSettled(
     ctx.lanes.map((lane) => runLane(ctx, lane, options.sessions, options.sales)),
@@ -220,10 +242,12 @@ async function main() {
   const text = `${JSON.stringify(summary, null, 2)}\n`;
   if (options.json) await writeFile(options.json, text);
   process.stdout.write(text);
+  if (process.connected) process.disconnect();
   if (summary.failedLanes) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  process.stderr.write(`Benchmark failed: ${error.message}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  main().catch((error) => {
+    process.stderr.write(`Benchmark failed: ${error.message}\n`);
+    process.exitCode = 1;
+  });
