@@ -135,12 +135,14 @@ Adopt `docs/architecture/data-platform.md` in full. The implementation decisions
     - **`archive/` is produced from SQLite** (the source of truth), not copied from `hot/`. It's verified before any SQLite purge (Invariant 4). Once an archive month is verified, the matching `hot/` month is deleted.
     - **Billing.** Wasabi has no egress or request fees under its fair-use policy, but bills every object for at least 90 days and charges a 1 TB monthly minimum. The 90-day WAL and snapshot retention matches the minimum. Short-lived objects (exports, temporary recovery files) are still billed for 90 days.
 
-## Open decisions (owner sign-off required before the phase that needs them)
+## Owner decisions approved for M8 (2026-10-08)
 
-| # | Decision | Proposed default | Needed by |
+| # | Decision | Approved choice | Needed by |
 |---|---|---|---|
 | 4 | Backup and archive encryption | Per-tenant data key; tenant deletion destroys the key | M8 (replication and recovery) |
 | 5 | Cell availability target | Single-node cells; recovery time measured in restore drills and published as the target | M8 (replication and recovery) |
+
+Owner approved decisions 4 and 5 on 2026-10-08. Recovery time remains a measured drill result; no unmeasured target is asserted.
 
 Decided: 1 (WAL replication to Wasabi every 2 minutes, decision 26), 2 (5-minute lease, decision 30), 3 (time zone and UTC, decisions 27–29), and the object storage provider and layout (decisions 9 and 31).
 

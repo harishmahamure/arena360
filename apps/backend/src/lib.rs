@@ -13,6 +13,7 @@ pub mod models;
 pub mod openapi;
 pub mod proto;
 pub mod realtime;
+pub mod replication;
 pub mod repositories;
 pub mod rpc;
 pub mod routing;

@@ -1,0 +1,24 @@
+groups:
+  - name: arena360-replication
+    rules:
+      - alert: TenantReplicationBehind
+        expr: arena360_replication_oldest_unshipped_milliseconds > 150000
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cell has WAL older than the replication recovery-point window"
+      - alert: TenantReplicationSpoolGrowing
+        expr: arena360_replication_spool_bytes > 1073741824
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cell WAL spool exceeds 1 GiB"
+      - alert: TenantReplicationFailures
+        expr: increase(arena360_replication_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cell WAL capture or upload is failing; inspect retained spool"

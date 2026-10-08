@@ -26,11 +26,14 @@ http-body-util = "0.1"
 ipnet = "2"
 
 # Database: PostgreSQL control plane, per-tenant SQLite and DuckDB (ADR-0043)
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json"] }
+sqlx = { version = "=0.8.6", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json"] }
 duckdb = { version = "~1.10506", optional = true }
 
 # Object storage for WAL replication, snapshots, Parquet (Wasabi, S3-compatible; ADR-0043)
 object_store = { version = "0.14", features = ["aws"] }
+zstd = "0.13"
+aes-gcm = "0.10"
+libsqlite3-sys = "=0.30.1"
 
 # Cache (DRAFT-0043)
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
@@ -85,5 +88,5 @@ path = "src/bin/openapi_gen.rs"
 [dev-dependencies]
 flate2 = "1"
 proptest = "1"
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
+sqlx = { version = "=0.8.6", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
 tokio-test = "0.4"

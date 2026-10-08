@@ -1,7 +1,7 @@
 # Data Platform Progress
 
 **Updated:** 2026-10-08
-**Branch:** `main` (M7 merged locally)
+**Branch:** `codex/m8-replication-recovery`
 **Source plan:** `docs/plans/data-platform-build-plan.md`  
 **Architecture source:** `docs/architecture/data-platform.md`
 
@@ -60,8 +60,17 @@
 
 ## Current task
 
-- [ ] `API-0053` — WAL replication worker (M8).
-- Required gate: ADR-0043 decisions 4 and 5 need owner sign-off before M8. Proposed defaults are per-tenant encryption keys destroyed on tenant deletion, and single-node cells with recovery time measured in restore drills and published as the availability target.
+- [ ] `API-0054` — Replication generations (M8).
+- Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0053 completed
+
+- Built-in per-cell capture and per-tenant upload workers disable automatic/close checkpoints, validate the committed WAL-index boundary and every frame checksum, and durably spool before checkpointing.
+- Persisted capture ordering survives restarts and clock changes. Reader-blocked checkpoints deduplicate; closed tenants with pending spool reopen only under an existing lease.
+- zstd plus AES-256-GCM authenticates the tenant object key. Separate durable per-tenant key mount; persisted ciphertext makes retries exact. Immutable uploads, read-back verification, conditional generation manifest updates and PostgreSQL lease fencing precede spool deletion.
+- Exposes spool bytes, oldest unshipped capture age and failures; alert rules and configuration/runbook are checked in. The object-store outage retains local evidence.
+- Verified 2026-10-08: eight replication tests (including the isolated PostgreSQL guard) and seven tenant database regressions pass. Captured WAL restores a real SQLite database with `integrity_check=ok`; no live Wasabi or staging drill is claimed.
+- API-0054 still needs explicit restore/gap generation rotation; snapshots and the remaining M8 launch gates follow in plan order.
 
 ### M7 completed
 

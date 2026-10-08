@@ -22,6 +22,9 @@ pub struct Metrics {
     publish_oldest_millis: AtomicU64,
     publish_failures: AtomicU64,
     published: AtomicU64,
+    replication_spool_bytes: AtomicU64,
+    replication_oldest_millis: AtomicU64,
+    replication_failures: AtomicU64,
     analytics_events: AtomicU64,
     analytics_gaps: AtomicU64,
     analytics_failures: AtomicU64,
@@ -100,6 +103,8 @@ impl Metrics {
         self.analytics_rebuild_millis.fetch_add(millis, Ordering::Relaxed);
     }
     pub fn analytics_failed(&self) { self.analytics_failures.fetch_add(1, Ordering::Relaxed); }
+    pub fn replication_failed(&self) { self.replication_failures.fetch_add(1, Ordering::Relaxed); }
+    pub fn set_replication_backlog(&self, bytes: u64, age: u64) { self.replication_spool_bytes.store(bytes, Ordering::Relaxed); self.replication_oldest_millis.store(age, Ordering::Relaxed); }
     pub fn render(&self) -> String {
         let background = self.background_jobs.lock().ok().and_then(|s|s.as_ref().map(|s|s.render())).unwrap_or_default();
         let body = format!(
@@ -177,7 +182,8 @@ impl Metrics {
             self.analytics_retention_runs.load(Ordering::Relaxed),
             self.analytics_retention_rows.load(Ordering::Relaxed),
         );
-        body + &background
+        let replication = format!("# TYPE arena360_replication_spool_bytes gauge\narena360_replication_spool_bytes {}\n# TYPE arena360_replication_oldest_unshipped_milliseconds gauge\narena360_replication_oldest_unshipped_milliseconds {}\n# TYPE arena360_replication_failures_total counter\narena360_replication_failures_total {}\n",self.replication_spool_bytes.load(Ordering::Relaxed),self.replication_oldest_millis.load(Ordering::Relaxed),self.replication_failures.load(Ordering::Relaxed));
+        body + &background + &replication
     }
 }
 

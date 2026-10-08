@@ -276,9 +276,9 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
 
 **Goal:** a cell can die and its venues come back with at most about 2 minutes of lost writes.
 
-**Decisions needed first:** ADR-0043 open decisions 4 (backup encryption) and 5 (cell availability target).
+**Owner approval recorded 2026-10-08:** ADR-0043 decisions 4 (per-tenant encryption keys destroyed on deletion) and 5 (single-node cells, measured and published recovery time).
 
-- [ ] API-0053: WAL Replication Worker, built in, per ADR-0043 decision 26:
+- [x] API-0053: WAL Replication Worker, built in, per ADR-0043 decision 26:
   - disable automatic checkpoints;
   - copy new WAL frames to the local NVMe spool, then checkpoint;
   - batch spooled frames into segments, compressed with zstd, encrypted and checksummed;

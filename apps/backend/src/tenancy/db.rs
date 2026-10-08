@@ -234,10 +234,32 @@ impl TenantDb {
             return Ok(());
         }
         self.readers.close().await;
-        if let Some(writer) = self.writer.lock().await.take() {
+        let mut guard = self.writer.lock().await;
+        // Last-connection checkpoints must obey the same durable-copy ordering
+        // as scheduled checkpoints, including idle reaping and lease loss.
+        if let Some(writer) = guard.as_mut() {
+            spool_wal(writer, &self.path, self.ownership_generation).await?;
+        }
+        if let Some(writer) = guard.take() {
             writer.close().await?;
         }
         Ok(())
+    }
+
+    /// Copy the committed WAL under the single writer lock, then checkpoint.
+    /// Network I/O is deliberately outside this critical section.
+    pub async fn spool_wal(&self) -> Result<Option<PathBuf>, AppError> {
+        let _job = match self.background_jobs() {
+            Some(jobs) => Some(jobs.acquire(crate::background::Priority::Backup).await?),
+            None => None,
+        };
+        self.ensure_current_owner()?;
+        let mut writer = self.writer.lock().await;
+        self.ensure_current_owner()?;
+        let connection = writer.as_mut().ok_or_else(|| AppError::Forbidden("Tenant writer is closed".into()))?;
+        let captured = spool_wal(connection, &self.path, self.ownership_generation).await?;
+        self.ensure_current_owner()?;
+        Ok(captured)
     }
 
     fn idle_for(&self, now: Instant) -> Result<Duration, AppError> {
@@ -376,6 +398,30 @@ impl TenantDbManager {
         self.handles.read().await.len()
     }
 
+    /// Closed tenants with unshipped WAL remain eligible for background upload.
+    /// This checks an existing lease and never acquires ownership.
+    pub async fn open_spooled(&self) -> Result<(), AppError> {
+        if !self.config.root.exists() { return Ok(()); }
+        for entry in std::fs::read_dir(&self.config.root).map_err(|e|AppError::Internal(e.to_string()))? {
+            let entry=entry.map_err(|e|AppError::Internal(e.to_string()))?;
+            let name=entry.file_name();
+            let Some(tenant)=name.to_str().and_then(|s|s.strip_prefix("tenant-")).and_then(|s|Uuid::parse_str(s).ok()) else {continue;};
+            let Ok(generation)=self.lease.writable_generation(tenant) else {continue;};
+            let spool=entry.path().join("replication/spool");
+            if !spool.exists() {continue;}
+            let mut pending=false;
+            for file in std::fs::read_dir(spool).map_err(|e|AppError::Internal(e.to_string()))? {
+                let path=file.map_err(|e|AppError::Internal(e.to_string()))?.path();
+                if path.extension().and_then(|s|s.to_str())!=Some("wal") {continue;}
+                let metadata=std::fs::read(path.with_extension("json")).map_err(|e|AppError::Internal(e.to_string()))?;
+                let capture:crate::replication::wal::Capture=serde_json::from_slice(&metadata).map_err(|e|AppError::Internal(e.to_string()))?;
+                if capture.ownership_generation==generation {pending=true;break;}
+            }
+            if pending {self.open(tenant).await?;}
+        }
+        Ok(())
+    }
+
     pub async fn open_handles(&self) -> Vec<Arc<TenantDb>> {
         self.handles
             .read()
@@ -405,6 +451,15 @@ async fn open_tenant(
 
     let writer_options = sqlite_options(&path, config.busy_timeout, false);
     let mut writer = SqliteConnection::connect_with(&writer_options).await?;
+    {
+        let mut handle = writer.lock_handle().await?;
+        // SAFETY: SQLx's locked handle excludes its worker for this synchronous
+        // call. The output pointer is null, as allowed by sqlite3_db_config.
+        let result = unsafe { libsqlite3_sys::sqlite3_db_config(
+            handle.as_raw_handle().as_ptr(), libsqlite3_sys::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+            1i32, std::ptr::null_mut::<i32>()) };
+        if result != libsqlite3_sys::SQLITE_OK { return Err(AppError::Internal("Cannot disable SQLite close checkpoint".into())); }
+    }
     let outbox_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(
             SELECT 1 FROM sqlite_schema
@@ -463,6 +518,23 @@ fn sqlite_options(path: &Path, busy_timeout: Duration, read_only: bool) -> Sqlit
             .synchronous(SqliteSynchronous::Normal)
             .pragma("wal_autocheckpoint", "0")
     }
+}
+
+async fn spool_wal(connection: &mut SqliteConnection, path: &Path, generation: i64) -> Result<Option<PathBuf>, AppError> {
+    let mut transaction = connection.begin_with("BEGIN IMMEDIATE").await?;
+    // Ensure SQLite has initialized the WAL index. The transaction's Drop
+    // queues rollback if this future is cancelled during the SQL read.
+    sqlx::query("SELECT count(*) FROM sqlite_schema").fetch_one(&mut *transaction).await?;
+    // Keep the short filesystem critical section synchronous: cancellation
+    // cannot release the writer while a detached task is still copying frames.
+    let captured = crate::replication::wal::capture(path, generation)?;
+    transaction.rollback().await?;
+    if captured.is_some() {
+        // TRUNCATE may report busy when readers pin older frames. That is safe:
+        // the complete prefix is already durable, and next capture may repeat it.
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").fetch_one(connection).await?;
+    }
+    Ok(captured)
 }
 
 pub fn tenant_path(root: &Path, tenant_id: Uuid) -> PathBuf {

@@ -161,6 +161,14 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         manager.clone().spawn_reaper();
         manager
     });
+    if let Some(manager) = tenant_dbs.clone() {
+        crate::replication::worker::spawn_capture(manager.clone(), metrics.clone(), settings.tenant_data_dir.clone());
+        match crate::replication::configured_worker(control_db.clone(), settings.cell_id, metrics.clone()) {
+            Ok(Some(worker)) => crate::replication::worker::spawn_upload(manager, Arc::new(worker)),
+            Ok(None) => tracing::warn!("Remote replication disabled: configure REPLICATION_BUCKET and REPLICATION_KEY_DIR before production onboarding"),
+            Err(error) => panic!("Invalid replication configuration: {error}"),
+        }
+    }
     if let (Some(control), Some(client), Some(manager)) = (control_db.as_ref(), leases.as_ref(), tenant_dbs.as_ref()) {
         let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");
         tracing::info!(recovered, "Recovered assigned tenant databases");

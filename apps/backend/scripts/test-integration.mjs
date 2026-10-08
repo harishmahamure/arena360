@@ -30,6 +30,7 @@ const controlTargets = [
   'control_plane',
   'ownership_fencing',
   'tenant_bootstrap',
+  'tenant_replication',
   'tenant_user_repositories',
   'demo_seed',
 ];
