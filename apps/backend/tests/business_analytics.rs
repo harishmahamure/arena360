@@ -1,54 +1,47 @@
+#![cfg(feature = "duckdb-analytics")]
+mod support;
 use gaming_cafe_api::analytics::{
     business::Window,
-    worker::{project, Change},
-    ClickHouse,
+    report_reader::ReportReader,
+    tenant_db::{error, TenantAnalytics},
 };
-use serde_json::{json, Value};
+use serde_json::json;
 use uuid::Uuid;
-
-async fn insert(ch: &ClickHouse, table: &str, data: Value) {
-    let row = project(&Change {
-        schema_version: 1,
-        source_table: table.into(),
-        row_id: Uuid::parse_str(data["id"].as_str().unwrap()).unwrap(),
-        version: 10,
-        deleted: false,
-        row_data: data,
-    })
-    .unwrap();
-    ch.execute(
-        &format!("INSERT INTO {table}_versions FORMAT JSONEachRow\n{row}"),
-        &[],
-    )
-    .await
-    .unwrap();
-}
-
 #[tokio::test]
-#[ignore = "requires a disposable ANALYTICS_TEST_CLICKHOUSE_URL/database"]
 async fn business_reports_clip_sessions_and_preserve_metric_grains() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("error")
-        .try_init();
-    let ch = ClickHouse::new(
-        std::env::var("ANALYTICS_TEST_CLICKHOUSE_URL").unwrap(),
-        std::env::var("ANALYTICS_TEST_CLICKHOUSE_DATABASE").unwrap(),
-        "default".into(),
-        "".into(),
-    );
-    ch.initialize().await.unwrap();
-    assert!(
-        ch.ensure_ready().await.is_err(),
-        "requires an empty database"
-    );
-    ch.execute(
-        "INSERT INTO analytics_ready VALUES (1,now64(6)),(2,now64(6))",
-        &[],
-    )
+    let f = support::TenantFixture::new().await;
+    f.db.with_immediate_writer(|c| {
+        Box::pin(async move {
+            sqlx::query("UPDATE tenant_runtime SET timezone='Asia/Kolkata'")
+                .execute(c)
+                .await?;
+            Ok(())
+        })
+    })
     .await
     .unwrap();
+    let analytics = TenantAnalytics::open(f.db.clone()).await.unwrap();
+    analytics
+        .write(|tx| {
+            tx.execute_batch(
+                "UPDATE _ingest_state SET status='READY',hot_window_start=DATE '2025-01-01'",
+            )
+            .map_err(error)?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let ch = ReportReader::new(analytics.clone()).await.unwrap();
     let now = "2026-10-03T00:00:00Z".parse().unwrap();
-    let window = || Window::new(Some("2026-10-01"), Some("2026-10-02"), now).unwrap();
+    let window = || {
+        Window::new(
+            Some("2026-10-01"),
+            Some("2026-10-02"),
+            now,
+            chrono_tz::Asia::Kolkata,
+        )
+        .unwrap()
+    };
     let empty = ch.business_report(window()).await.unwrap();
     assert_eq!(empty.customers.visitors, 0);
     assert!(empty.daily_sales.is_empty());
@@ -119,7 +112,7 @@ async fn business_reports_clip_sessions_and_preserve_metric_grains() {
             json!({"id":Uuid::new_v4(),"playerId":player,"amount":"100","paymentMethod":"cash","settledAt":"2026-10-01T18:00:00Z"}),
         ),
     ] {
-        insert(&ch, table, data).await;
+        support::reports::insert(&analytics, table, data).await;
     }
     let report = ch.business_report(window()).await.unwrap();
     assert_eq!(
@@ -146,4 +139,6 @@ async fn business_reports_clip_sessions_and_preserve_metric_grains() {
     assert_eq!(report.wallets.holders, 1);
     assert_eq!(report.staff[0].shift_hours, 2.0);
     assert_eq!(report.staff[0].revenue, 225.5);
+    drop((ch, analytics));
+    f.close().await;
 }

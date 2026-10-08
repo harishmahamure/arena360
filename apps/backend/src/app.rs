@@ -21,7 +21,7 @@ use crate::services::{
     AuthService, BalanceService, ConfigService, CreditService, DeviceService, EventService,
     GameService, KioskOrderService, PlanService, PlayerPlanService, PricingPolicyService,
     ProductRecipeService, ProductService, SessionService, StaffGamingAllowanceService,
-    StatsService, StorageConfig, StorageService, TransactionService, UnitService, UserService,
+    StorageConfig, StorageService, TransactionService, UnitService, UserService,
 };
 use crate::sse::Broadcaster;
 use utoipa::OpenApi;
@@ -51,7 +51,8 @@ pub struct AppState {
     pub product_recipes: ProductRecipeService,
     pub games: GameService,
     pub storage: StorageService,
-    pub stats: StatsService,
+    #[cfg(feature = "duckdb-analytics")]
+    pub analytics: Arc<crate::analytics::registry::AnalyticsRegistry>,
     pub credit: Arc<CreditService>,
     pub staff_gaming_allowances: StaffGamingAllowanceService,
     pub kiosk_orders: KioskOrderService,
@@ -59,6 +60,22 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub async fn report_reader(
+        &self,
+        db: Arc<crate::tenancy::TenantDb>,
+        locations: Option<Vec<Uuid>>,
+    ) -> Result<crate::analytics::report_reader::ReportReader, crate::error::AppError> {
+        #[cfg(feature = "duckdb-analytics")]
+        {
+            let analytics = self.analytics.get(db).await?;
+            Ok(crate::analytics::report_reader::ReportReader::new(analytics).await?.scoped(locations))
+        }
+        #[cfg(not(feature = "duckdb-analytics"))]
+        {
+            let _ = (db, locations);
+            Err(crate::analytics::report_reader::unavailable("native analytics is disabled"))
+        }
+    }
     /// Business handlers must use the authenticated tenant's locally owned database.
     /// Missing cell configuration is an error, never a PostgreSQL fallback.
     pub async fn business_db(
@@ -188,9 +205,11 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         None
     };
     let cache = create_cache(settings.redis_url.as_deref()).await;
+    #[cfg(feature = "duckdb-analytics")]
+    let analytics = Arc::new(crate::analytics::registry::AnalyticsRegistry::default());
     if let (Some(manager), Some(url)) = (tenant_dbs.clone(), settings.nats_url.clone()) {
         #[cfg(feature = "duckdb-analytics")]
-        crate::analytics::consumer::spawn(manager.clone(), metrics.clone(), url.clone());
+        crate::analytics::consumer::spawn(manager.clone(), metrics.clone(), url.clone(), analytics.clone());
         crate::analytics::publisher::spawn(manager, metrics.clone(), url);
     }
     spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
@@ -279,7 +298,8 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         product_recipes: ProductRecipeService::new(),
         games: GameService::new(),
         storage: StorageService::new(StorageConfig::from_env()),
-        stats: StatsService::new(crate::analytics::ClickHouse::from_env(), cache.clone()),
+        #[cfg(feature = "duckdb-analytics")]
+        analytics,
         kiosk_orders: KioskOrderService::new(config_service.clone()),
         ws_connections,
         control_db,

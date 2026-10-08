@@ -1,5 +1,5 @@
-use crate::analytics::{query_as, ClickHouse};
-use chrono::{DateTime, Duration, Timelike, Utc};
+use crate::analytics::report_reader::ReportReader;
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -284,7 +284,7 @@ pub struct FinanceVarianceStatsDto {
 }
 
 pub struct StatsService {
-    pool: ClickHouse,
+    pool: ReportReader,
     cache: Arc<dyn CacheService>,
 }
 
@@ -398,19 +398,18 @@ struct RevenueTrendRow {
 }
 
 impl StatsService {
-    pub fn scoped(&self, scope: crate::analytics::scope::ReportScope) -> Self {
-        Self {
-            pool: self.pool.clone().scoped(scope),
-            cache: self.cache.clone(),
-        }
+    pub fn previous_window(&self, start: DateTime<Utc>, end: DateTime<Utc>) -> (DateTime<Utc>,DateTime<Utc>) {
+        previous_window(start,end,self.pool.timezone())
     }
     pub async fn get_business_report(
         &self,
         window: crate::analytics::business::Window,
     ) -> Result<crate::analytics::business::BusinessReport, AppError> {
+        self.pool.ensure_ready().await?;
+        self.pool.check_window(window.previous_start, window.end)?;
         let key = format!(
-            "stats:ch:business:v2:{}:{}:{}",
-            self.pool.scope_key(),
+            "stats:duckdb:business:v3:{}:{}:{}",
+            self.pool.cache_key(),
             window.start_date,
             window.end_date
         );
@@ -423,7 +422,7 @@ impl StatsService {
         .await
     }
 
-    pub fn new(pool: ClickHouse, cache: Arc<dyn CacheService>) -> Self {
+    pub fn new(pool: ReportReader, cache: Arc<dyn CacheService>) -> Self {
         Self { pool, cache }
     }
 
@@ -433,18 +432,24 @@ impl StatsService {
         end_date: Option<String>,
         compare: bool,
     ) -> Result<DashboardStatsDto, AppError> {
-        let now = Utc::now();
+        self.pool.ensure_ready().await?;
+        let now = self.pool.now();
         let period_start =
-            parse_date_start(start_date.as_deref()).unwrap_or_else(|| start_of_day(now));
-        let period_end = parse_date_end(end_date.as_deref()).unwrap_or(now);
+            parse_date_start(start_date.as_deref(), self.pool.timezone()).unwrap_or_else(|| start_of_day(now, self.pool.timezone()));
+        let period_end = parse_date_end(end_date.as_deref(), self.pool.timezone()).unwrap_or(now);
+        self.pool.check_window(period_start, period_end)?;
 
+        if compare {
+            let (a,b) = self.previous_window(period_start,period_end);
+            self.pool.check_window(a,b)?;
+        }
         let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsDashboardKey {
             start: format_date_key(period_start),
             end: format_date_key(period_end),
             compare,
         }));
 
-        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.cache_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             self.compute_dashboard_stats(period_start, period_end, compare)
                 .await
@@ -458,7 +463,7 @@ impl StatsService {
         period_end: DateTime<Utc>,
         compare: bool,
     ) -> Result<DashboardStatsDto, AppError> {
-        let (prev_start, prev_end) = previous_window(period_start, period_end);
+        let (prev_start, prev_end) = previous_window(period_start, period_end, self.pool.timezone());
         let revenue_current = self.revenue_stats(period_start, period_end).await?;
         let revenue_previous = if compare {
             Some(self.revenue_stats(prev_start, prev_end).await?)
@@ -511,18 +516,25 @@ impl StatsService {
         end_date: Option<String>,
         shift_start: Option<String>,
     ) -> Result<StaffDashboardStatsDto, AppError> {
-        let now = Utc::now();
+        self.pool.ensure_ready().await?;
+        let now = self.pool.now();
         let period_start =
-            parse_date_start(start_date.as_deref()).unwrap_or_else(|| start_of_day(now));
-        let period_end = parse_date_end(end_date.as_deref()).unwrap_or(now);
+            parse_date_start(start_date.as_deref(), self.pool.timezone()).unwrap_or_else(|| start_of_day(now, self.pool.timezone()));
+        let period_end = parse_date_end(end_date.as_deref(), self.pool.timezone()).unwrap_or(now);
+        self.pool.check_window(period_start, period_end)?;
 
+        if let Some(raw) = shift_start.as_deref() {
+            let shift = DateTime::parse_from_rfc3339(raw).map(|t|t.with_timezone(&Utc))
+                .map_err(|_|AppError::BadRequest("Invalid shift start".into()))?;
+            self.pool.check_window(shift,now)?;
+        }
         let cache_key = keys::stats_staff(&keys::filter_hash(&StatsStaffKey {
             start: format_date_key(period_start),
             end: format_date_key(period_end),
             shift_start: shift_start.clone(),
         }));
 
-        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.cache_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             self.compute_staff_dashboard_stats(period_start, period_end, shift_start, now)
                 .await
@@ -586,12 +598,13 @@ impl StatsService {
     }
 
     pub fn resolve_stats_period(
+        &self,
         start_date: Option<String>,
         end_date: Option<String>,
     ) -> (DateTime<Utc>, DateTime<Utc>) {
-        let now = Utc::now();
-        let start = parse_date_start(start_date.as_deref()).unwrap_or_else(|| start_of_day(now));
-        let end = parse_date_end(end_date.as_deref()).unwrap_or(now);
+        let now = self.pool.now();
+        let start = parse_date_start(start_date.as_deref(), self.pool.timezone()).unwrap_or_else(|| start_of_day(now, self.pool.timezone()));
+        let end = parse_date_end(end_date.as_deref(), self.pool.timezone()).unwrap_or(now);
         (start, end)
     }
 
@@ -603,6 +616,9 @@ impl StatsService {
         prev_end: DateTime<Utc>,
         compare: bool,
     ) -> Result<PeriodPair<RevenueByPaymentMethodDto>, AppError> {
+        self.pool.ensure_ready().await?;
+        self.pool.check_window(start,end)?;
+        if compare { self.pool.check_window(prev_start,prev_end)?; }
         let cache_key = keys::stats_revenue(&keys::filter_hash(&StatsPeriodPairKey {
             compare,
             start: format_date_key(start),
@@ -611,7 +627,7 @@ impl StatsService {
             prev_end: format_date_key(prev_end),
         }));
 
-        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.cache_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             Ok(PeriodPair {
                 current: self.revenue_stats(start, end).await?,
@@ -633,6 +649,9 @@ impl StatsService {
         prev_end: DateTime<Utc>,
         compare: bool,
     ) -> Result<PeriodPair<UsageStatsDto>, AppError> {
+        self.pool.ensure_ready().await?;
+        self.pool.check_window(start,end)?;
+        if compare { self.pool.check_window(prev_start,prev_end)?; }
         let cache_key = keys::stats_usage(&keys::filter_hash(&StatsPeriodPairKey {
             compare,
             start: format_date_key(start),
@@ -641,7 +660,7 @@ impl StatsService {
             prev_end: format_date_key(prev_end),
         }));
 
-        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.cache_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             Ok(PeriodPair {
                 current: self.usage_stats(start, end).await?,
@@ -660,101 +679,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<RevenueByPaymentMethodDto, AppError> {
-        let row: RevenueStatsRow = query_as(
-            r#"
-            SELECT
-                COALESCE(SUM(CASE WHEN "transactionType"::String = 'plan_purchase' THEN amount::Float64 ELSE 0 END), 0) AS plan,
-                COALESCE(SUM(CASE WHEN "transactionType"::String = 'product_purchase' THEN amount::Float64 ELSE 0 END), 0) AS merchandise,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "paymentMethod"::String = 'cash' THEN amount::Float64
-                        WHEN "paymentMethod"::String = 'split_payment' THEN COALESCE("cashAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS cash_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "paymentMethod"::String = 'online' THEN amount::Float64
-                        WHEN "paymentMethod"::String = 'split_payment' THEN COALESCE("onlineAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS online_revenue,
-                COALESCE(SUM(
-                    CASE WHEN "paymentMethod"::String = 'credit' THEN amount::Float64 ELSE 0 END
-                ), 0) AS credit_revenue,
-                countIf("transactionType"::String = 'plan_purchase') AS plan_transaction_count,
-                countIf("transactionType"::String = 'product_purchase') AS product_transaction_count,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'cash' THEN amount::Float64
-                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("cashAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS plan_cash_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'online' THEN amount::Float64
-                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("onlineAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS plan_online_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'credit' THEN amount::Float64
-                        ELSE 0
-                    END
-                ), 0) AS plan_credit_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'cash' THEN amount::Float64
-                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("cashAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS product_cash_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'online' THEN amount::Float64
-                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'split_payment' THEN COALESCE("onlineAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS product_online_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN "transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'credit' THEN amount::Float64
-                        ELSE 0
-                    END
-                ), 0) AS product_credit_revenue,
-                countIf("transactionType"::String = 'plan_purchase'
-                      AND (
-                        "paymentMethod"::String = 'cash'
-                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("cashAmount", 0) > 0)
-                      )) AS plan_cash_count,
-                countIf("transactionType"::String = 'plan_purchase'
-                      AND (
-                        "paymentMethod"::String = 'online'
-                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("onlineAmount", 0) > 0)
-                      )) AS plan_online_count,
-                countIf("transactionType"::String = 'plan_purchase' AND "paymentMethod"::String = 'credit') AS plan_credit_count,
-                countIf("transactionType"::String = 'product_purchase'
-                      AND (
-                        "paymentMethod"::String = 'cash'
-                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("cashAmount", 0) > 0)
-                      )) AS product_cash_count,
-                countIf("transactionType"::String = 'product_purchase'
-                      AND (
-                        "paymentMethod"::String = 'online'
-                        OR ("paymentMethod"::String = 'split_payment' AND COALESCE("onlineAmount", 0) > 0)
-                      )) AS product_online_count,
-                countIf("transactionType"::String = 'product_purchase' AND "paymentMethod"::String = 'credit') AS product_credit_count
-            FROM transactions
-            WHERE "createdAt" BETWEEN $1 AND $2
-              AND "deletedAt" IS NULL
-              AND "paymentStatus"::String IN ('completed', 'credit')
-            "#,
+        let row: RevenueStatsRow = self.pool.query(
+            include_str!("../analytics/queries/stats/revenue_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         let settlement_totals = self.settlement_revenue_totals(start, end).await?;
@@ -803,32 +733,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<SettlementRevenueTotalsRow, AppError> {
-        query_as(
-            r#"
-            SELECT
-                COALESCE(SUM(cs.amount), 0)::Float64 AS settlement_total,
-                COALESCE(SUM(
-                    CASE
-                        WHEN cs."paymentMethod" = 'cash' THEN cs.amount
-                        WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."cashAmount", 0)
-                        ELSE 0
-                    END
-                ), 0)::Float64 AS settlement_cash,
-                COALESCE(SUM(
-                    CASE
-                        WHEN cs."paymentMethod" = 'online' THEN cs.amount
-                        WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."onlineAmount", 0)
-                        ELSE 0
-                    END
-                ), 0)::Float64 AS settlement_online
-            FROM credit_settlements cs
-            WHERE cs."settledAt" BETWEEN $1 AND $2
-              AND cs."deletedAt" IS NULL
-            "#,
+        self.pool.query(
+            include_str!("../analytics/queries/stats/settlement_revenue_totals_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await
     }
 
@@ -837,63 +747,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<SettlementRevenueByTypeRow, AppError> {
-        query_as(
-            r#"
-            SELECT
-                COALESCE(SUM(
-                    CASE WHEN t."transactionType"::String = 'plan_purchase' THEN
-                        CASE
-                            WHEN cs."paymentMethod" = 'cash' THEN csi."amountApplied"::Float64
-                            WHEN cs."paymentMethod" = 'online' THEN 0
-                            WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied"::Float64 * (COALESCE(cs."cashAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
-                            ELSE 0
-                        END
-                    ELSE 0 END
-                ), 0)::Float64 AS plan_cash,
-                COALESCE(SUM(
-                    CASE WHEN t."transactionType"::String = 'plan_purchase' THEN
-                        CASE
-                            WHEN cs."paymentMethod" = 'online' THEN csi."amountApplied"::Float64
-                            WHEN cs."paymentMethod" = 'cash' THEN 0
-                            WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied"::Float64 * (COALESCE(cs."onlineAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
-                            ELSE 0
-                        END
-                    ELSE 0 END
-                ), 0)::Float64 AS plan_online,
-                COALESCE(SUM(
-                    CASE WHEN t."transactionType"::String = 'product_purchase' THEN
-                        CASE
-                            WHEN cs."paymentMethod" = 'cash' THEN csi."amountApplied"::Float64
-                            WHEN cs."paymentMethod" = 'online' THEN 0
-                            WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied"::Float64 * (COALESCE(cs."cashAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
-                            ELSE 0
-                        END
-                    ELSE 0 END
-                ), 0)::Float64 AS product_cash,
-                COALESCE(SUM(
-                    CASE WHEN t."transactionType"::String = 'product_purchase' THEN
-                        CASE
-                            WHEN cs."paymentMethod" = 'online' THEN csi."amountApplied"::Float64
-                            WHEN cs."paymentMethod" = 'cash' THEN 0
-                            WHEN cs."paymentMethod" = 'split_payment' AND cs.amount > 0 THEN
-                                csi."amountApplied"::Float64 * (COALESCE(cs."onlineAmount", 0)::Float64 / nullIf(cs.amount::Float64, 0))
-                            ELSE 0
-                        END
-                    ELSE 0 END
-                ), 0)::Float64 AS product_online
-            FROM credit_settlements cs
-            INNER JOIN credit_settlement_items csi ON csi."settlementId" = cs.id
-            INNER JOIN transactions t ON t.id = csi."transactionId"
-            WHERE cs."settledAt" BETWEEN $1 AND $2
-              AND cs."deletedAt" IS NULL
-            "#,
+        self.pool.query(
+            include_str!("../analytics/queries/stats/settlement_revenue_by_type_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await
     }
 
@@ -902,21 +761,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<TransactionStatsDto, AppError> {
-        let row: (i64, i64, i64, i64, Option<f64>) = query_as(
-            r#"
-            SELECT
-                COUNT(*),
-                countIf("paymentStatus"::String IN ('completed', 'credit')),
-                countIf("paymentStatus" = 'pending'),
-                countIf("paymentStatus" = 'failed'),
-                avgOrNull(amount::Float64)
-            FROM transactions
-            WHERE "createdAt" BETWEEN $1 AND $2 AND "deletedAt" IS NULL
-            "#,
+        let row: (i64, i64, i64, i64, Option<f64>) = self.pool.query(
+            include_str!("../analytics/queries/stats/transaction_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(TransactionStatsDto {
@@ -933,21 +783,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<UsageStatsDto, AppError> {
-        let row: (i64, i64, i64, Option<i64>, Option<f64>) = query_as(
-            r#"
-            SELECT
-                COUNT(*),
-                countIf("endTime" IS NULL),
-                countIf("endTime" IS NOT NULL),
-                COALESCE(SUM("durationMinutes"), 0),
-                avgOrNull("durationMinutes"::Float64)
-            FROM usage_sessions
-            WHERE "startTime" BETWEEN $1 AND $2 AND "deletedAt" IS NULL
-            "#,
+        let row: (i64, i64, i64, Option<i64>, Option<f64>) = self.pool.query(
+            include_str!("../analytics/queries/stats/usage_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         let total_minutes = row.3.unwrap_or(0);
@@ -966,21 +807,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<UserStatsDto, AppError> {
-        let row: (i64, i64, i64, i64, i64) = query_as(
-            r#"
-            SELECT
-                COUNT(*),
-                countIf("isActive" = true),
-                countIf(role = 'player'),
-                countIf(role = 'player' AND "isActive" = true),
-                countIf("createdAt" BETWEEN $1 AND $2)
-            FROM users
-            WHERE "deletedAt" IS NULL
-            "#,
+        let row: (i64, i64, i64, i64, i64) = self.pool.query(
+            include_str!("../analytics/queries/stats/user_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(UserStatsDto {
@@ -993,15 +825,15 @@ impl StatsService {
     }
 
     async fn plan_stats(&self) -> Result<PlanStatsDto, AppError> {
-        let active: (i64,) = query_as(
-            r#"SELECT COUNT(*) FROM player_plan_balances WHERE status = 'active' AND "deletedAt" IS NULL"#,
+        let active: (i64,) = self.pool.query(
+            include_str!("../analytics/queries/stats/plan_stats_1.sql"),
         )
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
-        let expired: (i64,) = query_as(
-            r#"SELECT COUNT(*) FROM player_plan_balances WHERE status = 'expired' AND "deletedAt" IS NULL"#,
+        let expired: (i64,) = self.pool.query(
+            include_str!("../analytics/queries/stats/plan_stats_2.sql"),
         )
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(PlanStatsDto {
@@ -1016,35 +848,18 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<DeviceStatsDto, AppError> {
-        let row: (i64, i64) = query_as(
-            r#"
-            SELECT COUNT(*), countIf(status IN ('operational', 'available', 'in_use'))
-            FROM devices WHERE "deletedAt" IS NULL
-            "#,
+        let row: (i64, i64) = self.pool.query(
+            include_str!("../analytics/queries/stats/device_stats_1.sql"),
         )
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
-        let utilization_rows: Vec<DeviceUtilizationRow> = query_as(
-            r#"
-            SELECT
-                d.id AS device_id,
-                d.name AS device_name,
-                COUNT(s.id) AS total_sessions,
-                COALESCE(SUM(s."durationMinutes"), 0)::Float64 / 60.0 AS total_hours
-            FROM devices d
-            INNER JOIN usage_sessions s ON s."deviceId" = d.id
-            WHERE d."deletedAt" IS NULL
-              AND s."deletedAt" IS NULL
-              AND s."startTime" BETWEEN $1 AND $2
-            GROUP BY d.id, d.name
-            ORDER BY total_hours DESC, total_sessions DESC
-            LIMIT 10
-            "#,
+        let utilization_rows: Vec<DeviceUtilizationRow> = self.pool.query(
+            include_str!("../analytics/queries/stats/device_stats_2.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_all(&self.pool)
+        .fetch_all()
         .await?;
 
         let period_minutes = (end - start).num_minutes().max(1) as f64;
@@ -1076,66 +891,20 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<TopPerformersDto, AppError> {
-        let top_plans: Vec<TopPlanRow> = query_as(
-            r#"
-            SELECT
-                p.id AS plan_id,
-                p.name AS plan_name,
-                COALESCE(SUM(t.amount::Float64), 0) AS revenue,
-                COUNT(*) AS purchase_count
-            FROM transactions t
-            INNER JOIN plans p ON p.id = t."planId"
-            WHERE t."createdAt" BETWEEN $1 AND $2
-              AND t."deletedAt" IS NULL
-              AND p."deletedAt" IS NULL
-              AND t."paymentStatus"::String IN ('completed', 'credit')
-              AND t."transactionType"::String = 'plan_purchase'
-            GROUP BY p.id, p.name
-            ORDER BY revenue DESC, purchase_count DESC
-            LIMIT 5
-            "#,
+        let top_plans: Vec<TopPlanRow> = self.pool.query(
+            include_str!("../analytics/queries/stats/top_performers_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_all(&self.pool)
+        .fetch_all()
         .await?;
 
-        let top_players: Vec<TopPlayerRow> = query_as(
-            r#"
-            SELECT
-                u.id AS player_id,
-                COALESCE(
-                    NULLIF(TRIM(CONCAT(COALESCE(u."firstName", ''), ' ', COALESCE(u."lastName", ''))), ''),
-                    u.username
-                ) AS player_name,
-                COALESCE(SUM(t.amount::Float64), 0) AS total_spent,
-                COALESCE(session_counts.total_sessions, 0) AS total_sessions
-            FROM transactions t
-            INNER JOIN users u ON u.id = t."playerId"
-            LEFT JOIN (
-                SELECT
-                    ppb."playerId" AS player_id,
-                    COUNT(*) AS total_sessions
-                FROM usage_sessions s
-                INNER JOIN player_plan_balances ppb ON ppb.id = s."balanceId"
-                WHERE s."deletedAt" IS NULL
-                  AND ppb."deletedAt" IS NULL
-                  AND s."startTime" BETWEEN $1 AND $2
-                GROUP BY ppb."playerId"
-            ) session_counts ON session_counts.player_id = u.id
-            WHERE t."createdAt" BETWEEN $1 AND $2
-              AND t."deletedAt" IS NULL
-              AND u."deletedAt" IS NULL
-              AND u.role = 'player'
-              AND t."paymentStatus"::String IN ('completed', 'credit')
-            GROUP BY u.id, u.username, u."firstName", u."lastName", session_counts.total_sessions
-            ORDER BY total_spent DESC, total_sessions DESC
-            LIMIT 5
-            "#,
+        let top_players: Vec<TopPlayerRow> = self.pool.query(
+            include_str!("../analytics/queries/stats/top_performers_stats_2.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_all(&self.pool)
+        .fetch_all()
         .await?;
 
         Ok(TopPerformersDto {
@@ -1169,37 +938,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<RevenueTrendDto>, AppError> {
-        let rows: Vec<RevenueTrendRow> = query_as(
-            r#"
-            SELECT
-                toDate(t."createdAt", 'Asia/Kolkata') AS date,
-                COALESCE(SUM(
-                    CASE
-                        WHEN t."paymentMethod"::String = 'cash' THEN t.amount::Float64
-                        WHEN t."paymentMethod"::String = 'split_payment' THEN COALESCE(t."cashAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS cash_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN t."paymentMethod"::String = 'online' THEN t.amount::Float64
-                        WHEN t."paymentMethod"::String = 'split_payment' THEN COALESCE(t."onlineAmount", 0)::Float64
-                        ELSE 0
-                    END
-                ), 0) AS online_revenue,
-                COALESCE(SUM(t.amount::Float64), 0) AS total_revenue,
-                COUNT(*) AS transaction_count
-            FROM transactions t
-            WHERE t."createdAt" BETWEEN $1 AND $2
-              AND t."deletedAt" IS NULL
-              AND t."paymentStatus"::String IN ('completed', 'credit')
-            GROUP BY toDate(t."createdAt", 'Asia/Kolkata')
-            ORDER BY date ASC
-            "#,
+        let rows: Vec<RevenueTrendRow> = self.pool.query(
+            include_str!("../analytics/queries/stats/revenue_trend_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_all(&self.pool)
+        .fetch_all()
         .await?;
 
         let settlement_rows = self.settlement_trend_stats(start, end).await?;
@@ -1246,35 +990,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<SettlementTrendRow>, AppError> {
-        query_as(
-            r#"
-            SELECT
-                toDate(cs."settledAt", 'Asia/Kolkata') AS date,
-                COALESCE(SUM(
-                    CASE
-                        WHEN cs."paymentMethod" = 'cash' THEN cs.amount
-                        WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."cashAmount", 0)
-                        ELSE 0
-                    END
-                ), 0)::Float64 AS cash_revenue,
-                COALESCE(SUM(
-                    CASE
-                        WHEN cs."paymentMethod" = 'online' THEN cs.amount
-                        WHEN cs."paymentMethod" = 'split_payment' THEN COALESCE(cs."onlineAmount", 0)
-                        ELSE 0
-                    END
-                ), 0)::Float64 AS online_revenue,
-                COALESCE(SUM(cs.amount), 0)::Float64 AS total_revenue
-            FROM credit_settlements cs
-            WHERE cs."settledAt" BETWEEN $1 AND $2
-              AND cs."deletedAt" IS NULL
-            GROUP BY toDate(cs."settledAt", 'Asia/Kolkata')
-            ORDER BY date ASC
-            "#,
+        self.pool.query(
+            include_str!("../analytics/queries/stats/settlement_trend_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_all(&self.pool)
+        .fetch_all()
         .await
     }
 
@@ -1283,18 +1004,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<StaffPlayerStatsDto, AppError> {
-        let row: (i64, i64) = query_as(
-            r#"
-            SELECT
-                countIf(role = 'player' AND "isActive" = true),
-                countIf(role = 'player' AND "createdAt" BETWEEN $1 AND $2)
-            FROM users
-            WHERE "deletedAt" IS NULL
-            "#,
+        let row: (i64, i64) = self.pool.query(
+            include_str!("../analytics/queries/stats/staff_player_stats_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(StaffPlayerStatsDto {
@@ -1304,17 +1019,10 @@ impl StatsService {
     }
 
     async fn staff_device_stats(&self) -> Result<StaffDeviceStatsDto, AppError> {
-        let row: (i64, i64, i64) = query_as(
-            r#"
-            SELECT
-                COUNT(*),
-                countIf(status IN ('available', 'operational')),
-                countIf(status = 'in_use')
-            FROM devices
-            WHERE "deletedAt" IS NULL
-            "#,
+        let row: (i64, i64, i64) = self.pool.query(
+            include_str!("../analytics/queries/stats/staff_device_stats_1.sql"),
         )
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(StaffDeviceStatsDto {
@@ -1330,8 +1038,11 @@ impl StatsService {
         end_date: Option<String>,
         compare: bool,
     ) -> Result<FinanceReconciliationStatsDto, AppError> {
-        let (period_start, period_end) = Self::resolve_stats_period(start_date, end_date);
-        let (prev_start, prev_end) = previous_window(period_start, period_end);
+        self.pool.ensure_ready().await?;
+        let (period_start, period_end) = self.resolve_stats_period(start_date, end_date);
+        let (prev_start, prev_end) = previous_window(period_start, period_end, self.pool.timezone());
+        self.pool.check_window(period_start,period_end)?;
+        self.pool.check_window(prev_start,prev_end)?;
 
         let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsFinanceKey {
             start: format_date_key(period_start),
@@ -1340,7 +1051,7 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-recon");
 
-        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.cache_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             let current = self
                 .finance_reconciliation_metrics(period_start, period_end)
@@ -1366,26 +1077,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<FinanceReconciliationMetricsDto, AppError> {
-        let row: (i64, i64, i64, i64, f64) = query_as(
-            r#"
-            SELECT
-                countIf(status = 'open'),
-                countIf(status = 'closed'),
-                countIf(status = 'reconciled'),
-                countIf(status = 'closed'),
-                COALESCE((
-                    SELECT SUM(d.amount)::Float64
-                    FROM cash_deposits d
-                    WHERE d.status = 'approved'
-                      AND d."createdAt" BETWEEN $1 AND $2
-                ), 0)
-            FROM cash_registers
-            WHERE "createdAt" BETWEEN $1 AND $2
-            "#,
+        let row: (i64, i64, i64, i64, f64) = self.pool.query(
+            include_str!("../analytics/queries/stats/finance_reconciliation_metrics_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(FinanceReconciliationMetricsDto {
@@ -1403,8 +1100,11 @@ impl StatsService {
         end_date: Option<String>,
         compare: bool,
     ) -> Result<FinanceDepositStatsDto, AppError> {
-        let (period_start, period_end) = Self::resolve_stats_period(start_date, end_date);
-        let (prev_start, prev_end) = previous_window(period_start, period_end);
+        self.pool.ensure_ready().await?;
+        let (period_start, period_end) = self.resolve_stats_period(start_date, end_date);
+        let (prev_start, prev_end) = previous_window(period_start, period_end, self.pool.timezone());
+        self.pool.check_window(period_start,period_end)?;
+        self.pool.check_window(prev_start,prev_end)?;
 
         let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsFinanceKey {
             start: format_date_key(period_start),
@@ -1413,7 +1113,7 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-deposits");
 
-        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.cache_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             let current = self
                 .finance_deposit_metrics(period_start, period_end)
@@ -1436,24 +1136,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<FinanceDepositMetricsDto, AppError> {
-        let row: (i64, f64, i64, f64, i64, f64, f64, f64) = query_as(
-            r#"
-            SELECT
-                countIf(status = 'pending'),
-                COALESCE(sumIf(amount::Float64, status = 'pending'), 0),
-                countIf(status = 'approved'),
-                COALESCE(sumIf(amount::Float64, status = 'approved'), 0),
-                countIf(status = 'rejected'),
-                COALESCE(sumIf(amount::Float64, status = 'rejected'), 0),
-                COALESCE(sumIf(amount::Float64, status = 'approved' AND "depositType" = 'bank'), 0),
-                COALESCE(sumIf(amount::Float64, status = 'approved' AND "depositType" = 'home'), 0)
-            FROM cash_deposits
-            WHERE "createdAt" BETWEEN $1 AND $2
-            "#,
+        let row: (i64, f64, i64, f64, i64, f64, f64, f64) = self.pool.query(
+            include_str!("../analytics/queries/stats/finance_deposit_metrics_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(FinanceDepositMetricsDto {
@@ -1474,8 +1162,11 @@ impl StatsService {
         end_date: Option<String>,
         compare: bool,
     ) -> Result<FinanceVarianceStatsDto, AppError> {
-        let (period_start, period_end) = Self::resolve_stats_period(start_date, end_date);
-        let (prev_start, prev_end) = previous_window(period_start, period_end);
+        self.pool.ensure_ready().await?;
+        let (period_start, period_end) = self.resolve_stats_period(start_date, end_date);
+        let (prev_start, prev_end) = previous_window(period_start, period_end, self.pool.timezone());
+        self.pool.check_window(period_start,period_end)?;
+        self.pool.check_window(prev_start,prev_end)?;
 
         let cache_key = keys::stats_dashboard(&keys::filter_hash(&StatsFinanceKey {
             start: format_date_key(period_start),
@@ -1484,7 +1175,7 @@ impl StatsService {
         }));
         let cache_key = format!("{cache_key}:finance-variance");
 
-        let cache_key = format!("{cache_key}:scope:{}", self.pool.scope_key());
+        let cache_key = format!("{cache_key}:scope:{}", self.pool.cache_key());
         get_or_set(&*self.cache, &cache_key, keys::ttl::AGGREGATE, || async {
             let current = self
                 .finance_variance_metrics(period_start, period_end)
@@ -1511,24 +1202,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<FinanceVarianceMetricsDto, AppError> {
-        let row: (f64, f64, i64, i64, i64, i64) = query_as(
-            r#"
-            SELECT
-                COALESCE(SUM(variance::Float64), 0),
-                COALESCE(avgOrNull(variance::Float64), 0),
-                countIf(variance::Float64 > 0),
-                countIf(variance::Float64 < 0),
-                countIf(variance::Float64 = 0),
-                COUNT(*)
-            FROM cash_registers
-            WHERE variance IS NOT NULL
-              AND status IN ('closed', 'reconciled')
-              AND "updatedAt" BETWEEN $1 AND $2
-            "#,
+        let row: (f64, f64, i64, i64, i64, i64) = self.pool.query(
+            include_str!("../analytics/queries/stats/finance_variance_metrics_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_one(&self.pool)
+        .fetch_one()
         .await?;
 
         Ok(FinanceVarianceMetricsDto {
@@ -1546,27 +1225,12 @@ impl StatsService {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> Result<Vec<FinanceVarianceRegisterRow>, AppError> {
-        Ok(query_as::<FinanceVarianceRegisterRow>(
-            r#"
-            SELECT
-                id,
-                "shiftId" as shift_id,
-                status,
-                variance::Float64 as variance,
-                "closingBalance"::Float64 as closing_balance,
-                "expectedClosing"::Float64 as expected_closing,
-                "updatedAt" as updated_at
-            FROM cash_registers
-            WHERE variance IS NOT NULL
-              AND status IN ('closed', 'reconciled')
-              AND "updatedAt" BETWEEN $1 AND $2
-            ORDER BY ABS(variance) DESC, "updatedAt" DESC
-            LIMIT 50
-            "#,
+        Ok(self.pool.query::<FinanceVarianceRegisterRow>(
+            include_str!("../analytics/queries/stats/finance_variance_registers_1.sql"),
         )
         .bind(start)
         .bind(end)
-        .fetch_all(&self.pool)
+        .fetch_all()
         .await?)
     }
 }
@@ -1574,12 +1238,25 @@ impl StatsService {
 fn previous_window(
     period_start: DateTime<Utc>,
     period_end: DateTime<Utc>,
+    zone: chrono_tz::Tz,
 ) -> (DateTime<Utc>, DateTime<Utc>) {
-    let diff_days = (period_end - period_start).num_days().max(1);
-    (
-        period_start - Duration::days(diff_days),
-        period_end - Duration::days(diff_days),
-    )
+    let diff_days = (period_end.with_timezone(&zone).date_naive()
+        - period_start.with_timezone(&zone).date_naive()).num_days().max(1);
+    let shift = |instant: DateTime<Utc>| {
+        let local = instant.with_timezone(&zone);
+        let mut target = local.naive_local() - Duration::days(diff_days);
+        use chrono::TimeZone;
+        // Choose the first occurrence in a fold and advance to the first valid
+        // instant in a gap, preserving calendar time across DST transitions.
+        for _ in 0..=86400 {
+            if let Some(value) = zone.from_local_datetime(&target).earliest() {
+                return value.with_timezone(&Utc);
+            }
+            target += Duration::seconds(1);
+        }
+        instant - Duration::days(diff_days)
+    };
+    (shift(period_start), shift(period_end))
 }
 
 fn period_dto(
@@ -1610,52 +1287,38 @@ fn period_dto(
 }
 
 fn format_date_key(dt: DateTime<Utc>) -> String {
-    dt.format("%Y-%m-%d").to_string()
+    crate::time::utc_timestamp(&dt)
 }
 
-fn parse_date_start(value: Option<&str>) -> Option<DateTime<Utc>> {
-    value.and_then(|s| {
-        DateTime::parse_from_rfc3339(s)
-            .ok()
-            .map(|d| d.with_timezone(&Utc))
-            .or_else(|| {
-                DateTime::parse_from_rfc3339(&format!("{s}T00:00:00+05:30"))
-                    .ok()
-                    .map(|d| d.with_timezone(&Utc))
-            })
-            .or_else(|| {
-                DateTime::parse_from_rfc3339(&format!("{s}T00:00:00Z"))
-                    .ok()
-                    .map(|d| d.with_timezone(&Utc))
-            })
+fn parse_date_start(value: Option<&str>, zone: chrono_tz::Tz) -> Option<DateTime<Utc>> {
+    let value = value?;
+    DateTime::parse_from_rfc3339(value).ok().map(|t| t.with_timezone(&Utc)).or_else(|| {
+        let date = chrono::NaiveDate::parse_from_str(value,"%Y-%m-%d").ok()?;
+        crate::analytics::calendar::boundary(date,zone).ok()
     })
 }
-
-fn parse_date_end(value: Option<&str>) -> Option<DateTime<Utc>> {
-    value.and_then(|s| {
-        DateTime::parse_from_rfc3339(s)
-            .ok()
-            .map(|d| d.with_timezone(&Utc))
-            .or_else(|| {
-                DateTime::parse_from_rfc3339(&format!("{s}T23:59:59+05:30"))
-                    .ok()
-                    .map(|d| d.with_timezone(&Utc))
-            })
-            .or_else(|| {
-                DateTime::parse_from_rfc3339(&format!("{s}T23:59:59Z"))
-                    .ok()
-                    .map(|d| d.with_timezone(&Utc))
-            })
+fn parse_date_end(value: Option<&str>, zone: chrono_tz::Tz) -> Option<DateTime<Utc>> {
+    let value = value?;
+    DateTime::parse_from_rfc3339(value).ok().map(|t| t.with_timezone(&Utc)).or_else(|| {
+        let date = chrono::NaiveDate::parse_from_str(value,"%Y-%m-%d").ok()?.succ_opt()?;
+        crate::analytics::calendar::boundary(date,zone).ok()?.checked_sub_signed(Duration::seconds(1))
     })
 }
+fn start_of_day(dt: DateTime<Utc>, zone: chrono_tz::Tz) -> DateTime<Utc> {
+    crate::analytics::calendar::boundary(dt.with_timezone(&zone).date_naive(),zone).unwrap_or(dt)
+}
 
-fn start_of_day(dt: DateTime<Utc>) -> DateTime<Utc> {
-    dt.with_hour(0)
-        .unwrap_or(dt)
-        .with_minute(0)
-        .unwrap_or(dt)
-        .with_second(0)
-        .unwrap_or(dt)
-        .with_nanosecond(0)
-        .unwrap_or(dt)
+#[cfg(test)]
+mod calendar_tests {
+    use super::*;
+    #[test]
+    fn comparisons_preserve_local_clock_across_dst_and_legacy_month_offset() {
+        let parse = |s: &str| DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc);
+        let (start,end) = previous_window(parse("2026-03-09T00:00:00-04:00"), parse("2026-03-09T23:59:59-04:00"), chrono_tz::America::New_York);
+        assert_eq!(start,parse("2026-03-08T00:00:00-05:00"));
+        assert_eq!(end,parse("2026-03-08T23:59:59-04:00"));
+        let (start,end) = previous_window(parse("2026-09-01T00:00:00+05:30"), parse("2026-09-30T23:59:59+05:30"), chrono_tz::Asia::Kolkata);
+        assert_eq!(start,parse("2026-08-03T00:00:00+05:30"));
+        assert_eq!(end,parse("2026-09-01T23:59:59+05:30"));
+    }
 }

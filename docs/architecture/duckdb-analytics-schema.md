@@ -1,11 +1,11 @@
 # Tenant DuckDB Analytics Schema
 
-Implements the analytics side of `docs/architecture/data-platform.md` (§18–19, §32–37, §44) under `docs/adr/0043-storage-cells-sqlite-duckdb.md`. It replaces the ClickHouse schema in `apps/backend/src/analytics/schema.sql`.
+Implements the analytics side of `docs/architecture/data-platform.md` (§18–19, §32–37, §44) under `docs/adr/0043-storage-cells-sqlite-duckdb.md`. It replaces the retired shared reporting schema.
 
 ## Design rules
 
 1. **One DuckDB file per tenant** (`tenant-<id>/analytics.duckdb`). The file is the tenant boundary, so no table carries `organizationId` and the `ReportScope` SQL rewriting in `analytics/scope.rs` goes away. Location filtering is a plain predicate on `location_id`.
-2. **Current state, not version history.** ClickHouse needed `ReplacingMergeTree` plus `FINAL` views to deduplicate. Here, each event batch is applied as upserts and deletes in one DuckDB transaction, so tables always hold the latest row.
+2. **Current state, not version history.** The legacy engine needed `ReplacingMergeTree` plus `FINAL` views to deduplicate. Here, each event batch is applied as upserts and deletes in one DuckDB transaction, so tables always hold the latest row.
 3. **Soft-deleted rows are removed.** Every current report filters `deletedAt IS NULL`, so a soft delete is applied as a `DELETE`. Names of removed players fall back to `'Deleted player'` exactly as today.
 4. **Exact money.** Money is `DECIMAL(19,4)`, matching the ledger. Reports cast to `DOUBLE` only where today's DTOs already expose floats, and to `VARCHAR` where today's finance report returns decimal strings.
 5. **Timestamps are UTC; calendar labels are derived.** Every timestamp column is UTC (ADR-0043 decision 27). `local_date`, `local_hour`, and `weekday` are labels computed in Rust (`chrono-tz`) at ingest from the UTC timestamp and the tenant's IANA time zone, which comes from the global PostgreSQL (decision 28). Changing a tenant's time zone triggers a rebuild.
@@ -352,7 +352,16 @@ restored SQLite file from resurrecting lost operational data. Stream history is
 retained. Existing v1 files preserve their facts/checkpoints on migration and move
 to REBUILDING until a snapshot installs the broker position.
 
-Tables in the ClickHouse schema with no current report consumer are not carried over: `games`, `organization_memberships`, and `analytics_ready` (replaced by `_ingest_state.status`). Add a table only when a report needs it.
+### Report creation timestamps (schema v3)
+
+Migration `0003_report_transaction_created_at.sql` adds nullable
+`transactions.created_at TIMESTAMP`, independently of `occurred_at`. Dashboard
+creation counts use this source timestamp; business revenue uses the sale date.
+Canonical outbox snapshots now have version 2 and include `created_at`. Older
+snapshots require a rebuild rather than guessing a timestamp. Known upgrades retain
+facts, checkpoints and sealed monthly summaries while marking the file REBUILDING.
+
+Tables in the legacy reporting pipeline schema with no current report consumer are not carried over: `games`, `organization_memberships`, and `analytics_ready` (replaced by `_ingest_state.status`). Add a table only when a report needs it.
 
 ## Report coverage
 
@@ -389,9 +398,9 @@ Today `scope.rs` rewrites every table reference into a scoped CTE. In DuckDB the
 
 `credit_settlements`, `expenses`, `cash_registers`, and `cash_deposits` carry `location_id` resolved from the shift when the event is written, replacing today's `shiftId IN (SELECT … FROM shifts …)` subqueries.
 
-## ClickHouse → DuckDB translation
+## Legacy SQL → DuckDB translation
 
-| ClickHouse | DuckDB |
+| Legacy SQL | DuckDB |
 |---|---|
 | `countIf(c)` | `count(*) FILTER (WHERE c)` |
 | `sumIf(x, c)` | `sum(x) FILTER (WHERE c)` |
@@ -486,7 +495,7 @@ These differences exist in today's queries and are kept as-is so reports don't c
 
 ## Parity tests
 
-Before ClickHouse is removed, every report must return identical results on the ported demo dataset (`pnpm demo:seed`). The existing ClickHouse test cases carry over:
+Every report is verified against the immutable original M0 demo input and golden output. The current operational v2 seed is separately verified against its SQLite source. The original report and delivery cases carry over:
 
 - duplicate and out-of-order delivery;
 - tombstones;
@@ -502,3 +511,24 @@ New cases:
 - a rebuild during concurrent writes loses no events after T0;
 - a session crossing local midnight;
 - retention keeps `monthly_summary` while deleting old facts.
+
+### Native report parity verification
+
+`tests/report_parity.rs` runs all 31 immutable M0 report fixtures against the native
+reader, using the original deterministic input generator and bootstrap dimensions.
+The observation clock is fixed to the M0 capture instant for current wallet expiry.
+Generated timestamps are ignored, equivalent UTC timestamp spellings normalized,
+and public floating-point fields compared within 1e-8; finance decimal strings are
+compared exactly. Golden files are unchanged.
+
+The inventory movement fixture captured an arbitrary subset at a tied LIMIT boundary.
+Its comparison verifies every captured row against original input, then selects the
+same eight rows using `created_at DESC, id ASC` before LIMIT. This makes the existing
+M0 tie-break agreement deterministic across engines.
+
+Report serving uses the owning tenant's DuckDB file, current local grants and stored
+venue attribution. Tenant identity, ownership generation, schema, calendar, hot
+window, ingestion checkpoint and selected venues form the cache identity. Readiness
+and date bounds are checked before cached results are returned. Unready, fenced or
+restored-ahead projections return 503 with `ANALYTICS_UNAVAILABLE` and the message
+`report temporarily rebuilding`. Reports never substitute operational aggregates.

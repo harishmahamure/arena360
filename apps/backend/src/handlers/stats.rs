@@ -55,7 +55,7 @@ pub async fn dashboard_stats(
     Query(query): Query<StatsQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<crate::services::stats_service::DashboardStatsDto> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -63,11 +63,9 @@ pub async fn dashboard_stats(
         "finance:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    crate::dto::ok(stats.get_dashboard_stats(query.start_date,query.end_date,query.compare.unwrap_or(true)).await?)
 }
 
 #[utoipa::path(
@@ -90,7 +88,7 @@ pub async fn staff_dashboard_stats(
     Query(query): Query<StaffStatsQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<crate::services::stats_service::StaffDashboardStatsDto> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -98,11 +96,9 @@ pub async fn staff_dashboard_stats(
         "stats:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    crate::dto::ok(stats.get_staff_dashboard_stats(query.start_date,query.end_date,query.shift_start).await?)
 }
 
 #[utoipa::path(
@@ -125,7 +121,7 @@ pub async fn revenue_by_payment_method(
     Query(query): Query<StatsQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<PeriodPair<RevenueByPaymentMethodDto>> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -133,11 +129,11 @@ pub async fn revenue_by_payment_method(
         "finance:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    let (start,end) = stats.resolve_stats_period(query.start_date,query.end_date);
+    let (previous_start,previous_end) = stats.previous_window(start,end);
+    crate::dto::ok(stats.get_revenue_by_payment_method(start,end,previous_start,previous_end,query.compare.unwrap_or(true)).await?)
 }
 
 #[utoipa::path(
@@ -160,7 +156,7 @@ pub async fn usage_stats(
     Query(query): Query<StatsQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<PeriodPair<UsageStatsDto>> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -168,11 +164,11 @@ pub async fn usage_stats(
         "stats:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    let (start,end) = stats.resolve_stats_period(query.start_date,query.end_date);
+    let (previous_start,previous_end) = stats.previous_window(start,end);
+    crate::dto::ok(stats.get_usage_stats(start,end,previous_start,previous_end,query.compare.unwrap_or(true)).await?)
 }
 
 #[utoipa::path(
@@ -195,7 +191,7 @@ pub async fn finance_reconciliation_stats(
     Query(query): Query<StatsQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<FinanceReconciliationStatsDto> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -203,11 +199,9 @@ pub async fn finance_reconciliation_stats(
         "finance:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    crate::dto::ok(stats.get_finance_reconciliation_stats(query.start_date,query.end_date,query.compare.unwrap_or(true)).await?)
 }
 
 #[utoipa::path(
@@ -230,7 +224,7 @@ pub async fn finance_deposit_stats(
     Query(query): Query<StatsQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<FinanceDepositStatsDto> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -238,11 +232,9 @@ pub async fn finance_deposit_stats(
         "finance:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    crate::dto::ok(stats.get_finance_deposit_stats(query.start_date,query.end_date,query.compare.unwrap_or(true)).await?)
 }
 
 #[utoipa::path(
@@ -265,7 +257,7 @@ pub async fn finance_variance_stats(
     Query(query): Query<StatsQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<FinanceVarianceStatsDto> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -273,24 +265,22 @@ pub async fn finance_variance_stats(
         "finance:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    crate::dto::ok(stats.get_finance_variance_stats(query.start_date,query.end_date,query.compare.unwrap_or(true)).await?)
 }
 
 #[derive(serde::Deserialize, Default, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BusinessQuery {
     pub venue_location_id: Option<Uuid>,
-    /// Inclusive IST calendar date, YYYY-MM-DD. Defaults to the last 30 days.
+    /// Inclusive tenant calendar date, YYYY-MM-DD. Defaults to the last 30 days.
     pub start_date: Option<String>,
     pub end_date: Option<String>,
 }
 
 #[utoipa::path(get, path = "/stats/business", params(BusinessQuery),
-    responses((status = 200, description = "Business analytics from ClickHouse", body = crate::openapi::responses::BusinessAnalyticsEnvelope),
+    responses((status = 200, description = "Business analytics from tenant DuckDB", body = crate::openapi::responses::BusinessAnalyticsEnvelope),
     (status = 400, body = ErrorEnvelope), (status = 403, body = ErrorEnvelope), (status = 503, body = ErrorEnvelope)),
     security(("bearer_auth" = [])), tag = "stats")]
 pub async fn business_stats(
@@ -299,7 +289,7 @@ pub async fn business_stats(
     Query(query): Query<BusinessQuery>,
     headers: HeaderMap,
 ) -> crate::dto::ApiResult<crate::analytics::business::BusinessReport> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -307,9 +297,8 @@ pub async fn business_stats(
         "finance:read",
     )
     .await?;
-    Err(crate::error::AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let window = crate::analytics::business::Window::new(query.start_date.as_deref(),query.end_date.as_deref(),chrono::Utc::now(),reader.timezone())?;
+    let stats = crate::services::StatsService::new(reader,state.cache.clone());
+    crate::dto::ok(stats.get_business_report(window).await?)
 }

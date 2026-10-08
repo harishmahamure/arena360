@@ -1,7 +1,7 @@
 # Data Platform Progress
 
 **Updated:** 2026-10-08
-**Branch:** `codex/m6-analytics-ingestion`
+**Branch:** `main` (M7 merged locally)
 **Source plan:** `docs/plans/data-platform-build-plan.md`  
 **Architecture source:** `docs/architecture/data-platform.md`
 
@@ -14,15 +14,15 @@
 - [x] M4 — Core venue operations on SQLite
 - [x] M5 — Back office on SQLite
 - [x] M6 — Analytics ingestion
-- [ ] M7 — Reports on DuckDB
+- [x] M7 — Reports on DuckDB
 - [ ] M8 — Replication and recovery
 - [ ] M9 — Multiple cells
 - [ ] M10 — Cold tenants
 - [ ] M11 — Archive and historical exports
 
-## Completed through M6
+## Completed through M7
 
-- M0–M5 are complete; operational API cutover and local merge are verified.
+- M0–M7 are complete; operational cutover, analytics ingestion and local milestone merges are verified.
 - PostgreSQL control plane with tenant registry, global staff identities, memberships,
   subscriptions, licences, and signed entitlement caching.
 - Tenant-aware staff, device, and player authentication.
@@ -60,7 +60,17 @@
 
 ## Current task
 
-- [ ] `API-0043` — Rewrite tenant report queries and serving paths for DuckDB.
+- [ ] `API-0053` — WAL replication worker (M8).
+- Required gate: ADR-0043 decisions 4 and 5 need owner sign-off before M8. Proposed defaults are per-tenant encryption keys destroyed on tenant deletion, and single-node cells with recovery time measured in restore drills and published as the availability target.
+
+### M7 completed
+
+- `API-0043`, `TEST-0030`, and `OPS-0021` are complete. All fourteen report routes use fenced tenant DuckDB readers with current venue grants, hot-window/readiness/cache guards, exact money and tenant calendars.
+- All 31 immutable M0 golden reports pass with documented observation-time, UTC and tied-boundary normalization; schema upgrades preserve sealed summaries and older snapshots trigger rebuilding.
+- Removed the retired reporting engine code, configuration, Compose service and instructions. Repository searches find no engine references.
+- Final native integration run: 427 backend/control/live checks pass. Default all-target compilation passes; 13 admin analytics tests and actual overview/eleven-subpage browser checks pass.
+- A fresh operational v2 demo drained 2,348 events and served native analytics. Source parity independently matches 1,419 rows across 27 projections, all exact money totals and 486,000 occupied seconds.
+- API/report parity implementation: `88ab8cb`. M7 is merged locally; no remote push or deployment was performed.
 
 ### API-0033 completed
 
@@ -84,7 +94,7 @@
 - `pnpm backend:test:integration` and backend CI run 360 normal tests plus all eight control-backed checks against temporary tenant files and a disposable control database.
 - Local server discovery/startup, explicit admin server targeting, cleanup on interruption and missing Cargo, and removal of all temporary roots are verified.
 - Obsolete operational PostgreSQL trigger tests are retired; all nine live report routes are tested for 503 and current local access revocation for 403.
-- Five optional external ClickHouse/Redis gates remain. JetStream and report parity suites are rebuilt in M6/M7.
+- The former external reporting gates are replaced by native report tests in M7; JetStream gates run against disposable servers.
 
 ### OPS-0011 completed
 
@@ -143,7 +153,8 @@
 
 - Per-cell priority/FIFO admission reserves outbox capacity and bounds background/backfill concurrency. Foreground writers bypass queues; pull buffers and DuckDB opens reserve capacity before allocation. Cancelled and fenced jobs cannot leak reservations or commit stale data. Queue/active/admission/release/wait metrics are exported by priority.
 - Full regression: 417 backend/control/live checks pass. Final targeted safeguards (21 checks) and all six live gates pass: 418 distinct checks across the runs. The actual NATS stop/restart preserves SQLite writes and drains the outbox without duplicate messages. Native demo counts/money/session-hour parity and scheduled concurrent rebuild/replay pass.
-- Next: local M6 merge, then M7 `API-0043` report migration and M0 fixture parity.
+- Implementation: `a8469b9`; M6 merged locally to `main`. No remote push or deployment.
+- Next: M7 `API-0043` report migration and M0 fixture parity.
 
 ## M5 queue
 
@@ -177,7 +188,7 @@
 - Full backend test suite passes.
 - Tenant venue, catalog, commerce, identity, realtime, schema, provisioning, migration, and lease
   regression tests pass.
-- Latest completed item: `API-0046` / M6; 418 distinct backend/control/live checks pass across the full and final targeted runs. OPS-0020 commit: `a46c943`; integration harness: `2492b35`.
+- Latest completed milestone: M7; the final native run passes 427 backend/control/live checks, plus 13 admin analytics checks.
 - Five inventory/procurement SQLite integration tests pass, including atomic receipt financial links, duplicate invoice rollback, concurrent fulfillment, and lease fencing.
 
 - Four finance and eight commerce integration tests pass, covering concurrent start/approval, handover rollback, deposit reversal after closure, and atomic sale/settlement cash entries.

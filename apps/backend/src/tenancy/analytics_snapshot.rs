@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::SqliteConnection;
 use uuid::Uuid;
+pub const SNAPSHOT_VERSION: u32 = 2;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColumnKind {
     Uuid,
@@ -301,6 +302,11 @@ pub static TABLES: &[Table] = &[
             Column {
                 name: "occurred_at",
                 source: "r.transaction_date",
+                kind: ColumnKind::Timestamp,
+            },
+            Column {
+                name: "created_at",
+                source: "r.created_at",
                 kind: ColumnKind::Timestamp,
             },
             Column {
@@ -1235,7 +1241,7 @@ pub async fn capture(
     deleted: bool,
 ) -> Result<Option<AnalyticsSnapshot>, AppError> {
     let mut snapshot = AnalyticsSnapshot {
-        version: 1,
+        version: SNAPSHOT_VERSION,
         changes: Vec::new(),
     };
     let Some(name) = aggregate_table(kind) else {

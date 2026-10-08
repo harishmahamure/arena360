@@ -4,13 +4,13 @@
 **Date**: 2026-10-06
 **Deciders**: Founder / backend owner
 **Supersedes**: ADR-0009 (PostgreSQL and SQLx-on-PostgreSQL portion; Axum, utoipa, and the handler → service → repository layering remain)
-**Replaces**: shared-table tenancy (`docs/architecture/tenancy.md`), the ClickHouse reporting pipeline (`docs/architecture/analytics.md`), and the rejected `DRAFT-0042`
+**Replaces**: shared-table tenancy (`docs/architecture/tenancy.md`), the legacy reporting pipeline reporting pipeline (`docs/architecture/analytics.md`), and the rejected `DRAFT-0042`
 
 ## Context
 
 Arena360 is sold per PC to many independent venue businesses. Physical tenant isolation, cheap commodity servers, and tenant portability are product requirements. The owner adopted `docs/architecture/data-platform.md` (Version 2.0) as the production architecture baseline and the source of truth. Where earlier ADRs or architecture documents conflict with it, that document wins.
 
-The current backend runs one shared PostgreSQL database (119 migrations, 76 tables, 461 runtime SQLx queries across 26 repositories) with tenancy by `organizationId` column, and reports from ClickHouse fed by a PostgreSQL outbox and NATS JetStream.
+The current backend runs one shared PostgreSQL database (119 migrations, 76 tables, 461 runtime SQLx queries across 26 repositories) with tenancy by `organizationId` column, and reports from legacy reporting pipeline fed by a PostgreSQL outbox and NATS JetStream.
 
 ## Decision
 
@@ -37,7 +37,7 @@ Adopt `docs/architecture/data-platform.md` in full. The implementation decisions
 8. **Tenant analytics**: DuckDB through the `duckdb` crate (bundled build). Schema is defined in `docs/architecture/duckdb-analytics-schema.md`.
 9. **Object storage**: Wasabi (owner decision 2026-10-06, replacing Cloudflare R2) through an S3-compatible client (`object_store`). Every "R2" in `data-platform.md` reads as Wasabi. Layout and retention: decision 31.
 10. **Messaging**: NATS JetStream through `async-nats` (already a dependency).
-11. **Removed**: ClickHouse (client, schema, worker, Compose service, environment variables, tests) and the PostgreSQL operational schema with its 119 migrations.
+11. **Removed**: legacy reporting pipeline (client, schema, worker, Compose service, environment variables, tests) and the PostgreSQL operational schema with its 119 migrations.
 
 ### SQLite conventions
 
@@ -179,7 +179,7 @@ Decided: 1 (WAL replication to Wasabi every 2 minutes, decision 26), 2 (5-minute
 - **Shared PostgreSQL with row-level security**: cheapest and no rewrite, but logical isolation only.
 - **Turso database per tenant (`DRAFT-0042`, rejected)**: managed, but metered billing, vendor dependency, and no control over placement or recovery.
 - **PostgreSQL database per tenant**: keeps the SQL, but connection pools and operations grow with tenant count and do not fit cheap commodity cells.
-- **Keep ClickHouse for analytics**: proven, but it is a shared cross-tenant store that conflicts with physical isolation and adds a stateful service per environment.
+- **Keep legacy reporting pipeline for analytics**: proven, but it is a shared cross-tenant store that conflicts with physical isolation and adds a stateful service per environment.
 
 ## Implementation Notes
 

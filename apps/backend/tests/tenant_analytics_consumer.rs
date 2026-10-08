@@ -211,6 +211,10 @@ async fn gap_and_foreign_or_invalid_batches_never_advance_or_partially_write() {
     ));
     let mut legacy = events(&f).await.remove(0);
     legacy.sequence = 4;
+    legacy.analytics_snapshot.as_mut().unwrap().version = 1;
+    assert_eq!(apply_batch(a.clone(), vec![legacy.clone()]).await.unwrap(), BatchOutcome::RebuildRequired);
+    assert_eq!(checkpoint(&a).await, (3, "REBUILDING".into()));
+    a.write(|tx| { tx.execute_batch("UPDATE _ingest_state SET status='READY'").map_err(error)?; Ok(()) }).await.unwrap();
     legacy.analytics_snapshot = None;
     assert_eq!(
         apply_batch(a.clone(), vec![legacy]).await.unwrap(),

@@ -580,14 +580,12 @@ pub async fn waste_summary(
     AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<WasteSummaryFilterDto>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<Vec<WasteSummaryRow>> {
-    let _ = scoped_inventory(&state, &claims, "inventory:read").await?;
-    let _ = filters;
-    Err(AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let db=state.business_db(&claims).await?;
+    let locations=crate::access::scope::report_scope_tenant(db.clone(),&claims,&headers,None,"inventory:read").await?;
+    let reader=state.report_reader(db,locations).await?;
+    ok(reader.waste_summary(filters.location_id,filters.from,filters.to).await?)
 }
 
 #[utoipa::path(
@@ -607,14 +605,12 @@ pub async fn receipt_summary(
     AdminUser(claims): AdminUser,
     State(state): State<Arc<AppState>>,
     Query(filters): Query<ReceiptSummaryFilterDto>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<Vec<ReceiptSummaryRow>> {
-    let _ = scoped_inventory(&state, &claims, "inventory:read").await?;
-    let _ = filters;
-    Err(AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let db=state.business_db(&claims).await?;
+    let locations=crate::access::scope::report_scope_tenant(db.clone(),&claims,&headers,None,"inventory:read").await?;
+    let reader=state.report_reader(db,locations).await?;
+    ok(reader.receipt_summary(filters.location_id,filters.from,filters.to).await?)
 }
 
 async fn scoped_inventory(

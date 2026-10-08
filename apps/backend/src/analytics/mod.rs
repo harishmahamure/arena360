@@ -1,11 +1,7 @@
-//! Legacy ClickHouse definitions retained for M7 parity. Operational writes use tenant SQLite.
+//! Tenant-local DuckDB reports, fed by canonical SQLite outbox snapshots.
 pub mod business;
-mod client;
 pub mod reports;
-pub mod worker;
-pub use client::{query_as, ClickHouse};
 
-pub mod scope;
 
 pub mod publisher;
 
@@ -22,3 +18,10 @@ pub mod rebuild;
 
 #[cfg(feature = "duckdb-analytics")]
 pub mod retention;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod registry;
+
+#[cfg_attr(not(feature = "duckdb-analytics"), path = "report_reader_disabled.rs")]
+pub mod report_reader;
+pub mod calendar;

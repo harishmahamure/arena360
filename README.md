@@ -12,8 +12,9 @@ This repository is a monorepo containing three runnable surfaces:
 | `apps/admin` | React, Vite, MUI | Staff and administrator operations console |
 | `apps/kiosk` | Tauri 2, React, Rust | Locked-down Windows station client and game launcher |
 
-PostgreSQL is the system of record. Redis is an optional cache and invalidation
-layer; the backend continues with a no-op cache if Redis is unavailable.
+Tenant SQLite files own operational records; PostgreSQL owns control-plane metadata
+and global staff credentials. Tenant DuckDB files serve reports. Redis is optional;
+the backend continues with a no-op cache if Redis is unavailable.
 
 ## Documentation
 
@@ -22,7 +23,7 @@ layer; the backend continues with a no-op cache if Redis is unavailable.
 - [Product planning and milestones](docs/planning/README.md)
 - [Local development](docs/DEVELOPMENT.md)
 - [Deployment and operations](docs/DEPLOYMENT.md)
-- [JetStream and ClickHouse reporting](docs/architecture/analytics.md)
+- [Tenant DuckDB reporting](docs/architecture/analytics.md)
 
 The documentation describes implemented behavior only. The generated OpenAPI
 spec and the source code remain authoritative for endpoint-level details.
@@ -42,14 +43,14 @@ cp apps/backend/.env.example apps/backend/.env
 Set this local database URL in `apps/backend/.env`:
 
 ```dotenv
-DATABASE_URL=postgres://arena360:arena360@localhost:5432/arena360
+CONTROL_DATABASE_URL=postgres://arena360:arena360@localhost:5432/arena360_control
 ```
 
 Then initialize the database and start the API and staff console in separate
 terminals:
 
 ```bash
-pnpm migration run
+pnpm migration run --target control
 pnpm backend:dev
 ```
 
@@ -58,8 +59,9 @@ pnpm admin:dev
 ```
 
 The backend uses per-tenant SQLite for operations and PostgreSQL for the control plane.
-Reports return `503 ANALYTICS_UNAVAILABLE` until M7; the old PostgreSQL/ClickHouse writer
-is retired. See the [storage-cell development guide](docs/architecture/storage-cell-development.md).
+Reports read the owning tenant’s DuckDB file and return `503 ANALYTICS_UNAVAILABLE`
+while rebuilding or when native analytics is disabled. Enable `duckdb-analytics` or
+`duckdb-bundled` as described in the [storage-cell development guide](docs/architecture/storage-cell-development.md).
 
 Provision a demo tenant with 60 days of synthetic sales and activity. Configure
 `CONTROL_DATABASE_URL`, `ARENA_CELL_ID`, and `TENANT_DATA_DIR` for a registered cell:

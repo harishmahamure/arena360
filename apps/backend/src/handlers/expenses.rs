@@ -262,17 +262,9 @@ pub async fn expense_summary(
     headers: HeaderMap,
 ) -> ApiResult<Vec<ExpenseSummaryDto>> {
     let db = state.business_db(&claims).await?;
-    LocationScope::resolve_tenant(
-        db.clone(),
-        &claims,
-        "expenses:read",
-        requested_location(&headers)?,
-    )
-    .await?;
-    let summary = TenantExpenseRepository::new(db.clone())
-        .get_summary()
-        .await?;
-    ok(summary)
+    let locations=crate::access::scope::report_scope_tenant(db.clone(),&claims,&headers,None,"expenses:read").await?;
+    let reader=state.report_reader(db,locations).await?;
+    ok(reader.get_summary_by_category().await?)
 }
 
 #[utoipa::path(

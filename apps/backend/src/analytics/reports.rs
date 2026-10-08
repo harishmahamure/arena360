@@ -1,33 +1,33 @@
-use super::{query_as, ClickHouse};
+use super::report_reader::ReportReader;
 use crate::{error::AppError, models::*};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-impl ClickHouse {
+impl ReportReader {
     pub async fn get_summary_by_category(&self) -> Result<Vec<ExpenseSummaryDto>, AppError> {
-        let summaries = query_as::<ExpenseSummaryDto>(
+        let summaries = self.query::<ExpenseSummaryDto>(
             r#"
             SELECT
                 ec.name as category_name,
-                ec."budgetAmount"::Float64 as budget_amount,
-                ec."budgetPeriod" as budget_period,
-                COALESCE(SUM(e.amount)::Float64, 0) as total_spent,
+                ec.budget_amount as budget_amount,
+                ec.budget_period as budget_period,
+                COALESCE(SUM(e.amount), 0) as total_spent,
                 CASE
-                    WHEN ec."budgetAmount" IS NOT NULL
-                    THEN (ec."budgetAmount" - COALESCE(SUM(e.amount), 0))::Float64
+                    WHEN ec.budget_amount IS NOT NULL
+                    THEN (ec.budget_amount - COALESCE(SUM(e.amount), 0))
                     ELSE NULL
                 END as remaining_budget,
                 COUNT(e.id) as expense_count
             FROM expense_categories ec
-            LEFT JOIN expenses e ON e."categoryId" = ec.id
-                AND e."deletedAt" IS NULL
-                AND e."approvalStatus" = 'approved'
-            WHERE ec."isActive" = true
-            GROUP BY ec.id, ec.name, ec."budgetAmount", ec."budgetPeriod"
+            LEFT JOIN report_expenses e ON e.category_id = ec.id
+                AND TRUE
+                AND e.approval_status = 'approved'
+            WHERE ec.is_active = true
+            GROUP BY ec.id, ec.name, ec.budget_amount, ec.budget_period
             ORDER BY total_spent DESC
             "#,
         )
-        .fetch_all(self)
+        .fetch_all()
         .await?;
 
         Ok(summaries)
@@ -40,56 +40,56 @@ impl ClickHouse {
     ) -> Result<Vec<crate::models::ReceiptSummaryRow>, AppError> {
         let mut sql = String::from(
             r#"
-            SELECT rl."productId" as product_id,
+            SELECT rl.product_id as product_id,
                    p.name as product_name,
-                   sr."vendorId" as vendor_id,
+                   sr.vendor_id as vendor_id,
                    v.name as vendor_name,
-                   SUM(rl."boxQuantity")::Int64 as total_boxes,
-                   SUM(rl."piecesAdded")::Int64 as total_pieces,
+                   SUM(rl.box_quantity)::BIGINT as total_boxes,
+                   SUM(rl.pieces_added)::BIGINT as total_pieces,
                    SUM(
-                     rl."boxQuantity"::Float64 *
-                     COALESCE(p."purchasePricePerBox", p."purchasePrice", 0)::Float64
-                   )::Float64 as estimated_cost
-            FROM stock_receipt_lines rl
-            INNER JOIN stock_receipts sr ON sr.id = rl."receiptId"
-            INNER JOIN products p ON p.id = rl."productId"
-            LEFT JOIN vendors v ON v.id = sr."vendorId"
+                     rl.box_quantity *
+                     COALESCE(p.purchase_price_per_box, p.purchase_price, 0)
+                   ) as estimated_cost
+            FROM report_stock_receipt_lines rl
+            INNER JOIN report_stock_receipts sr ON sr.id = rl.receipt_id
+            INNER JOIN products p ON p.id = rl.product_id
+            LEFT JOIN vendors v ON v.id = sr.vendor_id
             WHERE 1=1
             "#,
         );
-        let mut parameters = Vec::new();
-        if let Some(value) = location_id {
-            parameters.push(super::client::Parameter::parameter(value));
+        let mut parameter_count = 0;
+        if location_id.is_some() {
+            parameter_count += 1;
             sql.push_str(&format!(
-                " AND sr.\"locationId\" = ${parameters_len}",
-                parameters_len = parameters.len()
+                " AND sr.location_id = ${parameters_len}",
+                parameters_len = parameter_count
             ));
         }
-        if let Some(value) = from {
-            parameters.push(super::client::Parameter::parameter(value));
+        if from.is_some() {
+            parameter_count += 1;
             sql.push_str(&format!(
-                " AND sr.\"createdAt\" >= ${parameters_len}",
-                parameters_len = parameters.len()
+                " AND sr.received_at >= ${parameters_len}",
+                parameters_len = parameter_count
             ));
         }
-        if let Some(value) = to {
-            parameters.push(super::client::Parameter::parameter(value));
+        if to.is_some() {
+            parameter_count += 1;
             sql.push_str(&format!(
-                " AND sr.\"createdAt\" <= ${parameters_len}",
-                parameters_len = parameters.len()
+                " AND sr.received_at <= ${parameters_len}",
+                parameters_len = parameter_count
             ));
         }
         sql.push_str(
             r#"
-            GROUP BY rl."productId", p.name, sr."vendorId", v.name
+            GROUP BY rl.product_id, p.name, sr.vendor_id, v.name
             ORDER BY p.name ASC, v.name ASC NULLS LAST
             "#,
         );
-        let mut query = query_as(sql);
-        for parameter in parameters {
-            query = query.bind_raw(parameter);
-        }
-        query.fetch_all(self).await
+        let mut query = self.query(sql);
+        if let Some(value) = location_id { query = query.bind(value); }
+        if let Some(value) = from { query = query.bind(value); }
+        if let Some(value) = to { query = query.bind(value); }
+        query.fetch_all().await
     }
     pub async fn waste_summary(
         &self,
@@ -99,55 +99,55 @@ impl ClickHouse {
     ) -> Result<Vec<WasteSummaryRow>, AppError> {
         let mut sql = String::from(
             r#"
-            SELECT wl."reasonCode"::String as reason_code,
-                   wl."productId" as product_id,
+            SELECT wl.reason_code::VARCHAR as reason_code,
+                   wl.product_id as product_id,
                    p.name as product_name,
-                   we."locationId" as location_id,
+                   we.location_id as location_id,
                    il.name as location_name,
-                   SUM(wl."quantityPieces")::Int64 as total_pieces,
+                   SUM(wl.quantity_pieces)::BIGINT as total_pieces,
                    SUM(
-                     wl."quantityPieces"::Float64 *
-                     COALESCE(p."purchasePricePerBox", p."purchasePrice", 0)::Float64 /
-                     GREATEST(p."unitsPerPurchaseUnit", 1)
-                   )::Float64 as estimated_cost
-            FROM stock_waste_lines wl
-            INNER JOIN stock_waste_events we ON we.id = wl."wasteEventId"
-            INNER JOIN products p ON p.id = wl."productId"
-            INNER JOIN inventory_locations il ON il.id = we."locationId"
+                     wl.quantity_pieces *
+                     COALESCE(p.purchase_price_per_box, p.purchase_price, 0) /
+                     GREATEST(p.units_per_purchase_unit, 1)
+                   ) as estimated_cost
+            FROM report_stock_waste_lines wl
+            INNER JOIN report_stock_waste_events we ON we.id = wl.waste_event_id
+            INNER JOIN products p ON p.id = wl.product_id
+            INNER JOIN report_inventory_locations il ON il.id = we.location_id
             WHERE we.status = 'approved'
             "#,
         );
-        let mut parameters = Vec::new();
-        if let Some(value) = location_id {
-            parameters.push(super::client::Parameter::parameter(value));
+        let mut parameter_count = 0;
+        if location_id.is_some() {
+            parameter_count += 1;
             sql.push_str(&format!(
-                " AND we.\"locationId\" = ${parameters_len}",
-                parameters_len = parameters.len()
+                " AND we.location_id = ${parameters_len}",
+                parameters_len = parameter_count
             ));
         }
-        if let Some(value) = from {
-            parameters.push(super::client::Parameter::parameter(value));
+        if from.is_some() {
+            parameter_count += 1;
             sql.push_str(&format!(
-                " AND we.\"approvedAt\" >= ${parameters_len}",
-                parameters_len = parameters.len()
+                " AND we.approved_at >= ${parameters_len}",
+                parameters_len = parameter_count
             ));
         }
-        if let Some(value) = to {
-            parameters.push(super::client::Parameter::parameter(value));
+        if to.is_some() {
+            parameter_count += 1;
             sql.push_str(&format!(
-                " AND we.\"approvedAt\" <= ${parameters_len}",
-                parameters_len = parameters.len()
+                " AND we.approved_at <= ${parameters_len}",
+                parameters_len = parameter_count
             ));
         }
         sql.push_str(
-            r#" GROUP BY wl."reasonCode", wl."productId", p.name, we."locationId", il.name
+            r#" GROUP BY wl.reason_code, wl.product_id, p.name, we.location_id, il.name
                 ORDER BY total_pieces DESC"#,
         );
-        let mut query = query_as(sql);
-        for parameter in parameters {
-            query = query.bind_raw(parameter);
-        }
-        query.fetch_all(self).await
+        let mut query = self.query(sql);
+        if let Some(value) = location_id { query = query.bind(value); }
+        if let Some(value) = from { query = query.bind(value); }
+        if let Some(value) = to { query = query.bind(value); }
+        query.fetch_all().await
     }
     pub async fn get_portfolio_summary(&self) -> Result<CreditPortfolioSummary, AppError> {
         #[derive(serde::Deserialize)]
@@ -159,57 +159,57 @@ impl ClickHouse {
             players_with_outstanding_count: i64,
         }
 
-        let agg = query_as::< AggregateRow>(
+        let agg = self.query::< AggregateRow>(
             r#"
             WITH outstanding_by_player AS (
                 SELECT
-                    t."playerId" AS player_id,
-                    SUM(t.amount - t."paidAmount")::Float64 AS outstanding
-                FROM transactions t
-                WHERE t."paymentMethod" = 'credit'
-                  AND t."paymentStatus" = 'credit'
-                  AND t."deletedAt" IS NULL
-                GROUP BY t."playerId"
+                    t.player_id AS player_id,
+                    SUM(t.amount - t.paid_amount) AS outstanding
+                FROM report_transactions t
+                WHERE t.payment_method = 'credit'
+                  AND t.payment_status = 'credit'
+                  AND TRUE
+                GROUP BY t.player_id
             ),
             credit_players AS (
                 SELECT
                     u.id,
-                    u."creditLimit"::Float64 AS credit_limit,
-                    COALESCE(o.outstanding, 0)::Float64 AS outstanding
-                FROM users u
+                    u.credit_limit AS credit_limit,
+                    COALESCE(o.outstanding, 0) AS outstanding
+                FROM report_users u
                 LEFT JOIN outstanding_by_player o ON o.player_id = u.id
-                WHERE u."deletedAt" IS NULL
+                WHERE TRUE
                   AND u.role = 'player'
-                  AND u."isActive" = true
-                  AND u."creditLimit" > 0
+                  AND u.is_active = true
+                  AND u.credit_limit > 0
             )
             SELECT
-                (SELECT COALESCE(SUM(credit_limit), 0)::Float64 FROM credit_players) AS total_credit_limit,
-                (SELECT COALESCE(SUM(outstanding), 0)::Float64 FROM outstanding_by_player) AS total_outstanding,
-                (SELECT COALESCE(SUM(GREATEST(credit_limit - outstanding, 0)), 0)::Float64 FROM credit_players) AS total_available,
-                (SELECT COUNT(*)::Int64 FROM credit_players) AS credit_enabled_player_count,
-                (SELECT COUNT(*)::Int64 FROM outstanding_by_player WHERE outstanding > 0) AS players_with_outstanding_count
+                (SELECT COALESCE(SUM(credit_limit), 0) FROM credit_players) AS total_credit_limit,
+                (SELECT COALESCE(SUM(outstanding), 0) FROM outstanding_by_player) AS total_outstanding,
+                (SELECT COALESCE(SUM(GREATEST(credit_limit - outstanding, 0)), 0) FROM credit_players) AS total_available,
+                (SELECT COUNT(*)::BIGINT FROM credit_players) AS credit_enabled_player_count,
+                (SELECT COUNT(*)::BIGINT FROM outstanding_by_player WHERE outstanding > 0) AS players_with_outstanding_count
             "#,
         )
-        .fetch_one(self)
+        .fetch_one()
         .await?;
 
-        let last_settlement = query_as::<CreditLastSettlement>(
+        let last_settlement = self.query::<CreditLastSettlement>(
             r#"
             SELECT
                 cs.id,
-                cs."playerId" AS player_id,
+                cs.player_id AS player_id,
                 player.username AS player_username,
-                cs.amount::Float64 AS amount,
-                cs."settledAt" AS settled_at
-            FROM credit_settlements cs
-            INNER JOIN users player ON player.id = cs."playerId"
-            WHERE cs."deletedAt" IS NULL
-            ORDER BY cs."settledAt" DESC
+                cs.amount AS amount,
+                cs.settled_at AS settled_at
+            FROM report_credit_settlements cs
+            INNER JOIN report_users player ON player.id = cs.player_id
+            WHERE TRUE
+            ORDER BY cs.settled_at DESC
             LIMIT 1
             "#,
         )
-        .fetch_optional(self)
+        .fetch_optional()
         .await?;
 
         Ok(CreditPortfolioSummary {
@@ -227,22 +227,22 @@ impl ClickHouse {
     }
 
     pub async fn overview(&self) -> Result<InventoryOverviewDto, AppError> {
-        let (pieces,value):(i64,f64)=query_as(r#"SELECT COALESCE(SUM(ls."quantityPieces"),0)::Int64,COALESCE(SUM(ls."quantityPieces"*COALESCE(p."purchasePricePerBox"/NULLIF(p."unitsPerPurchaseUnit",0),p."purchasePrice",0)),0)::Float64 FROM location_stock ls JOIN products p ON p.id=ls."productId""#).fetch_one(self).await?;
-        let (low,): (i64,)=query_as(r#"SELECT COUNT(*) FROM inventory_reorder_rules r LEFT JOIN location_stock ls ON ls."locationId"=r."locationId" AND ls."productId"=r."productId" WHERE r."isActive"=true AND COALESCE(ls."quantityPieces",0)>0 AND COALESCE(ls."quantityPieces",0)<=r."minimumPieces""#).fetch_one(self).await?;
-        let (out,): (i64,)=query_as(r#"SELECT COUNT(*) FROM inventory_reorder_rules r LEFT JOIN location_stock ls ON ls."locationId"=r."locationId" AND ls."productId"=r."productId" WHERE r."isActive"=true AND COALESCE(ls."quantityPieces",0)=0"#).fetch_one(self).await?;
-        let (po,): (i64,)=query_as("SELECT COUNT(*) FROM purchase_orders WHERE status IN ('submitted','approved','ordered','partially_received')").fetch_one(self).await?;
-        let (transfers,): (i64,) = query_as(
-            "SELECT COUNT(*) FROM stock_transfer_requests WHERE status IN ('pending','approved')",
+        let (pieces,value):(i64,f64)=self.query(r#"SELECT COALESCE(SUM(ls.quantity_pieces),0)::BIGINT,COALESCE(SUM(ls.quantity_pieces*COALESCE(p.purchase_price_per_box/NULLIF(p.units_per_purchase_unit,0),p.purchase_price,0)),0) FROM report_location_stock ls JOIN products p ON p.id=ls.product_id"#).fetch_one().await?;
+        let (low,): (i64,)=self.query(r#"SELECT COUNT(*) FROM report_reorder_rules r LEFT JOIN report_location_stock ls ON ls.location_id=r.location_id AND ls.product_id=r.product_id WHERE r.is_active=true AND COALESCE(ls.quantity_pieces,0)>0 AND COALESCE(ls.quantity_pieces,0)<=r.minimum_pieces"#).fetch_one().await?;
+        let (out,): (i64,)=self.query(r#"SELECT COUNT(*) FROM report_reorder_rules r LEFT JOIN report_location_stock ls ON ls.location_id=r.location_id AND ls.product_id=r.product_id WHERE r.is_active=true AND COALESCE(ls.quantity_pieces,0)=0"#).fetch_one().await?;
+        let (po,): (i64,)=self.query("SELECT COUNT(*) FROM report_purchase_orders WHERE status IN ('submitted','approved','ordered','partially_received')").fetch_one().await?;
+        let (transfers,): (i64,) = self.query(
+            "SELECT COUNT(*) FROM report_stock_transfer_requests WHERE status IN ('pending','approved')",
         )
-        .fetch_one(self)
+        .fetch_one()
         .await?;
         let (waste,): (i64,) =
-            query_as("SELECT COUNT(*) FROM stock_waste_events WHERE status='pending'")
-                .fetch_one(self)
+            self.query("SELECT COUNT(*) FROM report_stock_waste_events WHERE status='pending'")
+                .fetch_one()
                 .await?;
-        let recent = query_as(r#"SELECT m.id,m."locationId",l.name,m."productId",p.name,m.delta,m."movementType",m."referenceId",m."referenceType",m."createdBy",m."createdAt"
-            FROM stock_movements m JOIN inventory_locations l ON l.id=m."locationId"
-            JOIN products p ON p.id=m."productId" ORDER BY m."createdAt" DESC LIMIT 8"#).fetch_all(self).await?;
+        let recent = self.query(r#"SELECT m.id,m.location_id,l.name,m.product_id,p.name,m.delta,m.movement_type,m.reference_id,m.reference_type,m.created_by,m.created_at
+            FROM report_stock_movements m JOIN report_inventory_locations l ON l.id=m.location_id
+            JOIN products p ON p.id=m.product_id ORDER BY m.created_at DESC,m.id ASC LIMIT 8"#).fetch_all().await?;
         Ok(InventoryOverviewDto {
             total_pieces: pieces,
             estimated_stock_value: value,
@@ -256,64 +256,64 @@ impl ClickHouse {
     }
 }
 
-impl ClickHouse {
+impl ReportReader {
     /// Booked sales and collections are separate. Decimal strings preserve ledger precision.
     pub async fn finance_report(
         &self,
         start: DateTime<Utc>,
         until: DateTime<Utc>,
     ) -> Result<serde_json::Value, AppError> {
-        let sales: (String, i64, String, String) = query_as(r#"
-            SELECT toDecimalString(sumIf(amount, "paymentStatus" IN ('completed','credit')), 2),
-                   countIf("paymentStatus" IN ('completed','credit')),
-                   toDecimalString(sumIf(amount, "paymentStatus"='refunded'), 2),
-                   toDecimalString(sumIf(amount, "paymentStatus"='pending'), 2)
-            FROM transactions WHERE "deletedAt" IS NULL AND "transactionDate">=$1 AND "transactionDate"<$2
-        "#).bind(start).bind(until).fetch_one(self).await?;
-        let expenses: (String, String, i64) = query_as(r#"
-            SELECT toDecimalString(sumIf(e.amount, e."approvalStatus"='approved'), 4),
-                   toDecimalString(sumIf(e.amount, e."approvalStatus"='pending'), 4), countIf(e."approvalStatus"='pending')
-            FROM expenses e JOIN expense_categories c ON c.id=e."categoryId"
-            WHERE e."deletedAt" IS NULL AND e."expenseDate">=$1 AND e."expenseDate"<$2
-        "#).bind(start).bind(until).fetch_one(self).await?;
-        let (outstanding,): (String,) = query_as(r#"
-            SELECT toDecimalString(sum(greatest(amount-"paidAmount",0)), 4) FROM transactions
-            WHERE "deletedAt" IS NULL AND "paymentMethod"='credit' AND "paymentStatus" IN ('credit','completed')
-        "#).fetch_one(self).await?;
-        let (collections,): (String,) = query_as(
+        let sales: (String, i64, String, String) = self.query(r#"
+            SELECT CAST(CAST(COALESCE(COALESCE(SUM(amount) FILTER (WHERE payment_status IN ('completed','credit')),0),0) AS DECIMAL(38,2)) AS VARCHAR),
+                   COUNT(*) FILTER (WHERE payment_status IN ('completed','credit')),
+                   CAST(CAST(COALESCE(COALESCE(SUM(amount) FILTER (WHERE payment_status='refunded'),0),0) AS DECIMAL(38,2)) AS VARCHAR),
+                   CAST(CAST(COALESCE(COALESCE(SUM(amount) FILTER (WHERE payment_status='pending'),0),0) AS DECIMAL(38,2)) AS VARCHAR)
+            FROM report_transactions WHERE TRUE AND occurred_at>=$1 AND occurred_at<$2
+        "#).bind(start).bind(until).fetch_one().await?;
+        let expenses: (String, String, i64) = self.query(r#"
+            SELECT CAST(CAST(COALESCE(COALESCE(SUM(e.amount) FILTER (WHERE e.approval_status='approved'),0),0) AS DECIMAL(38,4)) AS VARCHAR),
+                   CAST(CAST(COALESCE(COALESCE(SUM(e.amount) FILTER (WHERE e.approval_status='pending'),0),0) AS DECIMAL(38,4)) AS VARCHAR), COUNT(*) FILTER (WHERE e.approval_status='pending')
+            FROM report_expenses e JOIN expense_categories c ON c.id=e.category_id
+            WHERE TRUE AND e.expense_date>=$1 AND e.expense_date<$2
+        "#).bind(start).bind(until).fetch_one().await?;
+        let (outstanding,): (String,) = self.query(r#"
+            SELECT CAST(CAST(COALESCE(sum(greatest(amount-paid_amount,0)),0) AS DECIMAL(38,4)) AS VARCHAR) FROM report_transactions
+            WHERE TRUE AND payment_method='credit' AND payment_status IN ('credit','completed')
+        "#).fetch_one().await?;
+        let (collections,): (String,) = self.query(
             r#"
-            SELECT toDecimalString(sum(amount), 4) FROM credit_settlements
-            WHERE "deletedAt" IS NULL AND "settledAt">=$1 AND "settledAt"<$2
+            SELECT CAST(CAST(COALESCE(sum(amount),0) AS DECIMAL(38,4)) AS VARCHAR) FROM report_credit_settlements
+            WHERE TRUE AND settled_at>=$1 AND settled_at<$2
         "#,
         )
         .bind(start)
         .bind(until)
-        .fetch_one(self)
+        .fetch_one()
         .await?;
         let mut groups = Vec::new();
-        for column in ["transactionType", "paymentMethod"] {
-            let rows: Vec<(String, String, i64)> = query_as(format!(r#"
-                SELECT "{column}",toDecimalString(sum(amount), 2),count() FROM transactions
-                WHERE "deletedAt" IS NULL AND "transactionDate">=$1 AND "transactionDate"<$2
-                  AND "paymentStatus" IN ('completed','credit') GROUP BY "{column}" ORDER BY "{column}"
-            "#)).bind(start).bind(until).fetch_all(self).await?;
+        for column in ["transaction_type", "payment_method"] {
+            let rows: Vec<(String, String, i64)> = self.query(format!(r#"
+                SELECT "{column}",CAST(CAST(COALESCE(sum(amount),0) AS DECIMAL(38,2)) AS VARCHAR),count(*) FROM report_transactions
+                WHERE TRUE AND occurred_at>=$1 AND occurred_at<$2
+                  AND payment_status IN ('completed','credit') GROUP BY "{column}" ORDER BY "{column}"
+            "#)).bind(start).bind(until).fetch_all().await?;
             groups.push(report_groups(rows));
         }
-        let categories: Vec<(String, String, i64)> = query_as(r#"
-            SELECT c.name,toDecimalString(sum(e.amount), 4),count() FROM expenses e JOIN expense_categories c ON c.id=e."categoryId"
-            WHERE e."deletedAt" IS NULL AND e."approvalStatus"='approved' AND e."expenseDate">=$1 AND e."expenseDate"<$2
-            GROUP BY e."categoryId",c.name ORDER BY c.name
-        "#).bind(start).bind(until).fetch_all(self).await?;
-        let daily_sales: Vec<(String, String)> = query_as(r#"
-            SELECT toString(toDate("transactionDate", 'UTC')),toDecimalString(sum(amount), 2) FROM transactions
-            WHERE "deletedAt" IS NULL AND "paymentStatus" IN ('completed','credit') AND "transactionDate">=$1 AND "transactionDate"<$2
-            GROUP BY toDate("transactionDate", 'UTC')
-        "#).bind(start).bind(until).fetch_all(self).await?;
-        let daily_expenses: Vec<(String, String)> = query_as(r#"
-            SELECT toString(toDate(e."expenseDate", 'UTC')),toDecimalString(sum(e.amount), 4) FROM expenses e JOIN expense_categories c ON c.id=e."categoryId"
-            WHERE e."deletedAt" IS NULL AND e."approvalStatus"='approved' AND e."expenseDate">=$1 AND e."expenseDate"<$2
-            GROUP BY toDate(e."expenseDate", 'UTC')
-        "#).bind(start).bind(until).fetch_all(self).await?;
+        let categories: Vec<(String, String, i64)> = self.query(r#"
+            SELECT c.name,CAST(CAST(COALESCE(sum(e.amount),0) AS DECIMAL(38,4)) AS VARCHAR),count(*) FROM report_expenses e JOIN expense_categories c ON c.id=e.category_id
+            WHERE TRUE AND e.approval_status='approved' AND e.expense_date>=$1 AND e.expense_date<$2
+            GROUP BY e.category_id,c.name ORDER BY c.name
+        "#).bind(start).bind(until).fetch_all().await?;
+        let daily_sales: Vec<(String, String)> = self.query(r#"
+            SELECT CAST(CAST(occurred_at AS DATE) AS VARCHAR),CAST(CAST(COALESCE(sum(amount),0) AS DECIMAL(38,2)) AS VARCHAR) FROM report_transactions
+            WHERE TRUE AND payment_status IN ('completed','credit') AND occurred_at>=$1 AND occurred_at<$2
+            GROUP BY CAST(occurred_at AS DATE)
+        "#).bind(start).bind(until).fetch_all().await?;
+        let daily_expenses: Vec<(String, String)> = self.query(r#"
+            SELECT CAST(CAST(e.expense_date AS DATE) AS VARCHAR),CAST(CAST(COALESCE(sum(e.amount),0) AS DECIMAL(38,4)) AS VARCHAR) FROM report_expenses e JOIN expense_categories c ON c.id=e.category_id
+            WHERE TRUE AND e.approval_status='approved' AND e.expense_date>=$1 AND e.expense_date<$2
+            GROUP BY CAST(e.expense_date AS DATE)
+        "#).bind(start).bind(until).fetch_all().await?;
         let sales_by_day: std::collections::BTreeMap<_, _> = daily_sales.into_iter().collect();
         let expenses_by_day: std::collections::BTreeMap<_, _> =
             daily_expenses.into_iter().collect();

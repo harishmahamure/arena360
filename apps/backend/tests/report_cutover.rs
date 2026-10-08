@@ -9,7 +9,13 @@ use std::sync::Arc;
 #[tokio::test]
 async fn authorized_reports_are_unavailable_and_revoked_access_stays_forbidden() {
     let fixture = support::SessionFixture::new().await;
-    let permissions = vec!["finance:read".into(), "stats:read".into()];
+    let permissions = vec![
+        "finance:read".into(),
+        "stats:read".into(),
+        "credit:read".into(),
+        "expenses:read".into(),
+        "inventory:read".into(),
+    ];
     let user = fixture
         .tenant
         .staff(Some(fixture.venue), permissions.clone())
@@ -33,8 +39,8 @@ async fn authorized_reports_are_unavailable_and_revoked_access_stays_forbidden()
         &EncodingKey::from_secret(state.settings.jwt_secret.as_bytes()),
     )
     .unwrap();
-    let app = build_router(state);
-    for route in [
+    let app = build_router(state.clone());
+    let routes = [
         "/stats/dashboard",
         "/stats/business",
         "/stats/staff-dashboard",
@@ -44,26 +50,53 @@ async fn authorized_reports_are_unavailable_and_revoked_access_stays_forbidden()
         "/stats/finance/deposits",
         "/stats/finance/variance",
         "/stats/finance/report",
-    ] {
+        "/credit/summary",
+        "/expenses/summary",
+        "/inventory/overview",
+        "/inventory/receipts/summary",
+        "/inventory/waste/summary",
+    ];
+    for route in routes {
         let path = format!("{route}?startDate=2026-10-01&endDate=2026-10-02");
         let (status, body) =
             support::request(app.clone(), "GET", &path, Some(&token), None, json!({})).await;
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{route}: {body}");
         assert!(body.to_string().contains("ANALYTICS_UNAVAILABLE"), "{body}");
     }
+    #[cfg(feature = "duckdb-analytics")]
+    {
+        use gaming_cafe_api::analytics::tenant_db::error;
+        let analytics = state
+            .analytics
+            .get(fixture.tenant.db.clone())
+            .await
+            .unwrap();
+        analytics
+            .write(|tx| {
+                tx.execute_batch(
+                    "UPDATE _ingest_state SET status='READY',hot_window_start=DATE '2025-01-01'",
+                )
+                .map_err(error)?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        for route in routes {
+            let path = format!("{route}?startDate=2026-10-01&endDate=2026-10-02");
+            let (status, body) =
+                support::request(app.clone(), "GET", &path, Some(&token), None, json!({})).await;
+            assert_eq!(status, StatusCode::OK, "{route}: {body}");
+        }
+    }
     fixture.tenant.db.with_immediate_writer(move |c| Box::pin(async move {
         sqlx::query("UPDATE access_roles SET permissions='[]' WHERE id IN(SELECT role_id FROM access_assignments WHERE user_id=?)").bind(user.to_string()).execute(c).await?;
         Ok(())
     })).await.unwrap();
-    let (status, _) = support::request(
-        app,
-        "GET",
-        "/stats/dashboard",
-        Some(&token),
-        None,
-        json!({}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
+    for route in routes {
+        let path = format!("{route}?startDate=2026-10-01&endDate=2026-10-02");
+        let (status, body) =
+            support::request(app.clone(), "GET", &path, Some(&token), None, json!({})).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{route}: {body}");
+    }
     fixture.close().await;
 }
