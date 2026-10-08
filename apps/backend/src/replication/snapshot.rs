@@ -159,7 +159,7 @@ async fn take_with_connection(
     let key = keys.read(db.tenant_id())?;
     let generation = ledger.ensure_generation(&db).await?;
     if matches!(kind, Kind::Daily) {
-        let fresh:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshot_manifests WHERE generation_id=$1 AND kind='DAILY' AND verified_at IS NOT NULL AND snapshot_at>clock_timestamp()-INTERVAL '1 day')").bind(generation).fetch_one(&ledger.pool).await?;
+        let fresh:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshot_manifests WHERE generation_id=$1 AND kind='DAILY' AND verified_at IS NOT NULL AND retired_at IS NULL AND snapshot_at>clock_timestamp()-INTERVAL '1 day')").bind(generation).fetch_one(&ledger.pool).await?;
         if fresh {
             return Ok(());
         }
@@ -321,8 +321,8 @@ async fn manifest(
     if ledger.lock_owner(db, &mut tx).await? != Some(snapshot.generation) {
         return Err(fail("Generation changed before manifest"));
     }
-    let segments:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('number',segment_number,'object_key',object_key,'capture',capture,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes) FROM replication_segments WHERE generation_id=$1 AND verified_at IS NOT NULL ORDER BY segment_number").bind(snapshot.generation).fetch_all(&mut *tx).await?;
-    let snapshots:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'object_key',object_key,'kind',kind,'schema_version',schema_version,'snapshot_at',snapshot_at,'capture_number',capture_number,'event_sequence',event_sequence,'source_checksum_sha256',source_checksum_sha256,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes) FROM snapshot_manifests WHERE generation_id=$1 AND (verified_at IS NOT NULL OR id=$2) ORDER BY snapshot_at,id").bind(snapshot.generation).bind(snapshot.id).fetch_all(&mut *tx).await?;
+    let segments:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('number',segment_number,'object_key',object_key,'capture',capture,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes,'retired_at',retired_at) FROM replication_segments WHERE generation_id=$1 AND verified_at IS NOT NULL ORDER BY segment_number").bind(snapshot.generation).fetch_all(&mut *tx).await?;
+    let snapshots:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'object_key',object_key,'kind',kind,'schema_version',schema_version,'snapshot_at',snapshot_at,'capture_number',capture_number,'event_sequence',event_sequence,'source_checksum_sha256',source_checksum_sha256,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes,'retired_at',retired_at) FROM snapshot_manifests WHERE generation_id=$1 AND (verified_at IS NOT NULL OR id=$2) ORDER BY snapshot_at,id").bind(snapshot.generation).bind(snapshot.id).fetch_all(&mut *tx).await?;
     let row=sqlx::query("UPDATE replication_generations SET manifest_revision=manifest_revision+1 WHERE id=$1 RETURNING manifest_revision,start_reason").bind(snapshot.generation).fetch_one(&mut *tx).await?;
     let document=serde_json::to_vec(&serde_json::json!({"version":1,"tenant_id":db.tenant_id(),"generation_id":snapshot.generation,"ownership_generation":db.ownership_generation(),"start_reason":row.get::<String,_>(1),"revision":row.get::<i64,_>(0),"delta":{"snapshot":snapshot},"segments":segments,"snapshots":snapshots})).map_err(fail)?;
     db.ensure_current_owner()?;

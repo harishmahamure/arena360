@@ -60,8 +60,16 @@
 
 ## Current task
 
-- [ ] `API-0055` — Dependency-aware 90-day retention (M8).
+- [ ] `API-0051` — Lease-gated, integrity-checked latest and point-in-time restore (M8).
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0055 completed
+
+- Hourly P10 maintenance preserves the verified pre-cutoff snapshot anchor and every subsequent WAL batch, including older batches required to reach the 90-day window. No anchor means no current-history deletion; the idle current generation keeps its baseline.
+- Expired sealed generations can retire their remaining history. Unverified rows, source spool and keys are excluded. Retirement and completion receipts remain in PostgreSQL for audit, numbering and interrupted-deletion retries; restore must honor retirement even when the remote index is older.
+- At most 100 objects per pass; each bounded delete holds freshly checked tenant/lease rows and verifies remote absence before completion. Failed deletion retains its durable queue.
+- Three retention planning checks and all 13 replication integration checks pass, including real PostgreSQL dependency preservation, unverified guards, interrupted receipt recovery and expired/stale owner rejection.
+- Implementation follows WAL batching fix `2f94c0d`.
 
 ### API-0050 completed
 

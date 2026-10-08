@@ -292,7 +292,8 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
   - compress with zstd, encrypt and compute a checksum;
   - upload to `replication/generations/{generation_id}/snapshots/{utc-timestamp}[-pre|post-migration-vNN].db.zst`;
   - verify, then record in the manifest (§46). — M
-- [ ] API-0055: Retention job. Delete WAL segments and snapshots older than 90 days, but never the oldest snapshot still needed by WAL segments inside the window. — S
+- [x] API-0055: Retention job. Delete WAL segments and snapshots older than 90 days, but never the oldest snapshot still needed by WAL segments inside the window. — S
+  - Completed 2026-10-08: lease-fenced hourly maintenance, snapshot anchors/WAL dependency preservation, batch-end expiry, durable retirement/delete receipts and bounded resumable deletion. Three planning checks and all 13 replication tests (including real PostgreSQL retention) pass.
 - [ ] API-0051: Restore path. Use the control plane's current generation, then its latest verified snapshot, then every WAL segment after it, in order, verifying checksums. Point-in-time restore stops replay at a chosen UTC instant. Run SQLite `integrity_check`, then open (§47). Refuse without a lease (§10). — M
 - [ ] API-0052: Cell-loss recovery. List the affected tenants, reassign them, acquire leases, restore, bring operations online, then rebuild analytics (§49–50). — M
 - [ ] API-0056: Disk pressure zones (§57) covering SQLite, WAL, spool, DuckDB, and temporary files, with automatic pausing of background work. — S

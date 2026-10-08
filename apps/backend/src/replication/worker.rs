@@ -286,6 +286,7 @@ pub fn spawn_capture(manager: Arc<TenantDbManager>, metrics: Arc<Metrics>, root:
 }
 pub fn spawn_upload(manager: Arc<TenantDbManager>, worker: Arc<Worker>) {
     spawn_snapshots(manager.clone(), worker.clone());
+    spawn_retention(manager.clone(), worker.clone());
     tokio::spawn(async move {
         let mut running =
             std::collections::HashMap::<uuid::Uuid, tokio::task::JoinHandle<()>>::new();
@@ -392,4 +393,31 @@ pub fn backlog(root: &Path) -> Result<(u64, u64), AppError> {
         }
     }
     Ok((bytes, oldest))
+}
+
+fn spawn_retention(manager: Arc<TenantDbManager>, worker: Arc<Worker>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(3600));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tick.tick().await;
+            let tenants = match worker.ledger.retention_tenants().await {
+                Ok(t) => t,
+                Err(error) => { tracing::warn!(%error,"Retention registry failed"); continue; }
+            };
+            for tenant in tenants {
+                let result = tokio::time::timeout(Duration::from_secs(120), async {
+                    let db = manager.open(tenant).await?;
+                    let gate = worker.gates.lock().await.entry(tenant).or_default().clone();
+                    let _serial = gate.lock().await;
+                    let _job = match db.background_jobs() {
+                        Some(j) => Some(j.acquire(crate::background::Priority::Maintenance).await?),
+                        None => None,
+                    };
+                    worker.ledger.retain(&db, worker.store.as_ref()).await
+                }).await;
+                if !matches!(result, Ok(Ok(_))) { tracing::warn!(%tenant,?result,"Retention incomplete; durable deletion queue retained"); }
+            }
+        }
+    });
 }

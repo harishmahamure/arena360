@@ -132,3 +132,24 @@ Local acknowledgement is persisted before capture cleanup. An acknowledged WAL
 prefix pinned by an old reader does not create a new upload when there are no
 writes. A pending batch descriptor also resumes cleanup if the process stops
 after source files were removed.
+
+## Backup retention
+
+The owning cell runs retention hourly at P10 maintenance priority, serialized
+with that tenant's backup publication. Each pass handles at most 100 objects.
+The cutoff uses PostgreSQL UTC time minus 90 days. The newest verified snapshot
+at or before the cutoff remains the anchor; every WAL batch after its capture
+position remains, including batches older than the cutoff. A batch expires only
+when its last capture is old enough and the anchor covers its entire range.
+Without an anchor, current-generation history is retained. An idle current
+generation keeps its last baseline. A sealed noncurrent generation expires only
+after its seal, snapshots and all verified captures have aged out.
+
+PostgreSQL `retired_at` is a durable deletion intent. Restore must exclude these
+rows even if an older object-store manifest still lists them. Metadata stays in
+the ledger for numbering, audit and retries. Remote deletion treats absence as
+success and verifies absence before recording `deleted_at`. An outage leaves
+intents pending. Each deletion requires a fresh owning lease and holds the
+control-plane tenant/lease locks across a bounded remote operation, preventing
+reassignment from racing a former owner's delete. Unverified objects, local
+spool and encryption keys are outside this retention job.

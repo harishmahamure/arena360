@@ -895,3 +895,63 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
     pool.close().await;
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires an isolated control-plane database"]
+async fn postgres_retention_preserves_restore_dependencies_resumes_intents_and_fences_owner() {
+    use gaming_cafe_api::replication::{ledger::PostgresLedger, retention};
+    use object_store::ObjectStore;
+    let pool=sqlx::postgres::PgPoolOptions::new().max_connections(3).connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap()).await.unwrap();
+    gaming_cafe_api::control::migrate(&pool).await.unwrap();
+    let (root,db,lease)=database().await;
+    let tenant=db.tenant_id();let cell=Uuid::new_v4();
+    sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)").bind(cell).bind(format!("retention-{cell}")).bind(format!("http://{cell}.invalid")).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Retention','UTC',$3,1,'ACTIVE')").bind(tenant).bind(format!("retention-{tenant}")).bind(cell).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenant_leases(tenant_id,owner_cell,ownership_generation,expires_at) VALUES($1,$2,1,NOW()+INTERVAL '5 minutes')").bind(tenant).bind(cell).execute(&pool).await.unwrap();
+    let ledger=PostgresLedger{pool:pool.clone(),cell_id:cell};
+    let generation=ledger.ensure_generation(&db).await.unwrap();
+    let store=InMemory::new();
+    let prefix=format!("tenants/{tenant}/replication/generations/{generation}");
+    let now=chrono::Utc::now();
+    let mut snapshots=vec![];
+    for (days,capture) in [(130i64,5i64),(100,10),(20,40)] {
+        let id=Uuid::new_v4();let key=format!("{prefix}/snapshots/{id}");
+        store.put(&ObjectPath::from(key.clone()),bytes::Bytes::from_static(b"snapshot").into()).await.unwrap();
+        sqlx::query("INSERT INTO snapshot_manifests(id,tenant_id,generation_id,kind,schema_version,object_key,checksum_sha256,encrypted_size_bytes,snapshot_at,verified_at,capture_number,source_checksum_sha256) VALUES($1,$2,$3,'MANUAL',0,$4,$5,8,$6,NOW(),$7,$5)").bind(id).bind(tenant).bind(generation).bind(&key).bind("a".repeat(64)).bind(now-chrono::Duration::days(days)).bind(capture).execute(&pool).await.unwrap();
+        snapshots.push((id,key));
+    }
+    let template=Capture{version:2,capture_number:1,ownership_generation:1,captured_at:gaming_cafe_api::time::format_sqlite_timestamp(&(now-chrono::Duration::days(120))).unwrap(),salt:"fixture".into(),page_size:4096,frames:1,checksum:"b".repeat(64),last_capture_number:Some(5),last_captured_at:None};
+    let mut segment_keys=vec![];
+    for (number,days,last) in [(1i64,120i64,5u64),(2,95,11),(3,89,12)] {
+        let key=format!("{prefix}/wal/{number}");let mut capture=template.clone();
+        capture.capture_number=if number==1 {1} else {last};
+        capture.last_capture_number=Some(last);
+        capture.last_captured_at=Some(gaming_cafe_api::time::format_sqlite_timestamp(&(now-chrono::Duration::days(days))).unwrap());
+        store.put(&ObjectPath::from(key.clone()),bytes::Bytes::from_static(b"wal").into()).await.unwrap();
+        sqlx::query("INSERT INTO replication_segments(generation_id,segment_number,source_checksum,object_key,capture,checksum_sha256,encrypted_size_bytes,verified_at) VALUES($1,$2,$3,$4,$5,$3,3,NOW())").bind(generation).bind(number).bind(format!("{number:064x}")).bind(&key).bind(serde_json::to_value(capture).unwrap()).execute(&pool).await.unwrap();
+        segment_keys.push(key);
+    }
+    // Unverified rows must survive even if their timestamp is ancient.
+    let unverified=Uuid::new_v4();
+    sqlx::query("INSERT INTO snapshot_manifests(id,tenant_id,generation_id,kind,schema_version,object_key,checksum_sha256,encrypted_size_bytes,snapshot_at,capture_number,source_checksum_sha256) VALUES($1,$2,$3,'MANUAL',0,$4,$5,8,NOW()-INTERVAL '200 days',1,$5)").bind(unverified).bind(tenant).bind(generation).bind(format!("{prefix}/unverified")).bind("c".repeat(64)).execute(&pool).await.unwrap();
+    assert_eq!(retention::run(&db,&ledger,&store).await.unwrap(),2);
+    assert!(store.head(&ObjectPath::from(snapshots[0].1.clone())).await.is_err());
+    assert!(store.head(&ObjectPath::from(segment_keys[0].clone())).await.is_err());
+    for key in [&snapshots[1].1,&snapshots[2].1,&segment_keys[1],&segment_keys[2]] {assert!(store.head(&ObjectPath::from(key.clone())).await.is_ok());}
+    let retired:bool=sqlx::query_scalar("SELECT retired_at IS NOT NULL AND deleted_at IS NOT NULL FROM snapshot_manifests WHERE id=$1").bind(snapshots[0].0).fetch_one(&pool).await.unwrap();assert!(retired);
+    let untouched:bool=sqlx::query_scalar("SELECT retired_at IS NULL FROM snapshot_manifests WHERE id=$1").bind(unverified).fetch_one(&pool).await.unwrap();assert!(untouched);
+    // Simulate a crash after remote deletion but before the completion receipt.
+    sqlx::query("UPDATE snapshot_manifests SET deleted_at=NULL WHERE id=$1").bind(snapshots[0].0).execute(&pool).await.unwrap();
+    assert_eq!(retention::run(&db,&ledger,&store).await.unwrap(),1);
+    assert_eq!(retention::run(&db,&ledger,&store).await.unwrap(),0);
+    // A stale local lease cannot override authoritative control ownership.
+    sqlx::query("UPDATE tenant_leases SET expires_at=NOW()+INTERVAL '20 seconds' WHERE tenant_id=$1").bind(tenant).execute(&pool).await.unwrap();
+    assert!(retention::run(&db,&ledger,&store).await.is_err());
+    lease.0.store(false,Ordering::SeqCst);
+    assert!(retention::run(&db,&ledger,&store).await.is_err());
+    lease.0.store(true,Ordering::SeqCst);
+    db.close().await.unwrap();
+    sqlx::query("DELETE FROM tenants WHERE id=$1").bind(tenant).execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM cells WHERE id=$1").bind(cell).execute(&pool).await.unwrap();
+    pool.close().await;std::fs::remove_dir_all(root).unwrap();
+}

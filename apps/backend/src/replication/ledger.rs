@@ -16,6 +16,8 @@ pub struct Segment {
 }
 #[async_trait]
 pub trait Ledger: Send + Sync {
+    async fn retention_tenants(&self) -> Result<Vec<Uuid>, AppError> { Ok(vec![]) }
+    async fn retain(&self, _db: &TenantDb, _store: &dyn object_store::ObjectStore) -> Result<usize, AppError> { Err(AppError::Internal("Retention registry unavailable".into())) }
     async fn daily_tenants(&self) -> Result<Vec<Uuid>, AppError> {
         Err(AppError::Internal("Snapshot registry unavailable".into()))
     }
@@ -182,8 +184,13 @@ impl PostgresLedger {
 }
 #[async_trait]
 impl Ledger for PostgresLedger {
+    async fn retention_tenants(&self) -> Result<Vec<Uuid>, AppError> {
+        Ok(sqlx::query_scalar("SELECT id FROM tenants WHERE owner_cell=$1 AND state='ACTIVE' ORDER BY id").bind(self.cell_id).fetch_all(&self.pool).await?)
+    }
+    async fn retain(&self, db: &TenantDb, store: &dyn object_store::ObjectStore) -> Result<usize, AppError> {super::retention::run(db,self,store).await}
+
     async fn daily_tenants(&self) -> Result<Vec<Uuid>, AppError> {
-        Ok(sqlx::query_scalar("SELECT t.id FROM tenants t WHERE t.owner_cell=$1 AND t.state='ACTIVE' AND NOT EXISTS(SELECT 1 FROM snapshot_manifests s WHERE s.generation_id=t.current_replication_generation AND s.kind='DAILY' AND s.verified_at IS NOT NULL AND s.snapshot_at>clock_timestamp()-INTERVAL '1 day') ORDER BY t.id").bind(self.cell_id).fetch_all(&self.pool).await?)
+        Ok(sqlx::query_scalar("SELECT t.id FROM tenants t WHERE t.owner_cell=$1 AND t.state='ACTIVE' AND NOT EXISTS(SELECT 1 FROM snapshot_manifests s WHERE s.generation_id=t.current_replication_generation AND s.kind='DAILY' AND s.verified_at IS NOT NULL AND s.retired_at IS NULL AND s.snapshot_at>clock_timestamp()-INTERVAL '1 day') ORDER BY t.id").bind(self.cell_id).fetch_all(&self.pool).await?)
     }
     async fn snapshot(
         &self,
@@ -201,7 +208,7 @@ impl Ledger for PostgresLedger {
         store: &dyn object_store::ObjectStore,
         keys: &super::crypto::TenantKeys,
     ) -> Result<(), AppError> {
-        let ready:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL)").bind(generation).fetch_one(&self.pool).await?;
+        let ready:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL AND retired_at IS NULL AND source_checksum_sha256 IS NOT NULL)").bind(generation).fetch_one(&self.pool).await?;
         if ready {
             return Ok(());
         }
@@ -285,7 +292,7 @@ impl Ledger for PostgresLedger {
     ) -> Result<Vec<u8>, AppError> {
         let mut tx = self.pool.begin().await?;
         self.assert_generation(db, segment, &mut tx).await?;
-        let previous:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('number',segment_number,'object_key',object_key,'capture',capture,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes) FROM replication_segments WHERE generation_id=$1 AND verified_at IS NOT NULL ORDER BY segment_number").bind(segment.generation).fetch_all(&mut *tx).await?;
+        let previous:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('number',segment_number,'object_key',object_key,'capture',capture,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes,'retired_at',retired_at) FROM replication_segments WHERE generation_id=$1 AND verified_at IS NOT NULL ORDER BY segment_number").bind(segment.generation).fetch_all(&mut *tx).await?;
         if previous.len() as i64 != segment.number - 1 {
             return Err(AppError::Conflict(
                 "Earlier WAL segment is not verified".into(),
@@ -293,7 +300,7 @@ impl Ledger for PostgresLedger {
         }
         let mut list = previous;
         list.push(serde_json::json!({"number":segment.number,"object_key":segment.object_key,"capture":segment.capture,"checksum_sha256":checksum,"encrypted_size_bytes":size}));
-        let snapshots:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'object_key',object_key,'kind',kind,'schema_version',schema_version,'snapshot_at',snapshot_at,'capture_number',capture_number,'event_sequence',event_sequence,'source_checksum_sha256',source_checksum_sha256,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes) FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL ORDER BY snapshot_at,id").bind(segment.generation).fetch_all(&mut *tx).await?;
+        let snapshots:Vec<serde_json::Value>=sqlx::query_scalar("SELECT jsonb_build_object('id',id,'object_key',object_key,'kind',kind,'schema_version',schema_version,'snapshot_at',snapshot_at,'capture_number',capture_number,'event_sequence',event_sequence,'source_checksum_sha256',source_checksum_sha256,'checksum_sha256',checksum_sha256,'encrypted_size_bytes',encrypted_size_bytes,'retired_at',retired_at) FROM snapshot_manifests WHERE generation_id=$1 AND verified_at IS NOT NULL ORDER BY snapshot_at,id").bind(segment.generation).fetch_all(&mut *tx).await?;
         let revision:i64=sqlx::query_scalar("UPDATE replication_generations SET manifest_revision=manifest_revision+1 WHERE id=$1 RETURNING manifest_revision").bind(segment.generation).fetch_one(&mut *tx).await?;
         let reason: String =
             sqlx::query_scalar("SELECT start_reason FROM replication_generations WHERE id=$1")
