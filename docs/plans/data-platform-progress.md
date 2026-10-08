@@ -60,15 +60,22 @@
 
 ## Current task
 
-- [ ] `API-0061` — Rebalancing command driven by measured weighted cell capacity (M9).
+- [ ] `API-0062` — Staged schema migration rollout with automatic halt on failure (M9).
 - M8 staging launch gate remains pending: full-cell operational/analytics recovery within published RTO and actual alert firing during a Wasabi outage. No staging cell IDs, control-plane URL or backup credentials are configured locally.
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0061 completed
+
+- Measured multi-resource placement uses benchmark profiles and fresh complete tenant/cell overhead inputs. Incoming copies reserve target resources; retained source storage is never treated as immediately freed.
+- The preview/apply/drain/decommission command locks budgets and ownership, recomputes placement before atomic enqueue, and rejects occupied-cell decommissioning. Three tests pass, including concurrent apply without overbooking, rollback and retention accounting; the move regression also passes. Production hardware measurements remain TEST-0050.
+- Runbook: `docs/operations/cell-rebalancing.md`.
 
 ### API-0060 completed
 
 - Planned moves pre-copy verified encrypted backups while source writes continue, catch up final WAL under a bounded asynchronous write gate, and atomically transfer ownership, lease generation, routing and phase.
 - Source timeout/restart resumes only its recorded ownership; target quarantine and committed completion resume safely. Schema mismatch and stale readiness block cutover. Source copies remain seven days; cleanup checks ownership and concurrent/newer moves.
 - Request/status/cancel CLI and `docs/operations/tenant-moves.md` describe execution and recovery. All 28 selected control/storage/replication/move checks pass; local successful write gate was 774 ms. Production hardware and representative traffic remain M9 launch checks.
+- Implementation commit: `fa60985`. Native analytics library/binary build check passes. Subsequent rebalancer regression also passes the move fixture (1,023 ms local write gate).
 
 ### OPS-0030 completed
 

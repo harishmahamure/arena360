@@ -37,6 +37,7 @@ const controlTargets = [
   'tenant_replication',
   'tenant_recovery_process',
   'tenant_moves',
+  'cell_rebalancing',
   'tenant_user_repositories',
   'demo_seed',
 ];

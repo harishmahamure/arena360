@@ -3,3 +3,5 @@ pub mod agent;
 pub mod control;
 pub mod source;
 pub mod target;
+
+pub mod rebalance;

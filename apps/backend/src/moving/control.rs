@@ -28,10 +28,19 @@ pub async fn get(pool: &PgPool, id: Uuid) -> Result<Move, AppError> {
 /// they created themselves; ownership is transferred only by the old owner.
 pub async fn enqueue(pool: &PgPool, tenant: Uuid, target: Uuid) -> Result<Move, AppError> {
     let mut tx = pool.begin().await?;
+    let id = enqueue_locked(&mut tx, tenant, target).await?;
+    tx.commit().await?;
+    get(pool, id).await
+}
+pub(crate) async fn enqueue_locked(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant: Uuid,
+    target: Uuid,
+) -> Result<Uuid, AppError> {
     let target_state: Option<String> =
         sqlx::query_scalar("SELECT state FROM cells WHERE id=$1 FOR SHARE")
             .bind(target)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut **tx)
             .await?;
     if target_state.as_deref() != Some("ACTIVE") {
         return Err(AppError::Forbidden(
@@ -42,7 +51,7 @@ pub async fn enqueue(pool: &PgPool, tenant: Uuid, target: Uuid) -> Result<Move, 
         "SELECT owner_cell,ownership_generation,state FROM tenants WHERE id=$1 FOR UPDATE",
     )
     .bind(tenant)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?;
     let Some((Some(source), generation, state)) = source else {
         return Err(AppError::Conflict("Tenant has no assigned source".into()));
@@ -52,22 +61,21 @@ pub async fn enqueue(pool: &PgPool, tenant: Uuid, target: Uuid) -> Result<Move, 
             "Move requires an active tenant and a different cell".into(),
         ));
     }
-    let fresh:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_leases WHERE tenant_id=$1 AND owner_cell=$2 AND ownership_generation=$3 AND expires_at>clock_timestamp()+INTERVAL '30 seconds')").bind(tenant).bind(source).bind(generation).fetch_one(&mut *tx).await?;
+    let fresh:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_leases WHERE tenant_id=$1 AND owner_cell=$2 AND ownership_generation=$3 AND expires_at>clock_timestamp()+INTERVAL '30 seconds')").bind(tenant).bind(source).bind(generation).fetch_one(&mut **tx).await?;
     if !fresh {
         return Err(AppError::Forbidden(
             "Move requires a fresh source lease".into(),
         ));
     }
     let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO tenant_moves(id,tenant_id,source_cell,target_cell,source_ownership_generation) VALUES($1,$2,$3,$4,$5)").bind(id).bind(tenant).bind(source).bind(target).bind(generation).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO tenant_moves(id,tenant_id,source_cell,target_cell,source_ownership_generation) VALUES($1,$2,$3,$4,$5)").bind(id).bind(tenant).bind(source).bind(target).bind(generation).execute(&mut **tx).await?;
     sqlx::query(
         "UPDATE tenants SET state='PREPARING_MOVE',updated_at=clock_timestamp() WHERE id=$1",
     )
     .bind(tenant)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
-    tx.commit().await?;
-    get(pool, id).await
+    Ok(id)
 }
 /// Always lock tenant before move, matching lease handoff lock ordering.
 pub(crate) async fn lock_owned<'a>(
