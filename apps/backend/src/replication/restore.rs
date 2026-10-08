@@ -44,6 +44,15 @@ pub struct Restored {
     pub capture_number: u64,
     pub recovered_at: DateTime<Utc>,
 }
+// Cancellation (including a drill timeout) must remove private staging too.
+struct StagingDirectory(Option<PathBuf>);
+impl Drop for StagingDirectory {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+}
 /// No source object is retired while this shared generation pin is held.
 /// Restore pins do not block lease renewal or operational writes.
 pub(crate) async fn pin(
@@ -180,6 +189,7 @@ pub async fn restore(
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
             .map_err(fail)?;
     }
+    let mut cleanup = StagingDirectory(Some(directory.clone()));
     let image = directory.join("tenant.db");
     let result = async {
         let encoded = directory.join("snapshot.encoded");
@@ -319,6 +329,7 @@ pub async fn restore(
         return Err(error);
     }
     tx.commit().await?;
+    cleanup.0 = None;
     Ok(Restored {
         tenant,
         generation,

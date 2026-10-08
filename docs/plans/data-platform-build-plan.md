@@ -302,7 +302,9 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
   - Completed 2026-10-08: filesystem/component allocation gauges, 70/80/90-percent zones with recovery hysteresis, scheduler growth pauses and daily snapshot deferral, preserved critical work/purges, probe-failure handling and alert rules. Three disk checks, 23 focused regressions and native library/binary compilation pass.
 - [x] TEST-0051: Kill the cell process mid-traffic and confirm nothing is lost, because the spool survives. Delete the cell's disk, restore on another cell, and confirm only writes since the last upload (≤ about 2 minutes) are lost. Restore to a point in time 30 days back. — M
   - Completed 2026-10-08: real child-process SIGKILL during SQLite/outbox traffic, local acknowledged-commit recovery and surviving spool, disk deletion and second-cell S3-client recovery (14.6-second measured recovery-point lag). A dated encrypted chain restores to 30 days ago. Fixed snapshot page-layout corruption by replacing VACUUM INTO with SQLite's page-preserving backup API. Process check and all 15 replication checks pass; staging hardware/Wasabi gate remains separate.
-- [ ] OPS-0030: Automated weekly restore drill per cell, plus a documented runbook. Publish the measured recovery time. — S
+- [x] OPS-0030: Automated weekly restore drill per cell, plus a documented runbook. Publish the measured recovery time. — S
+
+  - Completed 2026-10-08: per-cell weekly restore-only scheduler, durable PostgreSQL reports/partial failure records, hourly failure retries, advisory duplicate-run protection, isolated staging cleanup/deadlines, reloaded Prometheus timing/status gauges and failure/overdue alerts. All 16 replication checks pass; local one-tenant restore-only measurement is 109 ms. Runbook: `docs/operations/restore-drills.md`. Full staging activation/analytics RTO and Wasabi alert firing remain the launch gate.
 
 **Done when:** TEST-0051 passes; a full cell-loss drill on staging restores every tenant within the published recovery time; replication alerts fire in a simulated Wasabi outage. **This is the gate for onboarding paying venues.**
 

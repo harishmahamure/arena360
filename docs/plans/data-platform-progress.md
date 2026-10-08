@@ -60,8 +60,22 @@
 
 ## Current task
 
-- [ ] `TEST-0051` — Real process-kill, disk-loss and 30-day point-in-time recovery checks (M8).
+- [ ] M8 staging launch gate — full-cell operational/analytics recovery within published RTO and actual alert firing during a Wasabi outage. Staging cell IDs and environment configuration have been requested.
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### OPS-0030 completed
+
+- Replication-enabled cells automatically restore all assigned ACTIVE tenants weekly into private staging using their existing leases. Durable reports retain selected tenant count, per-tenant position/bytes/errors and elapsed time; failed runs retry hourly and cell-level advisory locking prevents duplicates.
+- P10 admission, per-tenant deadlines and cancellation cleanup bound resource use. Successful images are deleted without changing operational ownership, routing, generation or live facts.
+- Status, elapsed time and completion UTC are published through Prometheus and reloaded from PostgreSQL after restart. Failure/overdue alert rules and `docs/operations/restore-drills.md` cover routine inspection, staging cell loss and Wasabi outage evidence.
+- All 16 replication checks pass, including corrupt-object failure/retry, scheduling, locking, metric reload and unchanged live facts. Local one-tenant restore-only measurement: 109 ms. This excludes operational activation and analytics; full staging RTO remains unmeasured.
+
+### TEST-0051 completed
+
+- A child process drives actual TenantDb transactions and outbox writes through an HTTP S3 fixture, while the parent kills it with SIGKILL. All 6,500 acknowledged commits survived local SQLite recovery; the spool remained on disk.
+- Deleting the source disk and recovering on a second cell restored verified uploads with a measured 14.6-second recovery-point lag. An explicitly dated encrypted backup chain restores to 30 days ago; it is fixture evidence, not aged staging data.
+- The crash test exposed corruption from VACUUM INTO renumbering source pages. Snapshots now use SQLite's backup API to preserve physical pages, including freelist and reader-pinned WAL pages.
+- The process test and all 15 replication checks pass. Implementation commit: `1e62893`. Staging full-cell recovery time and real Wasabi outage alert evidence remain pending.
 
 ### API-0056 completed
 

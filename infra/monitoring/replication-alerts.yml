@@ -52,3 +52,19 @@ groups:
           severity: warning
         annotations:
           summary: "Cell component scan is partial; filesystem pressure measurement still controls admission"
+  - name: arena360-restore-drills
+    rules:
+      - alert: CellRestoreDrillFailed
+        expr: arena360_restore_drill_success == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Latest cell restore drill failed; inspect cell_restore_drills results"
+      - alert: CellRestoreDrillOverdue
+        expr: (time() - arena360_restore_drill_finished_timestamp_seconds > 691200) or (arena360_restore_drill_enabled == 1 unless on(instance, job) arena360_restore_drill_finished_timestamp_seconds)
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cell has no completed restore drill in eight days"

@@ -1102,3 +1102,52 @@ async fn cell_loss_recovery_reassigns_restores_activates_then_retries_analytics(
     for cell in [old,target] {sqlx::query("DELETE FROM cells WHERE id=$1").bind(cell).execute(&pool).await.unwrap();}
     pool.close().await;std::fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires an isolated control-plane database"]
+async fn weekly_drill_records_readonly_restore_failure_retry_and_schedule() {
+    use gaming_cafe_api::{control::{LeaseClient,LeaseConfig},replication::{drill::Drill,ledger::PostgresLedger,recovery::Recoverer,snapshot}};
+    let pool=sqlx::postgres::PgPoolOptions::new().max_connections(6).connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap()).await.unwrap();
+    gaming_cafe_api::control::migrate(&pool).await.unwrap();
+    let (root,db,_)=database().await; let tenant=db.tenant_id();let cell=Uuid::new_v4();
+    sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)").bind(cell).bind(format!("drill-{cell}")).bind(format!("http://{cell}.invalid")).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Drill','UTC',$3,1,'ACTIVE')").bind(tenant).bind(format!("drill-{tenant}")).bind(cell).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenant_leases(tenant_id,owner_cell,ownership_generation,expires_at) VALUES($1,$2,1,NOW()+INTERVAL '5 minutes')").bind(tenant).bind(cell).execute(&pool).await.unwrap();
+    let ledger=Arc::new(PostgresLedger{pool:pool.clone(),cell_id:cell});
+    let keys=TenantKeys::new(root.join("secrets"));wal::durable_create(&keys.path(tenant),&[42u8;32]).unwrap();
+    let store=Arc::new(InMemory::new());let metrics=Arc::new(Metrics::default());
+    let worker=Worker{gates:Default::default(),store:store.clone(),ledger:ledger.clone(),keys:keys.clone(),metrics:metrics.clone()};
+    snapshot::take(db.clone(),&ledger,store.as_ref(),&keys,snapshot::Kind::Baseline).await.unwrap();
+    insert(&db,"uploaded").await;db.spool_wal().await.unwrap();worker.ship(db.clone(),true).await.unwrap();
+    insert(&db,"live unuploaded").await;
+    let leases=Arc::new(LeaseClient::new(pool.clone(),cell,LeaseConfig::default()).unwrap());leases.acquire_assigned(tenant).await.unwrap();
+    let manager=Arc::new(TenantDbManager::new(TenantDbConfig{root:root.clone(),..Default::default()},leases.clone()).unwrap());
+    let recovery=Arc::new(Recoverer{ledger:ledger.clone(),leases,databases:manager,store:store.clone(),keys,staging_root:root.join("drill-staging"),analytics:None});
+    let drill=Drill{recovery:recovery.clone(),metrics:metrics.clone()};
+    let orphan=root.join("drill-staging/drills/restore-interrupted");
+    std::fs::create_dir_all(&orphan).unwrap();std::fs::write(orphan.join("tenant.db"),b"unfinished").unwrap();
+    let before:Uuid=sqlx::query_scalar("SELECT current_replication_generation FROM tenants WHERE id=$1").bind(tenant).fetch_one(&pool).await.unwrap();
+    let report=drill.run(false).await.unwrap().unwrap();assert!(report.passed,"{report:?}");assert_eq!(report.tenants.len(),1);assert!(report.tenants[0].image_bytes.unwrap()>0);assert_eq!(report.tenants[0].source_generation,Some(before));assert!(!orphan.exists());
+    assert!(drill.run(false).await.unwrap().is_none());
+    let restored_metrics=Arc::new(Metrics::default());
+    assert!(Drill{recovery:recovery.clone(),metrics:restored_metrics.clone()}.run(false).await.unwrap().is_none());
+    assert!(restored_metrics.render().contains("arena360_restore_drill_success 1"));
+    let values:Vec<String>=sqlx::query_scalar("SELECT value FROM durable ORDER BY rowid").fetch_all(&db.read_pool().unwrap()).await.unwrap();assert_eq!(values,["uploaded","live unuploaded"]);
+    let after:Uuid=sqlx::query_scalar("SELECT current_replication_generation FROM tenants WHERE id=$1").bind(tenant).fetch_one(&pool).await.unwrap();assert_eq!(before,after);
+    assert_eq!(std::fs::read_dir(root.join("drill-staging/drills")).unwrap().count(),0);
+    let mut lock=pool.begin().await.unwrap();sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))").bind(format!("restore-drill:{cell}")).execute(&mut *lock).await.unwrap();
+    assert!(drill.run(true).await.unwrap().is_none());lock.rollback().await.unwrap();
+    let key:String=sqlx::query_scalar("SELECT object_key FROM snapshot_manifests WHERE tenant_id=$1 AND verified_at IS NOT NULL LIMIT 1").bind(tenant).fetch_one(&pool).await.unwrap();
+    let object=ObjectPath::from(key);let bytes=store.get(&object).await.unwrap().bytes().await.unwrap();
+    store.put(&object,bytes::Bytes::from_static(b"broken").into()).await.unwrap();
+    let failed=drill.run(true).await.unwrap().unwrap();assert!(!failed.passed);assert!(failed.tenants[0].error.is_some());assert!(metrics.render().contains("arena360_restore_drill_success 0"));
+    assert_eq!(std::fs::read_dir(root.join("drill-staging/drills")).unwrap().count(),0);
+    let status:String=sqlx::query_scalar("SELECT status FROM cell_restore_drills WHERE id=$1").bind(failed.id).fetch_one(&pool).await.unwrap();assert_eq!(status,"FAILED");
+    assert!(drill.run(false).await.unwrap().is_none());
+    store.put(&object,bytes.into()).await.unwrap();
+    sqlx::query("UPDATE cell_restore_drills SET started_at=started_at-INTERVAL '61 minutes' WHERE cell_id=$1").bind(cell).execute(&pool).await.unwrap();
+    let retry=drill.run(false).await.unwrap().unwrap();assert!(retry.passed);
+    println!("Local restore-only drill: tenants={}, elapsed={}ms",retry.tenants.len(),retry.elapsed_milliseconds);
+    sqlx::query("DELETE FROM cell_restore_drills WHERE cell_id=$1").bind(cell).execute(&pool).await.unwrap();
+    db.close().await.unwrap();sqlx::query("DELETE FROM tenants WHERE id=$1").bind(tenant).execute(&pool).await.unwrap();sqlx::query("DELETE FROM cells WHERE id=$1").bind(cell).execute(&pool).await.unwrap();pool.close().await;std::fs::remove_dir_all(root).unwrap();
+}

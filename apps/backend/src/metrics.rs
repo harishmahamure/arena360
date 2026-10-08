@@ -5,6 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct Metrics {
     disk_sample: std::sync::Mutex<Option<crate::disk::Sample>>,
     disk_zone: AtomicU64,
+    restore_drill_enabled: AtomicU64,
+    restore_drill: std::sync::Mutex<Option<(bool,u64,u64)>>,
     disk_failures: AtomicU64,
     background_jobs: std::sync::Mutex<Option<std::sync::Arc<crate::background::JobStats>>>,
     rate_limit_allowed: AtomicU64,
@@ -110,6 +112,8 @@ impl Metrics {
     pub fn disk_failed(&self) {self.disk_failures.fetch_add(1,Ordering::Relaxed);self.disk_zone.store(4,Ordering::Relaxed);}
     pub fn replication_failed(&self) { self.replication_failures.fetch_add(1, Ordering::Relaxed); }
     pub fn set_replication_backlog(&self, bytes: u64, age: u64) { self.replication_spool_bytes.store(bytes, Ordering::Relaxed); self.replication_oldest_millis.store(age, Ordering::Relaxed); }
+    pub fn enable_restore_drills(&self) {self.restore_drill_enabled.store(1,Ordering::Relaxed);}
+    pub fn set_restore_drill(&self, passed:bool, elapsed:u64, finished:u64) {if let Ok(mut value)=self.restore_drill.lock(){*value=Some((passed,elapsed,finished));}}
     pub fn render(&self) -> String {
         let background = self.background_jobs.lock().ok().and_then(|s|s.as_ref().map(|s|s.render())).unwrap_or_default();
         let body = format!(
@@ -190,7 +194,11 @@ impl Metrics {
         let replication = format!("# TYPE arena360_replication_spool_bytes gauge\narena360_replication_spool_bytes {}\n# TYPE arena360_replication_oldest_unshipped_milliseconds gauge\narena360_replication_oldest_unshipped_milliseconds {}\n# TYPE arena360_replication_failures_total counter\narena360_replication_failures_total {}\n",self.replication_spool_bytes.load(Ordering::Relaxed),self.replication_oldest_millis.load(Ordering::Relaxed),self.replication_failures.load(Ordering::Relaxed));
         let mut disk=format!("# TYPE arena360_disk_zone gauge\narena360_disk_zone {}\n# TYPE arena360_disk_monitor_failures_total counter\narena360_disk_monitor_failures_total {}\n",self.disk_zone.load(Ordering::Relaxed),self.disk_failures.load(Ordering::Relaxed));
         if let Ok(sample)=self.disk_sample.lock() {if let Some(s)=sample.as_ref(){disk.push_str(&s.render());}}
-        body + &background + &replication + &disk
+        let mut drill=format!("# TYPE arena360_restore_drill_enabled gauge\narena360_restore_drill_enabled {}\n",self.restore_drill_enabled.load(Ordering::Relaxed));
+        if let Ok(value)=self.restore_drill.lock() {if let Some((passed,elapsed,finished))=*value {
+            drill.push_str(&format!("# TYPE arena360_restore_drill_success gauge\narena360_restore_drill_success {}\n# TYPE arena360_restore_drill_elapsed_milliseconds gauge\narena360_restore_drill_elapsed_milliseconds {}\n# TYPE arena360_restore_drill_finished_timestamp_seconds gauge\narena360_restore_drill_finished_timestamp_seconds {}\n",u8::from(passed),elapsed,finished));
+        }}
+        body + &background + &replication + &disk + &drill
     }
 }
 

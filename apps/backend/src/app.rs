@@ -194,6 +194,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
             Err(error)=>tracing::warn!(%error,"Startup remote recovery unavailable"),
         }
         recoverer.clone().spawn_resume();
+        Arc::new(crate::replication::drill::Drill{recovery:recoverer.clone(),metrics:metrics.clone()}).spawn();
     }
     if let (Some(control), Some(client), Some(manager)) = (control_db.as_ref(), leases.as_ref(), tenant_dbs.as_ref()) {
         let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");
