@@ -28,3 +28,5 @@ pub mod validation;
 pub mod access;
 
 pub mod demo;
+
+pub mod moving;

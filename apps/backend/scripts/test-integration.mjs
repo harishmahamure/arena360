@@ -36,6 +36,7 @@ const controlTargets = [
   'tenant_bootstrap',
   'tenant_replication',
   'tenant_recovery_process',
+  'tenant_moves',
   'tenant_user_repositories',
   'demo_seed',
 ];

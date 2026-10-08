@@ -66,15 +66,17 @@ pub fn pending(db: &TenantDb) -> Result<Vec<(PathBuf, Capture)>, AppError> {
     Ok(captures)
 }
 impl Worker {
+    pub(crate) async fn gate(&self,tenant:uuid::Uuid)->Arc<tokio::sync::Mutex<()>> {
+        self.gates.lock().await.entry(tenant).or_default().clone()
+    }
     pub async fn ship(&self, db: Arc<TenantDb>, force: bool) -> Result<usize, AppError> {
-        let gate = self
-            .gates
-            .lock()
-            .await
-            .entry(db.tenant_id())
-            .or_default()
-            .clone();
-        let _serial = gate.lock().await;
+        let gate=self.gate(db.tenant_id()).await;
+        let _serial=gate.lock().await;
+        self.ship_locked(db,force,None).await
+    }
+    /// Move cutover holds the same publication gate and a P2 permit before
+    /// entering the writer gate. It must not queue P3 behind its own operation.
+    pub(crate) async fn ship_locked(&self,db:Arc<TenantDb>,force:bool,move_generation:Option<uuid::Uuid>)->Result<usize,AppError> {
         let captures = pending(&db)?;
         let bytes = captures.iter().try_fold(0u64, |sum, (p, _)| {
             std::fs::metadata(p).map(|m| sum + m.len()).map_err(io)
@@ -95,15 +97,18 @@ impl Worker {
         {
             return Ok(0);
         }
-        let _job = match db.background_jobs() {
-            Some(j) => Some(j.acquire(crate::background::Priority::Backup).await?),
-            None => None,
+        let _job = match (move_generation,db.background_jobs()) {
+            (None,Some(j)) => Some(j.acquire(crate::background::Priority::Backup).await?),
+            _ => None,
         };
         db.ensure_current_owner()?;
         let Some(batch) = super::batch::prepare(&db, &captures)? else {
             return Ok(0);
         };
         let segment = self.ledger.reserve(&db, &batch.capture).await?;
+        if move_generation.is_some_and(|expected|expected!=segment.generation) {
+            return Err(fail("Move encountered a WAL gap; release the write gate and pre-copy the new generation"));
+        }
         let artifact = batch
             .raw
             .with_extension(format!("{}.encoded", segment.generation));

@@ -252,6 +252,7 @@ impl Recoverer {
                 "Verified baseline or ownership is unavailable before activation",
             ));
         }
+        sqlx::query("UPDATE tenant_moves SET phase='CANCELLED',last_error='Superseded by cell recovery',updated_at=clock_timestamp() WHERE tenant_id=$1 AND phase NOT IN ('ACTIVE','CANCELLED')").bind(tenant).execute(&mut *tx).await?;
         sqlx::query("UPDATE tenants SET state='ACTIVE',updated_at=clock_timestamp() WHERE id=$1 AND owner_cell=$2 AND ownership_generation=$3").bind(tenant).bind(self.ledger.cell_id).bind(generation).execute(&mut *tx).await?;
         sqlx::query("UPDATE tenant_recovery_jobs SET phase='COMPLETE',operations_ready_at=COALESCE(operations_ready_at,clock_timestamp()),last_error=NULL WHERE id=$1").bind(job).execute(&mut *tx).await?;
         sqlx::query("SELECT pg_notify($1,$2)")

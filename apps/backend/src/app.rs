@@ -164,6 +164,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     #[cfg(feature = "duckdb-analytics")]
     let analytics = Arc::new(crate::analytics::registry::AnalyticsRegistry::default());
     let mut recoverer=None;
+    let mut move_agent=None;
     if tenant_dbs.is_some() && std::env::var("DISK_PRESSURE_MONITOR").as_deref()!=Ok("false") {
         std::fs::create_dir_all(&settings.tenant_data_dir).expect("tenant disk monitor directory");
         crate::disk::spawn(settings.tenant_data_dir.clone(),background_jobs.clone(),metrics.clone());
@@ -182,7 +183,9 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
                     ledger:Arc::new(crate::replication::ledger::PostgresLedger{pool:control_db.clone().expect("replication control plane"),cell_id:settings.cell_id.expect("replication cell")}),
                     leases:leases.clone().expect("replication lease client"),databases:manager.clone(),store:worker.store.clone(),keys:worker.keys.clone(),staging_root:settings.tenant_data_dir.join("recovery-staging"),analytics:recovery_analytics,
                 }));
-                crate::replication::worker::spawn_upload(manager, Arc::new(worker));
+                let worker=Arc::new(worker);
+                move_agent=Some(Arc::new(crate::moving::agent::Agent{recovery:recoverer.as_ref().expect("move recovery context").clone(),worker:worker.clone()}));
+                crate::replication::worker::spawn_upload(manager,worker);
             },
             Ok(None) => tracing::warn!("Remote replication disabled: configure REPLICATION_BUCKET and REPLICATION_KEY_DIR before production onboarding"),
             Err(error) => panic!("Invalid replication configuration: {error}"),
@@ -195,6 +198,12 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         }
         recoverer.clone().spawn_resume();
         Arc::new(crate::replication::drill::Drill{recovery:recoverer.clone(),metrics:metrics.clone()}).spawn();
+    }
+    if let Some(agent)=&move_agent {
+        agent.resume_sources().await.expect("planned move source leases");
+        agent.resume_completed().await.expect("planned move completion reconciliation");
+        agent.tick().await.expect("planned move startup queue");
+        agent.clone().spawn();
     }
     if let (Some(control), Some(client), Some(manager)) = (control_db.as_ref(), leases.as_ref(), tenant_dbs.as_ref()) {
         let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");

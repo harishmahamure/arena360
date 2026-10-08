@@ -280,6 +280,12 @@ impl LeaseRepository {
         target_cell: Uuid,
         config: LeaseConfig,
     ) -> Result<LeaseGrant, AppError> {
+        self.handoff_inner(tenant_id,source_cell,source_generation,target_cell,config,None).await
+    }
+    pub(crate) async fn handoff_move(&self,tenant_id:Uuid,source_cell:Uuid,source_generation:i64,target_cell:Uuid,config:LeaseConfig,job:Uuid)->Result<LeaseGrant,AppError> {
+        self.handoff_inner(tenant_id,source_cell,source_generation,target_cell,config,Some(job)).await
+    }
+    async fn handoff_inner(&self,tenant_id:Uuid,source_cell:Uuid,source_generation:i64,target_cell:Uuid,config:LeaseConfig,move_id:Option<Uuid>)->Result<LeaseGrant,AppError> {
         let config = config.validate()?;
         if source_cell == target_cell {
             return Err(AppError::BadRequest(
@@ -328,6 +334,14 @@ impl LeaseRepository {
             ));
         }
 
+        let fresh:bool=sqlx::query_scalar("SELECT expires_at>clock_timestamp()+$2*INTERVAL '1 millisecond' FROM tenant_leases WHERE tenant_id=$1")
+            .bind(tenant_id).bind(duration_millis(config.fence_before_expiry)?).fetch_one(&mut *tx).await?;
+        if !fresh {return Err(AppError::Forbidden("Source lease expired during handoff".into()));}
+        if let Some(id)=move_id {
+            let ready:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tenant_moves WHERE id=$1 AND tenant_id=$2 AND source_cell=$3 AND target_cell=$4 AND source_ownership_generation=$5 AND phase='CUTOVER' AND (SELECT state FROM tenants WHERE id=$2)='CUTOVER' AND target_prepared_at IS NOT NULL AND target_image_checksum IS NOT NULL AND final_capture_number IS NOT NULL AND final_capture_number=target_capture_number AND source_replication_generation=(SELECT current_replication_generation FROM tenants WHERE id=$2) FOR UPDATE)")
+                .bind(id).bind(tenant_id).bind(source_cell).bind(target_cell).bind(source_generation).fetch_one(&mut *tx).await?;
+            if !ready {return Err(AppError::Conflict("Move target has not verified the final source capture".into()));}
+        }
         let target_generation = source_generation
             .checked_add(1)
             .ok_or_else(|| AppError::Internal("ownership generation overflow".into()))?;
@@ -360,6 +374,9 @@ impl LeaseRepository {
         .bind(target_generation)
         .execute(&mut *tx)
         .await?;
+        if let Some(id)=move_id {
+            sqlx::query("UPDATE tenant_moves SET phase='VERIFYING',handed_off_at=clock_timestamp(),retain_source_until=clock_timestamp()+INTERVAL '7 days',updated_at=clock_timestamp() WHERE id=$1").bind(id).execute(&mut *tx).await?;
+        }
         sqlx::query("SELECT pg_notify($1, $2)")
             .bind(crate::routing::ROUTING_CHANGED_CHANNEL)
             .bind(tenant_id.to_string())
@@ -504,6 +521,20 @@ impl LeaseClient {
             .await
     }
 
+    /// Reconcile a planned move after restart or an uncertain handoff. This
+    /// never changes ownership: renewal matches the exact control generation.
+    pub(crate) async fn resume_move_source(&self,tenant:Uuid,generation:i64)->Result<(),AppError> {
+        let sent=Instant::now();
+        let grant=self.repository.renew(tenant,self.cell_id,generation,self.config).await?
+            .ok_or_else(||AppError::Forbidden("Move source no longer owns the recorded generation".into()))?;
+        self.store_acquired(grant,sent)?;Ok(())
+    }
+    pub(crate) async fn handoff_move(&self,tenant:Uuid,target:Uuid,job:Uuid)->Result<LeaseGrant,AppError> {
+        // The caller holds the tenant writer gate and has already uploaded and
+        // verified its final capture. Fencing here prevents queued old writes.
+        let generation=self.fence_for_handoff(tenant)?;
+        self.repository.handoff_move(tenant,self.cell_id,generation,target,self.config,job).await
+    }
     pub fn spawn_renewal(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(self.config.renewal_interval);

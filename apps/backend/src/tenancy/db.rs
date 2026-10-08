@@ -314,7 +314,7 @@ impl TenantDbManager {
     }
     pub async fn open(&self, tenant_id: Uuid) -> Result<Arc<TenantDb>, AppError> {
         let generation = self.lease.writable_generation(tenant_id)?;
-        if tenant_path(&self.config.root,tenant_id).parent().unwrap().join("replication/recovery-pending.json").exists() {return Err(AppError::Conflict("Tenant recovery is in progress".into()));}
+        if self.recovery_pending(tenant_id) || self.move_pending(tenant_id) {return Err(AppError::Conflict("Tenant recovery is in progress".into()));}
         if let Some(handle) = self.handles.read().await.get(&tenant_id).cloned() {
             if handle.ownership_generation == generation && !handle.closed.load(Ordering::Acquire) {
                 handle.touch()?;
@@ -323,7 +323,7 @@ impl TenantDbManager {
         }
 
         let _open = self.open_gate.lock().await;
-        if self.recovery_pending(tenant_id) {return Err(AppError::Conflict("Tenant recovery is in progress".into()));}
+        if self.recovery_pending(tenant_id) || self.move_pending(tenant_id) {return Err(AppError::Conflict("Tenant recovery is in progress".into()));}
         let generation = self.lease.writable_generation(tenant_id)?;
         if let Some(handle) = self.handles.read().await.get(&tenant_id).cloned() {
             if handle.ownership_generation == generation && !handle.closed.load(Ordering::Acquire) {
@@ -353,6 +353,84 @@ impl TenantDbManager {
     pub(crate) fn background_jobs(&self)->Option<&Arc<crate::background::BackgroundJobs>> {self.background_jobs.as_ref()}
     pub(crate) fn recovery_pending(&self,tenant:Uuid)->bool {tenant_path(&self.config.root,tenant).parent().unwrap().join("replication/recovery-pending.json").exists()}
     pub(crate) fn recovery_path(&self,tenant:Uuid)->PathBuf {tenant_path(&self.config.root,tenant)}
+    pub(crate) fn move_pending(&self,tenant:Uuid)->bool {tenant_path(&self.config.root,tenant).parent().unwrap().join("replication/move-pending.json").exists()}
+    /// Target pre-copy is unpublished and authorized by its control-plane move.
+    /// A hard link keeps installation inside the bounded final write gate.
+    pub(crate) async fn prepare_move(&self,tenant:Uuid,job:Uuid,generation:i64,image:&Path,capture:u64,checksum:&str)->Result<(),AppError> {
+        let _open=self.open_gate.lock().await;
+        let path=tenant_path(&self.config.root,tenant);
+        let directory=path.parent().unwrap();
+        let marker=directory.join("replication/move-pending.json");
+        let metadata=serde_json::to_vec(&serde_json::json!({"move_id":job,"ownership_generation":generation})).map_err(|e|AppError::Internal(e.to_string()))?;
+        if marker.exists() {
+            if std::fs::read(&marker).map_err(|e|AppError::Internal(e.to_string()))?!=metadata {return Err(AppError::Conflict("Another move owns the target quarantine".into()));}
+        } else if directory.exists() {
+            if self.recovery_pending(tenant) {return Err(AppError::Conflict("Target tenant is recovering".into()));}
+            let old=self.handles.write().await.remove(&tenant);
+            if let Some(old)=old {old.close().await?;}
+            // Keep a previous fenced copy when a tenant moves back to this cell.
+            let retained=self.config.root.join(format!("move-retained-{tenant}-{job}"));
+            std::fs::rename(directory,&retained).map_err(|e|AppError::Internal(e.to_string()))?;
+        }
+        crate::replication::wal::durable_create(&marker,&metadata)?;
+        let temporary=path.with_extension(format!("{}.tmp",Uuid::new_v4()));
+        let _temporary=RecoveryTemporary(temporary.clone());
+        std::fs::hard_link(image,&temporary).map_err(|e|AppError::Internal(format!("Move staging must share the tenant filesystem: {e}")))?;
+        std::fs::rename(&temporary,&path).map_err(|e|AppError::Internal(e.to_string()))?;
+        // The image was hashed by restore immediately before the hard link;
+        // no operational opens are allowed while the marker exists.
+        if checksum.len()!=64 {return Err(AppError::Internal("Missing move image checksum".into()));}
+        for name in ["capture-sequence","acknowledged-capture"] {
+            let target=marker.parent().unwrap().join(name);
+            let temp=target.with_extension(format!("{}.tmp",Uuid::new_v4()));
+            crate::replication::wal::durable_create(&temp,capture.to_string().as_bytes())?;
+            std::fs::rename(temp,target).map_err(|e|AppError::Internal(e.to_string()))?;
+        }
+        std::fs::File::open(marker.parent().unwrap()).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
+        std::fs::File::open(directory).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+    /// Caller holds the tenant control row through the filesystem operation.
+    pub(crate) async fn cleanup_move_copy(&self,tenant:Uuid,job:Uuid,main:bool,cancelled:bool)->Result<(),AppError> {
+        let _open=self.open_gate.lock().await;
+        let path=if main {tenant_path(&self.config.root,tenant).parent().unwrap().to_path_buf()} else {self.config.root.join(format!("move-retained-{tenant}-{job}"))};
+        let meta=match std::fs::symlink_metadata(&path) {Ok(m)=>m,Err(e) if e.kind()==std::io::ErrorKind::NotFound=>return Ok(()),Err(e)=>return Err(AppError::Internal(e.to_string()))};
+        if !meta.is_dir() || meta.file_type().is_symlink() {return Err(AppError::Conflict("Move cleanup refuses a non-directory or symlink".into()));}
+        if main {
+            let marker=path.join("replication/move-pending.json");
+            if cancelled {
+                let bytes=match std::fs::read(&marker) {Ok(b)=>b,Err(e) if e.kind()==std::io::ErrorKind::NotFound=>return Ok(()),Err(e)=>return Err(AppError::Internal(e.to_string()))};
+                let value:serde_json::Value=serde_json::from_slice(&bytes).map_err(|e|AppError::Internal(e.to_string()))?;
+                if value.get("move_id").and_then(|v|v.as_str())!=Some(job.to_string().as_str()) {return Ok(());}
+            } else if marker.exists() || path.join("replication/recovery-pending.json").exists() {return Ok(());}
+            let old=self.handles.write().await.remove(&tenant);
+            if let Some(old)=old {old.close().await?;}
+        }
+        std::fs::remove_dir_all(&path).map_err(|e|AppError::Internal(e.to_string()))?;
+        std::fs::File::open(&self.config.root).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+    pub(crate) async fn activate_move<F>(&self,tenant:Uuid,job:Uuid,generation:i64,checksum:&str,verify_checksum:bool,finish:F)->Result<(),AppError>
+    where F:FnOnce()->BoxFuture<'static,Result<(),AppError>> {
+        let _open=self.open_gate.lock().await;
+        self.lease.ensure_writable(tenant,generation)?;
+        let path=tenant_path(&self.config.root,tenant);
+        let marker=path.parent().unwrap().join("replication/move-pending.json");
+        if marker.exists() {
+            let expected=serde_json::to_vec(&serde_json::json!({"move_id":job,"ownership_generation":generation})).map_err(|e|AppError::Internal(e.to_string()))?;
+            if std::fs::read(&marker).map_err(|e|AppError::Internal(e.to_string()))?!=expected {return Err(AppError::Conflict("Move quarantine identity changed".into()));}
+        }
+        if verify_checksum && crate::replication::snapshot::hash_file(&path)?!=checksum {return Err(AppError::Conflict("Move target image changed before activation".into()));}
+        let db=Arc::new(open_tenant(tenant,generation,&self.config,self.lease.clone(),self.notifier.clone(),self.background_jobs.clone()).await?);
+        let checks:Vec<String>=sqlx::query_scalar("PRAGMA integrity_check").fetch_all(&db.read_pool()?).await?;
+        if checks!=["ok"] {let _=db.close().await;return Err(AppError::Conflict("Move target integrity check failed".into()));}
+        if let Err(error)=finish().await {let _=db.close().await;return Err(error);}
+        if marker.exists() {
+            std::fs::remove_file(&marker).map_err(|e|AppError::Internal(e.to_string()))?;
+            std::fs::File::open(marker.parent().unwrap()).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
+        }
+        self.handles.write().await.insert(tenant,db);Ok(())
+    }
     /// Recovery alone may open a quarantined image. Business opens remain
     /// blocked by the durable marker through failures and process restarts.
     pub(crate) async fn with_recovery_image<F,T>(&self,tenant:Uuid,installed:bool,source:Option<&Path>,capture:u64,transition:Uuid,finish:F)->Result<T,AppError>
