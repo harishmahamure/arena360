@@ -161,13 +161,35 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         manager.clone().spawn_reaper();
         manager
     });
+    #[cfg(feature = "duckdb-analytics")]
+    let analytics = Arc::new(crate::analytics::registry::AnalyticsRegistry::default());
+    let mut recoverer=None;
     if let Some(manager) = tenant_dbs.clone() {
         crate::replication::worker::spawn_capture(manager.clone(), metrics.clone(), settings.tenant_data_dir.clone());
         match crate::replication::configured_worker(control_db.clone(), settings.cell_id, metrics.clone()) {
-            Ok(Some(worker)) => crate::replication::worker::spawn_upload(manager, Arc::new(worker)),
+            Ok(Some(worker)) => {
+                let recovery_analytics:Option<Arc<dyn crate::replication::recovery::RecoveryAnalytics>>={
+                    #[cfg(feature="duckdb-analytics")]
+                    {settings.nats_url.as_ref().map(|url|Arc::new(crate::replication::recovery::NativeAnalytics{registry:analytics.clone(),broker_url:url.clone()}) as Arc<dyn crate::replication::recovery::RecoveryAnalytics>)}
+                    #[cfg(not(feature="duckdb-analytics"))]
+                    {None}
+                };
+                recoverer=Some(Arc::new(crate::replication::recovery::Recoverer{
+                    ledger:Arc::new(crate::replication::ledger::PostgresLedger{pool:control_db.clone().expect("replication control plane"),cell_id:settings.cell_id.expect("replication cell")}),
+                    leases:leases.clone().expect("replication lease client"),databases:manager.clone(),store:worker.store.clone(),keys:worker.keys.clone(),staging_root:settings.tenant_data_dir.join("recovery-staging"),analytics:recovery_analytics,
+                }));
+                crate::replication::worker::spawn_upload(manager, Arc::new(worker));
+            },
             Ok(None) => tracing::warn!("Remote replication disabled: configure REPLICATION_BUCKET and REPLICATION_KEY_DIR before production onboarding"),
             Err(error) => panic!("Invalid replication configuration: {error}"),
         }
+    }
+    if let Some(recoverer)=&recoverer {
+        match recoverer.clone().resume_assigned().await {
+            Ok(outcomes)=>for outcome in outcomes {tracing::info!(?outcome,"Startup tenant recovery outcome");},
+            Err(error)=>tracing::warn!(%error,"Startup remote recovery unavailable"),
+        }
+        recoverer.clone().spawn_resume();
     }
     if let (Some(control), Some(client), Some(manager)) = (control_db.as_ref(), leases.as_ref(), tenant_dbs.as_ref()) {
         let recovered = crate::control::bootstrap::recover_assigned(control, client, manager, &settings.tenant_data_dir).await.expect("assigned tenant recovery failed");
@@ -213,8 +235,6 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         None
     };
     let cache = create_cache(settings.redis_url.as_deref()).await;
-    #[cfg(feature = "duckdb-analytics")]
-    let analytics = Arc::new(crate::analytics::registry::AnalyticsRegistry::default());
     if let (Some(manager), Some(url)) = (tenant_dbs.clone(), settings.nats_url.clone()) {
         #[cfg(feature = "duckdb-analytics")]
         crate::analytics::consumer::spawn(manager.clone(), metrics.clone(), url.clone(), analytics.clone());

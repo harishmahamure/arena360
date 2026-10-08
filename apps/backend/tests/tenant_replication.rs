@@ -1018,3 +1018,70 @@ async fn postgres_restore_replays_encrypted_batches_and_stops_at_capture_utc() {
     sqlx::query("DELETE FROM tenants WHERE id=$1").bind(tenant).execute(&pool).await.unwrap();
     sqlx::query("DELETE FROM cells WHERE id=$1").bind(cell).execute(&pool).await.unwrap();pool.close().await;std::fs::remove_dir_all(root).unwrap();
 }
+
+struct AssertOperationsBeforeAnalytics { pool:sqlx::PgPool, fail:AtomicBool }
+#[async_trait]
+impl gaming_cafe_api::replication::recovery::RecoveryAnalytics for AssertOperationsBeforeAnalytics {
+    async fn rebuild(&self,db:Arc<TenantDb>)->Result<(),AppError> {
+        let state:String=sqlx::query_scalar("SELECT state FROM tenants WHERE id=$1").bind(db.tenant_id()).fetch_one(&self.pool).await?;
+        assert_eq!(state,"ACTIVE");
+        insert(&db,"operations before analytics").await;
+        if self.fail.load(Ordering::SeqCst) {Err(AppError::Internal("simulated analytics outage".into()))} else {Ok(())}
+    }
+}
+#[tokio::test]
+#[ignore = "requires an isolated control-plane database"]
+async fn cell_loss_recovery_reassigns_restores_activates_then_retries_analytics() {
+    use gaming_cafe_api::{control::{LeaseClient,LeaseConfig},replication::{ledger::PostgresLedger,recovery::Recoverer,snapshot}};
+    let pool=sqlx::postgres::PgPoolOptions::new().max_connections(6).connect(&std::env::var("CONTROL_TEST_DATABASE_URL").unwrap()).await.unwrap();
+    gaming_cafe_api::control::migrate(&pool).await.unwrap();
+    let (root,db,_)=database().await;let tenant=db.tenant_id();let old=Uuid::new_v4();let target=Uuid::new_v4();
+    for cell in [old,target] {sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)").bind(cell).bind(format!("recovery-{cell}")).bind(format!("http://{cell}.invalid")).execute(&pool).await.unwrap();}
+    sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Cell loss','UTC',$3,1,'ACTIVE')").bind(tenant).bind(format!("cell-loss-{tenant}")).bind(old).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO tenant_leases(tenant_id,owner_cell,ownership_generation,expires_at) VALUES($1,$2,1,NOW()+INTERVAL '5 minutes')").bind(tenant).bind(old).execute(&pool).await.unwrap();
+    let ledger=Arc::new(PostgresLedger{pool:pool.clone(),cell_id:old});
+    let keys=TenantKeys::new(root.join("separate-secrets"));wal::durable_create(&keys.path(tenant),&[42u8;32]).unwrap();
+    let store=Arc::new(InMemory::new());
+    let worker=Worker{gates:Default::default(),store:store.clone(),ledger:ledger.clone(),keys:keys.clone(),metrics:Arc::new(Metrics::default())};
+    snapshot::take(db.clone(),&ledger,store.as_ref(),&keys,snapshot::Kind::Baseline).await.unwrap();
+    insert(&db,"replicated payment").await;db.spool_wal().await.unwrap();worker.ship(db.clone(),true).await.unwrap();
+    insert(&db,"not yet uploaded").await;
+    let old_directory=db.path().parent().unwrap().to_owned();db.close().await.unwrap();std::fs::remove_dir_all(old_directory).unwrap();
+    let leases=Arc::new(LeaseClient::new(pool.clone(),target,LeaseConfig::default()).unwrap());
+    let manager=Arc::new(TenantDbManager::new(TenantDbConfig{root:root.join("new-cell"),..Default::default()},leases.clone()).unwrap());
+    let analytics=Arc::new(AssertOperationsBeforeAnalytics{pool:pool.clone(),fail:AtomicBool::new(true)});
+    let recoverer=Arc::new(Recoverer{ledger:Arc::new(PostgresLedger{pool:pool.clone(),cell_id:target}),leases,databases:manager.clone(),store,keys,staging_root:root.join("recovery-staging"),analytics:Some(analytics.clone())});
+    assert_eq!(recoverer.affected(old).await.unwrap(),vec![tenant]);
+    // The failed cell's unexpired lease cannot be stolen for recovery.
+    assert!(recoverer.clone().recover_tenant(tenant).await.is_err());
+    sqlx::query("UPDATE tenant_leases SET renewed_at=NOW()-INTERVAL '6 minutes',expires_at=NOW()-INTERVAL '60 seconds' WHERE tenant_id=$1").bind(tenant).execute(&pool).await.unwrap();
+    let outcomes=recoverer.clone().recover_cell(old).await.unwrap();assert_eq!(outcomes.len(),1);
+    assert!(outcomes[0].operations_ready,"{:?}",outcomes[0]);assert!(!outcomes[0].analytics_ready);assert!(outcomes[0].error.is_some());
+    assert_eq!(outcomes[0].ownership_generation,2);
+    let restored=manager.open(tenant).await.unwrap();
+    let values:Vec<String>=sqlx::query_scalar("SELECT value FROM durable ORDER BY rowid").fetch_all(&restored.read_pool().unwrap()).await.unwrap();
+    assert_eq!(values,vec!["replicated payment","operations before analytics"]);
+    let phase:String=sqlx::query_scalar("SELECT phase FROM tenant_recovery_jobs WHERE tenant_id=$1").bind(tenant).fetch_one(&pool).await.unwrap();assert_eq!(phase,"COMPLETE");
+    analytics.fail.store(false,Ordering::SeqCst);
+    let retried=recoverer.clone().recover_tenant(tenant).await.unwrap();assert!(retried.operations_ready&&retried.analytics_ready);
+    let jobs:i64=sqlx::query_scalar("SELECT COUNT(*) FROM tenant_recovery_jobs WHERE tenant_id=$1").bind(tenant).fetch_one(&pool).await.unwrap();assert_eq!(jobs,1);
+    let generation:i64=sqlx::query_scalar("SELECT ownership_generation FROM tenants WHERE id=$1").bind(tenant).fetch_one(&pool).await.unwrap();assert_eq!(generation,2);
+    restored.close().await.unwrap();
+    // Crash after ACTIVE/COMPLETE is committed but before marker cleanup/cache publication.
+    let job:Uuid=sqlx::query_scalar("SELECT id FROM tenant_recovery_jobs WHERE tenant_id=$1").bind(tenant).fetch_one(&pool).await.unwrap();
+    let path=tenant_path(&root.join("new-cell"),tenant);
+    let marker=path.parent().unwrap().join("replication/recovery-pending.json");
+    wal::durable_create(&marker,&serde_json::to_vec(&serde_json::json!({"transition":job,"ownership_generation":2})).unwrap()).unwrap();
+    sqlx::query("UPDATE tenants SET state='RESTORING' WHERE id=$1").bind(tenant).execute(&pool).await.unwrap();
+    let fresh_manager=Arc::new(TenantDbManager::new(TenantDbConfig{root:root.join("new-cell"),..Default::default()},recoverer.leases.clone()).unwrap());
+    assert!(fresh_manager.open(tenant).await.is_err());
+    let routing=gaming_cafe_api::routing::RoutingCache::new(pool.clone());
+    assert!(routing.refresh_tenant(tenant).await.unwrap().is_none());
+    let fresh=Arc::new(Recoverer{ledger:recoverer.ledger.clone(),leases:recoverer.leases.clone(),databases:fresh_manager.clone(),store:recoverer.store.clone(),keys:recoverer.keys.clone(),staging_root:root.join("recovery-staging"),analytics:None});
+    let resumed=fresh.resume_assigned().await.unwrap();assert_eq!(resumed.len(),1);assert!(resumed[0].operations_ready,"{:?}",resumed[0]);
+    assert!(!marker.exists());
+    let resumed_db=fresh_manager.open(tenant).await.unwrap();resumed_db.close().await.unwrap();
+    sqlx::query("DELETE FROM tenants WHERE id=$1").bind(tenant).execute(&pool).await.unwrap();
+    for cell in [old,target] {sqlx::query("DELETE FROM cells WHERE id=$1").bind(cell).execute(&pool).await.unwrap();}
+    pool.close().await;std::fs::remove_dir_all(root).unwrap();
+}

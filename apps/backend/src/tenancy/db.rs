@@ -311,6 +311,7 @@ impl TenantDbManager {
     }
     pub async fn open(&self, tenant_id: Uuid) -> Result<Arc<TenantDb>, AppError> {
         let generation = self.lease.writable_generation(tenant_id)?;
+        if tenant_path(&self.config.root,tenant_id).parent().unwrap().join("replication/recovery-pending.json").exists() {return Err(AppError::Conflict("Tenant recovery is in progress".into()));}
         if let Some(handle) = self.handles.read().await.get(&tenant_id).cloned() {
             if handle.ownership_generation == generation && !handle.closed.load(Ordering::Acquire) {
                 handle.touch()?;
@@ -319,6 +320,7 @@ impl TenantDbManager {
         }
 
         let _open = self.open_gate.lock().await;
+        if self.recovery_pending(tenant_id) {return Err(AppError::Conflict("Tenant recovery is in progress".into()));}
         let generation = self.lease.writable_generation(tenant_id)?;
         if let Some(handle) = self.handles.read().await.get(&tenant_id).cloned() {
             if handle.ownership_generation == generation && !handle.closed.load(Ordering::Acquire) {
@@ -343,6 +345,45 @@ impl TenantDbManager {
         );
         self.handles.write().await.insert(tenant_id, handle.clone());
         Ok(handle)
+    }
+
+    pub(crate) fn recovery_jobs(&self)->Option<&Arc<crate::background::BackgroundJobs>> {self.background_jobs.as_ref()}
+    pub(crate) fn recovery_pending(&self,tenant:Uuid)->bool {tenant_path(&self.config.root,tenant).parent().unwrap().join("replication/recovery-pending.json").exists()}
+    pub(crate) fn recovery_path(&self,tenant:Uuid)->PathBuf {tenant_path(&self.config.root,tenant)}
+    /// Recovery alone may open a quarantined image. Business opens remain
+    /// blocked by the durable marker through failures and process restarts.
+    pub(crate) async fn with_recovery_image<F,T>(&self,tenant:Uuid,installed:bool,source:Option<&Path>,capture:u64,transition:Uuid,finish:F)->Result<T,AppError>
+    where F:FnOnce(Arc<TenantDb>)->BoxFuture<'static,Result<T,AppError>> {
+        let _open=self.open_gate.lock().await;
+        let generation=self.lease.writable_generation(tenant)?;
+        if self.handles.read().await.contains_key(&tenant) {return Err(AppError::Conflict("Close the active tenant handle before recovery".into()));}
+        let path=tenant_path(&self.config.root,tenant);
+        let marker=path.parent().unwrap().join("replication/recovery-pending.json");
+        crate::replication::wal::durable_create(&marker,&serde_json::to_vec(&serde_json::json!({"transition":transition,"ownership_generation":generation})).map_err(|e|AppError::Internal(e.to_string()))?)?;
+        if !installed {
+            let source=source.ok_or_else(||AppError::Internal("Recovery image is missing".into()))?;
+            let temporary=path.with_extension(format!("{}.tmp",Uuid::new_v4()));
+            tokio::fs::copy(source,&temporary).await.map_err(|e|AppError::Internal(e.to_string()))?;
+            std::fs::File::open(&temporary).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
+            self.lease.ensure_writable(tenant,generation)?;
+            if path.exists() {
+                if crate::replication::snapshot::hash_file(&path)? != crate::replication::snapshot::hash_file(&temporary)? {return Err(AppError::Conflict("Recovery cannot overwrite an existing different tenant image".into()));}
+            } else {std::fs::hard_link(&temporary,&path).map_err(|e|AppError::Internal(e.to_string()))?;}
+            std::fs::remove_file(&temporary).map_err(|e|AppError::Internal(e.to_string()))?;
+            for name in ["capture-sequence","acknowledged-capture"] {crate::replication::wal::durable_create(&marker.parent().unwrap().join(name),capture.to_string().as_bytes())?;}
+            std::fs::File::open(path.parent().unwrap()).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
+        }
+        let db=Arc::new(open_tenant(tenant,generation,&self.config,self.lease.clone(),self.notifier.clone(),self.background_jobs.clone()).await?);
+        let result=finish(db.clone()).await;
+        match result {
+            Ok(value)=>{
+                self.lease.ensure_writable(tenant,generation)?;
+                std::fs::remove_file(&marker).map_err(|e|AppError::Internal(e.to_string()))?;
+                std::fs::File::open(marker.parent().unwrap()).and_then(|f|f.sync_all()).map_err(|e|AppError::Internal(e.to_string()))?;
+                self.handles.write().await.insert(tenant,db);Ok(value)
+            }
+            Err(error)=>{let _=db.close().await;Err(error)}
+        }
     }
 
     pub async fn reap_idle(&self) -> Result<usize, AppError> {

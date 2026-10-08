@@ -42,7 +42,7 @@ pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::migrate::MigrateErro
     TENANT_MIGRATOR.run(pool).await
 }
 
-async fn migrate_connection(
+pub(crate) async fn migrate_connection(
     connection: &mut SqliteConnection,
 ) -> Result<(), sqlx::migrate::MigrateError> {
     TENANT_MIGRATOR.run_direct(connection).await

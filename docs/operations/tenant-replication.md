@@ -179,3 +179,44 @@ SQLite WAL does not contain transaction UTC timestamps, so arbitrary instants
 within a capture are rounded down to that capture boundary. The result reports
 its actual `recovered_at` and capture position. A missing pre-instant snapshot,
 an instant outside 90 days, or nonmonotonic capture UTC rejects the request.
+
+## Cell-loss recovery command
+
+On the replacement cell, with its separate durable tenant key mount available:
+
+```sh
+cargo run --manifest-path apps/backend/Cargo.toml --features duckdb-analytics \
+  --bin tenant_recover -- --lost-cell OLD_CELL_UUID --list
+cargo run --manifest-path apps/backend/Cargo.toml --features duckdb-analytics \
+  --bin tenant_recover -- --lost-cell OLD_CELL_UUID --target-cell NEW_CELL_UUID
+```
+
+Set `CONTROL_DATABASE_URL`, `TENANT_DATA_DIR`, `NATS_URL` and the replication
+configuration above. Run the command before starting the replacement API
+process against that directory. `--list` only reads the control plane.
+`--operations-only` leaves analytics to the running cell's normal rebuild worker.
+The command never bypasses the former lease's expiry plus reassignment skew.
+
+Ownership acquisition atomically selects `RESTORING`, which is excluded from
+routing. P2 recovery restores into staging, installs a verified image without
+overwriting an existing different database, rotates a persisted restore
+transition and verifies its new baseline. Required schema upgrades receive
+verified pre/post snapshots; current staff membership projection and a final
+SQLite integrity check precede atomic operational activation/routing notice.
+
+A durable `recovery-pending.json` marker blocks ordinary database opens through
+interrupted installation and activation. PostgreSQL recovery jobs resume from
+`DOWNLOADING`, `INSTALLED`, `BASELINED` or `COMPLETE`, retaining their source,
+position, checksums, errors and operational readiness timestamp. Startup resumes
+missing/quarantined assigned tenants; a minute scheduler retries pending jobs.
+Completed operational activation happens before analytics rebuild. Analytics
+failure leaves operations online and is recorded for retry; rerunning preserves
+the ownership generation and recovery job. The native rebuild reads SQLite and
+uses the existing retained-stream/shadow-switch pipeline.
+
+The isolated local test deletes the source tenant directory, restores on another
+cell, preserves uploaded writes, excludes the unuploaded write, rejects an
+unexpired former lease, tests operational writes during an analytics failure and
+resumes a crash between activation commit and marker removal. This is local
+verification; staging full-cell recovery time and real storage outage alerts
+remain launch-gate evidence.

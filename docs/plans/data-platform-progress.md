@@ -60,8 +60,16 @@
 
 ## Current task
 
-- [ ] `API-0052` — Cell-loss reassignment, restoration and operational activation (M8).
+- [ ] `API-0056` — Disk pressure monitoring and automatic background pauses (M8).
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0052 completed
+
+- Explicit `tenant_recover` listing/recovery command and startup/minute resume use expiry-plus-skew lease acquisition directly into RESTORING, excluded from routing. P2 recovery preserves normal lease renewal.
+- Durable PostgreSQL phases and local quarantine markers resume verified installation, restore generation rotation, baseline verification, pre/post schema upgrades, current staff projection and final integrity checks. Ordinary opens stay blocked until activation and marker removal.
+- Operations activate before native SQLite/retained-stream/shadow analytics rebuilding. Analytics failures leave operations online and retry the existing ownership generation/job.
+- 26 focused checks pass: 15 replication/recovery, seven tenant database and four control-plane checks. A real local source-directory loss restores uploaded writes on another cell and excludes the unuploaded write; tests also cover former lease refusal, analytics outage/retry and an activation-to-marker-cleanup crash. Native all-target compilation and command help/read-only listing pass.
+- Implementation follows API-0051 commit `cb70ddb`. Live staging full-cell RTO and storage outage alerts remain required launch-gate evidence.
 
 ### API-0051 completed
 
