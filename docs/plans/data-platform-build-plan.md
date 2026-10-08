@@ -286,7 +286,7 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
   - verify each upload, then record it in the generation manifest, then delete it from the spool.
 
   Expose spool size, oldest unshipped frame age, and upload failures as metrics and alerts. — L
-- [ ] API-0054: Replication generations. Start a new generation on a lease change, a restore, or a detected WAL gap, recording `ownership_generation` in the manifest and the current generation in the control plane. — M
+- [x] API-0054: Replication generations. Start a new generation on a lease change, a restore, or a detected WAL gap, recording `ownership_generation` in the manifest and the current generation in the control plane. — M
 - [ ] API-0050: Snapshots:
   - take a consistent snapshot daily, plus immediately before and after every tenant migration (through the API-0021 hooks);
   - compress with zstd, encrypt and compute a checksum;

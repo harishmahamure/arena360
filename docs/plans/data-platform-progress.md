@@ -60,8 +60,16 @@
 
 ## Current task
 
-- [ ] `API-0054` — Replication generations (M8).
+- [ ] `API-0050` — Verified daily and migration snapshots (M8).
 - Owner approved ADR-0043 decisions 4 and 5 on 2026-10-08: per-tenant encryption keys destroyed on deletion; single-node cells with recovery time measured in restore drills and published. Implementation continues in plan order.
+
+### API-0054 completed
+
+- Control-plane-selected generations rotate on lease changes, explicit restores and detected capture-number/frame gaps. Previous generations retain their sealed/restored/gapped state; manifests include the ownership generation and start reason.
+- Persisted restore transition UUIDs make retries idempotent and reject superseded transitions. Multiple lineages within one ownership lease are supported.
+- Tenant/lease row locks are followed by current database-clock and local monotonic-lease checks; former owners cannot reserve or verify manifest entries.
+- Eight replication checks pass, including real PostgreSQL restore/gap rotation, manifest ordering, retry identity, superseded transition rejection and cached-owner fencing.
+- New-generation snapshot baselines are the next dependency (API-0050); no recovery readiness is asserted before that baseline is verified.
 
 ### API-0053 completed
 
@@ -70,7 +78,7 @@
 - zstd plus AES-256-GCM authenticates the tenant object key. Separate durable per-tenant key mount; persisted ciphertext makes retries exact. Immutable uploads, read-back verification, conditional generation manifest updates and PostgreSQL lease fencing precede spool deletion.
 - Exposes spool bytes, oldest unshipped capture age and failures; alert rules and configuration/runbook are checked in. The object-store outage retains local evidence.
 - Verified 2026-10-08: eight replication tests (including the isolated PostgreSQL guard) and seven tenant database regressions pass. Captured WAL restores a real SQLite database with `integrity_check=ok`; no live Wasabi or staging drill is claimed.
-- API-0054 still needs explicit restore/gap generation rotation; snapshots and the remaining M8 launch gates follow in plan order.
+- Snapshots and the remaining M8 launch gates follow in plan order.
 
 ### M7 completed
 

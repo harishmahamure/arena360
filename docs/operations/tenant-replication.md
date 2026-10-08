@@ -70,3 +70,23 @@ Alert evaluation and a real Wasabi outage drill remain required staging evidence
 Before paying-venue onboarding, complete all M8 snapshot, restore, disk-pressure,
 cell-loss and weekly-drill gates in the build plan. Publish measured recovery
 time from those drills; no availability target is assumed here.
+
+## Generation ownership
+
+The control plane's `tenants.current_replication_generation` selects the lineage
+used for recovery. Do not select a generation by object listing order or folder
+timestamp. A lease change starts a new generation; restore and detected WAL gaps
+also rotate it, even within the same ownership generation. Previous lineages are
+retained with `SEALED`, `RESTORED` or `GAPPED` state for investigation and retention.
+
+Restore orchestration persists a transition UUID before calling generation
+rotation. A retry with that UUID returns the same current generation. Once a
+later transition supersedes it, a delayed retry is rejected. Capture-number gaps
+and backwards frame boundaries conservatively create a new lineage; they never
+append to an apparently continuous history. A new lineage still needs its
+verified snapshot baseline from API-0050 before it can be used for recovery.
+
+Manifest reservation and verification lock the tenant and lease rows, then
+recheck the actual database clock and the process's monotonic lease after lock
+acquisition. A locally cached former owner's lease cannot authorize control-plane
+manifest writes after reassignment.

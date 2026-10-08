@@ -430,6 +430,60 @@ async fn postgres_manifest_reservations_are_idempotent_ordered_and_lease_fenced(
     assert_eq!(worker.ship(db.clone(), true).await.unwrap(), 1);
     let verified:i64=sqlx::query_scalar("SELECT count(*) FROM replication_segments WHERE generation_id=$1 AND verified_at IS NOT NULL").bind(first.generation).fetch_one(&pool).await.unwrap();
     assert_eq!(verified, 2);
+    use gaming_cafe_api::replication::ledger::GenerationReason;
+    let transition = Uuid::new_v4();
+    let restored = ledger
+        .start_generation(&db, GenerationReason::Restore, transition)
+        .await
+        .unwrap();
+    assert_ne!(restored, first.generation);
+    assert_eq!(
+        ledger
+            .start_generation(&db, GenerationReason::Restore, transition)
+            .await
+            .unwrap(),
+        restored
+    );
+    let old_state: String =
+        sqlx::query_scalar("SELECT state FROM replication_generations WHERE id=$1")
+            .bind(first.generation)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(old_state, "RESTORED");
+    assert!(ledger
+        .verified(&db, &second, &"a".repeat(64), 10)
+        .await
+        .is_err());
+    insert(&db, "three").await;
+    db.spool_wal().await.unwrap();
+    let three = worker::pending(&db).unwrap()[0].1.clone();
+    let third = ledger.reserve(&db, &three).await.unwrap();
+    assert_eq!(third.generation, restored);
+    assert_eq!(third.number, 1);
+    let mut missing = three.clone();
+    missing.capture_number += 2;
+    missing.checksum = "b".repeat(64);
+    let gap = ledger.reserve(&db, &missing).await.unwrap();
+    assert_ne!(gap.generation, restored);
+    assert_eq!(gap.number, 1);
+    let state: String = sqlx::query_scalar("SELECT state FROM replication_generations WHERE id=$1")
+        .bind(restored)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state, "GAPPED");
+    assert!(ledger
+        .start_generation(&db, GenerationReason::Restore, transition)
+        .await
+        .is_err());
+    let current: Uuid =
+        sqlx::query_scalar("SELECT current_replication_generation FROM tenants WHERE id=$1")
+            .bind(tenant)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(current, gap.generation);
     // Authoritative ownership can change while this process still has an old
     // locally cached lease. PostgreSQL must reject its old manifest writes.
     sqlx::query("UPDATE tenants SET ownership_generation=2 WHERE id=$1")

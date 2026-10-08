@@ -35,16 +35,94 @@ pub struct PostgresLedger {
     pub pool: PgPool,
     pub cell_id: Uuid,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenerationReason {
+    LeaseChange,
+    Restore,
+    WalGap,
+}
+impl GenerationReason {
+    fn name(self) -> &'static str {
+        match self {
+            Self::LeaseChange => "LEASE_CHANGE",
+            Self::Restore => "RESTORE",
+            Self::WalGap => "WAL_GAP",
+        }
+    }
+    fn sealed_state(self) -> &'static str {
+        match self {
+            Self::LeaseChange => "SEALED",
+            Self::Restore => "RESTORED",
+            Self::WalGap => "GAPPED",
+        }
+    }
+}
 impl PostgresLedger {
+    /// Caller persists the transition ID before starting restore/gap handling.
+    /// Repeating the same transition is idempotent; a superseded transition
+    /// cannot make an old generation current again.
+    pub async fn start_generation(
+        &self,
+        db: &TenantDb,
+        reason: GenerationReason,
+        transition: Uuid,
+    ) -> Result<Uuid, AppError> {
+        let mut tx = self.pool.begin().await?;
+        let current = self.lock_owner(db, &mut tx).await?;
+        if let Some(row)=sqlx::query("SELECT id,ownership_generation,start_reason FROM replication_generations WHERE tenant_id=$1 AND transition_id=$2").bind(db.tenant_id()).bind(transition).fetch_optional(&mut *tx).await? {
+            let id:Uuid=row.get(0);
+            if current!=Some(id)||row.get::<i64,_>(1)!=db.ownership_generation()||row.get::<String,_>(2)!=reason.name() {return Err(AppError::Conflict("Replication transition was superseded or has different ownership/reason".into()));}
+            db.ensure_current_owner()?; tx.commit().await?;return Ok(id);
+        }
+        let id = self
+            .rotate_locked(db, current, reason, Some(transition), &mut tx)
+            .await?;
+        db.ensure_current_owner()?;
+        tx.commit().await?;
+        Ok(id)
+    }
+    async fn rotate_locked(
+        &self,
+        db: &TenantDb,
+        current: Option<Uuid>,
+        reason: GenerationReason,
+        transition: Option<Uuid>,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Uuid, AppError> {
+        let id = Uuid::new_v4();
+        if let Some(old) = current {
+            sqlx::query("UPDATE replication_generations SET state=$2,sealed_at=NOW() WHERE id=$1 AND state='ACTIVE'").bind(old).bind(reason.sealed_state()).execute(&mut **tx).await?;
+        }
+        let key = format!(
+            "tenants/{}/replication/generations/{id}/manifest.json",
+            db.tenant_id()
+        );
+        sqlx::query("INSERT INTO replication_generations(id,tenant_id,ownership_generation,manifest_object_key,start_reason,transition_id) VALUES($1,$2,$3,$4,$5,$6)").bind(id).bind(db.tenant_id()).bind(db.ownership_generation()).bind(key).bind(reason.name()).bind(transition).execute(&mut **tx).await?;
+        sqlx::query(
+            "UPDATE tenants SET current_replication_generation=$2,updated_at=NOW() WHERE id=$1",
+        )
+        .bind(db.tenant_id())
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+        Ok(id)
+    }
     async fn lock_owner(
         &self,
         db: &TenantDb,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     ) -> Result<Option<Uuid>, AppError> {
         db.ensure_current_owner()?;
-        let row=sqlx::query("SELECT t.current_replication_generation FROM tenants t JOIN tenant_leases l ON l.tenant_id=t.id WHERE t.id=$1 AND t.owner_cell=$2 AND l.owner_cell=$2 AND t.ownership_generation=$3 AND l.ownership_generation=$3 AND l.expires_at>NOW()+INTERVAL '30 seconds' AND t.state <> 'DELETED' FOR UPDATE OF t,l")
+        let row=sqlx::query("SELECT t.current_replication_generation FROM tenants t JOIN tenant_leases l ON l.tenant_id=t.id WHERE t.id=$1 AND t.owner_cell=$2 AND l.owner_cell=$2 AND t.ownership_generation=$3 AND l.ownership_generation=$3 AND l.expires_at>clock_timestamp()+INTERVAL '30 seconds' AND t.state <> 'DELETED' FOR UPDATE OF t,l")
             .bind(db.tenant_id()).bind(self.cell_id).bind(db.ownership_generation()).fetch_optional(&mut **tx).await?
             .ok_or_else(||AppError::Forbidden("Replication ownership lease expired or changed".into()))?;
+        db.ensure_current_owner()?;
+        let fresh:bool=sqlx::query_scalar("SELECT expires_at>clock_timestamp()+INTERVAL '30 seconds' FROM tenant_leases WHERE tenant_id=$1").bind(db.tenant_id()).fetch_one(&mut **tx).await?;
+        if !fresh {
+            return Err(AppError::Forbidden(
+                "Replication lease expired while waiting for control lock".into(),
+            ));
+        }
         Ok(row.get(0))
     }
     async fn assert_generation(
@@ -74,24 +152,11 @@ impl Ledger for PostgresLedger {
         } else {
             false
         };
-        let generation = if matching {
+        let mut generation = if matching {
             current.unwrap()
         } else {
-            let id = Uuid::new_v4();
-            let key = format!(
-                "tenants/{}/replication/generations/{id}/manifest.json",
-                db.tenant_id()
-            );
-            if let Some(old) = current {
-                sqlx::query("UPDATE replication_generations SET state='SEALED',sealed_at=NOW() WHERE id=$1 AND state='ACTIVE'").bind(old).execute(&mut *tx).await?;
-            }
-            sqlx::query("INSERT INTO replication_generations(id,tenant_id,ownership_generation,manifest_object_key) VALUES($1,$2,$3,$4)").bind(id).bind(db.tenant_id()).bind(db.ownership_generation()).bind(key).execute(&mut *tx).await?;
-            sqlx::query("UPDATE tenants SET current_replication_generation=$2 WHERE id=$1")
-                .bind(db.tenant_id())
-                .bind(id)
-                .execute(&mut *tx)
-                .await?;
-            id
+            self.rotate_locked(db, current, GenerationReason::LeaseChange, None, &mut tx)
+                .await?
         };
         let existing=sqlx::query("SELECT segment_number,object_key,verified_at IS NOT NULL AS verified FROM replication_segments WHERE generation_id=$1 AND source_checksum=$2").bind(generation).bind(&capture.checksum).fetch_optional(&mut *tx).await?;
         let segment = if let Some(row) = existing {
@@ -103,6 +168,24 @@ impl Ledger for PostgresLedger {
                 verified: row.get(2),
             }
         } else {
+            let previous:Option<sqlx::types::Json<Capture>>=sqlx::query_scalar("SELECT capture FROM replication_segments WHERE generation_id=$1 ORDER BY segment_number DESC LIMIT 1").bind(generation).fetch_optional(&mut *tx).await?;
+            if previous.as_ref().is_some_and(|p| {
+                p.capture_number.checked_add(1) != Some(capture.capture_number)
+                    || (p.salt == capture.salt && capture.frames < p.frames)
+            }) {
+                // A missing/reordered capture or backwards frame boundary is
+                // conservative evidence of a gap. Never append it to the old
+                // lineage; API-0050 supplies the new generation's baseline.
+                generation = self
+                    .rotate_locked(
+                        db,
+                        Some(generation),
+                        GenerationReason::WalGap,
+                        None,
+                        &mut tx,
+                    )
+                    .await?;
+            }
             let number:i64=sqlx::query_scalar("SELECT COALESCE(MAX(segment_number),0)+1 FROM replication_segments WHERE generation_id=$1").bind(generation).fetch_one(&mut *tx).await?;
             let key = format!(
                 "tenants/{}/replication/generations/{generation}/wal/{number:010}.wal.zst",
@@ -117,6 +200,7 @@ impl Ledger for PostgresLedger {
                 verified: false,
             }
         };
+        db.ensure_current_owner()?;
         tx.commit().await?;
         Ok(segment)
     }
@@ -137,7 +221,13 @@ impl Ledger for PostgresLedger {
         }
         let mut list = previous;
         list.push(serde_json::json!({"number":segment.number,"object_key":segment.object_key,"capture":segment.capture,"checksum_sha256":checksum,"encrypted_size_bytes":size}));
-        let bytes=serde_json::to_vec(&serde_json::json!({"version":1,"tenant_id":db.tenant_id(),"generation_id":segment.generation,"ownership_generation":db.ownership_generation(),"segments":list})).map_err(|e|AppError::Internal(e.to_string()))?;
+        let reason: String =
+            sqlx::query_scalar("SELECT start_reason FROM replication_generations WHERE id=$1")
+                .bind(segment.generation)
+                .fetch_one(&mut *tx)
+                .await?;
+        let bytes=serde_json::to_vec(&serde_json::json!({"version":1,"tenant_id":db.tenant_id(),"generation_id":segment.generation,"ownership_generation":db.ownership_generation(),"start_reason":reason,"segments":list})).map_err(|e|AppError::Internal(e.to_string()))?;
+        db.ensure_current_owner()?;
         tx.commit().await?;
         Ok(bytes)
     }
@@ -151,6 +241,7 @@ impl Ledger for PostgresLedger {
         let mut tx = self.pool.begin().await?;
         self.assert_generation(db, segment, &mut tx).await?;
         sqlx::query("UPDATE replication_segments SET checksum_sha256=$3,encrypted_size_bytes=$4,verified_at=NOW() WHERE generation_id=$1 AND segment_number=$2 AND verified_at IS NULL").bind(segment.generation).bind(segment.number).bind(checksum).bind(size).execute(&mut *tx).await?;
+        db.ensure_current_owner()?;
         tx.commit().await?;
         Ok(())
     }
