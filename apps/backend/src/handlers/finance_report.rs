@@ -37,7 +37,7 @@ pub async fn report(
     Query(query): Query<ReportQuery>,
     headers: axum::http::HeaderMap,
 ) -> ApiResult<Value> {
-    let _scope = crate::access::scope::report_scope_tenant(
+    let scope = crate::access::scope::report_scope_tenant(
         state.business_db(&claims).await?,
         &claims,
         &headers,
@@ -45,12 +45,19 @@ pub async fn report(
         "finance:read",
     )
     .await?;
-    bounds(&query)?;
-    Err(AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let (start,until) = bounds(&query)?;
+    let location_label = if scope.is_none() { "All locations" } else { "Selected locations" };
+    let reader = state.report_reader(state.business_db(&claims).await?,scope).await?;
+    let start_at = start.and_hms_opt(0,0,0).unwrap().and_utc();
+    let until_at = until.and_hms_opt(0,0,0).unwrap().and_utc();
+    reader.check_window(start_at,until_at)?;
+    let mut report = reader.finance_report(start_at,until_at).await?;
+    report["startDate"] = serde_json::json!(query.start_date);
+    report["endDate"] = serde_json::json!(query.end_date);
+    report["timezone"] = serde_json::json!("UTC");
+    report["currency"] = serde_json::json!("INR");
+    report["locationLabel"] = serde_json::json!(location_label);
+    crate::dto::ok(report)
 }
 
 #[cfg(test)]

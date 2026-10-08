@@ -11,7 +11,7 @@ use crate::{
         TenantDb,
     },
 };
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use chrono::NaiveDate;
 use chrono_tz::Tz;
 use duckdb::params;
 use futures::StreamExt;
@@ -32,19 +32,7 @@ fn failure(message: &str) -> AppError {
 fn literal(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
-pub(crate) fn boundary(date: NaiveDate, zone: Tz) -> Result<DateTime<Utc>, AppError> {
-    let mut naive = date
-        .and_hms_opt(0, 0, 0)
-        .ok_or_else(|| failure("invalid month boundary"))?;
-    // Some zones skip midnight (or an entire local date). Use its first valid instant.
-    for _ in 0..=86400 {
-        if let Some(t) = zone.from_local_datetime(&naive).earliest() {
-            return Ok(t.with_timezone(&Utc));
-        }
-        naive += chrono::Duration::seconds(1);
-    }
-    Err(failure("unresolvable month boundary"))
-}
+pub(crate) use super::calendar::boundary;
 /// Durable AUTOINCREMENT watermark survives publisher cleanup of every retained row.
 pub async fn source_watermark(db: &TenantDb) -> Result<i64, AppError> {
     db.ensure_current_owner()?;
@@ -481,6 +469,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{DateTime,Utc};
     #[test]
     fn month_boundary_handles_second_offsets_and_skipped_local_dates() {
         assert_eq!(

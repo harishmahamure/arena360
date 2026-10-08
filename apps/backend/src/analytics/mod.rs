@@ -22,3 +22,10 @@ pub mod rebuild;
 
 #[cfg(feature = "duckdb-analytics")]
 pub mod retention;
+
+#[cfg(feature = "duckdb-analytics")]
+pub mod registry;
+
+#[cfg_attr(not(feature = "duckdb-analytics"), path = "report_reader_disabled.rs")]
+pub mod report_reader;
+pub mod calendar;

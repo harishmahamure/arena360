@@ -16,12 +16,14 @@ const MIGRATIONS: &[(i64, &str)] = &[
         2,
         include_str!("../../migrations/analytics/0002_rebuild_replay_floor.sql"),
     ),
+    (3, include_str!("../../migrations/analytics/0003_report_transaction_created_at.sql")),
 ];
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 pub struct TenantAnalytics {
     db: Arc<TenantDb>,
     connection: Mutex<Option<Connection>>,
+    closed: std::sync::atomic::AtomicBool,
     pub(crate) rebuild_lock: tokio::sync::Mutex<()>,
     _rebuild_files: Option<Arc<super::rebuild::RebuildFiles>>,
     path: PathBuf,
@@ -46,29 +48,20 @@ impl TenantAnalytics {
         blocking(move || {
             db.ensure_current_owner()?;
             let path = db.path().with_file_name("analytics.duckdb");
-            let existing = path.exists();
             let config = duckdb::Config::default()
                 .threads(1)
                 .map_err(error)?
                 .max_memory("128MB")
                 .map_err(error)?;
             let mut connection = Connection::open_with_flags(&path, config).map_err(error)?;
-            if existing && require_latest {
-                let version: Option<i64> = connection
-                    .query_row("SELECT max(version) FROM _schema_migrations", [], |r| {
-                        r.get(0)
-                    })
-                    .map_err(error)?;
-                if version.unwrap_or(0) < SCHEMA_VERSION {
-                    return Err(AppError::Internal(
-                        "Analytics schema requires rebuild".into(),
-                    ));
-                }
-            }
+            // Validated embedded migrations preserve sealed monthly rows. Changed
+            // history/corruption is quarantined; a known upgrade sets REBUILDING
+            // before any reader or consumer can use facts in the old projection.
             migrate_with_policy(&mut connection, &db, &timezone, Utc::now(), require_latest)?;
             Ok(Arc::new(Self {
                 db,
                 connection: Mutex::new(Some(connection)),
+                closed: std::sync::atomic::AtomicBool::new(false),
                 rebuild_lock: tokio::sync::Mutex::new(()),
                 _rebuild_files: None,
                 path,
@@ -129,6 +122,7 @@ impl TenantAnalytics {
             Ok(Arc::new(Self {
                 db,
                 connection: Mutex::new(Some(connection)),
+                closed: std::sync::atomic::AtomicBool::new(false),
                 path,
                 rebuild_lock: tokio::sync::Mutex::new(()),
                 _rebuild_files: Some(files),
@@ -201,6 +195,21 @@ impl TenantAnalytics {
     pub fn path(&self) -> &std::path::Path {
         &self.path
     }
+    /// Drop the connection under the same lock used by reads, writes and installs.
+    /// No ownership check: fencing must still allow resource cleanup.
+    pub(crate) async fn close(self: &Arc<Self>) -> Result<(), AppError> {
+        self.closed.store(true, std::sync::atomic::Ordering::Release);
+        let this = self.clone();
+        blocking(move || {
+            let mut connection = this.connection.lock()
+                .map_err(|_| AppError::Internal("Analytics connection lock poisoned".into()))?;
+            drop(connection.take());
+            Ok(())
+        }).await
+    }
+    pub(crate) fn is_closed(&self) -> bool {
+        self.closed.load(std::sync::atomic::Ordering::Acquire)
+    }
     /// Changed calendars cannot serve facts or accept events until the shadow rebuild.
     /// Keep the stored timezone until replacement so old labels are never relabelled in place.
     pub async fn ensure_timezone(self: &Arc<Self>) -> Result<bool, AppError> {
@@ -239,6 +248,9 @@ impl TenantAnalytics {
                 .connection
                 .lock()
                 .map_err(|_| AppError::Internal("Analytics connection lock poisoned".into()))?;
+            if this.is_closed() {
+                return Err(AppError::Internal("Analytics connection closed".into()));
+            }
             let tx = connection
                 .as_mut()
                 .ok_or_else(|| {
@@ -249,6 +261,9 @@ impl TenantAnalytics {
             let value = operation(&tx)?;
             tx.rollback().map_err(error)?;
             this.db.ensure_current_owner()?;
+            if this.is_closed() {
+                return Err(AppError::Internal("Analytics connection closed".into()));
+            }
             Ok(value)
         })
         .await
@@ -265,6 +280,9 @@ impl TenantAnalytics {
                 .connection
                 .lock()
                 .map_err(|_| AppError::Internal("Analytics connection lock poisoned".into()))?;
+            if this.is_closed() {
+                return Err(AppError::Internal("Analytics connection closed".into()));
+            }
             let tx = connection
                 .as_mut()
                 .ok_or_else(|| {
@@ -274,6 +292,9 @@ impl TenantAnalytics {
                 .map_err(error)?;
             let value = operation(&tx)?;
             this.db.ensure_current_owner()?;
+            if this.is_closed() {
+                return Err(AppError::Internal("Analytics connection closed".into()));
+            }
             tx.commit().map_err(error)?;
             Ok(value)
         })

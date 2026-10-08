@@ -280,7 +280,8 @@ async fn apply_batch_inner(analytics: Arc<TenantAnalytics>, mut events: Vec<Tena
    }
    if event.sequence!=last+1 {tx.execute("UPDATE _ingest_state SET status='LAGGING',updated_at=CAST(? AS TIMESTAMP) WHERE id=1",params![crate::time::format_sqlite_timestamp(&chrono::Utc::now()).map_err(|_|invalid("checkpoint timestamp"))?]).map_err(error)?;return Ok(BatchOutcome::Gap{expected:last+1,received:event.sequence});}
    let Some(snapshot)=&event.analytics_snapshot else {tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'").map_err(error)?;return Ok(BatchOutcome::RebuildRequired);};
-   if snapshot.version!=1{return Err(invalid("unsupported projection version"));}
+   if snapshot.version<crate::tenancy::analytics_snapshot::SNAPSHOT_VERSION {tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'").map_err(error)?;return Ok(BatchOutcome::RebuildRequired);}
+   if snapshot.version!=crate::tenancy::analytics_snapshot::SNAPSHOT_VERSION{return Err(invalid("unsupported projection version"));}
    for change in &snapshot.changes {changes.insert((change.table.clone(),change.key_column.clone(),change.key.clone()),(event.sequence,change.clone()));}
    last=event.sequence;previous=Some((last,event.event_id.clone()));
   }
@@ -490,6 +491,7 @@ pub fn spawn(
     manager: Arc<TenantDbManager>,
     metrics: Arc<Metrics>,
     url: String,
+    registry: Arc<super::registry::AnalyticsRegistry>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut context = None;
@@ -538,9 +540,12 @@ pub fn spawn(
                 let metrics = metrics.clone();
                 let id = db.tenant_id();
                 let generation = db.ownership_generation();
+                let registry = registry.clone();
                 let worker = tokio::spawn(async move {
+                    let mut opened = None;
                     let result = async {
-                        let analytics = TenantAnalytics::open_for_ingestion(db.clone()).await?;
+                        let analytics = registry.get(db.clone()).await?;
+                        opened = Some(analytics.clone());
                         let mut consumer =
                             JetStreamConsumer::connect(&context, db.clone(), analytics).await?;
                         let mut retention_due=chrono::Utc::now();
@@ -588,6 +593,11 @@ pub fn spawn(
                     }
                     .await;
                     if let Err(error) = result {
+                        if let Some(handle) = opened {
+                            if let Err(close_error) = registry.invalidate(&handle).await {
+                                tracing::warn!(tenant=%id,%close_error,"Analytics connection cleanup failed");
+                            }
+                        }
                         metrics.analytics_failed();
                         tracing::warn!(tenant=%id,%error,"Analytics worker closed");
                     }

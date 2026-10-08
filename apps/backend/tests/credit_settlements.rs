@@ -1,4 +1,4 @@
-//! Settlement service reads use isolated tenant SQLite; report projections use ClickHouse.
+//! Settlement service reads use isolated tenant SQLite; report projections use tenant DuckDB.
 mod support;
 use gaming_cafe_api::{models::CreditSettlementFilterDto, services::CreditService};
 use support::TenantFixture;
@@ -38,12 +38,13 @@ async fn get_settlement_returns_not_found_for_missing_id() {
 }
 
 #[tokio::test]
-#[ignore = "requires ClickHouse reporting projections"]
+#[cfg(feature = "duckdb-analytics")]
 async fn revenue_stats_includes_settlement_collections_for_period() {
-    let stats = gaming_cafe_api::services::StatsService::new(
-        gaming_cafe_api::analytics::ClickHouse::from_env(),
-        std::sync::Arc::new(gaming_cafe_api::cache::NoopCache),
-    );
+    let f=TenantFixture::new().await;
+    let analytics=gaming_cafe_api::analytics::tenant_db::TenantAnalytics::open(f.db.clone()).await.unwrap();
+    analytics.write(|tx| {tx.execute_batch("UPDATE _ingest_state SET status='READY'").map_err(gaming_cafe_api::analytics::tenant_db::error)?;Ok(())}).await.unwrap();
+    let reader=gaming_cafe_api::analytics::report_reader::ReportReader::new(analytics.clone()).await.unwrap();
+    let stats = gaming_cafe_api::services::StatsService::new(reader,std::sync::Arc::new(gaming_cafe_api::cache::NoopCache));
 
     let now = chrono::Utc::now();
     let start = now - chrono::Duration::days(30);
@@ -86,4 +87,5 @@ async fn revenue_stats_includes_settlement_collections_for_period() {
         current.total,
         current.plan + current.merchandise
     );
+    drop((stats,analytics));f.close().await;
 }

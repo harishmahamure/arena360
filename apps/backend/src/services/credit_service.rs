@@ -41,10 +41,8 @@ impl CreditService {
         TenantCreditRepository::new(db).list_players(&filters).await
     }
 
-    pub async fn portfolio_summary(&self) -> Result<CreditPortfolioSummary, AppError> {
-        crate::analytics::ClickHouse::from_env()
-            .get_portfolio_summary()
-            .await
+    pub async fn portfolio_summary(&self, reader: &crate::analytics::report_reader::ReportReader) -> Result<CreditPortfolioSummary, AppError> {
+        reader.get_portfolio_summary().await
     }
 
     pub async fn list_settlements_tenant(

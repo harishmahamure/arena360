@@ -97,17 +97,14 @@ pub async fn report_scope_tenant(
     headers: &axum::http::HeaderMap,
     requested: Option<Uuid>,
     permission: &str,
-) -> Result<crate::analytics::scope::ReportScope, AppError> {
+) -> Result<Option<Vec<Uuid>>, AppError> {
     let selected = requested.or(requested_location(headers)?);
     let scope = LocationScope::resolve_tenant(db, claims, permission, selected).await?;
-    Ok(crate::analytics::scope::ReportScope {
-        organization_id: scope.organization_id,
-        locations: if scope.organization_admin && selected.is_none() {
+    Ok(if scope.organization_admin && selected.is_none() {
             None
         } else {
             Some(scope.locations)
-        },
-    })
+        })
 }
 
 /// Staff read by venue grant; player proofs only read that player's history.

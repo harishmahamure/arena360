@@ -51,11 +51,12 @@ fn actor_id(claims: &crate::dto::JwtUserClaims) -> Result<Uuid, AppError> {
 pub async fn overview(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<InventoryOverviewDto> {
-    ok(service(&state, &claims, "inventory:read")
-        .await?
-        .overview()
-        .await?)
+    let db=state.business_db(&claims).await?;
+    let locations=crate::access::scope::report_scope_tenant(db.clone(),&claims,&headers,None,"inventory:read").await?;
+    let reader=state.report_reader(db,locations).await?;
+    ok(reader.overview().await?)
 }
 
 #[utoipa::path(get, operation_id = "inventory_list_movements", path = "/inventory/movements", params(StockMovementFilterDto), responses((status = 200, body = StockMovementPaginationEnvelope), (status = 401, body = ErrorEnvelope)), security(("bearer_auth" = [])), tag = "procurement")]

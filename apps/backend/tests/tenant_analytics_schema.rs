@@ -135,7 +135,7 @@ async fn newer_schema_and_timezone_drift_fail_without_rewriting_state() {
     let analytics = TenantAnalytics::open(f.db.clone()).await.unwrap();
     analytics
         .write(|c| {
-            c.execute_batch("INSERT INTO _schema_migrations VALUES(3,'unknown',CURRENT_TIMESTAMP)")
+            c.execute_batch("INSERT INTO _schema_migrations VALUES(4,'unknown',CURRENT_TIMESTAMP)")
                 .map_err(error)?;
             Ok(())
         })
@@ -145,7 +145,7 @@ async fn newer_schema_and_timezone_drift_fail_without_rewriting_state() {
     assert!(TenantAnalytics::open(f.db.clone()).await.is_err());
     let path = f.db.path().with_file_name("analytics.duckdb");
     let c = duckdb::Connection::open(&path).unwrap();
-    c.execute_batch("DELETE FROM _schema_migrations WHERE version=3; UPDATE _ingest_state SET timezone='America/New_York'").unwrap();
+    c.execute_batch("DELETE FROM _schema_migrations WHERE version=4; UPDATE _ingest_state SET timezone='America/New_York'").unwrap();
     drop(c);
     assert!(TenantAnalytics::open(f.db.clone()).await.is_err());
     let c = duckdb::Connection::open(path).unwrap();
@@ -227,8 +227,28 @@ async fn v1_upgrade_preserves_facts_and_checkpoint_but_requires_a_rebuild() {
         c.query_row("SELECT count(*) FROM _schema_migrations", [], |r| r
             .get::<_, i64>(0))
             .unwrap(),
-        2
+        SCHEMA_VERSION
     );
     drop(c);
+    f.close().await;
+}
+
+#[tokio::test]
+async fn opening_v2_preserves_sealed_months_for_the_required_rebuild() {
+    use sha2::{Digest, Sha256};
+    let f = TenantFixture::new().await;
+    let c = duckdb::Connection::open(f.db.path().with_file_name("analytics.duckdb")).unwrap();
+    c.execute_batch("CREATE TABLE _schema_migrations(version INTEGER PRIMARY KEY,checksum VARCHAR NOT NULL,applied_at TIMESTAMP NOT NULL)").unwrap();
+    for (version, ddl) in [(1, include_str!("../migrations/analytics/0001_initial.sql")), (2, include_str!("../migrations/analytics/0002_rebuild_replay_floor.sql"))] {
+        c.execute_batch(ddl).unwrap();
+        c.execute("INSERT INTO _schema_migrations VALUES(?,?,current_timestamp)",duckdb::params![version,hex::encode(Sha256::digest(ddl.as_bytes()))]).unwrap();
+    }
+    c.execute("INSERT INTO _ingest_state(id,schema_version,status,last_sequence,hot_window_start,timezone,updated_at) VALUES(1,2,'READY',42,DATE '2025-04-01','UTC',current_timestamp)",[]).unwrap();
+    c.execute("INSERT INTO monthly_summary VALUES(DATE '2024-01-01',?,12.3456,10,2.3456,3,4,5,6)",duckdb::params![uuid::Uuid::new_v4().to_string()]).unwrap();
+    drop(c);
+    let a = TenantAnalytics::open(f.db.clone()).await.unwrap();
+    let result = a.read(|tx| tx.query_row("SELECT status,CAST(last_sequence AS BIGINT),(SELECT CAST(revenue AS VARCHAR) FROM monthly_summary) FROM _ingest_state",[],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?))).map_err(error)).await.unwrap();
+    assert_eq!(result,("REBUILDING".into(),42,"12.3456".into()));
+    drop(a);
     f.close().await;
 }

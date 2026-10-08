@@ -249,14 +249,18 @@ M4 verified (2026-10-07): `cargo test` passes, with database and external-servic
 
 **Goal:** every report reads from DuckDB and matches today's output, and ClickHouse is gone.
 
-- [ ] API-0043: Rewrite the report queries for DuckDB:
+- [x] API-0043: Rewrite the report queries for DuckDB:
   - `analytics/business.rs`;
   - `analytics/reports.rs`;
   - `services/stats_service.rs`;
   - the finance report.
 
   Replace `ReportScope` with location predicates and return `report temporarily rebuilding` when the tenant isn't `READY` (§36). Replace the hard-coded IST offset (`FixedOffset::east_opt(19_800)`) with the tenant's time zone. — L
-- [ ] TEST-0030: Report parity against the M0 golden fixtures, plus the test cases listed in the schema doc. — M
+  - Completed: shared fenced native readers, physical tenant isolation, current venue grants and child predicates, exact decimal decoding, schema v3 creation timestamps, snapshot v2 compatibility, calendar-aware windows, cache readiness/retention guards and all fourteen report routes.
+  - Verification: 31 unchanged M0 golden cases pass with the documented clock/timestamp/tie normalization; native registry/reader and migration/consumer checks pass. HTTP tests cover all fourteen routes in unready, READY and revoked-access states. The overview and all eleven business analytics pages loaded successfully on a fresh operational v2 demo, whose 2,348 source events drained into DuckDB.
+- [x] TEST-0030: Report parity against the M0 golden fixtures, plus the test cases listed in the schema doc. — M
+  - Completed: all 31 immutable M0 reports, native business/settlement/location cases, reader/registry isolation and readiness, canonical timestamps, schema upgrade preservation and the M6 delivery/rebuild/retention cases.
+  - Verification: the normal regression run and final focused fixes pass across the recorded runs; all nine disposable control-backed checks and six live JetStream checks pass. The operational v2 seed matches all 27 source projections (1,419 rows), exact money columns and 486,000 occupied seconds. Thirteen admin analytics tests pass; actual browser checks cover the overview and all eleven analytics pages.
 - [ ] OPS-0021: Remove ClickHouse entirely: client, `schema.sql`, `schema.json`, the old worker binary, the Compose service, environment variables, tests, and the `docs/architecture/analytics.md` content. — S
 
 **Done when:** every report matches its golden fixture; the admin analytics pages work on the demo seed; nothing in the repository references ClickHouse.

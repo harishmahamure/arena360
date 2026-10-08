@@ -60,7 +60,7 @@
 
 ## Current task
 
-- [ ] `API-0043` — Rewrite tenant report queries and serving paths for DuckDB.
+- [ ] `OPS-0021` — Remove the retired reporting pipeline and its setup/documentation.
 
 ### API-0033 completed
 

@@ -72,6 +72,7 @@ pub async fn list_credit_accounts(
 pub async fn credit_summary(
     AdminOrStaff(claims): AdminOrStaff,
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> ApiResult<CreditPortfolioSummary> {
     let db = state.business_db(&claims).await?;
     let actor = claims
@@ -80,12 +81,9 @@ pub async fn credit_summary(
     TenantSettingsRepository::new(db.clone())
         .ensure_access(db.tenant_id(), actor, "credit:read")
         .await?;
-    let _db = state.business_db(&claims).await?;
-    Err(AppError::Api {
-        code: "ANALYTICS_UNAVAILABLE".into(),
-        status: axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        details: None,
-    })
+    let locations = crate::access::scope::report_scope_tenant(db.clone(),&claims,&headers,None,"credit:read").await?;
+    let reader=state.report_reader(db,locations).await?;
+    ok(state.credit.portfolio_summary(&reader).await?)
 }
 
 #[utoipa::path(

@@ -272,7 +272,7 @@ async fn ingestion_rebuilds_changed_schema_history_but_preserves_newer_binary_fi
         .unwrap();
     a.write(|tx| {
         tx.execute_batch(
-            "INSERT INTO _schema_migrations VALUES(3,'newer-definition',current_timestamp)",
+            "INSERT INTO _schema_migrations VALUES(4,'newer-definition',current_timestamp)",
         )
         .map_err(error)?;
         Ok(())
@@ -288,7 +288,7 @@ async fn ingestion_rebuilds_changed_schema_history_but_preserves_newer_binary_fi
         c.query_row("SELECT max(version) FROM _schema_migrations", [], |r| r
             .get::<_, i64>(0))
             .unwrap(),
-        3
+        4
     );
     drop(c);
     f.close().await;

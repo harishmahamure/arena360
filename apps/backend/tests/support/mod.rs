@@ -5,6 +5,8 @@ use gaming_cafe_api::{
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
+#[cfg(feature = "duckdb-analytics")]
+pub mod reports;
 
 struct Lease(Uuid, std::sync::atomic::AtomicBool);
 impl TenantLease for Lease {
