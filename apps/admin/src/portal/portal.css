@@ -18,7 +18,8 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 button {
@@ -53,7 +54,8 @@ button.full {
   padding: 14px;
 }
 input,
-select {
+select,
+textarea {
   border: 1px solid #dce3ed;
   border-radius: 8px;
   padding: 12px;
@@ -63,6 +65,7 @@ select {
 }
 input:focus,
 select:focus,
+textarea:focus,
 button:focus-visible {
   outline: 3px solid #93c5fd;
   outline-offset: 2px;
@@ -74,10 +77,27 @@ label {
   margin: 18px 0 8px;
 }
 label input,
-label select {
+label select,
+label textarea {
   display: block;
   width: 100%;
   margin-top: 8px;
+}
+label textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+.totp-setup {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  text-align: center;
+}
+.totp-setup code {
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 .eyebrow {
   font-size: 10px;

@@ -1070,6 +1070,7 @@ async fn cell_loss_recovery_reassigns_restores_activates_then_retries_analytics(
     let (root,db,_)=database().await;let tenant=db.tenant_id();let old=Uuid::new_v4();let target=Uuid::new_v4();
     for cell in [old,target] {sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)").bind(cell).bind(format!("recovery-{cell}")).bind(format!("http://{cell}.invalid")).execute(&pool).await.unwrap();}
     sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Cell loss','UTC',$3,1,'ACTIVE')").bind(tenant).bind(format!("cell-loss-{tenant}")).bind(old).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO subscriptions(tenant_id,plan_code,status,starts_at,ends_at) VALUES($1,'trial','TRIAL',NOW(),NOW()+INTERVAL '30 days')").bind(tenant).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO tenant_leases(tenant_id,owner_cell,ownership_generation,expires_at) VALUES($1,$2,1,NOW()+INTERVAL '5 minutes')").bind(tenant).bind(old).execute(&pool).await.unwrap();
     let ledger=Arc::new(PostgresLedger{pool:pool.clone(),cell_id:old});
     let keys=TenantKeys::new(root.join("separate-secrets"));wal::durable_create(&keys.path(tenant),&[42u8;32]).unwrap();

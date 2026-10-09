@@ -7,6 +7,7 @@ const tenant = {
   name: 'Northside Gaming',
   slug: 'northside',
   state: 'ACTIVE',
+  is_enabled: true,
   timezone: 'UTC',
   owner_cell: 'c1',
   cell_name: 'Local cell',
@@ -22,15 +23,24 @@ const overview = {
   canProvision: true,
   targetSchemaVersion: 17,
 };
-function mockApi(fail = false) {
+function mockApi(fail = false, firstLogin = false) {
   const fetch = vi.fn(async (url: string, options?: RequestInit) => {
     if (fail)
-      return new Response(JSON.stringify({ message: 'Invalid platform operator token' }), {
+      return new Response(JSON.stringify({ message: 'Invalid credentials' }), {
         status: 401,
       });
     const path = url.split('?')[0] ?? '';
     let data: unknown = {};
-    if (path.endsWith('/overview')) data = overview;
+    if (path.endsWith('/auth/login')) data = { challenge: 'challenge', setupRequired: firstLogin };
+    else if (path.endsWith('/auth/totp/setup'))
+      data = {
+        secret: 'TESTSECRET',
+        otpauthUri: 'otpauth://totp/Arena:operator?secret=TESTSECRET',
+      };
+    else if (path.endsWith('/auth/totp/verify')) data = { token: 'session' };
+    else if (path.endsWith('/overview')) data = overview;
+    else if (path.endsWith('/plans'))
+      data = [{ code: 'trial', name: 'Trial', graceDays: 7, entitlements: {}, isActive: true }];
     else if (path.endsWith('/cells'))
       data = [
         {
@@ -44,7 +54,8 @@ function mockApi(fail = false) {
       ];
     else if (path.endsWith('/tenants'))
       data = options?.method === 'POST' ? { id: 't1' } : { items: [tenant] };
-    else if (path.endsWith('/tenants/t1')) data = { tenant, admins: [], licenses: [], jobs: [] };
+    else if (path.endsWith('/tenants/t1'))
+      data = { tenant, admins: [], licenses: [], jobs: [], subscription: null };
     return new Response(JSON.stringify(data), { status: 200 });
   });
   vi.stubGlobal('fetch', fetch);
@@ -55,23 +66,39 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 async function login() {
-  fireEvent.change(screen.getByLabelText('Operator token'), {
-    target: { value: 'operator-secret' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: /Connect to platform/ }));
+  fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'operator' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'operator-secret' } });
+  fireEvent.click(screen.getByRole('button', { name: /Continue/ }));
+  await screen.findByLabelText('Authentication code');
+  fireEvent.change(screen.getByLabelText('Authentication code'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: /Verify and continue/ }));
   await screen.findByText('Tenant directory');
   await screen.findByText('Northside Gaming');
 }
 describe('tenant management portal', () => {
+  it('requires TOTP enrollment on first login before showing management', async () => {
+    const fetch = mockApi(false, true);
+    render(<Portal />);
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'operator' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password' } });
+    fireEvent.click(screen.getByRole('button', { name: /Continue/ }));
+    await screen.findByText(/TESTSECRET/);
+    expect(screen.queryByText('Tenant directory')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Authentication code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /Verify and continue/ }));
+    await screen.findByText('Tenant directory');
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/auth/totp/setup'))).toBe(true);
+  });
   it('requires successful operator authentication and displays connection failures', async () => {
     mockApi(true);
     render(<Portal />);
-    fireEvent.change(screen.getByLabelText('Operator token'), { target: { value: 'bad' } });
-    fireEvent.click(screen.getByRole('button', { name: /Connect to platform/ }));
-    expect((await screen.findByRole('alert')).textContent).toContain('Invalid platform');
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'operator' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'bad' } });
+    fireEvent.click(screen.getByRole('button', { name: /Continue/ }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Invalid credentials');
     expect(screen.queryByText('Tenant directory')).toBeNull();
   });
-  it('uses operator bearer authentication, creates a tenant and offers administrator setup', async () => {
+  it('uses operator session authentication, creates a tenant and offers administrator setup', async () => {
     const fetch = mockApi();
     render(<Portal />);
     await login();
@@ -96,13 +123,15 @@ describe('tenant management portal', () => {
     await screen.findByRole('button', { name: '+ Create administrator' });
     expect(
       fetch.mock.calls.every(
-        ([, options]) =>
-          (options?.headers as Record<string, string>).Authorization === 'Bearer operator-secret',
+        ([url, options]) =>
+          url.endsWith('/auth/login') ||
+          url.endsWith('/auth/totp/verify') ||
+          (options?.headers as Record<string, string>).Authorization === 'Bearer session',
       ),
     ).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Close tenant details' }));
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect ↗' }));
-    await screen.findByLabelText('Operator token');
+    await screen.findByLabelText('Username');
   });
   it('shows real cell readiness separately from registration', async () => {
     mockApi();

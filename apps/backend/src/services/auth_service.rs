@@ -623,7 +623,7 @@ impl AuthService {
     /// the selected tenant. Refresh and handover keep this tenant selected.
     pub async fn issue_tenant_auth_response(&self, db: Arc<crate::tenancy::TenantDb>, user_id: Uuid) -> Result<AuthResponseDto, AppError> {
         let pool = self.control_pool.as_ref().ok_or_else(|| AppError::Api { code:"CONTROL_AUTH_UNAVAILABLE".into(),status:axum::http::StatusCode::SERVICE_UNAVAILABLE,details:None })?;
-        let memberships: Vec<(Uuid,String)> = sqlx::query_as("SELECT m.tenant_id,m.role FROM organization_memberships m JOIN users u ON u.id=m.user_id JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=$1 AND m.is_active AND u.is_active AND u.deleted_at IS NULL AND t.state NOT IN('DELETED','FAILED') ORDER BY m.created_at,m.tenant_id")
+        let memberships: Vec<(Uuid,String)> = sqlx::query_as("SELECT m.tenant_id,m.role FROM organization_memberships m JOIN users u ON u.id=m.user_id JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=$1 AND m.is_active AND u.is_active AND u.deleted_at IS NULL AND t.is_enabled AND EXISTS(SELECT 1 FROM subscriptions s WHERE s.tenant_id=t.id AND s.status IN ('TRIAL','ACTIVE') AND s.ends_at>clock_timestamp()) AND t.state NOT IN('DELETED','FAILED') ORDER BY m.created_at,m.tenant_id")
             .bind(user_id).fetch_all(pool).await?;
         let role = memberships.iter().find(|m| m.0 == db.tenant_id()).map(|m| m.1.clone())
             .ok_or_else(|| AppError::Forbidden("Active membership required in the selected tenant".into()))?;

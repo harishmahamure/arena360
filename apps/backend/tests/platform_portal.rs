@@ -19,7 +19,6 @@ async fn operator_api_provisions_and_manages_tenants_without_tenant_auth_or_rout
     gaming_cafe_api::control::migrate(&pool).await.unwrap();
     let cell = Uuid::new_v4();
     let root = std::env::temp_dir().join(format!("arena-portal-{cell}"));
-    let token = "portal-integration-operator-secret-at-least-32-chars";
     let leases = Arc::new(LeaseClient::new(pool.clone(), cell, LeaseConfig::default()).unwrap());
     let provisioner = Arc::new(TenantProvisioner::new(
         root.clone(),
@@ -32,7 +31,6 @@ async fn operator_api_provisions_and_manages_tenants_without_tenant_auth_or_rout
         pool: Some(pool.clone()),
         provisioner: Some(provisioner),
         cell: Some(cell),
-        token: Some(token.into()),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}/platform", listener.local_addr().unwrap());
@@ -66,6 +64,30 @@ async fn operator_api_provisions_and_manages_tenants_without_tenant_auth_or_rout
             .status(),
         401
     );
+    let operator = format!("operator-{cell}");
+    let password = "portal-test-password-123";
+    let hash = bcrypt::hash(password,bcrypt::DEFAULT_COST).unwrap();
+    sqlx::query("INSERT INTO platform_operators(username,password_hash) VALUES($1,$2)")
+        .bind(&operator).bind(hash).execute(&pool).await.unwrap();
+    let login:Value=client.post(format!("{base}/auth/login")).json(&json!({"username":operator,"password":password}))
+        .send().await.unwrap().json().await.unwrap();
+    assert_eq!(login["setupRequired"],true);
+    let challenge=login["challenge"].as_str().unwrap();
+    assert_eq!(client.get(format!("{base}/overview")).bearer_auth(challenge).send().await.unwrap().status(),401);
+    let setup_response=client.post(format!("{base}/auth/totp/setup")).bearer_auth(challenge)
+        .send().await.unwrap();
+    let setup_status=setup_response.status();
+    let setup_body=setup_response.text().await.unwrap();
+    assert_eq!(setup_status,200,"{setup_body}");
+    let setup:Value=serde_json::from_str(&setup_body).unwrap();
+    let secret=setup["secret"].as_str().unwrap();
+    let totp=totp_rs::TOTP::new(totp_rs::Algorithm::SHA1,6,1,30,
+        totp_rs::Secret::Encoded(secret.to_owned()).to_bytes().unwrap(),
+        Some("GameZone".into()),format!("platform-{operator}")).unwrap();
+    let code=totp.generate_current().unwrap();
+    let session:Value=client.post(format!("{base}/auth/totp/verify")).bearer_auth(challenge)
+        .json(&json!({"code":code})).send().await.unwrap().json().await.unwrap();
+    let token=session["token"].as_str().unwrap();
     let response=client.post(format!("{base}/cells")).bearer_auth(token).json(&json!({"id":cell,"name":format!("portal-{cell}"),"address":format!("http://{cell}.invalid")})).send().await.unwrap();
     assert_eq!(response.status(), 201);
     let slug = format!("portal-{cell}");
@@ -98,6 +120,19 @@ async fn operator_api_provisions_and_manages_tenants_without_tenant_auth_or_rout
         201
     );
     let id = tenant.id;
+    let expiry = chrono::Utc::now()+chrono::Duration::days(45);
+    assert_eq!(client.post(format!("{base}/plans")).bearer_auth(token)
+        .json(&json!({"code":"pro","name":"Pro","entitlements":{"maxDevices":24},"graceDays":7,"isActive":true}))
+        .send().await.unwrap().status(),201);
+    assert_eq!(client.put(format!("{base}/tenants/{id}/subscription")).bearer_auth(token)
+        .json(&json!({"planCode":"pro","endsAt":expiry}))
+        .send().await.unwrap().status(),200);
+    assert_eq!(client.put(format!("{base}/tenants/{id}/enabled")).bearer_auth(token)
+        .json(&json!({"enabled":false})).send().await.unwrap().status(),200);
+    let enabled:bool=sqlx::query_scalar("SELECT is_enabled FROM tenants WHERE id=$1").bind(id).fetch_one(&pool).await.unwrap();
+    assert!(!enabled);
+    assert_eq!(client.put(format!("{base}/tenants/{id}/enabled")).bearer_auth(token)
+        .json(&json!({"enabled":true})).send().await.unwrap().status(),200);
     let response = client
         .get(format!("{base}/tenants?search={id}"))
         .bearer_auth(token)
@@ -244,6 +279,8 @@ async fn operator_api_provisions_and_manages_tenants_without_tenant_auth_or_rout
             .status(),
         200
     );
+    assert_eq!(client.post(format!("{base}/auth/logout")).bearer_auth(token).send().await.unwrap().status(),204);
+    assert_eq!(client.get(format!("{base}/overview")).bearer_auth(token).send().await.unwrap().status(),401);
     server.abort();
     let _ = server.await;
     pool.close().await;

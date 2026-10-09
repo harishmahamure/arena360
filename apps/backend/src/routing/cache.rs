@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use chrono::{DateTime, Utc};
 
 use serde::Serialize;
 use sqlx::postgres::PgListener;
@@ -21,6 +22,7 @@ pub struct RoutingTarget {
     pub ownership_generation: i64,
     pub schema_version: i64,
     pub timezone: String,
+    pub subscription_ends_at: DateTime<Utc>,
 }
 
 #[derive(Clone)]
@@ -31,6 +33,7 @@ pub struct RoutingCache {
 }
 
 impl RoutingCache {
+    pub(crate) fn pool(&self) -> &PgPool { &self.pool }
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
@@ -47,10 +50,13 @@ impl RoutingCache {
                       cell.address,
                       tenant.ownership_generation,
                       tenant.schema_version,
-                      tenant.timezone
+                      tenant.timezone,
+                      (SELECT s.ends_at FROM subscriptions s WHERE s.tenant_id=tenant.id AND s.status IN ('TRIAL','ACTIVE') ORDER BY s.created_at DESC LIMIT 1) AS subscription_ends_at
                FROM tenants tenant
                JOIN cells cell ON cell.id = tenant.owner_cell
-               WHERE tenant.state NOT IN ('PROVISIONING', 'DELETED', 'FAILED', 'COLD', 'RESTORING')
+               WHERE tenant.is_enabled
+                 AND EXISTS(SELECT 1 FROM subscriptions s WHERE s.tenant_id=tenant.id AND s.status IN ('TRIAL','ACTIVE') AND s.ends_at>clock_timestamp())
+                 AND tenant.state NOT IN ('PROVISIONING', 'DELETED', 'FAILED', 'COLD', 'RESTORING')
                  AND cell.state <> 'OFFLINE'"#,
         )
         .fetch_all(&self.pool)
@@ -65,7 +71,7 @@ impl RoutingCache {
 
     pub async fn resolve(&self, tenant_id: Uuid) -> Result<Option<RoutingTarget>, AppError> {
         if let Some(entry) = self.entries.read().await.get(&tenant_id).cloned() {
-            return Ok(Some(entry));
+            if entry.subscription_ends_at > Utc::now() { return Ok(Some(entry)); }
         }
         self.refresh_tenant(tenant_id).await
     }
@@ -78,10 +84,13 @@ impl RoutingCache {
                       cell.address,
                       tenant.ownership_generation,
                       tenant.schema_version,
-                      tenant.timezone
+                      tenant.timezone,
+                      (SELECT s.ends_at FROM subscriptions s WHERE s.tenant_id=tenant.id AND s.status IN ('TRIAL','ACTIVE') ORDER BY s.created_at DESC LIMIT 1) AS subscription_ends_at
                FROM tenants tenant
                JOIN cells cell ON cell.id = tenant.owner_cell
                WHERE tenant.id = $1
+                 AND tenant.is_enabled
+                 AND EXISTS(SELECT 1 FROM subscriptions s WHERE s.tenant_id=tenant.id AND s.status IN ('TRIAL','ACTIVE') AND s.ends_at>clock_timestamp())
                  AND tenant.state NOT IN ('PROVISIONING', 'DELETED', 'FAILED', 'COLD', 'RESTORING')
                  AND cell.state <> 'OFFLINE'"#,
         )

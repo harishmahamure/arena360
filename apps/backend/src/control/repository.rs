@@ -197,7 +197,7 @@ impl Repository {
                 r#"SELECT t.timezone, l.revision+t.timezone_revision, l.entitlements, l.valid_until, l.grace_until
                    FROM tenants t
                    JOIN licenses l ON l.tenant_id = t.id
-                   WHERE t.id = $1 AND t.state NOT IN ('DELETED', 'FAILED')
+                   WHERE t.id = $1 AND t.is_enabled AND t.state NOT IN ('DELETED', 'FAILED')
                      AND l.status = 'ACTIVE' AND l.grace_until > NOW()
                    ORDER BY l.revision DESC LIMIT 1"#,
             )

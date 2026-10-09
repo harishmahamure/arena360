@@ -8,9 +8,9 @@ analytics returns `503 ANALYTICS_UNAVAILABLE` with `report temporarily rebuildin
 
 ## Local setup
 
-Start PostgreSQL and optional Redis using Compose. A new Compose database is named
-`arena360_control`. An existing PostgreSQL volume is not reset by changing Compose;
-create a separate empty control database when reusing a local volume.
+Start PostgreSQL and optional Redis using Compose. The `postgres-init` service creates
+`arena360_control` if it is missing, including when reusing an existing PostgreSQL
+volume. It leaves other databases in that volume untouched.
 
 Configure `apps/backend/.env`:
 

@@ -85,6 +85,7 @@ async fn control_identity_and_local_membership_commands_recover_and_preserve_gra
         .execute(&pool)
         .await
         .unwrap();
+    sqlx::query("INSERT INTO subscriptions(tenant_id,plan_code,status,starts_at,ends_at) VALUES($1,'trial','TRIAL',NOW(),NOW()+INTERVAL '30 days')").bind(f.tenant_id).execute(&pool).await.unwrap();
     let cell = Uuid::now_v7();
     sqlx::query("INSERT INTO cells(id,name,address) VALUES($1,$2,$3)")
         .bind(cell)
@@ -191,6 +192,7 @@ async fn control_identity_and_local_membership_commands_recover_and_preserve_gra
         .execute(&pool)
         .await
         .unwrap();
+    sqlx::query("INSERT INTO subscriptions(tenant_id,plan_code,status,starts_at,ends_at) VALUES($1,'trial','TRIAL',NOW(),NOW()+INTERVAL '30 days')").bind(other).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO organization_memberships(tenant_id,user_id,role,created_at) VALUES($1,$2,'admin','2000-01-01')").bind(other).bind(user).execute(&pool).await.unwrap();
     let auth_settings = test_settings();
     let auth = AuthService::new(auth_settings.clone()).with_control_pool(Some(pool.clone()));
@@ -2167,6 +2169,7 @@ async fn staff_kiosk_login_uses_global_credentials_and_local_allowance_with_play
         .unwrap();
     sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Kiosk staff test','UTC',$3,1,'ACTIVE')")
         .bind(f.tenant_id).bind(format!("kiosk-{}",f.tenant_id)).bind(cell).execute(&control).await.unwrap();
+    sqlx::query("INSERT INTO subscriptions(tenant_id,plan_code,status,starts_at,ends_at) VALUES($1,'trial','TRIAL',NOW(),NOW()+INTERVAL '30 days')").bind(f.tenant_id).execute(&control).await.unwrap();
     sqlx::query("INSERT INTO users(id,username,password_hash) VALUES($1,$2,$3)")
         .bind(staff)
         .bind(&username)

@@ -3,6 +3,7 @@ export type Tenant = {
   name: string;
   slug: string;
   state: string;
+  is_enabled: boolean;
   timezone: string;
   owner_cell: string | null;
   cell_name: string | null;
@@ -20,6 +21,13 @@ export type Cell = {
   tenant_count: number;
   hydration_ready: boolean | null;
 };
+export type Plan = {
+  code: string;
+  name: string;
+  entitlements: Record<string, unknown>;
+  graceDays: number;
+  isActive: boolean;
+};
 export type Overview = {
   counts: { total: number; active: number; cold: number; attention: number };
   localCellId: string | null;
@@ -28,6 +36,12 @@ export type Overview = {
 };
 export type Detail = {
   tenant: Tenant;
+  subscription: {
+    planCode: string;
+    status: string;
+    startsAt: string;
+    endsAt: string | null;
+  } | null;
   jobs: {
     id: string;
     kind: string;
@@ -55,7 +69,7 @@ export class PortalClient {
       signal,
       credentials: 'omit',
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -70,5 +84,8 @@ export class PortalClient {
           `Request failed (${response.status})`,
       );
     return data as T;
+  }
+  async auth<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(`/auth${path}`, 'POST', body);
   }
 }

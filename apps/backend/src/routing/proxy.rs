@@ -50,6 +50,11 @@ impl TenantRouter {
     pub async fn remote_address(&self, tenant_id: Uuid) -> Result<Option<String>, AppError> {
         let mut target = self.cache.resolve(tenant_id).await?;
         if target.is_none() {
+            let enabled: Option<bool> = sqlx::query_scalar("SELECT is_enabled AND EXISTS(SELECT 1 FROM subscriptions s WHERE s.tenant_id=tenants.id AND s.status IN ('TRIAL','ACTIVE') AND s.ends_at>clock_timestamp()) FROM tenants WHERE id=$1")
+                .bind(tenant_id).fetch_optional(self.cache.pool()).await?;
+            if enabled != Some(true) {
+                return Err(AppError::Forbidden("Tenant is disabled".into()));
+            }
             if let Some(cold) = &self.cold {
                 cold.wake(tenant_id).await?;
                 target = self.cache.refresh_tenant(tenant_id).await?;

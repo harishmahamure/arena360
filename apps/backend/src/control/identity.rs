@@ -20,7 +20,7 @@ impl IdentityRepository {
         tenant: Uuid,
         username: &str,
     ) -> Result<Option<crate::models::User>, AppError> {
-        Ok(sqlx::query_as("SELECT u.id,u.email,u.username,u.password_hash,u.is_active,u.first_name,u.last_name,u.phone_number,m.role,0::float8 AS credit_limit,NULL::text AS session_otp_id,NULL::text AS session_otp,u.totp_secret,u.totp_enabled,NULL::uuid AS created_by,NULL::uuid AS updated_by,u.created_at,u.updated_at,u.deleted_at,u.avatar_url FROM users u JOIN organization_memberships m ON m.user_id=u.id JOIN tenants t ON t.id=m.tenant_id WHERE m.tenant_id=$1 AND m.role='staff' AND m.is_active AND u.is_active AND u.deleted_at IS NULL AND t.state='ACTIVE' AND lower(u.username)=lower($2)")
+        Ok(sqlx::query_as("SELECT u.id,u.email,u.username,u.password_hash,u.is_active,u.first_name,u.last_name,u.phone_number,m.role,0::float8 AS credit_limit,NULL::text AS session_otp_id,NULL::text AS session_otp,u.totp_secret,u.totp_enabled,NULL::uuid AS created_by,NULL::uuid AS updated_by,u.created_at,u.updated_at,u.deleted_at,u.avatar_url FROM users u JOIN organization_memberships m ON m.user_id=u.id JOIN tenants t ON t.id=m.tenant_id WHERE m.tenant_id=$1 AND m.role='staff' AND m.is_active AND u.is_active AND u.deleted_at IS NULL AND t.is_enabled AND EXISTS(SELECT 1 FROM subscriptions s WHERE s.tenant_id=t.id AND s.status IN ('TRIAL','ACTIVE') AND s.ends_at>clock_timestamp()) AND t.state='ACTIVE' AND lower(u.username)=lower($2)")
             .bind(tenant).bind(username).fetch_optional(&self.pool).await?)
     }
     pub async fn create_disabled_staff(

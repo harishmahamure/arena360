@@ -132,7 +132,8 @@ pub async fn control_panel_session_active(
            FROM users u
            JOIN organization_memberships m ON m.user_id = u.id
            JOIN tenants t ON t.id = m.tenant_id
-             AND t.state NOT IN ('DELETED', 'FAILED')
+             AND t.is_enabled AND t.state NOT IN ('DELETED', 'FAILED')
+             AND EXISTS(SELECT 1 FROM subscriptions s WHERE s.tenant_id=t.id AND s.status IN ('TRIAL','ACTIVE') AND s.ends_at>clock_timestamp())
            WHERE u.id = $1
              AND u.is_active
              AND u.deleted_at IS NULL

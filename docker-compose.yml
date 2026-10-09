@@ -10,10 +10,23 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arena360 -d arena360_control"]
+      test: ["CMD-SHELL", "pg_isready -U arena360 -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  postgres-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: arena360
+    entrypoint:
+      - sh
+      - -ec
+      - >-
+        if [ "$(psql -h postgres -U arena360 -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'arena360_control'")" != 1 ]; then psql -h postgres -U arena360 -d postgres -c 'CREATE DATABASE arena360_control OWNER arena360'; fi
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
@@ -26,8 +39,8 @@ services:
       DEFAULT_POOL_SIZE: "20"
       AUTH_TYPE: scram-sha-256
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
 
   redis:
     image: redis:7-alpine
@@ -76,7 +89,14 @@ services:
 
   object-storage-init:
     image: chrislusf/seaweedfs:4.48
-    entrypoint: ["sh", "-c", "echo 's3.bucket.create -name arena360' | weed shell -master=object-storage:9333"]
+    entrypoint:
+      - sh
+      - -ec
+      - >-
+        buckets=$(echo 's3.bucket.list' | weed shell -master=object-storage:9333);
+        if ! echo "$$buckets" | grep -Eq '^[[:space:]]*arena360[[:space:]]'; then
+          echo 's3.bucket.create -name arena360' | weed shell -master=object-storage:9333;
+        fi
     restart: "no"
     depends_on:
       object-storage:

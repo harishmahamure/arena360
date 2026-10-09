@@ -46,6 +46,7 @@ async fn verified_cold_roundtrip_fences_source_and_handles_concurrent_wake() {
             .unwrap();
     }
     sqlx::query("INSERT INTO tenants(id,slug,name,timezone,owner_cell,ownership_generation,state) VALUES($1,$2,'Move','UTC',$3,1,'ACTIVE')").bind(tenant).bind(format!("move-{tenant}")).bind(old).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO subscriptions(tenant_id,plan_code,status,starts_at,ends_at) VALUES($1,'trial','TRIAL',NOW(),NOW()+INTERVAL '30 days')").bind(tenant).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO tenant_leases(tenant_id,owner_cell,ownership_generation,expires_at) VALUES($1,$2,1,NOW()+INTERVAL '5 minutes')").bind(tenant).bind(old).execute(&pool).await.unwrap();
     let old_root = root.join("old");
     let path = tenant_path(&old_root, tenant);

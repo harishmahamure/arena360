@@ -1,36 +1,94 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type Cell, type Detail, type Overview, PortalClient, type Tenant } from './api';
+import QRCode from 'react-qr-code';
+import { type Cell, type Detail, type Overview, type Plan, PortalClient, type Tenant } from './api';
 
 const date = (value: string | null) => (value ? new Date(value).toLocaleString() : '—');
+const localDateTime = (value: string | null) => {
+  if (!value) return '';
+  const d = new Date(value);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
 const short = (value: string | null) => (value ? value.slice(0, 8) : 'Unassigned');
 function Status({ value }: { value: string }) {
   return (
     <span
-      className={`status ${['ACTIVE', 'READY', 'COMPLETE'].includes(value) ? 'good' : ['FAILED', 'FENCED', 'OFFLINE'].includes(value) ? 'bad' : 'neutral'}`}
+      className={`status ${['ACTIVE', 'READY', 'COMPLETE'].includes(value) ? 'good' : ['FAILED', 'FENCED', 'OFFLINE', 'DISABLED'].includes(value) ? 'bad' : 'neutral'}`}
     >
       <i />
       {value.replaceAll('_', ' ')}
     </span>
   );
 }
-type Modal = 'tenant' | 'cell' | 'admin' | 'timezone' | 'move' | 'cold' | 'wake';
+type Modal =
+  | 'tenant'
+  | 'cell'
+  | 'admin'
+  | 'timezone'
+  | 'move'
+  | 'cold'
+  | 'wake'
+  | 'subscription'
+  | 'plan';
 export default function Portal() {
   const [token, setToken] = useState('');
+  const [challenge, setChallenge] = useState('');
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [setup, setSetup] = useState<{ secret: string; otpauthUri: string }>();
   const [connecting, setConnecting] = useState(false);
   const [loginError, setLoginError] = useState('');
   async function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const value = String(new FormData(event.currentTarget).get('token') ?? '').trim();
+    const data = new FormData(event.currentTarget);
     setConnecting(true);
     setLoginError('');
     try {
-      await new PortalClient(value).request<Overview>('/overview');
-      setToken(value);
+      const login = await new PortalClient('').auth<{ challenge: string; setupRequired: boolean }>(
+        '/login',
+        {
+          username: String(data.get('username') ?? '').trim(),
+          password: String(data.get('password') ?? ''),
+        },
+      );
+      setChallenge(login.challenge);
+      setSetupRequired(login.setupRequired);
+      if (login.setupRequired) {
+        setSetup(
+          await new PortalClient(login.challenge).auth<{ secret: string; otpauthUri: string }>(
+            '/totp/setup',
+          ),
+        );
+      }
     } catch (error) {
       setLoginError(String(error instanceof Error ? error.message : error));
     } finally {
       setConnecting(false);
     }
+  }
+  async function verify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setConnecting(true);
+    setLoginError('');
+    try {
+      const code = String(new FormData(event.currentTarget).get('code') ?? '');
+      const session = await new PortalClient(challenge).auth<{ token: string }>('/totp/verify', {
+        code,
+      });
+      setToken(session.token);
+      setChallenge('');
+      setSetup(undefined);
+    } catch (error) {
+      setLoginError(String(error instanceof Error ? error.message : error));
+    } finally {
+      setConnecting(false);
+    }
+  }
+  async function logout() {
+    try {
+      await new PortalClient(token).auth('/logout');
+    } catch {
+      /* The local session still ends. */
+    }
+    setToken('');
   }
   if (!token)
     return (
@@ -49,41 +107,82 @@ export default function Portal() {
             One control plane.
           </h1>
           <p>Manage tenant lifecycle, cell placement and background work from one place.</p>
-          <form onSubmit={connect}>
-            <label htmlFor="operator-token">Operator token</label>
-            <input
-              id="operator-token"
-              name="token"
-              type="password"
-              required
-              autoComplete="off"
-              placeholder="Enter platform operator token"
-            />
-            <p className="hint">
-              Use PLATFORM_ADMIN_TOKEN from your backend configuration. The token stays in memory
-              for this session.
-            </p>
+          <form onSubmit={challenge ? verify : connect}>
+            {challenge ? (
+              <>
+                <p>
+                  {setupRequired
+                    ? 'Set up an authenticator app before entering the portal.'
+                    : 'Enter the code from your authenticator app.'}
+                </p>
+                {setup && (
+                  <div className="totp-setup">
+                    <QRCode value={setup.otpauthUri} size={160} />
+                    <p>
+                      Or enter this key manually: <code>{setup.secret}</code>
+                    </p>
+                  </div>
+                )}
+                <label htmlFor="operator-code">Authentication code</label>
+                <input
+                  id="operator-code"
+                  name="code"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  autoComplete="one-time-code"
+                  required
+                />
+              </>
+            ) : (
+              <>
+                <label htmlFor="operator-username">Username</label>
+                <input id="operator-username" name="username" autoComplete="username" required />
+                <label htmlFor="operator-password">Password</label>
+                <input
+                  id="operator-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </>
+            )}
             {loginError && (
               <div className="notice error" role="alert">
                 {loginError}
               </div>
             )}
             <button type="submit" className="primary full" disabled={connecting}>
-              {connecting ? 'Connecting…' : 'Connect to platform →'}
+              {connecting ? 'Working…' : challenge ? 'Verify and continue →' : 'Continue →'}
             </button>
+            {challenge && (
+              <button
+                type="button"
+                onClick={() => {
+                  setChallenge('');
+                  setSetup(undefined);
+                  setLoginError('');
+                }}
+              >
+                Back to sign in
+              </button>
+            )}
           </form>
         </div>
         <span className="login-footer">Tenant management portal · PostgreSQL control plane</span>
       </div>
     );
-  return <Console token={token} logout={() => setToken('')} />;
+  return <Console token={token} logout={logout} />;
 }
 function Console({ token, logout }: { token: string; logout: () => void }) {
   const api = useMemo(() => new PortalClient(token), [token]);
-  const [tab, setTab] = useState<'tenants' | 'cells'>('tenants');
+  const [tab, setTab] = useState<'tenants' | 'cells' | 'plans'>('tenants');
   const [overview, setOverview] = useState<Overview>();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [editingPlan, setEditingPlan] = useState<Plan>();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [offset, setOffset] = useState(0);
@@ -119,12 +218,14 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
       api.request<Overview>('/overview', 'GET', undefined, controller.signal),
       api.request<{ items: Tenant[] }>(`/tenants?${params}`, 'GET', undefined, controller.signal),
       api.request<Cell[]>('/cells', 'GET', undefined, controller.signal),
+      api.request<Plan[]>('/plans', 'GET', undefined, controller.signal),
     ])
-      .then(([o, t, c]) => {
+      .then(([o, t, c, p]) => {
         if (version !== requestVersion.current || controller.signal.aborted) return;
         setOverview(o);
         setTenants(t.items);
         setCells(c);
+        setPlans(p);
         setError('');
         setUpdated(new Date().toLocaleTimeString());
       })
@@ -210,45 +311,64 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
     let path = '';
     let method = 'POST';
     let body: unknown;
-    switch (modal) {
-      case 'tenant':
-        path = '/tenants';
-        body = {
-          name: values.name,
-          slug: values.slug,
-          timezone: values.timezone,
-          trialDays: Number(values.trialDays),
-        };
-        break;
-      case 'cell':
-        path = '/cells';
-        body = { name: values.name, address: values.address, id: values.id || null };
-        break;
-      case 'admin':
-        path = `/tenants/${id}/admins`;
-        body = { username: values.username, password: values.password };
-        break;
-      case 'timezone':
-        path = `/tenants/${id}/timezone`;
-        method = 'PUT';
-        body = { timezone: values.timezone };
-        break;
-      case 'move':
-        path = `/tenants/${id}/move`;
-        body = { targetCell: values.targetCell };
-        break;
-      case 'cold':
-        path = `/tenants/${id}/cold`;
-        body = { minimumIdleSeconds: Number(values.minimumIdleSeconds) };
-        break;
-      case 'wake':
-        path = `/tenants/${id}/wake`;
-        break;
-      default:
-        setBusy(false);
-        return;
-    }
     try {
+      switch (modal) {
+        case 'tenant':
+          path = '/tenants';
+          body = {
+            name: values.name,
+            slug: values.slug,
+            timezone: values.timezone,
+            trialDays: Number(values.trialDays),
+          };
+          break;
+        case 'cell':
+          path = '/cells';
+          body = { name: values.name, address: values.address, id: values.id || null };
+          break;
+        case 'admin':
+          path = `/tenants/${id}/admins`;
+          body = { username: values.username, password: values.password };
+          break;
+        case 'timezone':
+          path = `/tenants/${id}/timezone`;
+          method = 'PUT';
+          body = { timezone: values.timezone };
+          break;
+        case 'move':
+          path = `/tenants/${id}/move`;
+          body = { targetCell: values.targetCell };
+          break;
+        case 'cold':
+          path = `/tenants/${id}/cold`;
+          body = { minimumIdleSeconds: Number(values.minimumIdleSeconds) };
+          break;
+        case 'wake':
+          path = `/tenants/${id}/wake`;
+          break;
+        case 'subscription':
+          path = `/tenants/${id}/subscription`;
+          method = 'PUT';
+          body = {
+            planCode: values.planCode,
+            endsAt: new Date(String(values.endsAt)).toISOString(),
+          };
+          break;
+        case 'plan':
+          path = editingPlan ? `/plans/${editingPlan.code}` : '/plans';
+          method = editingPlan ? 'PUT' : 'POST';
+          body = {
+            ...(editingPlan ? {} : { code: values.code }),
+            name: values.name,
+            graceDays: Number(values.graceDays),
+            entitlements: JSON.parse(String(values.entitlements)),
+            isActive: values.isActive === 'on',
+          };
+          break;
+        default:
+          setBusy(false);
+          return;
+      }
       const result = await api.request<{ id?: string; message?: string }>(path, method, body);
       setModal(null);
       setMessage(result.message ?? 'Request completed. Current state and jobs are shown below.');
@@ -273,6 +393,19 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
       setBusy(false);
     }
   }
+  async function toggleTenant() {
+    if (!selected || !t) return;
+    setBusy(true);
+    try {
+      await api.request(`/tenants/${selected}/enabled`, 'PUT', { enabled: !t.is_enabled });
+      setMessage(t.is_enabled ? 'Tenant deactivated.' : 'Tenant activated.');
+      refresh();
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   const t = detail?.tenant;
   const titles: Record<Modal, string> = {
     tenant: 'Create tenant',
@@ -282,6 +415,8 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
     move: 'Move tenant',
     cold: 'Put tenant into cold storage',
     wake: 'Wake tenant',
+    subscription: 'Update plan and expiry',
+    plan: editingPlan ? 'Edit plan' : 'Create plan',
   };
   return (
     <div className="portal-shell">
@@ -305,6 +440,13 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
           >
             <span>▧</span> Cells <small>{cells.length}</small>
           </button>
+          <button
+            type="button"
+            className={tab === 'plans' ? 'nav-active' : ''}
+            onClick={() => setTab('plans')}
+          >
+            <span>▤</span> Plans <small>{plans.length}</small>
+          </button>
         </nav>
         <div className="sidebar-bottom">
           <div className="connection">
@@ -320,7 +462,12 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
       <main inert={Boolean(selected || modal)}>
         <header className="topbar">
           <span>
-            Platform <b>/</b> {tab === 'tenants' ? 'Tenant management' : 'Cell management'}
+            Platform <b>/</b>{' '}
+            {tab === 'tenants'
+              ? 'Tenant management'
+              : tab === 'cells'
+                ? 'Cell management'
+                : 'Plan management'}
           </span>
           <button type="button" className="mobile-disconnect" onClick={logout}>
             Disconnect
@@ -333,11 +480,19 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
           <div className="page-heading">
             <div>
               <span className="eyebrow">CONTROL PLANE</span>
-              <h1>{tab === 'tenants' ? 'Tenant management' : 'Cell management'}</h1>
+              <h1>
+                {tab === 'tenants'
+                  ? 'Tenant management'
+                  : tab === 'cells'
+                    ? 'Cell management'
+                    : 'Plan management'}
+              </h1>
               <p>
                 {tab === 'tenants'
                   ? 'Provision, place and monitor every tenant.'
-                  : 'Register cells and inspect assignments and hydration readiness.'}
+                  : tab === 'cells'
+                    ? 'Register cells and inspect assignments and hydration readiness.'
+                    : 'Manage reusable subscription plans and entitlements.'}
               </p>
             </div>
             <div className="heading-actions">
@@ -347,14 +502,22 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
               <button
                 type="button"
                 className="primary"
-                onClick={() => open(tab === 'tenants' ? 'tenant' : 'cell')}
+                onClick={() => {
+                  setEditingPlan(undefined);
+                  open(tab === 'tenants' ? 'tenant' : tab === 'cells' ? 'cell' : 'plan');
+                }}
                 disabled={
                   tab === 'tenants' &&
                   (!overview?.canProvision ||
                     !cells.some((c) => c.id === overview.localCellId && c.state === 'ACTIVE'))
                 }
               >
-                + {tab === 'tenants' ? 'Create tenant' : 'Register cell'}
+                +{' '}
+                {tab === 'tenants'
+                  ? 'Create tenant'
+                  : tab === 'cells'
+                    ? 'Register cell'
+                    : 'Create plan'}
               </button>
             </div>
           </div>
@@ -473,7 +636,7 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
                           </small>
                         </td>
                         <td>
-                          <Status value={tenant.state} />
+                          <Status value={tenant.is_enabled === false ? 'DISABLED' : tenant.state} />
                         </td>
                         <td>
                           {tenant.cell_name ?? 'Unassigned'}
@@ -539,7 +702,7 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
                 </div>
               </div>
             </section>
-          ) : (
+          ) : tab === 'cells' ? (
             <section className="panel">
               <div className="panel-heading">
                 <div>
@@ -591,6 +754,48 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
                   <p>Use the ARENA_CELL_ID and address of your backend process.</p>
                 </div>
               )}
+            </section>
+          ) : (
+            <section className="panel">
+              <div className="panel-heading">
+                <h2>Plan catalog</h2>
+              </div>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Name</th>
+                      <th>Grace</th>
+                      <th>Status</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plans.map((plan) => (
+                      <tr key={plan.code}>
+                        <td>{plan.code}</td>
+                        <td>{plan.name}</td>
+                        <td>{plan.graceDays} days</td>
+                        <td>
+                          <Status value={plan.isActive ? 'ACTIVE' : 'DISABLED'} />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingPlan(plan);
+                              open('plan');
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
           <div className="architecture-note">
@@ -712,6 +917,30 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
                   + Create administrator
                 </button>
                 <h3>License</h3>
+                <div className="list-row">
+                  <span>Access</span>
+                  <Status value={t.is_enabled ? 'ACTIVE' : 'DISABLED'} />
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || ['FAILED', 'DELETED'].includes(t.state)}
+                  onClick={toggleTenant}
+                >
+                  {t.is_enabled ? 'Deactivate tenant' : 'Activate tenant'}
+                </button>
+                <h3>Subscription</h3>
+                <p>
+                  {detail?.subscription?.planCode ?? 'No plan'} ·{' '}
+                  {detail?.subscription?.status ?? '—'}
+                </p>
+                <p>Expires {date(detail?.subscription?.endsAt ?? null)}</p>
+                <button
+                  type="button"
+                  disabled={busy || ['FAILED', 'DELETED'].includes(t.state)}
+                  onClick={() => open('subscription')}
+                >
+                  Edit plan and expiry
+                </button>
                 {detail?.licenses.map((l) => (
                   <div className="license" key={l.revision}>
                     <Status value={l.status} />
@@ -858,6 +1087,92 @@ function Console({ token, logout }: { token: string; logout: () => void }) {
                   <p className="hint">
                     Use this account in the existing business admin panel. The password is never
                     returned by the portal.
+                  </p>
+                </>
+              )}
+              {modal === 'subscription' && (
+                <>
+                  <label>
+                    Plan
+                    <select
+                      name="planCode"
+                      required
+                      defaultValue={detail?.subscription?.planCode ?? ''}
+                    >
+                      <option value="" disabled>
+                        Select a plan
+                      </option>
+                      {plans
+                        .filter((plan) => plan.isActive)
+                        .map((plan) => (
+                          <option key={plan.code} value={plan.code}>
+                            {plan.name} ({plan.code})
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label>
+                    Expires at
+                    <input
+                      name="endsAt"
+                      type="datetime-local"
+                      required
+                      defaultValue={localDateTime(detail?.subscription?.endsAt ?? null)}
+                    />
+                  </label>
+                  <p className="hint">
+                    The selected plan supplies entitlements and grace period. The expiry uses your
+                    local timezone.
+                  </p>
+                </>
+              )}
+              {modal === 'plan' && (
+                <>
+                  <label>
+                    Plan code
+                    <input
+                      name="code"
+                      required
+                      maxLength={64}
+                      pattern="[A-Za-z0-9_-]+"
+                      defaultValue={editingPlan?.code}
+                      disabled={Boolean(editingPlan)}
+                    />
+                  </label>
+                  <label>
+                    Name
+                    <input name="name" required maxLength={100} defaultValue={editingPlan?.name} />
+                  </label>
+                  <label>
+                    Grace days
+                    <input
+                      name="graceDays"
+                      type="number"
+                      required
+                      min="0"
+                      max="30"
+                      defaultValue={editingPlan?.graceDays ?? 7}
+                    />
+                  </label>
+                  <label>
+                    Entitlements (JSON object)
+                    <textarea
+                      name="entitlements"
+                      required
+                      defaultValue={JSON.stringify(editingPlan?.entitlements ?? {}, null, 2)}
+                    />
+                  </label>
+                  <label>
+                    <input
+                      name="isActive"
+                      type="checkbox"
+                      defaultChecked={editingPlan?.isActive ?? true}
+                    />{' '}
+                    Active for new assignments
+                  </label>
+                  <p className="hint">
+                    Editing a plan affects future assignments. Existing licenses retain their issued
+                    entitlements.
                   </p>
                 </>
               )}
