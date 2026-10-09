@@ -1006,6 +1006,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .merge(router)
+        .merge(crate::handlers::platform::router(state.clone()))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))

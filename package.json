@@ -48,7 +48,9 @@
     "report:fixtures": "node apps/backend/scripts/capture-report-fixtures.mjs",
     "bench:venue-day": "node apps/backend/scripts/bench-venue-day.mjs",
     "bench:cell-capacity": "node apps/backend/scripts/bench-cell-capacity.mjs",
-    "bench:test": "node --test apps/backend/scripts/bench-cell-capacity.test.mjs"
+    "bench:test": "node --test apps/backend/scripts/bench-cell-capacity.test.mjs",
+    "portal:dev": "pnpm --filter @gaming-cafe/admin exec vite --port 5174 --open /portal.html",
+    "portal:build": "pnpm --filter @gaming-cafe/admin build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

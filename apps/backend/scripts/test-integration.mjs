@@ -32,6 +32,7 @@ const analyticsFeatures = process.env.DUCKDB_LIB_DIR
   : [];
 const controlTargets = [
   'control_plane',
+  'platform_portal',
   'ownership_fencing',
   'tenant_bootstrap',
   'tenant_replication',

@@ -37,3 +37,5 @@ pub mod access;
 pub mod catalog_scope;
 
 pub mod historical_exports;
+
+pub mod platform;
