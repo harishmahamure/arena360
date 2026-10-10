@@ -1,6 +1,6 @@
 version: v2
 modules:
-  - path: apps/backend/proto
+  - path: crates/tenant-protocol/proto/public
 lint:
   use:
     - STANDARD

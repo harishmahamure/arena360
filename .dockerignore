@@ -15,16 +15,22 @@ out/
 .turbo/
 *.tsbuildinfo
 
-# Rust backend (not needed for staff frontend image)
+# Services not needed by the staff or platform portal frontend images
 apps/backend/
+apps/kiosk/
 target/
+**/target/
+**/node_modules/
+**/dist/
+data/
+planning/
 
 # Version control
 .git/
 .gitignore
 .gitattributes
 
-# CI / docs / infra (not copied by staff frontend Dockerfile)
+# CI / docs / infra (not copied by frontend Dockerfiles)
 .github/
 docs/
 infra/

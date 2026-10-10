@@ -1,0 +1,9 @@
+[package]
+name = "tenant-gateway"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+gaming-cafe-api.workspace = true
+tokio.workspace = true

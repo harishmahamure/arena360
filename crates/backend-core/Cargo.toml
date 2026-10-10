@@ -1,0 +1,70 @@
+[package]
+name = "arena360-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Shared Arena360 application, tenant storage, and control-plane implementation"
+
+# Existing imports remain compatible during the package extraction.
+[lib]
+name = "gaming_cafe_api"
+
+[features]
+default = []
+duckdb-analytics = ["dep:duckdb"]
+duckdb-bundled = ["duckdb-analytics", "duckdb/bundled"]
+
+[dependencies]
+sqlite-reporting.workspace = true
+fs2.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tonic.workspace = true
+tenant-protocol.workspace = true
+tonic-web.workspace = true
+tonic-prost.workspace = true
+prost.workspace = true
+http-body-util.workspace = true
+ipnet.workspace = true
+sqlx.workspace = true
+duckdb = { workspace = true, optional = true }
+object_store.workspace = true
+zstd.workspace = true
+aes-gcm.workspace = true
+bytes.workspace = true
+memmap2.workspace = true
+libsqlite3-sys.workspace = true
+redis.workspace = true
+deadpool-redis.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+jsonwebtoken.workspace = true
+bcrypt.workspace = true
+totp-rs.workspace = true
+utoipa.workspace = true
+utoipa-swagger-ui.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+rust_decimal.workspace = true
+dotenvy.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+async-nats.workspace = true
+futures.workspace = true
+tokio-stream.workspace = true
+reqwest.workspace = true
+tokio-tungstenite.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+flate2.workspace = true
+proptest.workspace = true
+tokio-test.workspace = true

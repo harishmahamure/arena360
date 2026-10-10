@@ -1,0 +1,28 @@
+# Must contain CONTROL_DATABASE_URL, JWT_SECRET, STORAGE_SERVICE_TOKEN.
+# Optional shared settings: REDIS_URL, NATS_URL and replication credentials.
+existingSecret: arena360-tenant-services
+
+gateway:
+  enabled: true
+  # Default provisioning target when storage.enabled=false.
+  storageUrl: ""
+  image: arena360/tenant-gateway:latest
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+storage:
+  enabled: true
+  image: arena360/tenant-storage:latest
+  # Register this stable UUID through /platform/cells before creating tenants.
+  cellId: "00000000-0000-4000-8000-000000000001"
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 4Gi}
+  persistence:
+    size: 20Gi
+    storageClass: ""
+    existingClaim: ""
+  # Durable backup-key PVC, separate from the tenant PVC. Optional in development.
+  replicationKeyClaim: ""

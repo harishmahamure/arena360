@@ -1,0 +1,24 @@
+syntax = "proto3";
+package arena360.storage.v1;
+
+// Private boundary for the existing tenant API/repository implementation.
+// JWT auth and live tenant authorization are rechecked on the owner cell.
+service TenantStorageService {
+  rpc Invoke(ApiRequest) returns (ApiResponse);
+  rpc Provision(ProvisionRequest) returns (ApiResponse);
+}
+message ApiRequest {
+  string method = 1;
+  string path = 2;
+  string query = 3;
+  bytes body = 4;
+  map<string, string> headers = 5;
+}
+message ApiResponse {
+  uint32 status_code = 1;
+  bytes body = 2;
+  map<string, string> headers = 3;
+}
+// Serialized ProvisionTenant: same validation, migrations, seeding and lease
+// acquisition as local provisioning. No arbitrary SQL or filesystem paths.
+message ProvisionRequest { bytes tenant_json = 1; }

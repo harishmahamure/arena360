@@ -187,9 +187,9 @@ an instant outside 90 days, or nonmonotonic capture UTC rejects the request.
 On the replacement cell, with its separate durable tenant key mount available:
 
 ```sh
-cargo run --manifest-path apps/backend/Cargo.toml --features duckdb-analytics \
+cargo run -p arena360-tools --features duckdb-analytics \
   --bin tenant_recover -- --lost-cell OLD_CELL_UUID --list
-cargo run --manifest-path apps/backend/Cargo.toml --features duckdb-analytics \
+cargo run -p arena360-tools --features duckdb-analytics \
   --bin tenant_recover -- --lost-cell OLD_CELL_UUID --target-cell NEW_CELL_UUID
 ```
 

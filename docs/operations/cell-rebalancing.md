@@ -66,11 +66,11 @@ those tenants consume capacity but are not eligible for a new planned move.
 ## Commands
 
 ```sh
-cargo run --manifest-path apps/backend/Cargo.toml --bin rebalance_cells -- \
+cargo run -p arena360-tools --bin rebalance_cells -- \
   --measurements workloads.json --max-moves 10
-cargo run --manifest-path apps/backend/Cargo.toml --bin rebalance_cells -- \
+cargo run -p arena360-tools --bin rebalance_cells -- \
   --measurements workloads.json --drain CELL_UUID --max-moves 10 --apply
-cargo run --manifest-path apps/backend/Cargo.toml --bin rebalance_cells -- \
+cargo run -p arena360-tools --bin rebalance_cells -- \
   --decommission CELL_UUID
 ```
 

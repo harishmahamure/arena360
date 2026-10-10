@@ -5,11 +5,11 @@ automatic fleet-wide migration merely because a new backend starts. Deploy
 application code compatible with both schema versions, then enroll canaries.
 
 ```sh
-cargo run --manifest-path apps/backend/Cargo.toml --bin schema_rollout -- \
+cargo run -p arena360-tools --bin schema_rollout -- \
   --canary TENANT_UUID,TENANT_UUID --soak-seconds 300
-cargo run --manifest-path apps/backend/Cargo.toml --bin schema_rollout -- \
+cargo run -p arena360-tools --bin schema_rollout -- \
   --status ROLLOUT_UUID
-cargo run --manifest-path apps/backend/Cargo.toml --bin schema_rollout -- \
+cargo run -p arena360-tools --bin schema_rollout -- \
   --resume ROLLOUT_UUID
 ```
 

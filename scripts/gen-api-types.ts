@@ -1,13 +1,13 @@
 #!/usr/bin/env tsx
-// Generates packages/api-types/src/schema.ts from apps/backend/docs/openapi.json
+// Generates packages/api-types/src/schema.ts from packages/api-types/openapi.json
 // Pipeline: regenerate backend spec -> run openapi-typescript.
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const ROOT = process.cwd();
-const BACKEND = join(ROOT, 'apps/backend');
-const SPEC = join(BACKEND, 'docs/openapi.json');
+const TOOLS = join(ROOT, 'tools/backend-cli');
+const SPEC = join(ROOT, 'packages/api-types/openapi.json');
 const OUT = join(ROOT, 'packages/api-types/src/schema.ts');
 
 function run(cmd: string, cwd = ROOT): void {
@@ -16,11 +16,11 @@ function run(cmd: string, cwd = ROOT): void {
   execSync(cmd, { cwd, stdio: 'inherit' });
 }
 
-if (!existsSync(BACKEND)) {
+if (!existsSync(TOOLS)) {
   // biome-ignore lint/suspicious/noConsole: CLI script
-  console.error(`apps/backend not found at ${BACKEND}. Skipping spec regeneration.`);
+  console.error(`tools/backend-cli not found at ${TOOLS}. Skipping spec regeneration.`);
 } else {
-  run('cargo run --bin openapi-gen --quiet', BACKEND);
+  run('cargo run -p arena360-tools --bin openapi-gen --quiet');
 }
 
 if (!existsSync(SPEC)) {

@@ -1,0 +1,108 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/backend",
+    "apps/tenant-gateway",
+    "apps/tenant-storage",
+    "crates/backend-core",
+    "crates/sqlite-reporting",
+    "crates/tenant-protocol",
+    "tools/backend-cli",
+]
+default-members = ["apps/tenant-gateway", "apps/tenant-storage"]
+# Tauri has its own release lifecycle and lockfile.
+exclude = ["apps/kiosk/src-tauri"]
+
+# Keep local builds small; full debug symbols and incremental caches are costly
+# for the shared backend. Line tables preserve useful backtrace locations.
+[profile.dev]
+debug = 1
+incremental = false
+
+[profile.test]
+debug = 1
+incremental = false
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+# Preserve Rust imports while giving the reusable package an explicit core name.
+gaming-cafe-api = { package = "arena360-core", path = "crates/backend-core" }
+tenant-protocol = { path = "crates/tenant-protocol" }
+sqlite-reporting = { path = "crates/sqlite-reporting" }
+rusqlite = { version = "=0.32.1", features = ["functions", "hooks"] }
+tonic = { version = "0.14.6", features = ["gzip", "router", "tls-native-roots"] }
+fs2 = "=0.4.3"
+# Web framework
+axum = { version = "0.8", features = ["macros", "ws"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "limit", "timeout"] }
+tonic-web = "0.14.6"
+tonic-prost = "0.14.6"
+prost = "0.14.1"
+http-body-util = "0.1"
+ipnet = "2"
+
+# Database: PostgreSQL control plane, per-tenant SQLite and DuckDB (ADR-0043)
+sqlx = { version = "=0.8.6", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json"] }
+duckdb = { version = "~1.10506" }
+
+# Object storage for WAL replication, snapshots, Parquet (Wasabi, S3-compatible; ADR-0043)
+object_store = { version = "0.14", features = ["aws"] }
+zstd = "0.13"
+aes-gcm = "0.10"
+bytes = "1"
+memmap2 = "0.9"
+libsqlite3-sys = "=0.30.1"
+
+# Cache (DRAFT-0043)
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+deadpool-redis = "0.18"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+
+# Auth
+jsonwebtoken = "9"
+bcrypt = "0.16"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+
+# OpenAPI
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+rust_decimal = { version = "1", features = ["serde-with-str"] }
+dotenvy = "0.15"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "2"
+
+# Streaming
+async-nats = "0.49"
+futures = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# External services
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio-tungstenite = "0.28"
+
+# Object storage presigning (S3 SigV4) — DRAFT-0022
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
+# Test utilities
+flate2 = "1"
+proptest = "1"
+tokio-test = "0.4"

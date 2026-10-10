@@ -1,0 +1,57 @@
+{{- if .Values.storage.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-storage
+spec:
+  # One writer per cell/PVC. Use another cell identity and release to add capacity.
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: {{ .Release.Name }}-storage}
+  template:
+    metadata:
+      labels: {app: {{ .Release.Name }}-storage}
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: storage
+          image: {{ .Values.storage.image | quote }}
+          ports: [{name: http, containerPort: 3001}]
+          envFrom: [{secretRef: {name: {{ .Values.existingSecret }}}}]
+          env:
+            - {name: PORT, value: "3001"}
+            - {name: ARENA_CELL_ID, value: {{ .Values.storage.cellId | quote }}}
+            - {name: TENANT_DATA_DIR, value: /data/tenants}
+            {{- if .Values.storage.replicationKeyClaim }}
+            - {name: REPLICATION_KEY_DIR, value: /run/arena360-backup-keys}
+            {{- end }}
+          volumeMounts:
+            - {name: tenants, mountPath: /data/tenants}
+            {{- if .Values.storage.replicationKeyClaim }}
+            - {name: backup-keys, mountPath: /run/arena360-backup-keys}
+            {{- end }}
+          startupProbe:
+            httpGet: {path: /health/ready, port: http}
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+          resources:
+            {{- toYaml .Values.storage.resources | nindent 12 }}
+      volumes:
+        - name: tenants
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.persistence.existingClaim | default (printf "%s-tenants" .Release.Name) }}
+        {{- if .Values.storage.replicationKeyClaim }}
+        - name: backup-keys
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.replicationKeyClaim }}
+        {{- end }}
+
+{{- end }}

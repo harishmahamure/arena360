@@ -1,6 +1,6 @@
 /**
  * Postgres enum labels — keep in sync with the live database.
- * Source: public.*_enum types (see apps/backend/scripts/list-db-enums.mjs).
+ * Shared API enum values; database constraints live in crates/backend-core/migrations/.
  */
 
 export type SelectOption<T extends string = string> = { value: T; label: string };

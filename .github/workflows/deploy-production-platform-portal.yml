@@ -1,0 +1,77 @@
+name: Deploy Platform Portal to Production
+
+on:
+  workflow_dispatch:
+
+env:
+  DOCKER_REPO: "${{ secrets.DOCKERHUB_REPO || 'harishmahamure/arena360' }}"
+  RELEASE_NAME: arena360-platform-portal
+  NAMESPACE: default
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: "${{ secrets.DOCKERHUB_USERNAME }}"
+          password: "${{ secrets.DOCKERHUB_TOKEN }}"
+
+      - name: Extract Git commit SHA
+        id: vars
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push portal image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/tenant/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_REPO }}:portal-prod-${{ steps.vars.outputs.short_sha }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.28.0
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.0
+
+      - name: Validate portal chart
+        run: helm lint ./infra/helm/platform-portal --values ./infra/helm/platform-portal/values-prod.yaml
+
+      - name: Deploy portal
+        run: |
+          helm upgrade --install "${{ env.RELEASE_NAME }}" ./infra/helm/platform-portal \
+            --values ./infra/helm/platform-portal/values-prod.yaml \
+            --set-string image.repository="${{ env.DOCKER_REPO }}" \
+            --set-string image.tag="portal-prod-${{ steps.vars.outputs.short_sha }}" \
+            --set-string ingress.host="${{ vars.PLATFORM_PORTAL_HOST || 'platform.arena360.cloud' }}" \
+            --namespace "${{ env.NAMESPACE }}" \
+            --create-namespace \
+            --wait \
+            --timeout 5m
+
+      - name: Deployment summary
+        run: |
+          echo "## Platform Portal Production Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release: \`${{ env.RELEASE_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`${{ env.DOCKER_REPO }}:portal-prod-${{ steps.vars.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: \`https://${{ vars.PLATFORM_PORTAL_HOST || 'platform.arena360.cloud' }}/\`" >> "$GITHUB_STEP_SUMMARY"

@@ -43,3 +43,14 @@ gives you structural context (callers, dependents, test coverage) that file sear
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern="tests_for" to check coverage.
 <!-- /code-review-graph MCP tools -->
+
+## Workspace boundaries
+
+- Runnable applications belong in `apps/`; reusable Rust code belongs in `crates/`.
+- Keep service entry points thin. Shared code must not depend on application or CLI packages.
+- Operator binaries and backend maintenance scripts belong in `tools/backend-cli/`.
+- Keep database migrations and core integration tests in `crates/backend-core/`.
+- Public and private protobuf definitions belong in `crates/tenant-protocol/`; regenerate clients after contract changes.
+- Share Rust dependency versions through the root Cargo workspace and lockfile.
+- Container builds belong in `infra/docker/`; deployable charts belong in `infra/helm/`.
+- See `docs/architecture/project-structure.md` for package ownership and root commands.

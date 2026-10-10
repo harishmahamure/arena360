@@ -3,9 +3,9 @@ name: Protobuf and backend CI
 on:
   push:
     branches: [main]
-    paths: ['apps/backend/**', 'packages/proto/**', 'packages/utils/**', 'buf.yaml', 'buf.gen.yaml', 'pnpm-lock.yaml']
+    paths: ['Cargo.toml', 'Cargo.lock', 'apps/tenant-storage/**', 'apps/tenant-gateway/**', 'crates/**', 'tools/backend-cli/**', 'rust-toolchain.toml', 'infra/docker/**', 'apps/backend/**', 'packages/proto/**', 'packages/utils/**', 'buf.yaml', 'buf.gen.yaml', 'pnpm-lock.yaml']
   pull_request:
-    paths: ['apps/backend/**', 'packages/proto/**', 'packages/utils/**', 'buf.yaml', 'buf.gen.yaml', 'pnpm-lock.yaml']
+    paths: ['Cargo.toml', 'Cargo.lock', 'apps/tenant-storage/**', 'apps/tenant-gateway/**', 'crates/**', 'tools/backend-cli/**', 'rust-toolchain.toml', 'infra/docker/**', 'apps/backend/**', 'packages/proto/**', 'packages/utils/**', 'buf.yaml', 'buf.gen.yaml', 'pnpm-lock.yaml']
   workflow_dispatch:
 
 jobs:
@@ -23,7 +23,9 @@ jobs:
       - name: Check breaking protobuf changes
         if: github.event_name == 'pull_request'
         run: |
-          if git cat-file -e origin/main:apps/backend/proto 2>/dev/null; then
+          if git cat-file -e origin/main:crates/tenant-protocol/proto/public 2>/dev/null; then
+            pnpm exec buf breaking --against '.git#branch=origin/main,subdir=crates/tenant-protocol/proto/public'
+          elif git cat-file -e origin/main:apps/backend/proto 2>/dev/null; then
             pnpm exec buf breaking --against '.git#branch=origin/main,subdir=apps/backend/proto'
           else
             echo "No protobuf baseline exists on main yet; lint and generation checks still apply."
@@ -60,7 +62,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: { components: rustfmt, clippy }
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: apps/backend }
+        with: { workspaces: "." }
       - name: Disposable JetStream runtime
         run: |
           set -euo pipefail
@@ -68,16 +70,6 @@ jobs:
           echo '77fe7dd69ff5144126026b78355900be0ab0bb4339dc61a7621dcc9b9e9d07a6  /tmp/nats-server.tar.gz' | sha256sum --check
           tar -xzf /tmp/nats-server.tar.gz -C /tmp
           echo 'NATS_SERVER_BIN=/tmp/nats-server-v2.12.6-linux-amd64/nats-server' >> "$GITHUB_ENV"
-      - name: Matching DuckDB shared library
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.5.6/libduckdb-linux-amd64.zip -o /tmp/duckdb.zip
-          echo 'b845005f5132a7d8180057c35e14a7626632258782f871a90861b19c1c03841b  /tmp/duckdb.zip' | sha256sum --check
-          unzip -q /tmp/duckdb.zip -d /tmp/arena360-duckdb
-          echo 'DUCKDB_LIB_DIR=/tmp/arena360-duckdb' >> "$GITHUB_ENV"
-          echo 'LD_LIBRARY_PATH=/tmp/arena360-duckdb' >> "$GITHUB_ENV"
-          echo 'DUCKDB_EXTENSION_DIR=/tmp/arena360-duckdb-extensions' >> "$GITHUB_ENV"
-      - run: cargo clippy --all-targets --no-default-features --features duckdb-analytics --manifest-path apps/backend/Cargo.toml
-      - name: Install matching signed SQLite extension
-        run: cargo run --manifest-path apps/backend/Cargo.toml --no-default-features --features duckdb-analytics --bin analytics_extensions_setup
+      - run: cargo check --locked --workspace --all-targets
+      - run: cargo clippy --locked --workspace --all-targets
       - run: pnpm backend:test:integration

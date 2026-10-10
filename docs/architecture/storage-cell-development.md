@@ -3,8 +3,9 @@
 Operational APIs use one SQLite file per tenant. PostgreSQL stores control-plane
 metadata and global staff credentials. The shared operational PostgreSQL schema,
 its migrations, the old analytics writer, and direct PostgreSQL wallet imports are
-retired. Reports read the owning tenant’s DuckDB file; unready or disabled native
-analytics returns `503 ANALYTICS_UNAVAILABLE` with `report temporarily rebuilding`.
+retired. Phase 1 reports read the owning tenant's SQLite file using a consistent
+read-only snapshot. Default builds do not require DuckDB or NATS. The recommended
+two-service setup is in the [deployment guide](../operations/two-rust-services.md).
 
 ## Local setup
 
@@ -12,7 +13,7 @@ Start PostgreSQL and optional Redis using Compose. The `postgres-init` service c
 `arena360_control` if it is missing, including when reusing an existing PostgreSQL
 volume. It leaves other databases in that volume untouched.
 
-Configure `apps/backend/.env`:
+Configure the repository root `.env`:
 
 ```dotenv
 CONTROL_DATABASE_URL=postgres://arena360:arena360@localhost:5432/arena360_control
@@ -68,7 +69,7 @@ The integration runner creates a disposable control database and temporary tenan
 root, enables all control-backed integration tests, and removes its resources on
 completion or failure. It can start local PostgreSQL using `pg_config`/`PG_BINDIR`, or
 use an explicit `CONTROL_TEST_ADMIN_DATABASE_URL`. The application database URL is
-never a test target. Native report parity runs in the normal suite. Control and JetStream gates use disposable infrastructure.
+never a test target. SQLite report parity runs in the normal suite. Control and JetStream gates use disposable infrastructure.
 
 The kiosk HTTP smoke script accepts `KIOSK_VENUE_ID` for explicit device provisioning;
 use a demo player whose seeded floor session is not already active.
@@ -87,8 +88,8 @@ address in that control database. The chart mounts tenant files at
 `/var/lib/arena360/tenants`; an existing volume can be selected with
 `persistence.existingClaim`. Uninstalling the chart retains a chart-created tenant PVC.
 
-Replication, cell-loss recovery and backup drills are M8 work; distinct-cell
-orchestration and rebalancing are M9 work. Docker builds embed both active migration
+Replication, cell-loss recovery, backup drills, distinct-cell moves and rebalancing
+use the existing control-plane coordinators and operator workflows. Docker builds embed both active migration
 families and include the API and demo seed binaries.
 ## Tenant outbox publishing
 
@@ -130,7 +131,7 @@ count/byte limits, replica settings, sealing or disabled acknowledgements fail.
 Reconcile incompatible streams explicitly before publication.
 
 `NATS_STREAM_REPLICAS` defaults to 1 for the standalone development server; use
-3 or 5 only with a suitably sized NATS cluster. Production deployment requires
+3 or 5 only with a suitably sized NATS cluster. Integration deployments can set
 `NATS_URL`; provision the stream with the native command in the backend image from
 a network that can reach NATS. Setup is separate from API startup, so a NATS outage
 does not prevent operational startup. The publisher retains failed publications.
@@ -142,62 +143,15 @@ are explicitly reported as skipped; the SQLite/control checks still run.
 
 Run only the disposable JetStream checks with `pnpm backend:test:integration --jetstream-only`; this mode requires a local server runtime and does not create a control database.
 
-### DuckDB development builds
+## Optional legacy analytics
 
-DuckDB's Rust dependency is pinned to the native 1.5.6 release family. Build with
-`--features duckdb-bundled` to compile its bundled source. For faster local builds,
-use the official matching shared library and `--features duckdb-analytics`:
+The explicit `duckdb-analytics` / `duckdb-bundled` features retain historical
+projection and archive compatibility. They select the legacy reporting backend
+and require its matching native SDK and JetStream. They are not enabled in Phase 1
+storage images or ordinary CI. Existing recovery/analytics tests remain feature
+gated. To run that compatibility suite intentionally, set `DUCKDB_LIB_DIR` and
+use `pnpm backend:test:integration`; its runner configures the native loader.
 
-```sh
-DUCKDB_LIB_DIR=/path/to/duckdb-1.5.6 pnpm backend:test:integration
-```
-
-The runner enables the feature and assigns the native loader path after Cargo
-launches each test. For direct Cargo runs, use a target runner that assigns
-`DYLD_LIBRARY_PATH` on macOS or `LD_LIBRARY_PATH` on Linux; shell launchers and
-Cargo can filter externally supplied loader paths. Supply a matching
-native library, not a different DuckDB version. No system library is installed by
-the repository commands. The two feature choices use the same Rust implementation
-and schema; bundled builds require a cached target directory for practical rebuilds.
-
-
-### Analytics ingestion and rebuilds
-
-Run owning cells with `duckdb-analytics` (matching native SDK) or `duckdb-bundled`
-and explicit `NATS_URL`. Production images compile analytics in, download the
-checksum-pinned native 1.5.6 SDK for their architecture, and install the matching
-signature-verified SQLite extension during image construction. Runtime rebuilds
-use the cached extension at `DUCKDB_EXTENSION_DIR`; unsigned extensions stay disabled.
-Without that setting, the extension cache is inside the tenant directory and the
-first rebuild requires HTTPS access to the official DuckDB extension repository.
-
-Fresh analytics start REBUILDING. The tenant worker takes a private `VACUUM INTO`
-snapshot through a read-only SQLite connection, records its persistent outbox
-watermark, and attaches that snapshot read-only. It builds a shadow DuckDB file,
-projects explicit columns with exact money, derives tenant calendar labels in
-Rust, builds closed session hours and monthly aggregates, and replays retained
-events after T0 to a finite post-backfill source watermark. Its replay consumer
-starts after a broker position recorded before the SQLite snapshot, so earlier
-stream history is covered by the snapshot rather than scanned again. Schema v2
-persists that broker position; live consumers skip and acknowledge earlier
-deliveries even after a restart, including writes lost from restored SQLite. Operational writes
-continue while this happens. Live ingestion resumes after the canonical file
-switch; reports remain unavailable until M7.
-
-Failures leave the canonical state REBUILDING and preserve its facts. Rebuild
-consumers have independent cursors and do not remove stream history. Temporary
-snapshot/shadow files are removed when the job ends. Corrupt or outdated derived
-files are quarantined for inspection before an initial rebuild; a newer schema
-requires upgrading the binary. A DuckDB failure closes the worker for recovery;
-failed opens and background polling do not keep an idle tenant open. Existing older monthly aggregates survive a normal
-rebuild in the same timezone. A lost/corrupt analytics file reconstructs the hot
-window from SQLite; historical raw facts are not pulled into the hot database.
-
-`pnpm backend:test:integration --jetstream-only` includes the live consumer and
-rebuild gates when `DUCKDB_LIB_DIR` is supplied. The runner creates isolated
-JetStream storage and removes it after each target. Optional extension cache:
-`DUCKDB_EXTENSION_DIR=/path/to/matching/signed/extensions`.
-
-The native demo-seed control gate also rebuilds DuckDB when the SDK and disposable
-NATS runtime are available. It compares all 27 projection row counts, every
-scale-4 money-column total and closed session occupied seconds with SQLite.
+For Phase 1, use the default workspace build. Reporting needs only the migrated
+tenant SQLite file; migration 0018 adds its views and indexes. Run
+`cargo test -p arena360-core --test report_parity --test sqlite_reporting --test report_cutover --test storage_rpc`.

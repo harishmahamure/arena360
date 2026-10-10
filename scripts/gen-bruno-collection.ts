@@ -1,13 +1,13 @@
 #!/usr/bin/env tsx
 /**
- * Generates a Bruno API collection from apps/backend/docs/openapi.json.
+ * Generates a Bruno API collection from packages/api-types/openapi.json.
  * Output: bruno/gaming-cafe-api/ (open as Collection in Bruno)
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
-const SPEC_PATH = join(ROOT, 'apps/backend/docs/openapi.json');
+const SPEC_PATH = join(ROOT, 'packages/api-types/openapi.json');
 const OUT_DIR = join(ROOT, 'bruno/gaming-cafe-api');
 
 type JsonSchema = {
@@ -340,7 +340,7 @@ vars:pre-request {
     join(OUT_DIR, 'README.md'),
     `# ${spec.info.title} — Bruno Collection
 
-Generated from \`apps/backend/docs/openapi.json\`. Regenerate:
+Generated from \`packages/api-types/openapi.json\`. Regenerate:
 
 \`\`\`bash
 pnpm gen:bruno

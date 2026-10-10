@@ -5,9 +5,9 @@
 Build the owning cell with `duckdb-analytics`, configure its replication object store and existing tenant keys, and apply control and tenant migrations. The native cell automatically processes queued jobs. Use the control database credentials for the operator command:
 
 ```sh
-cargo run --manifest-path apps/backend/Cargo.toml --features duckdb-analytics --bin archive_month -- --tenant TENANT_UUID --month 2024-01-01 --p99-ms 25 --batch-rows 100
-cargo run --manifest-path apps/backend/Cargo.toml --features duckdb-analytics --bin archive_month -- --status JOB_UUID
-cargo run --manifest-path apps/backend/Cargo.toml --features duckdb-analytics --bin archive_month -- --replan JOB_UUID
+cargo run -p arena360-tools --features duckdb-analytics --bin archive_month -- --tenant TENANT_UUID --month 2024-01-01 --p99-ms 25 --batch-rows 100
+cargo run -p arena360-tools --features duckdb-analytics --bin archive_month -- --status JOB_UUID
+cargo run -p arena360-tools --features duckdb-analytics --bin archive_month -- --replan JOB_UUID
 ```
 
 Choose the p99 budget from the venue's operational target. Only complete tenant-calendar months before the current month minus 18 months are eligible. A frozen UTC cutoff keeps sessions and shifts ending inside the hot window live, even when they started in the requested old month. Open or unfinished operational work and dimensions stay live.

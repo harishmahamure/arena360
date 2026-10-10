@@ -1,0 +1,29 @@
+replicaCount: 1
+
+image:
+  repository: harishmahamure/arena360
+  tag: portal-prod-latest
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: dockerhub-secret
+
+service:
+  port: 80
+
+platformApiUpstream: http://arena360-backend:3000
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  host: platform.arena360.cloud
+  tlsSecretName: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

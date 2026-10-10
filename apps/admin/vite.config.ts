@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
     sourcemap: false,
     rollupOptions: {
-      input: { admin: './index.html', portal: './portal.html' },
+      input: { admin: './index.html' },
     },
     minify: 'esbuild',
   },
@@ -31,11 +31,5 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     open: false,
-    proxy: {
-      '/platform': {
-        target: process.env.PLATFORM_API_PROXY_TARGET ?? 'http://127.0.0.1:3000',
-        changeOrigin: true,
-      },
-    },
   },
 }));

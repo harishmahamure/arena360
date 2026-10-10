@@ -1,0 +1,22 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-gateway
+spec:
+  selector: {app: {{ .Release.Name }}-gateway}
+  ports:
+    - {name: http, port: 3000, targetPort: http}
+{{- end }}
+{{- if .Values.storage.enabled }}
+---
+# Internal HTTP/2 gRPC and realtime transport; no public ingress on storage.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-storage
+spec:
+  selector: {app: {{ .Release.Name }}-storage}
+  ports:
+    - {name: http, port: 3001, targetPort: http, appProtocol: kubernetes.io/h2c}
+{{- end }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: arena360-tenant-services
+description: Stateless PostgreSQL gateway and persistent Rust SQLite/DuckDB storage
+version: 0.1.0
+appVersion: "0.1.0"
+type: application

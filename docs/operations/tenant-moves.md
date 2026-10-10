@@ -8,11 +8,11 @@ staging on the tenant filesystem: installation uses a hard link.
 ## Commands
 
 ```sh
-cargo run --manifest-path apps/backend/Cargo.toml --bin tenant_move -- \
+cargo run -p arena360-tools --bin tenant_move -- \
   --tenant TENANT_UUID --target-cell CELL_UUID
-cargo run --manifest-path apps/backend/Cargo.toml --bin tenant_move -- \
+cargo run -p arena360-tools --bin tenant_move -- \
   --status MOVE_UUID
-cargo run --manifest-path apps/backend/Cargo.toml --bin tenant_move -- \
+cargo run -p arena360-tools --bin tenant_move -- \
   --cancel MOVE_UUID
 ```
 

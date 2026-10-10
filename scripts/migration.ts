@@ -3,7 +3,9 @@ import { readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const BACKEND = fileURLToPath(new URL('../apps/backend/', import.meta.url));
+const ROOT = fileURLToPath(new URL('../', import.meta.url));
+const CORE = join(ROOT, 'crates/backend-core');
+const ENV_DIR = join(ROOT, 'apps/backend');
 const usage = `Usage:
   pnpm migration generate <description> [--target control|tenant]
   pnpm migration run [--target control]
@@ -31,7 +33,7 @@ if (!command || command === '--help') {
   process.stdout.write(`${usage}\n`);
   process.exit(0);
 }
-const source = join(BACKEND, 'migrations', target);
+const source = join(CORE, 'migrations', target);
 if (command === 'generate') {
   const description = rest.join('_');
   if (!/^[a-z][a-z0-9_]*$/.test(description))
@@ -50,10 +52,13 @@ if (target === 'tenant')
     'Tenant migrations require the owning cell, a current lease, and the tenant migration orchestrator',
   );
 if (!['run', 'info', 'revert', 'prepare'].includes(command) || rest.length) fail(usage);
-try {
-  process.loadEnvFile(join(BACKEND, '.env'));
-} catch (error) {
-  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+for (const directory of [ROOT, ENV_DIR]) {
+  try {
+    process.loadEnvFile(join(directory, '.env'));
+    break;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
 }
 const url = process.env.CONTROL_DATABASE_URL;
 if (!url) fail('Set CONTROL_DATABASE_URL; DATABASE_URL is not a migration target');
@@ -62,7 +67,7 @@ const result = spawnSync(
   command === 'prepare'
     ? ['sqlx', 'prepare', '--workspace']
     : ['migrate', command, '--source', source],
-  { cwd: BACKEND, env: { ...process.env, DATABASE_URL: url }, stdio: 'inherit' },
+  { cwd: CORE, env: { ...process.env, DATABASE_URL: url }, stdio: 'inherit' },
 );
 if (result.error) fail(result.error.message);
 process.exit(result.status ?? 1);

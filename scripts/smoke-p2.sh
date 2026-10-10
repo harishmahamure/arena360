@@ -24,10 +24,12 @@ require_cmd() {
 require_cmd curl
 require_cmd jq
 
-if [[ -f "$BACKEND_DIR/.env" ]]; then
+ENV_FILE="$ROOT/.env"
+if [[ ! -f "$ENV_FILE" ]]; then ENV_FILE="$BACKEND_DIR/.env"; fi
+if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1091
-  source "$BACKEND_DIR/.env"
+  source "$ENV_FILE"
   set +a
 fi
 

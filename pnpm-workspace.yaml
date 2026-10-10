@@ -1,5 +1,6 @@
 packages:
   - "apps/admin"
+  - "apps/tenant"
   - "apps/kiosk"
-  # apps/backend is Rust-only (Cargo); not a pnpm workspace — use pnpm backend:* from root
+  # Rust services, shared crates, and CLI tools use the root Cargo workspace.
   - "packages/*"
