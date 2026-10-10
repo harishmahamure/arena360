@@ -2,7 +2,7 @@
 /**
  * Captures golden report outputs (OPS-0001) from a running backend that holds only the
  * demo dataset (`pnpm demo:seed --date 2026-10-02`) with analytics fully ingested.
- * Fixtures are the parity baseline for the DuckDB rewrite (docs/plans/data-platform-build-plan.md, M7).
+ * Fixtures are the report parity baseline; see docs/setup-guidelines.md for validation commands.
  * The backend must run with LEGACY_REST_ENABLED=true; the RPC gateway serves the same router.
  *
  * Usage: pnpm report:fixtures [--check]

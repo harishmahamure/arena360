@@ -53,4 +53,4 @@ gives you structural context (callers, dependents, test coverage) that file sear
 - Public and private protobuf definitions belong in `crates/tenant-protocol/`; regenerate clients after contract changes.
 - Share Rust dependency versions through the root Cargo workspace and lockfile.
 - Container builds belong in `infra/docker/`; deployable charts belong in `infra/helm/`.
-- See `docs/architecture/project-structure.md` for package ownership and root commands.
+- See `README.md` for package ownership and root commands, and `docs/setup-guidelines.md` for setup.
