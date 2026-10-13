@@ -70,132 +70,58 @@ GitHub job):
 pnpm --filter @gaming-cafe/kiosk tauri:build
 ```
 
-This produces the NSIS installer under `apps/kiosk/src-tauri/target/release/bundle/nsis/`:
+Configuration, release behavior, diagnostics, and security boundaries are in
+[deployment and operations](../../docs/DEPLOYMENT.md).
 
-- **NSIS** (`nsis/*-setup.exe`) — per-machine install (`installMode: perMachine`). For SCCM/Intune, deploy silently (`/S`).
+## Windows startup and shortcut protection
 
-**Post-install:** the NSIS installer does **not** run PowerShell. Default install path:
-`C:\Program Files\Arena360 Station Management\`. After install, IT runs
-[`configure-station.ps1`](scripts/windows/configure-station.ps1) from the repo to register the
-**Arena360 Kiosk** logon task (optional HKLM hardening and auto-logon). See
-[KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md).
+Installed release builds register startup at Windows sign-in and run a hidden
+recovery process that restarts the kiosk after an unexpected exit. Updates pause
+recovery; a failed or canceled update restores it. Intentional exits from staff
+setup do not trigger recovery. Development builds do not register startup, run
+recovery, or close desktop applications.
 
-### WebView2 runtime (Windows 10)
+Each installed kiosk launch closes applications already open in the same Windows
+session. Applications receive a close request and have three seconds to exit
+before termination. Windows services, shell processes, WebView2, the kiosk, and
+its installer/ancestor processes are preserved. Unsaved work in applications
+that refuse to close can be lost.
 
-The app renders through the Microsoft **Edge WebView2** runtime.
+While locked, the native keyboard hook blocks both Windows keys and all Win+key
+combinations (including desktop, Settings, Run, Explorer, and Task View),
+Ctrl+Esc/Ctrl+Shift+Esc, Alt+Esc, Alt+F4, Alt+Space, and dedicated app-launch keys.
+Alt+Tab and normal browser/game shortcuts remain available. Switching to the
+desktop or an application outside the kiosk's tracked launch list returns focus
+to the kiosk or the last tracked application. Staff admin login preserves
+`SetupRelaxed`: shortcut protection and foreground enforcement turn off and the
+kiosk can be minimized.
 
-**At NSIS install time:** the installer uses `embedBootstrapper` in
-`src-tauri/tauri.conf.json`, so the WebView2 bootstrapper runs during setup when
-the runtime is missing (~1.8 MB embedded, requires internet during install).
+Ctrl+Alt+Delete is handled by Windows before app hooks. Full suppression needs
+[Windows Keyboard Filter](https://learn.microsoft.com/en-us/windows/configuration/keyboard-filter/),
+which is available on Enterprise, Education, and IoT Enterprise editions. Use a
+standard Windows kiosk account. From an elevated Windows PowerShell prompt:
 
-**At app launch (Windows):** if WebView2 is still not installed, the kiosk will:
+```powershell
+# Enable the Windows feature, then reboot the station.
+& 'C:\Program Files\Arena360 Station Management\scripts\configure-keyboard-filter.ps1' -EnableFeature
+# After reboot, run again to configure Ctrl+Alt+Delete suppression.
+& 'C:\Program Files\Arena360 Station Management\scripts\configure-keyboard-filter.ps1'
+```
 
-1. Check the registry for the Evergreen runtime
-2. Run a **bundled** `MicrosoftEdgeWebview2Setup.exe` from `WebView2/` next to the app (downloaded automatically during Windows builds via `build.rs`)
-3. If the bundled file is absent, **download** the Evergreen bootstrapper from Microsoft
-4. Install silently (`/silent /install`), **relaunch** the app once, then continue
-5. If install still fails: show a native error dialog with the log path (`%ProgramData%\Arena360\kiosk.log`) and manual install URL
+Adjust the path to the installation directory. The installer also configures
+Ctrl+Alt+Delete suppression if Keyboard Filter is already enabled. The script
+preserves existing rules/settings for restoration on uninstall, keeps Alt+Tab
+available, and disables the default five-Windows-key breakout. Restart after
+applying the settings. This OS restriction remains active during staff setup;
+a separate Windows administrator account is exempt for servicing. On Home/Pro,
+the secure Ctrl+Alt+Delete screen cannot be suppressed by this app. Keyboard
+Filter does not operate in Remote Desktop sessions.
 
-- Windows 11 ships WebView2 by default.
-- Windows 10 may not have it. Offline venues should either pre-install WebView2 on
-  the golden image, use NSIS `offlineInstaller` (~127 MB), or ensure the bundled
-  bootstrapper is present in the installed app.
-- Manual install: [Evergreen Standalone Installer](https://developer.microsoft.com/microsoft-edge/webview2/)
-
-Staff can query runtime status via the Tauri command `get_webview2_status` (also
-logged at boot in `kiosk.log`).
-
-### Runtime log file (`kiosk.log`)
-
-Arena360 writes a single local log file for boot, runtime, and failure diagnosis.
-Staff should check this file first when a station misbehaves.
-
-| OS | Path |
-|----|------|
-| Windows | `%ProgramData%\Arena360\kiosk.log` |
-| macOS | `~/Library/Logs/Arena360/kiosk.log` |
-| Linux | `/tmp/Arena360/kiosk.log` |
-
-What appears in the log:
-
-- Boot steps, WebView2 checks, and lockdown init
-- **Game launch** attempts (success with PID, or failure with stage such as `allow_list`, `spawn`, `cleanup_in_progress`)
-- **Auto-update** skips and relaunch failures
-- **WebSocket** disconnects, malformed frames, and reconnect attempts (rate-limited)
-- **Session** restore/reconcile/end-intent replay failures
-- **Rust panics** and **React/JS** unhandled errors (with stack traces when available)
-
-When `kiosk.log` exceeds 5 MiB it rotates to `kiosk.log.1` (one backup kept).
-
-### Lockdown / kiosk OS configuration
-
-App-level lockdown blocks the Windows keys, Alt+F4 and Ctrl+Shift+Esc, hides the taskbar and Start menu flyout while locked, and Alt+Tab uses native Windows switching.
-
-**Staff actions (login screen only):**
-
-| Control | Action |
-|---------|--------|
-| **Staff login** (footer link) | Open setup / admin login |
-| **Clear sign-in lock** (footer link, when locked) | Clear player login lockout (“too many attempts”) |
-
-Ctrl+Alt+Del (the Secure Attention Sequence) cannot be intercepted from user mode.
-For a hardened station, also apply at the OS level:
-
-- Assigned Access / kiosk account, or group policy `DisableLockWorkstation` and
-  `DisableTaskMgr` (optional — via `configure-station.ps1 -SkipAutostart` or GPO).
-- Auto-login and logon autostart: run [`configure-station.ps1`](scripts/windows/configure-station.ps1)
-  after install (not invoked by the installer). This registers the **Arena360 Kiosk**
-  ONLOGON task only — it does **not** replace `explorer.exe` as the shell.
-
-**Full roadmap:** [docs/KIOSK-WINDOWS-DEPLOYMENT.md](../../docs/KIOSK-WINDOWS-DEPLOYMENT.md)
-(Assigned Access, shell replacement, logon autostart, fleet rollout).
-**IT entry point:** [docs/STATION-DEPLOYMENT-GUIDE.md](../../docs/STATION-DEPLOYMENT-GUIDE.md).
-
-### Code signing (release)
-
-Production installers should be Authenticode-signed to avoid SmartScreen prompts.
-Set the signing certificate via Tauri's Windows signing env vars in CI
-(`TAURI_SIGNING_*` / `signCommand`) — see the Tauri v2 Windows signing guide. Signing
-is intentionally left unconfigured in-repo so no certificate material is committed.
-
-### Auto-update (ADR-0028)
-
-The kiosk ships with the Tauri update manager (`tauri-plugin-updater` +
-`tauri-plugin-process`). It checks for a newer signed build **only while the
-station is idle** (`register`, `setup`, or `login` phase — no active player
-session) and, if found, downloads, installs, and relaunches.
-
-Updates are produced and published by the **Release Kiosk (Windows)** workflow
-(`.github/workflows/kiosk-release.yml`), triggered manually with a
-`patch`/`minor`/`major` bump. It fans the new version across `tauri.conf.json`,
-`src-tauri/Cargo.toml`, and `package.json` (`scripts/set-version.mjs`), tags
-`kiosk-vX.Y.Z`, builds a signed bundle, and publishes the installer, `.sig`, and
-`latest.json` to a GitHub Release. The deployed kiosks poll
-`https://github.com/<owner>/<repo>/releases/latest/download/latest.json`.
-
-The runtime updater config (public key + endpoint) is **not committed**; the
-release workflow injects it via a `--config` overlay so `kiosk-ci.yml` keeps
-building without keys and no key material lives in the repo. Base
-`tauri.conf.json` keeps `createUpdaterArtifacts: false`.
-
-#### One-time setup before the first release
-
-1. Generate a signing keypair:
-
-   ```bash
-   pnpm --filter @gaming-cafe/kiosk exec tauri signer generate -w kiosk.key
-   ```
-
-2. In **Settings → Secrets and variables → Actions**:
-   - Secret `TAURI_UPDATER_PUBKEY` = the printed **public** key.
-   - Secret `TAURI_SIGNING_PRIVATE_KEY` = contents of `kiosk.key` (private).
-   - Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = the key password (if set).
-3. Keep a sealed backup of the private key **outside CI**. Losing it means
-   shipped kiosks can no longer verify updates and must be re-imaged.
-
-> Note: installs are `perMachine` (NSIS), so applying an update requires
-> elevation (a UAC prompt). Run the kiosk with rights to self-update, or revisit
-> a `perUser` install / elevated update path (ADR-0028 risks).
-
-Authenticode signing of the installer (to avoid SmartScreen) remains optional
-via the `signCommand` hooks above and is independent of the updater key.
+For deployment verification, use a disposable Windows station: open Notepad and
+Chrome before launching the installed kiosk; verify startup cleanup, sign-in
+startup, and recovery after terminating only the main kiosk process. Launch an
+approved game/browser and verify Alt+Tab and its ordinary shortcuts. Check
+Win+D/R/I/E/Tab/L, Ctrl+Esc, Ctrl+Shift+Esc, and Alt+F4 while locked. Check
+Ctrl+Alt+Delete locally after configuring Keyboard Filter. Finally, sign in as
+staff, minimize the kiosk, and verify that returning to locked mode restores
+protection. Test update failure and successful installation/relaunch as well.

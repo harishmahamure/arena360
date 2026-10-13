@@ -79,6 +79,7 @@ export async function checkForUpdateWhenIdle(phase: AppPhase): Promise<void> {
   trackedPhase = phase;
 
   let installCompleted = false;
+  let recoveryPaused = false;
 
   try {
     const update = await check();
@@ -86,6 +87,7 @@ export async function checkForUpdateWhenIdle(phase: AppPhase): Promise<void> {
     if (!shouldContinueUpdate(phase)) return;
 
     await invoke('prepare_for_update');
+    recoveryPaused = true;
     if (!shouldContinueUpdate(phase)) return;
 
     await update.downloadAndInstall();
@@ -114,6 +116,15 @@ export async function checkForUpdateWhenIdle(phase: AppPhase): Promise<void> {
     // non-fatal. The next idle window will retry.
     await appendKioskLog('warn', `[updater] update check skipped: ${serializeError(err)}`);
   } finally {
+    // An aborted/failed update leaves the current process running. Restore its
+    // watchdog after prepare_for_update paused it for the installer handoff.
+    if (recoveryPaused) {
+      try {
+        await invoke('resume_kiosk_recovery');
+      } catch {
+        // Browser development has no native lifecycle.
+      }
+    }
     inFlight = false;
   }
 }

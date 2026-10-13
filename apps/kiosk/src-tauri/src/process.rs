@@ -417,10 +417,14 @@ pub fn last_allowed_foreground_hwnd(app: &AppHandle) -> Option<isize> {
             #[cfg(windows)]
             {
                 use windows::Win32::Foundation::HWND;
-                use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+                use windows::Win32::UI::WindowsAndMessaging::{IsWindow, GetWindowThreadProcessId};
 
                 let hwnd = HWND(hwnd as *mut _);
-                if unsafe { IsWindow(hwnd).as_bool() } {
+                let mut pid = 0;
+                unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)); }
+                if unsafe { IsWindow(hwnd).as_bool() }
+                    && (is_kiosk_hwnd(app, hwnd.0 as isize) || is_pid_tracked(pid))
+                {
                     return Some(hwnd.0 as isize);
                 }
             }
@@ -1081,6 +1085,101 @@ fn suppress_tracked_overlays() {
 
 #[cfg(not(windows))]
 fn suppress_tracked_overlays() {}
+
+/// Close applications that were already open when the installed kiosk started.
+/// Capture native process handles before asking windows to close, so PID reuse
+/// cannot make the fallback termination target a newly started process.
+#[cfg(all(windows, not(debug_assertions)))]
+pub fn close_existing_desktop_apps() {
+    use windows::Win32::Foundation::{CloseHandle, BOOL, HANDLE, HWND, LPARAM, WAIT_TIMEOUT};
+    use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows::Win32::System::Threading::{
+        OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
+    };
+
+    unsafe extern "system" fn collect(hwnd: HWND, data: LPARAM) -> BOOL {
+        if IsWindowVisible(hwnd).as_bool() {
+            let mut pid = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            (*(data.0 as *mut Vec<(HWND, u32)>)).push((hwnd, pid));
+        }
+        BOOL(1)
+    }
+
+    let current_pid = std::process::id();
+    let mut session = 0;
+    if unsafe { ProcessIdToSessionId(current_pid, &mut session) }.is_err() || session == 0 {
+        crate::diagnostics::warn("startup cleanup skipped: no interactive Windows session");
+        return;
+    }
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    // Preserve the installer and the whole ancestor chain (including launchers).
+    let mut ancestors = HashSet::new();
+    let mut ancestor = Some(Pid::from_u32(current_pid));
+    while let Some(pid) = ancestor {
+        if !ancestors.insert(pid.as_u32()) {
+            break;
+        }
+        ancestor = system.process(pid).and_then(|process| process.parent());
+    }
+    let executable = std::env::current_exe().ok();
+    let install_dir = executable.as_deref().and_then(Path::parent);
+    let kiosk_name = executable
+        .as_deref()
+        .and_then(Path::file_name)
+        .map(|name| name.to_string_lossy());
+    let mut windows = Vec::<(HWND, u32)>::new();
+    if let Err(e) = unsafe { EnumWindows(Some(collect), LPARAM(&mut windows as *mut _ as isize)) } {
+        crate::diagnostics::warn(format!("startup window enumeration failed: {e}"));
+        return;
+    }
+    let mut targets = std::collections::HashMap::<u32, HANDLE>::new();
+    for (hwnd, pid) in windows {
+        let Some(process) = system.process(Pid::from_u32(pid)) else {
+            continue;
+        };
+        let mut process_session = 0;
+        if unsafe { ProcessIdToSessionId(pid, &mut process_session) }.is_err()
+            || process_session != session
+            || ancestors.contains(&pid)
+            || is_session_keep_process(&process.name().to_string_lossy(), kiosk_name.as_deref())
+            || install_dir.is_some_and(|dir| process.exe().is_some_and(|exe| exe.starts_with(dir)))
+        {
+            continue;
+        }
+        if let std::collections::hash_map::Entry::Vacant(entry) = targets.entry(pid) {
+            if let Ok(handle) =
+                unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, false, pid) }
+            {
+                entry.insert(handle);
+            }
+        }
+        // Graceful close first. Apps that refuse/hang are terminated after the
+        // shared grace period; no new windows/processes are added to the targets.
+        unsafe {
+            let _ = PostMessageW(hwnd, WM_CLOSE, None, None);
+        }
+    }
+    if !targets.is_empty() {
+        thread::sleep(Duration::from_secs(3));
+    }
+    let count = targets.len();
+    for handle in targets.into_values() {
+        unsafe {
+            if WaitForSingleObject(handle, 0) == WAIT_TIMEOUT {
+                let _ = TerminateProcess(handle, 1);
+            }
+            let _ = CloseHandle(handle);
+        }
+    }
+    crate::diagnostics::info(format!(
+        "startup cleanup closed {count} existing desktop applications"
+    ));
+}
 
 #[cfg(windows)]
 fn terminate_user_session_apps() -> u32 {
