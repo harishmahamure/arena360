@@ -1,6 +1,8 @@
+import { invoke } from '@tauri-apps/api/core';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { appendKioskLog } from './bootDiagnostics';
-import { checkForUpdateWhenIdle } from './updater';
+import { checkForUpdateWhenIdle, setUpdatePhase } from './updater';
 
 vi.mock('./bootDiagnostics', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./bootDiagnostics')>();
@@ -53,6 +55,38 @@ describe('checkForUpdateWhenIdle', () => {
   beforeEach(() => {
     vi.mocked(appendKioskLog).mockReset();
     check.mockReset();
+    vi.mocked(invoke).mockReset();
+    vi.mocked(relaunch).mockReset();
+    setUpdatePhase('login');
+  });
+
+  it('restores recovery when installation fails after pausing it', async () => {
+    const downloadAndInstall = vi.fn().mockRejectedValue(new Error('download failed'));
+    check.mockResolvedValue({ downloadAndInstall });
+    await checkForUpdateWhenIdle('login');
+    expect(invoke).toHaveBeenNthCalledWith(1, 'prepare_for_update');
+    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenNthCalledWith(2, 'resume_kiosk_recovery');
+    expect(relaunch).not.toHaveBeenCalled();
+  });
+
+  it('restores recovery when a player session cancels the installer handoff', async () => {
+    const downloadAndInstall = vi.fn();
+    check.mockResolvedValue({ downloadAndInstall });
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'prepare_for_update') setUpdatePhase('session');
+      return undefined;
+    });
+    await checkForUpdateWhenIdle('login');
+    expect(downloadAndInstall).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenLastCalledWith('resume_kiosk_recovery');
+    expect(relaunch).not.toHaveBeenCalled();
+  });
+
+  it('leaves recovery alone when no update is available', async () => {
+    check.mockResolvedValue(null);
+    await checkForUpdateWhenIdle('login');
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it('logs skipped update checks to kiosk.log', async () => {

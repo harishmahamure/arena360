@@ -1,23 +1,22 @@
-//! Shell maintenance while locked — hide taskbar chrome and refresh tracked game HWNDs.
-//!
-//! Alt+Tab is handled by Windows. We do not redirect focus away from the user's
-//! Alt+Tab selection (desktop, other apps, games, or kiosk).
+//! Keep Alt+Tab within the kiosk and its tracked applications while locked.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::AppHandle;
 
 static GUARD_RUNNING: AtomicBool = AtomicBool::new(false);
+static GUARD_GENERATION: AtomicU64 = AtomicU64::new(0);
 static AUDIO_UI_YIELD: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "windows")]
 mod win {
-    use super::GUARD_RUNNING;
+    use super::{AUDIO_UI_YIELD, GUARD_GENERATION, GUARD_RUNNING};
     use crate::process;
     use std::sync::atomic::Ordering;
     use std::thread;
     use std::time::Duration;
     use tauri::AppHandle;
     use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
     use windows::Win32::UI::WindowsAndMessaging::{
         GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
     };
@@ -45,13 +44,16 @@ mod win {
         }
     }
 
-    pub fn start(_app: AppHandle) {
+    pub fn start(app: AppHandle) {
         if GUARD_RUNNING.swap(true, Ordering::SeqCst) {
             return;
         }
 
+        let generation = GUARD_GENERATION.load(Ordering::SeqCst);
         thread::spawn(move || {
-            while GUARD_RUNNING.load(Ordering::SeqCst) {
+            while GUARD_RUNNING.load(Ordering::SeqCst)
+                && GUARD_GENERATION.load(Ordering::SeqCst) == generation
+            {
                 thread::sleep(Duration::from_millis(500));
                 if !crate::lockdown::is_locked() {
                     continue;
@@ -60,12 +62,30 @@ mod win {
                     process::refresh_tracked_state();
                 }
                 crate::lockdown::shell::hide_shell_chrome();
+                if AUDIO_UI_YIELD.load(Ordering::SeqCst)
+                    || unsafe { GetAsyncKeyState(VK_MENU.0 as i32) < 0 }
+                {
+                    continue;
+                }
+                unsafe {
+                    let foreground = GetForegroundWindow();
+                    let mut pid = 0;
+                    GetWindowThreadProcessId(foreground, Some(&mut pid));
+                    if process::is_kiosk_hwnd(&app, hwnd_raw(foreground))
+                        || process::is_pid_tracked(pid)
+                    {
+                        capture_session_foreground(&app);
+                    } else if let Some(allowed) = process::last_allowed_foreground_hwnd(&app) {
+                        process::bring_hwnd_to_foreground(allowed);
+                    }
+                }
             }
         });
     }
 
     pub fn stop() {
         GUARD_RUNNING.store(false, Ordering::SeqCst);
+        GUARD_GENERATION.fetch_add(1, Ordering::SeqCst);
     }
 }
 

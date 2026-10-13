@@ -12,5 +12,6 @@ pub fn prepare_for_update(app: AppHandle) -> Result<(), String> {
     if let Err(e) = crate::process::kill_tracked_processes_blocking(app) {
         crate::diagnostics::warn(format!("prepare_for_update kill_tracked_processes: {e}"));
     }
+    crate::startup::stop_recovery();
     Ok(())
 }

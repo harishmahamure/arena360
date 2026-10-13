@@ -36,6 +36,9 @@
     "active": true,
     "targets": ["nsis"],
     "publisher": "Arena360",
+    "resources": {
+      "../scripts/windows/": "scripts/"
+    },
     "category": "Game",
     "shortDescription": "Locked-down Arena360 Station Management Application",
     "longDescription": "Arena360 Station Management Application: device registration, player sessions, lockdown and launcher for gaming cafe stations.",

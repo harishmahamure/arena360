@@ -4,7 +4,7 @@
   Diagnose and optionally repair Arena360 kiosk logon autostart.
 
 .DESCRIPTION
-  Checks the Arena360 Kiosk scheduled task, kiosk executable, and legacy pause file cleanup.
+  Checks scheduled-task or Run-key startup, the kiosk executable, and legacy pause file cleanup.
   With -Repair, re-registers the logon task via configure-station.ps1.
 
 .PARAMETER Repair
@@ -199,9 +199,31 @@ if ($LASTEXITCODE -eq 0) {
     Write-Issue "Legacy watchdog task '$LegacyWatchdogTaskName' still exists (re-run configure-station.ps1)"
 }
 
+# Current installers use HKLM Run; first launch repairs startup in HKCU Run.
+$runStartupValid = $false
+foreach ($runKey in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run')) {
+    $runProperties = Get-ItemProperty -LiteralPath $runKey -ErrorAction SilentlyContinue
+    if ($runProperties) {
+        $entry = $runProperties.PSObject.Properties['Arena360 Kiosk']
+        if ($entry) {
+            $command = [string]$entry.Value
+            Write-Info "Run-key startup ($runKey): $command"
+            if ($kioskExe -and ($command.Trim('"') -eq $kioskExe)) {
+                $runStartupValid = $true
+            } else {
+                Write-Issue "Run-key startup '$command' does not match installed kiosk '$kioskExe'"
+            }
+        }
+    }
+}
+
 $taskQuery = schtasks /Query /TN $KioskTaskName /V /FO LIST 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Issue "Scheduled task '$KioskTaskName' is missing"
+    if ($runStartupValid) {
+        Write-Info 'Verified Run-key startup; a scheduled task is not required.'
+    } else {
+        Write-Issue 'No valid Arena360 startup Run key or scheduled task was found.'
+    }
 } else {
     Write-Info "Scheduled task '$KioskTaskName' exists"
 
@@ -252,7 +274,7 @@ if ($Repair) {
 
 Write-Info '--- Summary ---'
 if ($Issues.Count -eq 0) {
-    Write-Info 'No issues detected. After reboot, the kiosk should launch ~30s after logon.'
+    Write-Info 'No issues detected. The kiosk should launch after Windows sign-in.'
     exit 0
 }
 

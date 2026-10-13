@@ -9,6 +9,7 @@ mod lockdown;
 mod power;
 mod process;
 mod scan;
+mod startup;
 mod storage;
 mod update;
 mod webview2;
@@ -21,6 +22,9 @@ use tauri::{Emitter, Manager, RunEvent};
 pub fn run() {
     diagnostics::init();
     diagnostics::install_panic_hook();
+    if startup::run_helper_if_requested() {
+        return;
+    }
     diagnostics::info(format!(
         "kiosk starting v{} ({})",
         env!("CARGO_PKG_VERSION"),
@@ -34,6 +38,8 @@ pub fn run() {
         webview2::show_install_failure(&e);
         std::process::exit(1);
     }
+
+    startup::initialize();
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -117,12 +123,25 @@ pub fn run() {
             boost::get_game_boost_config,
             cache::cache_asset,
             update::prepare_for_update,
+            startup::resume_kiosk_recovery,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            if let RunEvent::Exit = event {
+        .run(|_app, event| match event {
+            RunEvent::ExitRequested {
+                code: None, api, ..
+            } => {
+                if is_locked() {
+                    api.prevent_exit();
+                } else {
+                    startup::stop_recovery();
+                }
+            }
+            RunEvent::ExitRequested { code: Some(_), .. } => startup::stop_recovery(),
+            RunEvent::Exit => {
+                startup::stop_recovery();
                 on_app_exit();
             }
+            _ => {}
         });
 }
