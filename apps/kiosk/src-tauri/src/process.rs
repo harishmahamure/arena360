@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
+#[cfg(not(windows))]
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
 fn log_window_op(op: &str, result: Result<(), tauri::Error>) {
@@ -43,8 +45,6 @@ use std::os::windows::process::CommandExt;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-#[cfg(target_os = "windows")]
-const DETACHED_PROCESS: u32 = 0x0000_0008;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +57,7 @@ pub struct TrackedProcess {
 struct WatchEntry {
     executable_path: String,
     root_pid: u32,
+    launch_started_at: Instant,
     descendant_pids: Vec<u32>,
     window_handle: Option<isize>,
     /// One-time foreground for the main app/game window (after launcher login or direct launch).
@@ -100,7 +101,7 @@ fn canonical_path(path: &str) -> Option<String> {
         .map(|p| normalize_path(&p.to_string_lossy()))
 }
 
-fn paths_match(candidate: &str, allowed: &str) -> bool {
+pub(crate) fn paths_match(candidate: &str, allowed: &str) -> bool {
     if let (Some(c), Some(a)) = (canonical_path(candidate), canonical_path(allowed)) {
         return c == a;
     }
@@ -126,31 +127,23 @@ fn setup_test_launch_permitted() -> bool {
     !crate::lockdown::is_locked() && !cleanup_in_progress()
 }
 
-/// Spawn a process. When `visible` is true, omit CREATE_NO_WINDOW so GUI apps show normally.
-fn spawn_process(path: &str, args: Option<&[String]>, visible: bool) -> Result<u32, String> {
+/// Launch visible desktop applications through Windows Shell, as Explorer does.
+#[cfg(windows)]
+fn spawn_process(path: &str, args: Option<&[String]>) -> Result<u32, String> {
+    crate::app_launch::launch(path, args)
+}
+
+#[cfg(not(windows))]
+fn spawn_process(path: &str, args: Option<&[String]>) -> Result<u32, String> {
     let mut cmd = Command::new(path);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    #[cfg(target_os = "windows")]
-    {
-        if visible {
-            cmd.creation_flags(DETACHED_PROCESS);
-        } else {
-            cmd.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW);
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = visible;
-    }
     if let Some(parent) = Path::new(path).parent() {
         cmd.current_dir(parent);
     }
     if let Some(parts) = args {
-        for part in parts {
-            cmd.arg(part);
-        }
+        cmd.args(parts);
     }
     let child = cmd.spawn().map_err(|e| e.to_string())?;
     Ok(child.id())
@@ -224,14 +217,53 @@ fn refresh_system_processes(system: &mut System) {
 fn entry_has_live_process(entry: &WatchEntry, system: &System) -> bool {
     let live = |pid: u32| system.process(Pid::from_u32(pid)).is_some();
     live(entry.root_pid) || entry.descendant_pids.iter().copied().any(live)
+        || entry.launch_started_at.elapsed() < Duration::from_secs(15)
 }
 
 #[cfg(windows)]
 fn refresh_watch_entry(entry: &mut WatchEntry, system: &System) {
-    entry.descendant_pids = process_tree_pids(entry.root_pid, system)
+    let live = |pid: u32| system.process(Pid::from_u32(pid)).is_some();
+    // A bootstrap process can exit after activating an existing instance or
+    // handing a game to a service. Preserve discovered children and adopt exact
+    // executable matches in this Windows session, including their process trees.
+    let matches = crate::app_launch::matching_process_pids(system, &entry.executable_path);
+    let mut roots = tracking_roots(entry.root_pid, &entry.descendant_pids, &matches, live);
+    if !live(entry.root_pid) {
+        if let Some(&replacement) = roots.iter().find(|&&pid| live(pid)) {
+            entry.root_pid = replacement;
+        }
+    }
+    let mut pids = HashSet::new();
+    for root in roots.drain(..) {
+        pids.extend(process_tree_pids(root, system));
+    }
+    entry.descendant_pids = pids
         .into_iter()
-        .filter(|pid| *pid != entry.root_pid)
+        .filter(|pid| *pid != entry.root_pid && live(*pid))
         .collect();
+    entry.descendant_pids.sort_unstable();
+}
+
+#[cfg(any(windows, test))]
+fn tracking_roots(
+    root: u32,
+    previous: &[u32],
+    matches: &[u32],
+    live: impl Fn(u32) -> bool,
+) -> Vec<u32> {
+    // Include the original PID even after exit so children whose Windows parent
+    // ID still points to that bootstrap can be discovered in the full snapshot.
+    let mut roots = vec![root];
+    roots.extend(
+        previous
+            .iter()
+            .chain(matches)
+            .copied()
+            .filter(|pid| live(*pid)),
+    );
+    roots.sort_unstable();
+    roots.dedup();
+    roots
 }
 
 #[cfg(not(windows))]
@@ -477,11 +509,12 @@ fn all_tree_pids(entries: &[WatchEntry]) -> Vec<u32> {
 fn kill_process_trees(entries: &[WatchEntry]) {
     let mut system = System::new();
     refresh_system_processes(&mut system);
-    for entry in entries {
-        let tree = process_tree_pids(entry.root_pid, &system);
-        for pid in tree.iter().rev() {
-            kill_pid(*pid);
-        }
+    let mut targets = HashSet::new();
+    for root in all_tree_pids(entries) {
+        targets.extend(process_tree_pids(root, &system));
+    }
+    for pid in targets {
+        kill_pid(pid);
     }
 }
 
@@ -702,6 +735,16 @@ fn best_visible_hwnd_for_pids(pids: &[u32]) -> Option<isize> {
     }
 }
 
+#[cfg(windows)]
+fn kiosk_is_foreground() -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    let mut pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut pid));
+    }
+    pid == std::process::id()
+}
+
 #[cfg(target_os = "windows")]
 fn foreground_launcher_window(root_pid: u32) -> Option<isize> {
     let mut system = System::new();
@@ -709,8 +752,10 @@ fn foreground_launcher_window(root_pid: u32) -> Option<isize> {
         refresh_system_processes(&mut system);
         let pids = process_tree_pids(root_pid, &system);
         if let Some(hwnd) = best_visible_hwnd_for_pids(&pids) {
-            bring_hwnd_to_foreground(hwnd);
-            set_last_allowed_hwnd(hwnd);
+            if kiosk_is_foreground() {
+                bring_hwnd_to_foreground(hwnd);
+                set_last_allowed_hwnd(hwnd);
+            }
             return Some(hwnd);
         }
         thread::sleep(Duration::from_millis(250));
@@ -748,8 +793,10 @@ fn maybe_foreground_tracked_app(entry: &mut WatchEntry) {
     if is_launcher_login_hwnd(hwnd, entry) {
         return;
     }
-    bring_hwnd_to_foreground(hwnd);
-    set_last_allowed_hwnd(hwnd);
+    if kiosk_is_foreground() {
+        bring_hwnd_to_foreground(hwnd);
+        set_last_allowed_hwnd(hwnd);
+    }
     entry.app_foregrounded = true;
 }
 
@@ -799,75 +846,6 @@ pub fn bring_hwnd_to_foreground(hwnd: isize) {
 
 #[cfg(not(target_os = "windows"))]
 pub fn bring_hwnd_to_foreground(_hwnd: isize) {}
-
-#[cfg(target_os = "windows")]
-fn fullscreen_process_window(pid: u32) -> Option<isize> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_STYLE, HWND_NOTOPMOST,
-        SWP_FRAMECHANGED, SWP_SHOWWINDOW, SW_MAXIMIZE, SW_RESTORE, WS_CAPTION, WS_MAXIMIZEBOX,
-        WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
-    };
-
-    unsafe fn make_borderless_fullscreen(hwnd: HWND) {
-        let _ = ShowWindow(hwnd, SW_RESTORE);
-
-        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        let mut monitor_info = MONITORINFO {
-            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-            ..Default::default()
-        };
-
-        if !GetMonitorInfoW(monitor, &mut monitor_info).as_bool() {
-            let _ = ShowWindow(hwnd, SW_MAXIMIZE);
-            return;
-        }
-
-        // Best-effort borderless fullscreen for normal Win32 windows. Some games
-        // own their swapchain/window mode and may ignore or later override this.
-        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-        let borderless = style
-            & !(WS_CAPTION.0
-                | WS_THICKFRAME.0
-                | WS_SYSMENU.0
-                | WS_MINIMIZEBOX.0
-                | WS_MAXIMIZEBOX.0);
-        let _ = SetWindowLongPtrW(hwnd, GWL_STYLE, borderless as isize);
-
-        let rect = monitor_info.rcMonitor;
-        // Normal Z band — never TOPMOST so Alt+Tab respects user selection.
-        let _ = SetWindowPos(
-            hwnd,
-            HWND_NOTOPMOST,
-            rect.left,
-            rect.top,
-            rect.right - rect.left,
-            rect.bottom - rect.top,
-            SWP_FRAMECHANGED | SWP_SHOWWINDOW,
-        );
-    }
-
-    for _ in 0..24 {
-        if let Some(hwnd) = best_visible_hwnd_for_pids(&[pid]) {
-            let hwnd = HWND(hwnd as *mut _);
-            unsafe {
-                make_borderless_fullscreen(hwnd);
-            }
-            set_last_allowed_hwnd(hwnd.0 as isize);
-            return Some(hwnd.0 as isize);
-        }
-        thread::sleep(Duration::from_millis(250));
-    }
-    None
-}
-
-#[cfg(not(target_os = "windows"))]
-fn fullscreen_process_window(_pid: u32) -> Option<isize> {
-    None
-}
 
 #[cfg(windows)]
 fn set_foreground_window(window: &tauri::WebviewWindow) {
@@ -1320,21 +1298,10 @@ pub fn recover_minimized_kiosk(app: &AppHandle) {
 }
 
 #[cfg(windows)]
-fn refresh_pids_for_monitor(system: &mut System, tracked: &[WatchEntry]) {
-    let mut pids: Vec<Pid> = tracked
-        .iter()
-        .flat_map(|entry| {
-            std::iter::once(entry.root_pid).chain(entry.descendant_pids.iter().copied())
-        })
-        .map(Pid::from_u32)
-        .collect();
-    pids.sort_unstable();
-    pids.dedup();
-    if pids.is_empty() {
-        refresh_system_processes(system);
-        return;
-    }
-    system.refresh_processes(ProcessesToUpdate::Some(&pids), true);
+fn refresh_pids_for_monitor(system: &mut System, _tracked: &[WatchEntry]) {
+    // A partial PID refresh cannot discover new children or existing instances
+    // activated by a launcher. Tracking needs a complete process snapshot.
+    refresh_system_processes(system);
 }
 
 fn start_monitor_if_needed(app: AppHandle) {
@@ -1394,6 +1361,14 @@ fn start_monitor_if_needed(app: AppHandle) {
                     break;
                 }
                 crate::boost::restore_game_boost();
+                // Closing the last tracked app must not undo an Alt+Tab
+                // selection in another application. Kiosk focus applies its
+                // idle window mode when the user selects it again.
+                #[cfg(windows)]
+                if kiosk_is_foreground() {
+                    restore_kiosk_window(&app);
+                }
+                #[cfg(not(windows))]
                 restore_kiosk_window(&app);
                 if let Ok(mut running) = MONITOR_RUNNING.lock() {
                     *running = false;
@@ -1406,24 +1381,14 @@ fn start_monitor_if_needed(app: AppHandle) {
 
 /// Poll for launcher/game HWND after spawn without blocking the IPC command.
 #[cfg(target_os = "windows")]
-fn spawn_launch_foreground_task(root_pid: u32, launcher: bool) {
+fn spawn_launch_foreground_task(root_pid: u32) {
     thread::spawn(move || {
-        let window_handle = if launcher {
-            foreground_launcher_window(root_pid)
-        } else {
-            let hwnd = fullscreen_process_window(root_pid);
-            if let Some(h) = hwnd {
-                bring_hwnd_to_foreground(h);
-            }
-            hwnd
-        };
+        let window_handle = foreground_launcher_window(root_pid);
         if let Ok(mut tracked) = TRACKED.lock() {
             if let Some(entry) = tracked.iter_mut().find(|e| e.root_pid == root_pid) {
                 if let Some(hwnd) = window_handle {
                     entry.window_handle = Some(hwnd);
-                    if !launcher {
-                        entry.app_foregrounded = true;
-                    }
+                    entry.app_foregrounded = true;
                 }
             }
         }
@@ -1431,7 +1396,7 @@ fn spawn_launch_foreground_task(root_pid: u32, launcher: bool) {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn spawn_launch_foreground_task(_root_pid: u32, _launcher: bool) {}
+fn spawn_launch_foreground_task(_root_pid: u32) {}
 
 #[tauri::command]
 pub fn focus_kiosk(app: AppHandle) -> Result<(), String> {
@@ -1495,7 +1460,6 @@ pub fn launch_allowed(
     let pid = match spawn_process(
         &executable_path,
         normalize_launch_arguments(arguments).as_deref(),
-        soft,
     ) {
         Ok(pid) => pid,
         Err(e) => {
@@ -1514,7 +1478,6 @@ pub fn launch_allowed(
     if !soft {
         crate::boost::apply_game_priority(pid);
     }
-    let launcher = is_launcher_executable(&executable_path);
     apply_kiosk_game_mode_background(&app);
     let mut tracked = match TRACKED.lock() {
         Ok(tracked) => tracked,
@@ -1527,13 +1490,14 @@ pub fn launch_allowed(
     tracked.push(WatchEntry {
         executable_path: executable_path.clone(),
         root_pid: pid,
+        launch_started_at: Instant::now(),
         descendant_pids: Vec::new(),
         window_handle: None,
         app_foregrounded: false,
     });
     drop(tracked);
     start_monitor_if_needed(app.clone());
-    spawn_launch_foreground_task(pid, launcher || soft);
+    spawn_launch_foreground_task(pid);
     crate::diagnostics::info(format!(
         "launch_allowed ok exe={} path={executable_path} pid={pid} soft={soft}",
         executable_basename(&executable_path)
@@ -1576,7 +1540,6 @@ pub fn launch_allowed_test(
     let pid = match spawn_process(
         &executable_path,
         normalize_launch_arguments(arguments).as_deref(),
-        true,
     ) {
         Ok(pid) => pid,
         Err(e) => {
@@ -1584,8 +1547,7 @@ pub fn launch_allowed_test(
             return Err(e);
         }
     };
-    let launcher = is_launcher_executable(&executable_path);
-    spawn_launch_foreground_task(pid, launcher);
+    spawn_launch_foreground_task(pid);
     crate::diagnostics::info(format!(
         "launch_allowed_test ok exe={} path={executable_path} pid={pid}",
         executable_basename(&executable_path)
@@ -1665,10 +1627,11 @@ fn clear_tracked_processes_internal() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
     use super::{
         all_tree_pids, executable_basename, format_launch_failure, has_tracked_processes,
         is_allowed, is_launcher_executable, is_launcher_login_process, is_overlay_launcher_exe,
-        is_session_keep_process, normalize_path, paths_match, WatchEntry,
+        is_session_keep_process, normalize_path, paths_match, tracking_roots, WatchEntry,
     };
 
     #[test]
@@ -1752,6 +1715,7 @@ mod tests {
         let riot_entry = WatchEntry {
             executable_path: "C:\\Riot Games\\Riot Client\\RiotClientServices.exe".to_string(),
             root_pid: 1,
+            launch_started_at: Instant::now(),
             descendant_pids: vec![],
             window_handle: None,
             app_foregrounded: false,
@@ -1763,6 +1727,7 @@ mod tests {
         let steam_entry = WatchEntry {
             executable_path: "C:\\Program Files (x86)\\Steam\\steam.exe".to_string(),
             root_pid: 2,
+            launch_started_at: Instant::now(),
             descendant_pids: vec![],
             window_handle: None,
             app_foregrounded: false,
@@ -1777,6 +1742,7 @@ mod tests {
             WatchEntry {
                 executable_path: "a.exe".to_string(),
                 root_pid: 100,
+                launch_started_at: Instant::now(),
                 descendant_pids: vec![101, 102],
                 window_handle: None,
                 app_foregrounded: false,
@@ -1784,6 +1750,7 @@ mod tests {
             WatchEntry {
                 executable_path: "b.exe".to_string(),
                 root_pid: 200,
+                launch_started_at: Instant::now(),
                 descendant_pids: vec![201],
                 window_handle: None,
                 app_foregrounded: false,
@@ -1794,6 +1761,15 @@ mod tests {
         assert!(pids.contains(&100));
         assert!(pids.contains(&102));
         assert!(pids.contains(&201));
+    }
+
+    #[test]
+    fn tracking_keeps_bootstrap_children_and_existing_instance_handoffs() {
+        let roots = tracking_roots(100, &[101, 102], &[200, 200], |pid| {
+            [102, 200].contains(&pid)
+        });
+        assert_eq!(roots, [100, 102, 200]);
+        assert_eq!(tracking_roots(100, &[], &[], |_| false), [100]);
     }
 
     fn clear_tracked_for_test() {

@@ -89,10 +89,11 @@ that refuse to close can be lost.
 
 While locked, the native keyboard hook blocks both Windows keys and all Win+key
 combinations (including desktop, Settings, Run, Explorer, and Task View),
-Ctrl+Esc/Ctrl+Shift+Esc, Alt+Esc, Alt+F4, Alt+Space, and dedicated app-launch keys.
-Alt+Tab and normal browser/game shortcuts remain available. Switching to the
-desktop or an application outside the kiosk's tracked launch list returns focus
-to the kiosk or the last tracked application. Staff admin login preserves
+Ctrl+Esc/Ctrl+Shift+Esc, Alt+Esc, and dedicated app-launch keys. Alt+F4,
+Alt+Space, and context-menu keys are blocked when the kiosk has focus and remain
+available in other applications. Alt+Tab is always allowed, and the background
+guard does not redirect the user's selected window. Normal browser/game
+shortcuts remain available. Staff admin login preserves
 `SetupRelaxed`: shortcut protection and foreground enforcement turn off and the
 kiosk can be minimized.
 
@@ -125,3 +126,13 @@ Win+D/R/I/E/Tab/L, Ctrl+Esc, Ctrl+Shift+Esc, and Alt+F4 while locked. Check
 Ctrl+Alt+Delete locally after configuring Keyboard Filter. Finally, sign in as
 staff, minimize the kiosk, and verify that returning to locked mode restores
 protection. Test update failure and successful installation/relaunch as well.
+
+Windows application launches use `ShellExecuteExW` with the executable's directory
+as the working directory and visible windows, matching Explorer launch semantics.
+Arguments retain spaces, quotes, and empty values. Windows handles compatibility
+settings and any required elevation prompt; canceling that prompt reports a
+launch error. The allow-list and active-session checks still apply. Launching
+an existing application instance keeps it tracked, and new launcher children are
+discovered from full process snapshots. Launched applications retain their own
+window style and fullscreen settings. The kiosk does not take focus back from an
+Alt+Tab selection while an application finishes starting.

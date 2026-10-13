@@ -1,3 +1,4 @@
+mod app_launch;
 mod audio;
 mod boost;
 mod cache;

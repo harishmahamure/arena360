@@ -1,26 +1,22 @@
 //! Low-level keyboard hook used during lockdown.
 //!
-//! Blocks global Windows shell shortcuts that can break out of the kiosk:
-//! both Windows keys and any `Win`+key combo, Alt+Esc, Alt+F4, Alt+Space
-//! (system menu), Ctrl+Esc (Start menu), Ctrl+Shift+Esc (Task Manager), and
-//! the Menu/Apps (context-menu) key. Alt+Tab is intentionally allowed so
-//! players can switch between approved launched apps. Staff actions (setup,
-//! lockout reset) use login-screen buttons only — no global Ctrl+Shift combos.
-//! **Limitation:** Ctrl+Alt+Del (the Secure Attention Sequence) cannot be
-//! intercepted from user mode by design — it always reaches the Windows Secure
-//! Desktop. Full suppression requires Windows Keyboard Filter on a supported
-//! Windows edition; the deployment script configures this OS-level restriction. After a
-//! user returns from the Secure Desktop we re-assert fullscreen on window focus
-//! (see `apply_window_mode`).
+//! Windows keys, Win+key combinations, Alt+Esc, Ctrl+Esc/Ctrl+Shift+Esc,
+//! and dedicated app-launch keys are blocked globally while locked. Alt+F4,
+//! Alt+Space, and the context-menu key are blocked only when the kiosk has focus;
+//! launched applications retain those shortcuts. Alt+Tab is always allowed.
+//! Staff login disables this hook's blocking policy in SetupRelaxed mode.
+//! Ctrl+Alt+Del reaches Windows Secure Desktop before user-mode hooks. The
+//! deployment script configures Keyboard Filter for suppression on supported
+//! Windows editions.
 
 // Virtual-key values are platform independent so the policy can be tested on CI.
 #[cfg(any(windows, test))]
-fn blocks_shortcut(vk: u32, alt: bool, ctrl: bool, win: bool) -> bool {
-    matches!(vk, 0x5B | 0x5C | 0x5D)
+fn blocks_shortcut(vk: u32, alt: bool, ctrl: bool, win: bool, kiosk_foreground: bool) -> bool {
+    matches!(vk, 0x5B | 0x5C)
         || win
-        || (alt && matches!(vk, 0x1B | 0x73 | 0x20))
+        || (alt && vk == 0x1B)
+        || (kiosk_foreground && ((alt && matches!(vk, 0x73 | 0x20)) || vk == 0x5D))
         || (ctrl && vk == 0x1B)
-        || (alt && ctrl && vk == 0x09)
         || matches!(vk, 0xB4..=0xB7)
 }
 
@@ -62,9 +58,10 @@ mod win {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
-        UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, MSG, WH_KEYBOARD_LL,
-        WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW,
+        GetWindowThreadProcessId, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HHOOK,
+        KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+        WM_SYSKEYUP,
     };
 
     static INSTALLED: Mutex<bool> = Mutex::new(false);
@@ -121,8 +118,11 @@ mod win {
                     // The event carries Alt state; GetAsyncKeyState is not
                     // updated yet when the low-level callback runs.
                     let alt = kb.flags.contains(LLKHF_ALTDOWN);
+                    let mut foreground_pid = 0;
+                    GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut foreground_pid));
+                    let kiosk_foreground = foreground_pid == std::process::id();
                     if (up && matches!(kb.vkCode, 0x5B | 0x5C))
-                        || (down && blocks_shortcut(kb.vkCode, alt, ctrl, win))
+                        || (down && blocks_shortcut(kb.vkCode, alt, ctrl, win, kiosk_foreground))
                     {
                         return LRESULT(1);
                     }
@@ -209,26 +209,40 @@ mod tests {
     #[test]
     fn blocks_shell_escapes_but_preserves_game_input() {
         for key in [0x5B, 0x5C, 0x5D] {
-            assert!(blocks_shortcut(key, false, false, false));
+            assert!(blocks_shortcut(key, false, false, false, true));
         }
         for key in [0x1B, 0x73, 0x20] {
-            assert!(blocks_shortcut(key, true, false, false));
+            assert!(blocks_shortcut(key, true, false, false, true));
         }
         for key in [0x52, 0x45, 0x44, 0x4C, 0x09] {
-            assert!(blocks_shortcut(key, false, false, true));
+            assert!(blocks_shortcut(key, false, false, true, true));
         }
-        assert!(blocks_shortcut(0x1B, false, true, false));
-        assert!(!blocks_shortcut(0x09, true, false, false)); // Alt+Tab
-        assert!(!blocks_shortcut(0x73, false, false, false)); // plain F4
+        assert!(blocks_shortcut(0x1B, false, true, false, true));
+        assert!(!blocks_shortcut(0x09, true, false, false, true)); // Alt+Tab
+        assert!(!blocks_shortcut(0x73, false, false, false, true)); // plain F4
         for key in [0x41, 0x4C, 0x54, 0x57, 0x09, 0x73] {
-            assert!(!blocks_shortcut(key, false, true, false)); // browser/game Ctrl shortcuts
+            assert!(!blocks_shortcut(key, false, true, false, true)); // browser/game Ctrl shortcuts
         }
         for key in [0x25, 0x0D] {
-            assert!(!blocks_shortcut(key, true, false, false)); // Alt+Left, Alt+Enter
+            assert!(!blocks_shortcut(key, true, false, false, true)); // Alt+Left, Alt+Enter
         }
-        assert!(blocks_shortcut(0x09, true, true, false)); // Ctrl+Alt+Tab
+        assert!(!blocks_shortcut(0x09, true, true, false, true)); // Ctrl+Alt+Tab also stays available
         for key in 0xB4..=0xB7 {
-            assert!(blocks_shortcut(key, false, false, false));
+            assert!(blocks_shortcut(key, false, false, false, true));
+        }
+    }
+
+    #[test]
+    fn launched_apps_keep_window_shortcuts_and_context_menus() {
+        for key in [0x73, 0x20] {
+            assert!(!blocks_shortcut(key, true, false, false, false));
+            assert!(blocks_shortcut(key, true, false, false, true));
+        }
+        assert!(!blocks_shortcut(0x5D, false, false, false, false));
+        for foreground in [true, false] {
+            assert!(!blocks_shortcut(0x09, true, false, false, foreground));
+            assert!(blocks_shortcut(0x44, false, false, true, foreground));
+            assert!(blocks_shortcut(0x1B, false, true, false, foreground));
         }
     }
 

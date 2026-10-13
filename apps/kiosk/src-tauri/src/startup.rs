@@ -201,9 +201,9 @@ mod win {
 pub fn run_helper_if_requested() -> bool {
     #[cfg(all(windows, not(debug_assertions)))]
     {
-        return win::run_helper_if_requested();
+        win::run_helper_if_requested()
     }
-    #[cfg(not(windows))]
+    #[cfg(not(all(windows, not(debug_assertions))))]
     {
         false
     }

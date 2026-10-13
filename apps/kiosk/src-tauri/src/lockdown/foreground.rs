@@ -1,4 +1,4 @@
-//! Keep Alt+Tab within the kiosk and its tracked applications while locked.
+//! Maintain shell chrome and tracked windows without redirecting Alt+Tab focus.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::AppHandle;
@@ -9,14 +9,13 @@ static AUDIO_UI_YIELD: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "windows")]
 mod win {
-    use super::{AUDIO_UI_YIELD, GUARD_GENERATION, GUARD_RUNNING};
+    use super::{GUARD_GENERATION, GUARD_RUNNING};
     use crate::process;
     use std::sync::atomic::Ordering;
     use std::thread;
     use std::time::Duration;
     use tauri::AppHandle;
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
     use windows::Win32::UI::WindowsAndMessaging::{
         GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
     };
@@ -62,23 +61,7 @@ mod win {
                     process::refresh_tracked_state();
                 }
                 crate::lockdown::shell::hide_shell_chrome();
-                if AUDIO_UI_YIELD.load(Ordering::SeqCst)
-                    || unsafe { GetAsyncKeyState(VK_MENU.0 as i32) < 0 }
-                {
-                    continue;
-                }
-                unsafe {
-                    let foreground = GetForegroundWindow();
-                    let mut pid = 0;
-                    GetWindowThreadProcessId(foreground, Some(&mut pid));
-                    if process::is_kiosk_hwnd(&app, hwnd_raw(foreground))
-                        || process::is_pid_tracked(pid)
-                    {
-                        capture_session_foreground(&app);
-                    } else if let Some(allowed) = process::last_allowed_foreground_hwnd(&app) {
-                        process::bring_hwnd_to_foreground(allowed);
-                    }
-                }
+                capture_session_foreground(&app);
             }
         });
     }
