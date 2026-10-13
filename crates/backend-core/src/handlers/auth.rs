@@ -354,7 +354,7 @@ pub async fn register_player(
         return Err(AppError::forbidden_code("DEVICE_UNDER_MAINTENANCE"));
     }
 
-    KioskRegistrationRateLimiter::new(state.cache.clone())
+    KioskRegistrationRateLimiter::new(state.rate_limits.clone())
         .check_and_record(device_id)
         .await?;
 

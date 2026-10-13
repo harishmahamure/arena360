@@ -23,7 +23,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--help" => {
-                println!("tenant_recover --lost-cell UUID [--list | --target-cell UUID [--operations-only]]\nUses CONTROL_DATABASE_URL, TENANT_DATA_DIR and replication configuration. Recovery waits for the old lease plus skew to expire; it never force-steals ownership. Native analytics recovery also requires NATS_URL. --list only reads the control plane.");
+                println!("tenant_recover --lost-cell UUID [--list | --target-cell UUID [--operations-only]]\nUses CONTROL_DATABASE_URL, TENANT_DATA_DIR and replication configuration. Recovery waits for the old lease plus skew to expire; it never force-steals ownership. --list only reads the control plane.");
                 return Ok(());
             }
             "--lost-cell" => {
@@ -93,7 +93,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 registry: Arc::new(
                     gaming_cafe_api::analytics::registry::AnalyticsRegistry::default(),
                 ),
-                broker_url: std::env::var("NATS_URL")?,
             }))
         }
         #[cfg(not(feature = "duckdb-analytics"))]

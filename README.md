@@ -6,6 +6,8 @@ Arena360 manages gaming venues, stations, sessions, players, sales, inventory, a
 
 - [Start](docs/start.md): run an already configured workspace and test tenant creation.
 - [Setup guidelines](docs/setup-guidelines.md): install prerequisites, configure services, and create the first portal operator.
+- [Architecture](docs/architecture.md): service responsibilities, data boundaries, and tenant flows.
+- [Deployment](docs/deployment.md): images, Kubernetes configuration, onboarding, and production workflows.
 - [Agent instructions](AGENTS.md): repository rules for coding agents.
 
 ## Applications and services
@@ -18,7 +20,7 @@ Arena360 manages gaming venues, stations, sessions, players, sales, inventory, a
 | Tenant gateway | `apps/tenant-gateway` | http://localhost:3000 |
 | Tenant storage | `apps/tenant-storage` | http://localhost:3001 |
 
-The gateway handles platform APIs, staff authentication, and routing. Storage owns tenant SQLite files and business operations. PostgreSQL stores control-plane metadata and global staff identity. Reports use tenant SQLite snapshots by default. Redis is optional; NATS and DuckDB are not required for the default deployment.
+The gateway handles platform APIs, staff authentication, and routing. Storage owns tenant SQLite files and business operations. PostgreSQL stores control-plane metadata and global staff identity. Reports use tenant SQLite snapshots by default. Request throttling runs in each service process. DuckDB is not required for the default deployment.
 
 ## Workspace
 
@@ -32,7 +34,7 @@ tools/backend-cli/       Operator binaries and maintenance scripts
 infra/docker/            Rust container builds
 infra/helm/              Deployable Kubernetes charts
 scripts/                 Workspace automation and client generators
-docs/                    Start and setup guides
+docs/                    Start, setup, architecture, and deployment guides
 ```
 
 Shared Rust dependencies belong in the root Cargo workspace and lockfile. Application entry points stay thin; shared crates must not depend on application or operator packages. The kiosk's Tauri package retains its own Rust workspace and lockfile.

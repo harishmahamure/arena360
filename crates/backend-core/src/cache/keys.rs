@@ -1,4 +1,4 @@
-//! Typed Redis cache key builders.
+//! Typed cache key builders.
 //!
 //! All keys use colon-separated namespaces to support prefix invalidation.
 
@@ -15,7 +15,6 @@ pub mod ttl {
     pub const NOTIFICATIONS: Duration = Duration::from_secs(5 * 60);
 }
 
-pub const INVALIDATION_CHANNEL: &str = "cache:invalidate";
 
 pub fn plan(id: &uuid::Uuid) -> String {
     format!("plans:{id}")

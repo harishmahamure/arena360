@@ -5,13 +5,16 @@ import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import NotificationBell from '../components/notifications/NotificationBell';
+import OnboardingResumeCard from '../components/OnboardingResumeCard';
 import ShiftHandoverDialog from '../components/ShiftHandoverDialog';
 import { adminNavItems } from '../constants/navItems';
 import { useDispatch, useSelector } from '../hooks/store';
 import { type CountdownConfig, useMultipleCountdowns } from '../hooks/useCountDown';
 import { usePermissions } from '../hooks/usePermissions';
-import { clearAdminSession } from '../lib/authSession';
+import { clearAdminSession, panelClaims } from '../lib/authSession';
+import { selectedLocationId } from '../lib/locationSelection';
 import { getMyAccess } from '../services/access';
+import { getVenueLocations } from '../services/config';
 import { getSessions } from '../services/sessions/list';
 import { getActiveShift } from '../services/shifts';
 import { formatDuration, now } from '../utils/date';
@@ -33,6 +36,12 @@ export default function DashboardLayout() {
 
   const accessToken = local.get('accessToken');
   const isAuthenticated = Boolean(accessToken && role);
+  const organizationId = panelClaims()?.tenantId ?? '';
+  const { data: locations } = useQuery({
+    queryKey: ['venue-locations', organizationId],
+    queryFn: () => getVenueLocations(organizationId),
+    enabled: isAuthenticated && !!organizationId && can(Permission.LocationsRead),
+  });
   const { data: myAccess } = useQuery({
     queryKey: ['myAccess'],
     queryFn: getMyAccess,
@@ -160,6 +169,9 @@ export default function DashboardLayout() {
       <WorkspaceShell
         navItems={filteredNavItems}
         pageTitle={pageTitle}
+        operatingLocationName={
+          locations?.find((location) => location.id === selectedLocationId())?.name
+        }
         shiftBadge={shiftBadge}
         user={{
           name: `${firstName} ${lastName}`.trim() || username,
@@ -173,6 +185,7 @@ export default function DashboardLayout() {
         notificationSlot={can(Permission.NotificationsRead) ? <NotificationBell /> : undefined}
       >
         <Suspense key={location.pathname} fallback={<LinearProgress aria-label="Loading page" />}>
+          <OnboardingResumeCard />
           <Outlet />
         </Suspense>
       </WorkspaceShell>

@@ -1,29 +1,9 @@
 mod support;
 use gaming_cafe_api::{
-    analytics::publisher::{publish_batch, EventSink, TenantEvent},
+    analytics::outbox_retention::prune_batch,
     background::{BackgroundJobs, Limits, Priority},
-    error::AppError,
-    metrics::Metrics,
 };
-use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-struct Sink(AtomicUsize);
-impl EventSink for Sink {
-    fn publish<'a>(
-        &'a self,
-        _: &'a TenantEvent,
-    ) -> futures::future::BoxFuture<'a, Result<(), AppError>> {
-        Box::pin(async move {
-            self.0.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        })
-    }
-}
+use std::time::Duration;
 async fn queued(jobs: &BackgroundJobs, p: Priority) {
     tokio::time::timeout(Duration::from_secs(2), async {
         while jobs.stats().queued(p) == 0 {
@@ -34,15 +14,13 @@ async fn queued(jobs: &BackgroundJobs, p: Priority) {
     .unwrap();
 }
 #[tokio::test]
-async fn queued_publisher_leaves_operational_writes_free_and_rechecks_ownership() {
+async fn queued_retention_leaves_operational_writes_free_and_rechecks_ownership() {
     let jobs = BackgroundJobs::new(Limits::default()).unwrap();
     let f = support::TenantFixture::new_with_background_jobs(jobs.clone()).await;
     f.player("first-source-player").await;
     let held = jobs.acquire(Priority::Outbox).await.unwrap();
-    let sink = Arc::new(Sink(AtomicUsize::new(0)));
     let db = f.db.clone();
-    let copy = sink.clone();
-    let task = tokio::spawn(async move { publish_batch(db, &*copy, &Metrics::default()).await });
+    let task = tokio::spawn(async move { prune_batch(db, chrono::Utc::now()).await });
     queued(&jobs, Priority::Outbox).await;
     tokio::time::timeout(Duration::from_secs(2), f.player("foreground-writer-player"))
         .await
@@ -50,13 +28,12 @@ async fn queued_publisher_leaves_operational_writes_free_and_rechecks_ownership(
     f.revoke();
     drop(held);
     assert!(task.await.unwrap().is_err());
-    assert_eq!(sink.0.load(Ordering::Relaxed), 0);
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT acknowledged_sequence FROM outbox_publish_state")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM outbox_events")
             .fetch_one(&f.db.read_pool().unwrap())
             .await
             .unwrap(),
-        0
+        2
     );
     f.close().await;
 }

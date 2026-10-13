@@ -2,8 +2,8 @@
 mod support;
 use gaming_cafe_api::{
     analytics::{
-        consumer::{apply_batch, BatchOutcome, JetStreamConsumer},
-        publisher::TenantEvent,
+        consumer::{apply_batch, BatchOutcome, LocalConsumer},
+        events::TenantEvent,
         tenant_db::{error, TenantAnalytics},
     },
     tenancy::{
@@ -287,105 +287,30 @@ async fn fenced_consumer_cannot_change_checkpoint() {
     f.close().await;
 }
 #[tokio::test]
-#[ignore = "requires NATS_TEST_URL pointing to an empty disposable JetStream server"]
-async fn live_consumer_commits_before_ack_replays_duplicates_and_rebuilds_persistent_gaps() {
-    use gaming_cafe_api::{
-        analytics::publisher::{publish_batch, JetStreamSink, TENANT_EVENT_STREAM},
-        metrics::Metrics,
-    };
-    let url = std::env::var("NATS_TEST_URL").unwrap();
-    let client = async_nats::connect(&url).await.unwrap();
-    let context = async_nats::jetstream::new(client);
-    context
-        .create_stream(async_nats::jetstream::stream::Config {
-            name: TENANT_EVENT_STREAM.into(),
-            subjects: vec!["arena.tenant.*.events.v1".into()],
-            max_age: std::time::Duration::from_secs(7 * 86400),
-            storage: async_nats::jetstream::stream::StorageType::File,
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-    let f = TenantFixture::new_with_idle(std::time::Duration::from_millis(100)).await;
-    f.player("broker-player").await;
+async fn local_consumer_resumes_checkpoint_and_rebuilds_retention_gaps() {
+    use gaming_cafe_api::metrics::Metrics;
+    let f = TenantFixture::new().await;
+    f.player("local-player").await;
     let a = ready(&f).await;
     let metrics = Metrics::default();
-    let sink = JetStreamSink::connect(&url).await.unwrap();
-    publish_batch(f.db.clone(), &sink, &metrics).await.unwrap();
-    // Simulate crash after DuckDB commit and before broker ACK.
-    apply_batch(a.clone(), events(&f).await).await.unwrap();
-    let mut consumer = JetStreamConsumer::connect(&context, f.db.clone(), a.clone())
-        .await
-        .unwrap();
-    let start = std::time::Instant::now();
-    assert!(matches!(
-        consumer.poll(&metrics).await.unwrap(),
-        BatchOutcome::Applied {
-            events: 0,
-            duplicates: 1,
-            ..
-        }
-    ));
-    assert!(start.elapsed() >= std::time::Duration::from_millis(800));
-    assert_eq!(
-        consumer.poll(&metrics).await.unwrap(),
-        BatchOutcome::Applied {
-            last_sequence: 1,
-            events: 0,
-            duplicates: 0
-        }
-    );
-    let info = consumer_info(&context, f.db.tenant_id()).await;
-    assert_eq!(info.num_ack_pending, 0);
-    assert_eq!(info.num_pending, 0);
-    let mut gap = events(&f).await.remove(0);
-    gap.sequence = 3;
-    gap.event_id = Uuid::now_v7().to_string();
-    context
-        .publish(
-            format!("arena.tenant.{}.events.v1", f.db.tenant_id()),
-            serde_json::to_vec(&gap).unwrap().into(),
-        )
-        .await
-        .unwrap()
-        .await
-        .unwrap();
-    assert!(matches!(
-        consumer.poll(&metrics).await.unwrap(),
-        BatchOutcome::Gap { expected: 2, .. }
-    ));
-    assert!(matches!(
-        consumer.poll(&metrics).await.unwrap(),
-        BatchOutcome::Gap { expected: 2, .. }
-    ));
+    let mut consumer = LocalConsumer::connect(f.db.clone(), a.clone()).await.unwrap();
+    assert!(matches!(consumer.poll(&metrics).await.unwrap(), BatchOutcome::Applied { events: 1, .. }));
+    drop(consumer);
+    let mut consumer = LocalConsumer::connect(f.db.clone(), a.clone()).await.unwrap();
+    assert!(matches!(consumer.poll(&metrics).await.unwrap(), BatchOutcome::Applied { events: 0, .. }));
+    f.player("missing-player").await;
+    f.player("later-player").await;
+    f.db.with_immediate_writer(|c| Box::pin(async move {
+        sqlx::query("DELETE FROM outbox_events WHERE sequence=2").execute(c).await?;
+        Ok(())
+    })).await.unwrap();
+    assert_eq!(consumer.poll(&metrics).await.unwrap(), BatchOutcome::RebuildRequired);
     assert_eq!(checkpoint(&a).await, (1, "REBUILDING".into()));
-    assert!(
-        consumer_info(&context, f.db.tenant_id())
-            .await
-            .num_ack_pending
-            > 0
-    );
-    let mut stream = context.get_stream(TENANT_EVENT_STREAM).await.unwrap();
-    assert_eq!(stream.info().await.unwrap().state.messages, 2);
-    assert_eq!(f.manager.reap_idle().await.unwrap(), 1);
+    f.revoke();
     assert!(consumer.poll(&metrics).await.is_err());
     drop(consumer);
     drop(a);
     f.close().await;
-}
-async fn consumer_info(
-    c: &async_nats::jetstream::Context,
-    id: Uuid,
-) -> async_nats::jetstream::consumer::Info {
-    let stream = c.get_stream("ARENA_TENANT_EVENTS").await.unwrap();
-    let mut consumer = stream
-        .get_consumer::<async_nats::jetstream::consumer::pull::Config>(&format!(
-            "analytics_{}",
-            id.simple()
-        ))
-        .await
-        .unwrap();
-    consumer.info().await.unwrap().clone()
 }
 
 #[tokio::test]

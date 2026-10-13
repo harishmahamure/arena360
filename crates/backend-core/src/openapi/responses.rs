@@ -48,6 +48,7 @@ macro_rules! success_envelope {
 }
 
 success_envelope!(PanelUserEnvelope, crate::dto::AuthUserDto);
+success_envelope!(OnboardingEnvelope, crate::models::onboarding::OnboardingSnapshot);
 success_envelope!(
     BusinessAnalyticsEnvelope,
     crate::analytics::business::BusinessReport

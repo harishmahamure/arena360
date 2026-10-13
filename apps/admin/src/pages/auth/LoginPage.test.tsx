@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { selectedLocationId } from '../../lib/locationSelection';
 import { loginPanelAPI, verifyPanelMfaAPI } from '../../services/auth/auth';
 import { StoreContext } from '../../store';
 import { rootInitialState } from '../../store/rootReducer';
@@ -33,6 +34,7 @@ describe('unified panel login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it('has no account-type selector and advances to the MFA challenge', async () => {
@@ -53,6 +55,7 @@ describe('unified panel login', () => {
   });
 
   it('routes authenticated staff to explicit shift setup after MFA', async () => {
+    sessionStorage.setItem('arena:location::1', 'previous-location');
     vi.mocked(loginPanelAPI).mockResolvedValue({
       status: 'mfa_required',
       challengeToken: 'opaque-challenge',
@@ -83,5 +86,30 @@ describe('unified panel login', () => {
 
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/shift/setup'));
     expect(verifyPanelMfaAPI).toHaveBeenCalledWith('opaque-challenge', '123456');
+    expect(selectedLocationId()).toBe('');
+  });
+
+  it.each([
+    'dashboard',
+    'shift_setup',
+  ] as const)('routes setup administrators through the setup check when the server suggests %s', async (nextStep) => {
+    vi.mocked(loginPanelAPI).mockResolvedValue({
+      status: 'authenticated',
+      accessToken: `header.${btoa(JSON.stringify({ userId: '1', roles: ['admin'], permissions: ['settings:read', 'settings:write', 'access:read', 'shifts:write'], exp: Date.now() / 1000 + 60 }))}.signature`,
+      nextStep,
+      user: {
+        id: '1',
+        username: 'venue-admin',
+        firstName: 'Venue',
+        lastName: 'Admin',
+        role: 'admin',
+        isActive: true,
+      },
+    });
+    renderLogin();
+    fireEvent.change(screen.getByLabelText(/Username/), { target: { value: 'venue-admin' } });
+    fireEvent.change(screen.getByLabelText(/Password/), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/));
   });
 });

@@ -14,6 +14,7 @@ pub mod kiosk_order;
 pub mod ledger;
 pub mod location_stock;
 pub mod notification;
+pub mod onboarding;
 pub mod plan;
 pub mod player_plan;
 pub mod pricing_policy;

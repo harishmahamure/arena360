@@ -1,10 +1,7 @@
-//! JetStream-triggered, bounded-memory monthly copies of the SQLite projection.
+//! Watermark-driven, bounded-memory monthly copies of the SQLite projection.
 use super::objects::{self, Object};
 use crate::{
-    analytics::{
-        calendar,
-        publisher::{TenantEvent, TENANT_EVENT_STREAM},
-    },
+    analytics::calendar,
     error::AppError,
     replication::{crypto::TenantKeys, ledger::PostgresLedger, snapshot},
     tenancy::{
@@ -303,100 +300,7 @@ impl Writer {
         }))
     }
 }
-pub struct Consumer {
-    pub writer: Arc<Writer>,
-    pub db: Arc<TenantDb>,
-    consumer: async_nats::jetstream::consumer::PullConsumer,
-}
-impl Consumer {
-    pub async fn connect(
-        context: &async_nats::jetstream::Context,
-        writer: Arc<Writer>,
-        db: Arc<TenantDb>,
-    ) -> Result<Self, AppError> {
-        db.ensure_current_owner()?;
-        let stream = context
-            .get_stream(TENANT_EVENT_STREAM)
-            .await
-            .map_err(fail)?;
-        let name = format!("hot_{}", db.tenant_id().simple());
-        let subject = format!("arena.tenant.{}.events.v1", db.tenant_id());
-        let mut consumer = stream
-            .get_or_create_consumer(
-                &name,
-                async_nats::jetstream::consumer::pull::Config {
-                    durable_name: Some(name.clone()),
-                    filter_subject: subject.clone(),
-                    deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::All,
-                    ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit,
-                    ack_wait: Duration::from_secs(600),
-                    max_ack_pending: 500,
-                    max_waiting: 1,
-                    max_batch: 500,
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(fail)?;
-        let info = consumer.info().await.map_err(fail)?;
-        if info.config.filter_subject != subject
-            || info.config.ack_policy != async_nats::jetstream::consumer::AckPolicy::Explicit
-            || info.config.deliver_policy != async_nats::jetstream::consumer::DeliverPolicy::All
-            || info.config.max_ack_pending > 500
-        {
-            return Err(fail("Incompatible existing hot consumer"));
-        }
-        Ok(Self {
-            writer,
-            db,
-            consumer,
-        })
-    }
-    pub async fn poll(&mut self) -> Result<usize, AppError> {
-        static BUFFERS: std::sync::LazyLock<tokio::sync::Semaphore> =
-            std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(4));
-        let _buffer = BUFFERS.acquire().await.map_err(fail)?;
-        let mut messages = self
-            .consumer
-            .batch()
-            .max_messages(500)
-            .max_bytes(8 * 1024 * 1024)
-            .expires(Duration::from_secs(1))
-            .messages()
-            .await
-            .map_err(fail)?;
-        let mut buffered = vec![];
-        while let Some(message) = messages.try_next().await.map_err(fail)? {
-            if message.subject.as_str() != format!("arena.tenant.{}.events.v1", self.db.tenant_id())
-            {
-                return Err(fail("Foreign hot subject"));
-            }
-            let event: TenantEvent = serde_json::from_slice(&message.payload).map_err(fail)?;
-            if event.tenant_id != self.db.tenant_id() || event.sequence < 1 {
-                return Err(fail("Foreign or invalid hot event"));
-            }
-            buffered.push((message, event.sequence));
-        }
-        let now = Utc::now();
-        let watermark = if self.writer.needs_refresh(&self.db, now).await? {
-            self.writer.refresh(self.db.clone(), now).await?
-        } else {
-            sqlx::query_scalar("SELECT source_watermark FROM hot_tenant_state WHERE tenant_id=$1")
-                .bind(self.db.tenant_id())
-                .fetch_one(&self.writer.ledger.pool)
-                .await?
-        };
-        self.db.ensure_current_owner()?;
-        for (message, sequence) in &buffered {
-            if *sequence > watermark {
-                return Err(fail("Broker event is ahead of verified SQLite copy"));
-            }
-            message.ack().await.map_err(fail)?;
-        }
-        Ok(buffered.len())
-    }
-}
-pub fn spawn(manager: Arc<TenantDbManager>, writer: Arc<Writer>, url: String) {
+pub fn spawn(manager: Arc<TenantDbManager>, writer: Arc<Writer>) {
     tokio::spawn(async move {
         let mut workers =
             std::collections::HashMap::<Uuid, (i64, tokio::task::JoinHandle<()>)>::new();
@@ -421,18 +325,20 @@ pub fn spawn(manager: Arc<TenantDbManager>, writer: Arc<Writer>, url: String) {
                     continue;
                 }
                 let copy = writer.clone();
-                let url = url.clone();
                 let id = db.tenant_id();
                 let generation = db.ownership_generation();
                 let task = tokio::spawn(async move {
                     let result: Result<(), AppError> = async {
-                        let client = async_nats::connect(url).await.map_err(fail)?;
-                        let context = async_nats::jetstream::new(client);
-                        let mut consumer = Consumer::connect(&context, copy.clone(), db).await?;
                         loop {
-                            consumer.poll().await?;
+                            db.ensure_current_owner()?;
+                            let now = Utc::now();
+                            if copy.needs_refresh(&db, now).await? {
+                                copy.refresh(db.clone(), now).await?;
+                            }
                             tokio::time::sleep(Duration::from_secs(30)).await;
                         }
+                        #[allow(unreachable_code)]
+                        Ok(())
                     }
                     .await;
                     if let Err(error) = result {

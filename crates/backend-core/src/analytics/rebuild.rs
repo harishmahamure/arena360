@@ -1,7 +1,6 @@
-//! Consistent SQLite snapshot -> shadow DuckDB -> retained-stream replay -> switch.
+//! Consistent SQLite snapshot -> shadow DuckDB -> local outbox replay -> switch.
 use super::{
     consumer::{self, BatchOutcome},
-    publisher::{TenantEvent, TENANT_EVENT_STREAM},
     tenant_db::{error, TenantAnalytics},
 };
 use crate::{
@@ -14,8 +13,7 @@ use crate::{
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use duckdb::params;
-use futures::StreamExt;
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 pub(crate) struct RebuildFiles {
@@ -33,7 +31,7 @@ fn literal(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 pub(crate) use super::calendar::boundary;
-/// Durable AUTOINCREMENT watermark survives publisher cleanup of every retained row.
+/// Durable AUTOINCREMENT watermark survives local retention of every event row.
 pub async fn source_watermark(db: &TenantDb) -> Result<i64, AppError> {
     db.ensure_current_owner()?;
     let sequence = sqlx::query_scalar(
@@ -184,7 +182,6 @@ async fn backfill(
     files: Arc<RebuildFiles>,
     timezone: String,
     t0: i64,
-    broker_start: u64,
 ) -> Result<(), AppError> {
     let zone = timezone
         .parse::<Tz>()
@@ -248,7 +245,7 @@ async fn backfill(
             for id in ids {consumer::replace_hours(tx,&id,zone)?;last=id;}
         }
         refresh_monthly(tx)?;
-        tx.execute("UPDATE _ingest_state SET last_sequence=?,rebuild_boundary_seq=?,replay_start_sequence=?,status='READY' WHERE id=1",params![t0,t0,broker_start]).map_err(error)?;
+        tx.execute("UPDATE _ingest_state SET last_sequence=?,rebuild_boundary_seq=?,replay_start_sequence=?,status='READY' WHERE id=1",params![t0,t0,Option::<u64>::None]).map_err(error)?;
         Ok(())
     }).await?;
     shadow
@@ -258,125 +255,56 @@ async fn backfill(
         })
         .await
 }
-/// The replay consumer is independent of the live durable cursor. Limits retention
-/// keeps ACKed history; a missing retained sequence fails closed.
+/// Catch up through a finite post-snapshot watermark using retained local events.
+/// A retention gap fails closed; the next rebuild starts from a newer snapshot.
 async fn replay(
     db: Arc<TenantDb>,
     shadow: Arc<TenantAnalytics>,
-    context: &async_nats::jetstream::Context,
     barrier: i64,
-    broker_start: u64,
 ) -> Result<(), AppError> {
-    use async_nats::jetstream::consumer::{pull, AckPolicy, DeliverPolicy};
-    let stream = context
-        .get_stream(TENANT_EVENT_STREAM)
-        .await
-        .map_err(|_| failure("replay stream unavailable"))?;
-    let name = format!("rebuild_{}", Uuid::new_v4().simple());
-    let subject = format!("arena.tenant.{}.events.v1", db.tenant_id());
-    let consumer = stream
-        .create_consumer(pull::Config {
-            name: Some(name.clone()),
-            filter_subject: subject.clone(),
-            deliver_policy: DeliverPolicy::ByStartSequence {
-                start_sequence: broker_start,
-            },
-            ack_policy: AckPolicy::Explicit,
-            ack_wait: Duration::from_secs(30),
-            inactive_threshold: Duration::from_secs(60),
-            max_ack_pending: 1000,
-            max_batch: 500,
-            ..Default::default()
-        })
-        .await
-        .map_err(|_| failure("replay consumer unavailable"))?;
-    let result = async {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
-        loop {
-            db.ensure_current_owner()?;
-            let last = shadow
-                .read(|tx| {
-                    tx.query_row(
-                        "SELECT CAST(last_sequence AS BIGINT) FROM _ingest_state",
-                        [],
-                        |r| r.get::<_, i64>(0),
-                    )
-                    .map_err(error)
-                })
-                .await?;
-            if last >= barrier {
-                break;
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(failure("replay did not reach source barrier"));
-            }
-            let mut batch = consumer
-                .batch()
-                .max_messages(500)
-                .max_bytes(8 * 1024 * 1024)
-                .expires(Duration::from_secs(1))
-                .messages()
-                .await
-                .map_err(|_| failure("replay fetch failed"))?;
-            let mut messages = Vec::new();
-            let mut events = Vec::new();
-            while let Some(message) = batch.next().await {
-                let message = message.map_err(|_| failure("replay delivery failed"))?;
-                if message.subject.as_str() != subject {
-                    return Err(failure("foreign replay subject"));
-                }
-                let event: TenantEvent = serde_json::from_slice(&message.payload)
-                    .map_err(|_| failure("invalid replay envelope"))?;
-                // Catch up to a finite source barrier; later writes remain for the live durable.
-                if event.sequence <= barrier {
-                    events.push(event);
-                    messages.push(message);
-                } else {
-                    break;
-                }
-            }
-            if events.is_empty() {
-                continue;
-            }
-            match consumer::apply_batch(shadow.clone(), events).await? {
-                BatchOutcome::Applied { .. } => {
-                    for message in messages {
-                        db.ensure_current_owner()?;
-                        message
-                            .double_ack()
-                            .await
-                            .map_err(|_| failure("replay ACK failed"))?;
-                    }
-                }
-                _ => {
-                    return Err(failure(
-                        "retained replay has a sequence gap or incomplete snapshot",
-                    ))
-                }
+    loop {
+        db.ensure_current_owner()?;
+        let last = shadow
+            .read(|tx| {
+                tx.query_row(
+                    "SELECT CAST(last_sequence AS BIGINT) FROM _ingest_state",
+                    [],
+                    |r| r.get::<_, i64>(0),
+                )
+                .map_err(error)
+            })
+            .await?;
+        if last >= barrier {
+            return Ok(());
+        }
+        let events =
+            super::events::read_batch(&db, last, barrier, consumer::BATCH_SIZE as i64).await?;
+        if events.is_empty() {
+            return Err(failure("local outbox replay has a retention gap"));
+        }
+        match consumer::apply_batch(shadow.clone(), events).await? {
+            BatchOutcome::Applied { last_sequence, .. } if last_sequence > last => {}
+            _ => {
+                return Err(failure(
+                    "local outbox replay has a sequence gap or incomplete snapshot",
+                ))
             }
         }
-        Ok(())
     }
-    .await;
-    let cleanup = stream.delete_consumer(&name).await;
-    result?;
-    cleanup.map_err(|_| failure("replay consumer cleanup failed"))?;
-    Ok(())
 }
+
 /// Production rebuild. The canonical file remains REBUILDING until the new file
 /// has caught up through a finite post-backfill source watermark.
 pub async fn rebuild(
     db: Arc<TenantDb>,
     live: Arc<TenantAnalytics>,
-    context: &async_nats::jetstream::Context,
 ) -> Result<(), AppError> {
-    rebuild_with_hook(db, live, context, || async { Ok(()) }).await
+    rebuild_with_hook(db, live, || async { Ok(()) }).await
 }
 /// Hook supports deterministic concurrent-write/failure tests at the snapshot boundary.
 pub async fn rebuild_with_hook<F, Fut>(
     db: Arc<TenantDb>,
     live: Arc<TenantAnalytics>,
-    context: &async_nats::jetstream::Context,
     after_snapshot: F,
 ) -> Result<(), AppError>
 where
@@ -410,21 +338,6 @@ where
         std::fs::set_permissions(&files.root, std::fs::Permissions::from_mode(0o700))
             .map_err(|e| failure(&e.to_string()))?;
     }
-    // Read the global broker barrier BEFORE SQLite establishes its snapshot.
-    // Every source commit after T0 must publish after this barrier. This avoids
-    // scanning seven days of pre-T0 history and makes no clock-skew assumption.
-    let mut stream = context
-        .get_stream(TENANT_EVENT_STREAM)
-        .await
-        .map_err(|_| failure("replay stream unavailable"))?;
-    let broker_start = stream
-        .info()
-        .await
-        .map_err(|_| failure("replay stream state unavailable"))?
-        .state
-        .last_sequence
-        .checked_add(1)
-        .ok_or_else(|| failure("broker sequence overflow"))?;
     let t0 = snapshot(&db, &files).await?;
     let snapshot_pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
@@ -443,9 +356,9 @@ where
     after_snapshot().await?;
     let shadow = TenantAnalytics::shadow(db.clone(), files.clone(), timezone.clone()).await?;
     preserve_summaries(&live, &shadow, &timezone).await?;
-    backfill(shadow.clone(), files, timezone.clone(), t0, broker_start).await?;
+    backfill(shadow.clone(), files, timezone.clone(), t0).await?;
     let barrier = source_watermark(&db).await?;
-    replay(db.clone(), shadow.clone(), context, barrier, broker_start).await?;
+    replay(db.clone(), shadow.clone(), barrier).await?;
     let current: String =
         sqlx::query_scalar("SELECT timezone FROM tenant_runtime WHERE singleton=1")
             .fetch_one(&db.background_read_pool()?)

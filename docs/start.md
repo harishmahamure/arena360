@@ -7,7 +7,7 @@ Use this guide after completing [setup guidelines](setup-guidelines.md). Run eve
 With Docker running:
 
 ```sh
-docker compose up -d postgres postgres-init redis
+docker compose up -d postgres postgres-init
 ```
 
 For Colima on macOS, start the VM first:
@@ -19,7 +19,7 @@ colima start
 If Docker Compose is unavailable and this workspace's containers already exist, start them directly:
 
 ```sh
-docker start arena360-postgres-1 arena360-redis-1
+docker start arena360-postgres-1
 ```
 
 That fallback requires the existing `arena360_control` database. Follow the setup guide for a fresh environment.
@@ -83,7 +83,7 @@ If administrator creation fails after tenant creation, retry administrator setup
 Use `Ctrl+C` in each application terminal. To stop local infrastructure without removing its saved data:
 
 ```sh
-docker stop arena360-postgres-1 arena360-redis-1
+docker stop arena360-postgres-1
 ```
 
 For Colima, stop the VM after stopping the applications:

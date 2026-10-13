@@ -43,7 +43,6 @@
     "backend:run": "cargo run -p gaming-cafe-api",
     "backend:test": "cargo test -p arena360-core -p arena360-tools",
     "backend:test:integration": "node tools/backend-cli/scripts/test-integration.mjs",
-    "analytics:stream:init": "cargo run -p arena360-tools --bin tenant_events_setup",
     "backend:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
     "backend:fmt": "cargo fmt --all",
     "kiosk:dev": "pnpm --filter @gaming-cafe/kiosk tauri:dev",

@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../../hooks/store';
 import { Permission } from '../../hooks/usePermissions';
 import { sessionPermissions, setAdminToken } from '../../lib/authSession';
+import { rememberLocation } from '../../lib/locationSelection';
 import { loginPanelAPI, verifyPanelMfaAPI } from '../../services/auth/auth';
 import type { PanelLoginResponse, VerifyOtpResponseUser } from '../../services/auth/types';
 import { getDefaultHomePath } from '../../utils/homePath';
@@ -46,6 +47,7 @@ export default function LoginPage() {
       return;
     }
     setAdminToken(response.accessToken);
+    rememberLocation('');
     dispatch({
       type: 'SetAuthDetail',
       payload: {
@@ -60,6 +62,12 @@ export default function LoginPage() {
       },
     });
 
+    const permissions = sessionPermissions();
+    const can = (permission: Permission) => permissions.includes(permission);
+    if (user.role === 'admin' && can(Permission.SettingsRead) && can(Permission.SettingsWrite)) {
+      navigate('/', { replace: true });
+      return;
+    }
     if (
       response.nextStep === 'shift_setup' &&
       sessionPermissions().includes(Permission.ShiftsWrite)
@@ -67,8 +75,6 @@ export default function LoginPage() {
       navigate('/shift/setup', { replace: true });
       return;
     }
-    const permissions = sessionPermissions();
-    const can = (permission: Permission) => permissions.includes(permission);
     navigate(getDefaultHomePath(can), { replace: true });
   };
 

@@ -136,11 +136,7 @@ async fn service_seed_reconciles_and_repeats_without_overwriting() {
         .unwrap();
     assert_eq!(preserved, hash);
     #[cfg(feature = "duckdb-analytics")]
-    if let Ok(nats) = std::env::var("NATS_TEST_URL") {
-        verify_analytics(&pool, &local, &root, tenant, cell, &nats).await;
-    } else {
-        eprintln!("Demo analytics parity skipped: disposable JetStream runtime unavailable.");
-    }
+    verify_analytics(&pool, &local, &root, tenant, cell).await;
     local.close().await;
     let staff = Uuid::parse_str(seeded["staffUserId"].as_str().unwrap()).unwrap();
     sqlx::query("DELETE FROM tenants WHERE id=$1")
@@ -171,12 +167,9 @@ async fn verify_analytics(
     root: &Path,
     tenant: Uuid,
     cell: Uuid,
-    nats: &str,
 ) {
-    use async_nats::jetstream::stream::{Config, RetentionPolicy, StorageType};
     use gaming_cafe_api::{
         analytics::{
-            publisher::TENANT_EVENT_STREAM,
             rebuild::rebuild,
             tenant_db::{error, TenantAnalytics},
         },
@@ -199,19 +192,7 @@ async fn verify_analytics(
     .unwrap();
     let db = manager.open(tenant).await.unwrap();
     let analytics = TenantAnalytics::open(db.clone()).await.unwrap();
-    let context = async_nats::jetstream::new(async_nats::connect(nats).await.unwrap());
-    context
-        .create_stream(Config {
-            name: TENANT_EVENT_STREAM.into(),
-            subjects: vec!["arena.tenant.*.events.v1".into()],
-            retention: RetentionPolicy::Limits,
-            storage: StorageType::File,
-            max_age: std::time::Duration::from_secs(7 * 86400),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-    rebuild(db.clone(), analytics.clone(), &context)
+    rebuild(db.clone(), analytics.clone())
         .await
         .unwrap();
     let mut projected = 0;

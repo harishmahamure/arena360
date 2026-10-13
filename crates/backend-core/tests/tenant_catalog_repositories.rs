@@ -665,7 +665,7 @@ async fn product_prices_and_settings_use_only_the_selected_tenant() {
     let unavailable = PgPoolOptions::new()
         .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
         .unwrap();
-    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let cache = gaming_cafe_api::cache::create_cache().await;
     let settings = ConfigService::new(cache.clone(), "America/New_York".into());
     let products = ProductService::new();
     let values = settings

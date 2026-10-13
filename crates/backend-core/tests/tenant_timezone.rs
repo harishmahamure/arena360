@@ -56,31 +56,16 @@ async fn live_and_restart_drift_preserve_facts_but_require_rebuilding() {
 }
 #[cfg(feature = "duckdb-analytics")]
 #[tokio::test]
-#[ignore = "requires disposable JetStream and the matching signed SQLite extension"]
+#[ignore = "requires the matching signed SQLite extension"]
 async fn live_timezone_rebuild_derives_new_calendar_labels_without_changing_utc_facts() {
-    use async_nats::jetstream::stream::{Config, RetentionPolicy, StorageType};
     use gaming_cafe_api::{
         analytics::{
-            consumer::{BatchOutcome, JetStreamConsumer},
-            publisher::TENANT_EVENT_STREAM,
+            consumer::{BatchOutcome, LocalConsumer},
             rebuild::{rebuild, rebuild_with_hook},
             tenant_db::{error, TenantAnalytics},
         },
         metrics::Metrics,
     };
-    let url = std::env::var("NATS_TEST_URL").unwrap();
-    let context = async_nats::jetstream::new(async_nats::connect(&url).await.unwrap());
-    context
-        .create_stream(Config {
-            name: TENANT_EVENT_STREAM.into(),
-            subjects: vec!["arena.tenant.*.events.v1".into()],
-            storage: StorageType::File,
-            retention: RetentionPolicy::Limits,
-            max_age: std::time::Duration::from_secs(7 * 86400),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
     let s = support::SessionFixture::new().await;
     let f = &s.tenant;
     f.db.with_immediate_writer(|c| {
@@ -94,7 +79,7 @@ async fn live_timezone_rebuild_derives_new_calendar_labels_without_changing_utc_
     .await
     .unwrap();
     let a = TenantAnalytics::open(f.db.clone()).await.unwrap();
-    rebuild(f.db.clone(), a.clone(), &context).await.unwrap();
+    rebuild(f.db.clone(), a.clone()).await.unwrap();
     assert_eq!(
         a.read(|tx| tx
             .query_row(
@@ -108,7 +93,7 @@ async fn live_timezone_rebuild_derives_new_calendar_labels_without_changing_utc_
         "2026-09-30"
     );
     a.write(|tx|{tx.execute_batch("INSERT INTO monthly_summary VALUES(DATE '2020-01-01','00000000-0000-0000-0000-000000000000',99,0,99,1,0,0,0)").map_err(error)?;Ok(())}).await.unwrap();
-    let mut consumer = JetStreamConsumer::connect(&context, f.db.clone(), a.clone())
+    let mut consumer = LocalConsumer::connect(f.db.clone(), a.clone())
         .await
         .unwrap();
     project(f.db.clone(), "Asia/Kolkata".into(), 1)
@@ -118,7 +103,7 @@ async fn live_timezone_rebuild_derives_new_calendar_labels_without_changing_utc_
         consumer.poll(&Metrics::default()).await.unwrap(),
         BatchOutcome::RebuildRequired
     );
-    rebuild(f.db.clone(), a.clone(), &context).await.unwrap();
+    rebuild(f.db.clone(), a.clone()).await.unwrap();
     let facts=a.read(|tx|tx.query_row("SELECT CAST(local_date AS VARCHAR),CAST(occurred_at AS VARCHAR),(SELECT timezone FROM _ingest_state),(SELECT count(*) FROM monthly_summary WHERE month=DATE '2020-01-01') FROM transactions LIMIT 1",[],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?))).map_err(error)).await.unwrap();
     assert_eq!(
         facts,
@@ -131,14 +116,14 @@ async fn live_timezone_rebuild_derives_new_calendar_labels_without_changing_utc_
     );
     // A change while the snapshot is building prevents publication of stale labels.
     assert!(
-        rebuild_with_hook(f.db.clone(), a.clone(), &context, || async {
+        rebuild_with_hook(f.db.clone(), a.clone(), || async {
             project(f.db.clone(), "UTC".into(), 2).await?;
             Ok(())
         })
         .await
         .is_err()
     );
-    rebuild(f.db.clone(), a.clone(), &context).await.unwrap();
+    rebuild(f.db.clone(), a.clone()).await.unwrap();
     assert_eq!(
         a.read(|tx| tx
             .query_row(

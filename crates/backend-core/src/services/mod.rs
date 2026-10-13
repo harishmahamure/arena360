@@ -11,6 +11,7 @@ pub mod kiosk_registration_rate_limiter;
 pub mod mail_service;
 pub mod notification_service;
 pub mod otp_rate_limiter;
+pub mod rate_limiter;
 pub mod plan_service;
 pub mod player_plan_service;
 pub mod pricing_policy_service;

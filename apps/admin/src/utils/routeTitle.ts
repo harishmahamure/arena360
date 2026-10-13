@@ -3,6 +3,7 @@ import { moduleRegistry } from '../constants/navItems';
 
 const EXACT_TITLES: Record<string, string> = {
   '/': 'Overview',
+  '/onboarding': 'Venue setup',
   '/analytics': 'Business dashboard',
   ...Object.fromEntries(analyticsDashboards.map((d) => [`/analytics/${d.id}`, d.title])),
   '/profile': 'My profile',

@@ -1,4 +1,4 @@
-//! Phase 1 retention when there is no external event sink. Operational ledgers
+//! Bounded retention of local events. Operational ledgers
 //! remain intact; only old events already projected for realtime are removed.
 use crate::{
     error::AppError,
@@ -7,6 +7,8 @@ use crate::{
 use chrono::{DateTime, Duration, Utc};
 use std::sync::Arc;
 pub async fn prune_batch(db: Arc<TenantDb>, before: DateTime<Utc>) -> Result<u64, AppError> {
+    let _job = match db.background_jobs() { Some(jobs) => Some(jobs.acquire(crate::background::Priority::Outbox).await?), None => None };
+    db.ensure_current_owner()?;
     let before = crate::time::format_sqlite_timestamp(&before)
         .map_err(|e| AppError::Internal(e.to_string()))?;
     db.with_immediate_writer(move |c| Box::pin(async move {

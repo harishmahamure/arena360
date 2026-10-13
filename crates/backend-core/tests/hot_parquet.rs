@@ -1,9 +1,8 @@
 #![cfg(feature = "duckdb-analytics")]
 mod support;
 use gaming_cafe_api::{
-    analytics::publisher::{publish_batch, JetStreamSink, TENANT_EVENT_STREAM},
     historical::{
-        hot::{Consumer, Writer},
+        hot::Writer,
         objects::{self, Object},
     },
     metrics::Metrics,
@@ -12,11 +11,11 @@ use gaming_cafe_api::{
 };
 use object_store::ObjectStoreExt;
 use serde_json::json;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use uuid::Uuid;
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires control database and disposable JetStream server"]
-async fn monthly_hot_copy_backfills_verifies_and_acks_only_after_publication() {
+#[ignore = "requires an isolated control database"]
+async fn monthly_hot_copy_backfills_verifies_and_advances_only_after_publication() {
     let jobs =
         gaming_cafe_api::background::BackgroundJobs::new(gaming_cafe_api::background::Limits {
             outbox_slots: 1,
@@ -148,36 +147,7 @@ async fn monthly_hot_copy_backfills_verifies_and_acks_only_after_publication() {
             .is_err()
     );
     assert!(!rejected.exists());
-    let url = std::env::var("NATS_TEST_URL").unwrap();
-    let context = async_nats::jetstream::new(async_nats::connect(&url).await.unwrap());
-    context
-        .get_or_create_stream(async_nats::jetstream::stream::Config {
-            name: TENANT_EVENT_STREAM.into(),
-            subjects: vec!["arena.tenant.*.events.v1".into()],
-            max_age: Duration::from_secs(7 * 86400),
-            storage: async_nats::jetstream::stream::StorageType::File,
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-    let sink = JetStreamSink::connect(&url).await.unwrap();
-    publish_batch(db.clone(), &sink, &Metrics::default())
-        .await
-        .unwrap();
-    let mut consumer = Consumer::connect(&context, writer.clone(), db.clone())
-        .await
-        .unwrap();
-    assert!(consumer.poll().await.unwrap() > 0);
-    let stream = context.get_stream(TENANT_EVENT_STREAM).await.unwrap();
-    let mut broker = stream
-        .get_consumer::<async_nats::jetstream::consumer::pull::Config>(&format!(
-            "hot_{}",
-            tenant.simple()
-        ))
-        .await
-        .unwrap();
-    assert_eq!(broker.info().await.unwrap().num_ack_pending, 0);
-    // A changed source with no key cannot advance its checkpoint or ACK the event.
+    // A changed source with no key cannot advance the verified checkpoint.
     db.with_immediate_writer(move |c| {
         Box::pin(async move {
             sqlx::query("UPDATE transactions SET amount=20000,paid_amount=20000,cash_amount=20000 WHERE id=?")
@@ -202,12 +172,8 @@ async fn monthly_hot_copy_backfills_verifies_and_acks_only_after_publication() {
     })
     .await
     .unwrap();
-    publish_batch(db.clone(), &sink, &Metrics::default())
-        .await
-        .unwrap();
     std::fs::remove_file(keys.path(tenant)).unwrap();
-    assert!(consumer.poll().await.is_err());
-    assert!(broker.info().await.unwrap().num_ack_pending > 0);
+    assert!(writer.refresh(db.clone(), now).await.is_err());
     let last: i64 =
         sqlx::query_scalar("SELECT source_watermark FROM hot_tenant_state WHERE tenant_id=$1")
             .bind(tenant)

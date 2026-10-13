@@ -1,5 +1,5 @@
 # Must contain CONTROL_DATABASE_URL, JWT_SECRET, STORAGE_SERVICE_TOKEN.
-# Optional shared settings: REDIS_URL, NATS_URL and replication credentials.
+# Optional shared settings: mail, media storage and replication credentials.
 existingSecret: arena360-tenant-services
 
 gateway:

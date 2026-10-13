@@ -28,6 +28,7 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
             return Some(String::new())
         }
         "branding" => return Some(String::new()),
+        "onboarding" => if read { "settings:read" } else { "settings:write" },
         // These control-plane handlers check current organization membership or a download MAC.
         "historical"
             if p.get(1) == Some(&"exports")
@@ -146,6 +147,11 @@ pub fn permission(method: &str, path: &str, user: &str) -> Option<String> {
     Some(exact.into())
 }
 pub fn authorize(claims: &JwtUserClaims, method: &str, path: &str) -> Result<(), AppError> {
+    if (path == "/onboarding" || path.starts_with("/onboarding/"))
+        && (!claims.is_admin() || claims.deviceId.is_some())
+    {
+        return Err(AppError::Forbidden("Organization administrator access required".into()));
+    }
     if (path == "/historical/exports" || path.starts_with("/historical/exports/"))
         && (!claims.is_admin() || claims.deviceId.is_some())
     {

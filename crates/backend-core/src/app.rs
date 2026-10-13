@@ -11,7 +11,7 @@ use tower_http::{
 };
 use uuid::Uuid;
 
-use crate::cache::{create_cache, spawn_invalidation_listener, CacheService};
+use crate::cache::{create_cache, CacheService};
 use crate::config::{create_pool_for, load_dotenv, Settings};
 use crate::handlers;
 use crate::middleware::{auth_middleware, global_rate_limit, request_context, request_deadline};
@@ -35,6 +35,7 @@ pub struct AppState {
     pub tenant_provisioner: Option<Arc<crate::tenancy::TenantProvisioner>>,
     pub routing: Option<Arc<crate::routing::TenantRouter>>,
     pub cache: Arc<dyn CacheService>,
+    pub rate_limits: Arc<crate::services::rate_limiter::RateLimiter>,
     pub settings: Arc<Settings>,
     pub metrics: Arc<crate::metrics::Metrics>,
     pub auth: AuthService,
@@ -176,7 +177,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
             Ok(Some(worker)) => {
                 let recovery_analytics:Option<Arc<dyn crate::replication::recovery::RecoveryAnalytics>>={
                     #[cfg(feature="duckdb-analytics")]
-                    {settings.nats_url.as_ref().map(|url|Arc::new(crate::replication::recovery::NativeAnalytics{registry:analytics.clone(),broker_url:url.clone()}) as Arc<dyn crate::replication::recovery::RecoveryAnalytics>)}
+                    {Some(Arc::new(crate::replication::recovery::NativeAnalytics{registry:analytics.clone()}) as Arc<dyn crate::replication::recovery::RecoveryAnalytics>)}
                     #[cfg(not(feature="duckdb-analytics"))]
                     {None}
                 };
@@ -216,8 +217,8 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         agent.clone().spawn();
     }
     #[cfg(feature="duckdb-analytics")]
-    if let (Some(recovery),Some(url))=(&recoverer,settings.nats_url.clone()) {
-        crate::historical::hot::spawn(recovery.databases.clone(),Arc::new(crate::historical::hot::Writer{metrics:metrics.clone(),ledger:recovery.ledger.clone(),store:recovery.store.clone(),keys:recovery.keys.clone(),staging_root:settings.tenant_data_dir.join("hot-staging")}),url);
+    if let Some(recovery)=&recoverer {
+        crate::historical::hot::spawn(recovery.databases.clone(),Arc::new(crate::historical::hot::Writer{metrics:metrics.clone(),ledger:recovery.ledger.clone(),store:recovery.store.clone(),keys:recovery.keys.clone(),staging_root:settings.tenant_data_dir.join("hot-staging")}));
     }
     #[cfg(feature="duckdb-analytics")]
     if let Some(recovery)=&recoverer {
@@ -270,19 +271,15 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
     } else {
         None
     };
-    let cache = create_cache(settings.redis_url.as_deref()).await;
-    if let (Some(manager), Some(url)) = (tenant_dbs.clone(), settings.nats_url.clone()) {
+    let cache = create_cache().await;
+    if let Some(manager) = tenant_dbs.clone() {
         #[cfg(feature = "duckdb-analytics")]
-        crate::analytics::consumer::spawn(manager.clone(), metrics.clone(), url.clone(), analytics.clone());
-        crate::analytics::publisher::spawn(manager, metrics.clone(), url);
+        crate::analytics::consumer::spawn(manager.clone(), metrics.clone(), analytics.clone());
+        crate::analytics::outbox_retention::spawn(manager);
     }
-    if settings.nats_url.is_none() {
-        if let Some(manager) = tenant_dbs.clone() {crate::analytics::outbox_retention::spawn(manager);}
-    }
-    spawn_invalidation_listener(cache.clone(), settings.redis_url.clone());
+
     let broadcaster = Broadcaster::new(100);
     let events = EventService::new(broadcaster);
-
     let config_service = Arc::new(ConfigService::new(cache.clone(), settings.cafe_timezone.clone()));
     let pricing_rules = PricingPolicyService::new();
     let ws_connections = Arc::new(crate::realtime::registry::ConnectionRegistry::default());
@@ -376,6 +373,7 @@ pub async fn build_state_with_settings(settings: Arc<Settings>) -> Arc<AppState>
         tenant_provisioner,
         routing,
         cache,
+        rate_limits: Arc::new(Default::default()),
         settings,
         metrics,
     })
@@ -910,6 +908,8 @@ pub fn build_business_router(state: Arc<AppState>) -> Router {
             delete(handlers::realtime_rooms::remove_member),
         )
         .route("/branding", get(handlers::config::branding))
+        .route("/onboarding", get(handlers::onboarding::progress).put(handlers::onboarding::save_progress))
+        .route("/onboarding/complete", post(handlers::onboarding::complete))
         .route("/config", get(handlers::config::list_config))
         .route(
             "/config/{key}",

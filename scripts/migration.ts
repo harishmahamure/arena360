@@ -8,13 +8,14 @@ const CORE = join(ROOT, 'crates/backend-core');
 const ENV_DIR = join(ROOT, 'apps/backend');
 const usage = `Usage:
   pnpm migration generate <description> [--target control|tenant]
-  pnpm migration run [--target control]
+  pnpm migration run [--target control|tenant] [--timeout-seconds 600]
   pnpm migration info [--target control]
   pnpm migration revert [--target control]
   pnpm migration prepare [--target control]
 
 CONTROL_DATABASE_URL explicitly selects the PostgreSQL control plane.
-Tenant migrations are applied through the lease-fenced tenant migration orchestrator.
+Tenant run migrates all eligible tenants through their owning cells and waits for completion.
+Owning storage cells must run this schema version with replication configured and current leases.
 The shared operational PostgreSQL schema is retired.`;
 const args = process.argv.slice(2);
 const targetIndex = args.indexOf('--target');
@@ -47,11 +48,16 @@ if (command === 'generate') {
   process.stdout.write(`Created ${path}\n`);
   process.exit(0);
 }
-if (target === 'tenant')
-  fail(
-    'Tenant migrations require the owning cell, a current lease, and the tenant migration orchestrator',
-  );
-if (!['run', 'info', 'revert', 'prepare'].includes(command) || rest.length) fail(usage);
+let timeoutSeconds = '600';
+if (target === 'tenant') {
+  if (command !== 'run')
+    fail('Tenant target supports generate and run; tenant schema rollback is not supported.');
+  if (rest.length) {
+    if (rest.length !== 2 || rest[0] !== '--timeout-seconds' || !/^[1-9]\d*$/.test(rest[1]))
+      fail(usage);
+    timeoutSeconds = rest[1];
+  }
+} else if (!['run', 'info', 'revert', 'prepare'].includes(command) || rest.length) fail(usage);
 for (const directory of [ROOT, ENV_DIR]) {
   try {
     process.loadEnvFile(join(directory, '.env'));
@@ -63,10 +69,22 @@ for (const directory of [ROOT, ENV_DIR]) {
 const url = process.env.CONTROL_DATABASE_URL;
 if (!url) fail('Set CONTROL_DATABASE_URL; DATABASE_URL is not a migration target');
 const result = spawnSync(
-  command === 'prepare' ? 'cargo' : 'sqlx',
-  command === 'prepare'
-    ? ['sqlx', 'prepare', '--workspace']
-    : ['migrate', command, '--source', source],
+  target === 'tenant' || command === 'prepare' ? 'cargo' : 'sqlx',
+  target === 'tenant'
+    ? [
+        'run',
+        '-p',
+        'arena360-tools',
+        '--bin',
+        'schema_rollout',
+        '--',
+        '--all',
+        '--wait-seconds',
+        timeoutSeconds,
+      ]
+    : command === 'prepare'
+      ? ['sqlx', 'prepare', '--workspace']
+      : ['migrate', command, '--source', source],
   { cwd: CORE, env: { ...process.env, DATABASE_URL: url }, stdio: 'inherit' },
 );
 if (result.error) fail(result.error.message);

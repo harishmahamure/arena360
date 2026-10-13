@@ -272,23 +272,14 @@ impl Recoverer {
 #[cfg(feature = "duckdb-analytics")]
 pub struct NativeAnalytics {
     pub registry: Arc<crate::analytics::registry::AnalyticsRegistry>,
-    pub broker_url: String,
 }
 #[cfg(feature = "duckdb-analytics")]
 #[async_trait]
 impl RecoveryAnalytics for NativeAnalytics {
     async fn retire(&self,tenant:Uuid,generation:i64)->Result<(),AppError>{self.registry.retire(tenant,generation).await}
     async fn rebuild(&self, db: Arc<TenantDb>) -> Result<(), AppError> {
-        let client = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            async_nats::connect(&self.broker_url),
-        )
-        .await
-        .map_err(fail)?
-        .map_err(fail)?;
-        let broker = async_nats::jetstream::new(client);
         let analytics = self.registry.get(db.clone()).await?;
         if let Ok(reader)=crate::analytics::report_reader::ReportReader::new(analytics.clone()).await {if reader.ensure_ready().await.is_ok(){return Ok(());}}
-        crate::analytics::rebuild::rebuild(db, analytics, &broker).await
+        crate::analytics::rebuild::rebuild(db, analytics).await
     }
 }

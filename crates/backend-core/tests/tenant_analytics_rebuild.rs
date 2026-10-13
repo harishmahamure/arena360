@@ -2,7 +2,6 @@
 mod support;
 use gaming_cafe_api::{
     analytics::{
-        publisher::{publish_batch, JetStreamSink, TENANT_EVENT_STREAM},
         rebuild::{rebuild, rebuild_with_hook, source_watermark},
         tenant_db::{error, TenantAnalytics},
     },
@@ -32,43 +31,18 @@ async fn rebuild_watermark_survives_complete_outbox_cleanup() {
     f.close().await;
 }
 #[tokio::test]
-#[ignore = "requires disposable JetStream and the matching signed SQLite extension"]
+#[ignore = "requires the matching signed SQLite extension"]
 async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_builds() {
-    use async_nats::jetstream::stream::{Config, RetentionPolicy, StorageType};
-    let url = std::env::var("NATS_TEST_URL").unwrap();
-    let context = async_nats::jetstream::new(async_nats::connect(&url).await.unwrap());
-    context
-        .create_stream(Config {
-            name: TENANT_EVENT_STREAM.into(),
-            subjects: vec!["arena.tenant.*.events.v1".into()],
-            retention: RetentionPolicy::Limits,
-            storage: StorageType::File,
-            max_age: std::time::Duration::from_secs(7 * 86400),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
     let jobs=gaming_cafe_api::background::BackgroundJobs::new(gaming_cafe_api::background::Limits::default()).unwrap();
     let f = TenantFixture::new_with_background_jobs(jobs).await;
     let player = f.player("snapshot-player").await;
     let a = TenantAnalytics::open(f.db.clone()).await.unwrap();
     a.write(|tx|{tx.execute_batch("INSERT INTO monthly_summary VALUES(DATE '2020-01-01','00000000-0000-0000-0000-000000000000',21.0101,20.0101,1.0000,2,3,4,5)").map_err(error)?;Ok(())}).await.unwrap();
-    let sink = JetStreamSink::connect(&url).await.unwrap();
     let metrics = Metrics::default();
-    publish_batch(f.db.clone(), &sink, &metrics).await.unwrap();
     let t0 = source_watermark(&f.db).await.unwrap();
-    // Simulate a retained, unreplicated write lost when SQLite was restored.
-    let mut superseded:gaming_cafe_api::analytics::publisher::TenantEvent=sqlx::query_as("SELECT sequence,event_id,location_id,aggregate_type,aggregate_id,event_type,occurred_at,schema_version,deleted,payload,analytics_snapshot FROM outbox_events ORDER BY sequence LIMIT 1").fetch_one(&f.db.read_pool().unwrap()).await.unwrap();
-    superseded.tenant_id = f.db.tenant_id();
-    superseded.sequence = t0 + 2;
-    superseded.event_id = uuid::Uuid::new_v4().to_string();
-    superseded.analytics_snapshot.as_mut().unwrap().changes[0].rows[0]["credit_limit"] =
-        json!("0.9999");
-    use gaming_cafe_api::analytics::publisher::EventSink;
-    sink.publish(&superseded).await.unwrap();
     let db = f.db.clone();
     let live = a.clone();
-    rebuild_with_hook(f.db.clone(), a.clone(), &context, || async {
+    rebuild_with_hook(f.db.clone(), a.clone(), || async {
         assert_eq!(
             live.read(|tx| tx
                 .query_row("SELECT status FROM _ingest_state", [], |r| r
@@ -101,7 +75,6 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
             })
         })
         .await?;
-        publish_batch(db.clone(), &sink, &metrics).await?;
         Ok(())
     })
     .await
@@ -111,8 +84,7 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
         values,
         ("READY".into(), t0 + 1, t0, "922337203685477.5807".into())
     );
-    let mut consumer = gaming_cafe_api::analytics::consumer::JetStreamConsumer::connect(
-        &context,
+    let mut consumer = gaming_cafe_api::analytics::consumer::LocalConsumer::connect(
         f.db.clone(),
         a.clone(),
     )
@@ -136,7 +108,7 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
     );
     drop(consumer);
     assert!(
-        rebuild_with_hook(f.db.clone(), a.clone(), &context, || async {
+        rebuild_with_hook(f.db.clone(), a.clone(), || async {
             Err(AppError::Internal("injected snapshot failure".into()))
         })
         .await
@@ -163,7 +135,7 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
             .unwrap(),
         "922337203685477.5807"
     );
-    rebuild(f.db.clone(), a.clone(), &context).await.unwrap();
+    rebuild(f.db.clone(), a.clone()).await.unwrap();
     // A second rebuild starts from the persistent watermark even if rows were purged.
     f.db.with_immediate_writer(|c| {
         Box::pin(async move {
@@ -175,7 +147,7 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
     })
     .await
     .unwrap();
-    rebuild(f.db.clone(), a.clone(), &context).await.unwrap();
+    rebuild(f.db.clone(), a.clone()).await.unwrap();
     assert_eq!(
         a.read(|tx| tx
             .query_row(
@@ -196,13 +168,10 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
             .count(),
         0
     );
-    let mut stream = context.get_stream(TENANT_EVENT_STREAM).await.unwrap();
-    assert!(stream.info().await.unwrap().state.messages >= 2);
-    assert_eq!(stream.info().await.unwrap().state.consumer_count, 1);
     assert_eq!(a.read(|tx|tx.query_row("SELECT CAST(revenue AS VARCHAR) FROM monthly_summary WHERE month=DATE '2020-01-01'",[],|r|r.get::<_,String>(0)).map_err(error)).await.unwrap(),"21.0101");
     // Self-fencing after T0 prevents either backfill or the file switch.
     assert!(
-        rebuild_with_hook(f.db.clone(), a.clone(), &context, || async {
+        rebuild_with_hook(f.db.clone(), a.clone(), || async {
             f.revoke();
             Ok(())
         })
@@ -210,6 +179,43 @@ async fn live_rebuild_switches_only_after_snapshot_replay_and_preserves_failed_b
         .is_err()
     );
     drop(a);
+    f.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires the matching signed SQLite extension"]
+async fn local_replay_gap_preserves_live_facts_and_recovers_from_a_new_snapshot() {
+    let f = TenantFixture::new().await;
+    let player = f.player("retention-gap-player").await;
+    let analytics = TenantAnalytics::open(f.db.clone()).await.unwrap();
+    rebuild(f.db.clone(), analytics.clone()).await.unwrap();
+    let db = f.db.clone();
+    assert!(rebuild_with_hook(f.db.clone(), analytics.clone(), || async move {
+        db.with_immediate_writer(move |c| Box::pin(async move {
+            sqlx::query("UPDATE users SET credit_limit=10000 WHERE id=?")
+                .bind(player.to_string()).execute(&mut *c).await?;
+            write_outbox_event_on_connection(c, NewOutboxEvent {
+                aggregate_type: "user".into(), aggregate_id: player,
+                event_type: "user.updated".into(), location_id: None,
+                schema_version: 1, deleted: false, payload: json!({"id":player}),
+            }).await?;
+            // Simulate retention racing the snapshot backfill.
+            sqlx::query("DELETE FROM outbox_events").execute(c).await?;
+            Ok(())
+        })).await
+    }).await.is_err());
+    let stored = analytics.read(|tx| tx.query_row(
+        "SELECT CAST(credit_limit AS VARCHAR),(SELECT status FROM _ingest_state) FROM users WHERE username='retention-gap-player'",
+        [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    ).map_err(error)).await.unwrap();
+    assert_eq!(stored, ("0.0000".into(), "REBUILDING".into()));
+    rebuild(f.db.clone(), analytics.clone()).await.unwrap();
+    let stored = analytics.read(|tx| tx.query_row(
+        "SELECT CAST(credit_limit AS VARCHAR),(SELECT status FROM _ingest_state) FROM users WHERE username='retention-gap-player'",
+        [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    ).map_err(error)).await.unwrap();
+    assert_eq!(stored, ("1.0000".into(), "READY".into()));
+    drop(analytics);
     f.close().await;
 }
 

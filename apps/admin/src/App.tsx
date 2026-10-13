@@ -12,11 +12,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useReducer, useRef } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
+import OperatingLocationGate from './components/OperatingLocationGate';
 import RequirePermission from './components/RequirePermission';
 import SessionVerifier from './components/SessionVerifier';
 import { analyticsDashboards } from './constants/analyticsDashboards';
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
+import OnboardingLayout from './layouts/OnboardingLayout';
 import {
   bootstrapAuthFromToken,
   clearAdminSession,
@@ -47,6 +49,7 @@ const CreditSettlementsPage = lazy(() => import('./pages/dashboard/credit/Credit
 const AnalyticsPage = lazy(() => import('./pages/dashboard/analytics/AnalyticsPage'));
 const AnalyticsIndexPage = lazy(() => import('./pages/dashboard/analytics/AnalyticsIndexPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
+const OnboardingPage = lazy(() => import('./pages/dashboard/onboarding/OnboardingPage'));
 const DeviceDetailPage = lazy(() => import('./pages/dashboard/devices/DeviceDetailPage'));
 const DeviceNewPage = lazy(() => import('./pages/dashboard/devices/DeviceNewPage'));
 const DevicesPage = lazy(() => import('./pages/dashboard/devices/DevicesPage'));
@@ -230,7 +233,16 @@ function App() {
                       <Route path="/login" element={<LoginPage />} />
                       <Route path="/shift/setup" element={<ShiftSetupPage />} />
                     </Route>
-                    <Route element={<DashboardLayout />}>
+                    <Route element={<OnboardingLayout />}>
+                      <Route path="/onboarding" element={<OnboardingPage />} />
+                    </Route>
+                    <Route
+                      element={
+                        <OperatingLocationGate>
+                          <DashboardLayout />
+                        </OperatingLocationGate>
+                      }
+                    >
                       <Route path="/" element={<DashboardPage />} />
                       <Route element={<RequirePermission permission={Permission.FinanceRead} />}>
                         <Route path="/analytics">

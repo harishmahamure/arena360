@@ -40,30 +40,18 @@ pub async fn global_rate_limit(
         return next.run(request).await;
     };
     let key = format!("rate_limit:ip:{ip}");
-    match state.cache.consume_ip_token(&key, CAPACITY, WINDOW).await {
-        Ok(Some(decision)) if !decision.allowed => {
-            state.metrics.rate_rejected();
-            rate_limited_response(
-                request.headers(),
-                request.uri().path(),
-                decision.retry_after_ms,
-                decision.remaining,
-            )
-        }
-        Ok(Some(_)) => {
-            state.metrics.rate_allowed();
-            next.run(request).await
-        }
-        Ok(None) => {
-            tracing::error!("Redis rate limiting unavailable; enforcement is fail-open");
-            state.metrics.rate_fail_open();
-            next.run(request).await
-        }
-        Err(error) => {
-            tracing::error!(%error, "Redis rate limiting failed; enforcement is fail-open");
-            state.metrics.rate_fail_open();
-            next.run(request).await
-        }
+    let decision = state.rate_limits.consume(&key, CAPACITY, WINDOW);
+    if decision.allowed {
+        state.metrics.rate_allowed();
+        next.run(request).await
+    } else {
+        state.metrics.rate_rejected();
+        rate_limited_response(
+            request.headers(),
+            request.uri().path(),
+            decision.retry_after_ms,
+            decision.remaining,
+        )
     }
 }
 

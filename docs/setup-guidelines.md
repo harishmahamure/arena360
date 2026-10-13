@@ -32,10 +32,10 @@ pnpm install --frozen-lockfile
 Start your Docker runtime, then:
 
 ```sh
-docker compose up -d postgres postgres-init redis
+docker compose up -d postgres postgres-init
 ```
 
-Compose exposes PostgreSQL at `localhost:5432` and Redis at `localhost:6379`. Its local PostgreSQL username/password are `arena360` / `arena360`. The `postgres-init` service creates `arena360_control` if it is missing and preserves other databases in the volume.
+Compose exposes PostgreSQL at `localhost:5432`. Its local PostgreSQL username/password are `arena360` / `arena360`. The `postgres-init` service creates `arena360_control` if it is missing and preserves other databases in the volume.
 
 ## Backend configuration
 
@@ -54,7 +54,6 @@ STORAGE_CELL_ID=00000000-0000-4000-8000-000000000001
 STORAGE_SERVICE_URL=http://localhost:3001
 TENANT_DATA_DIR=data/tenants
 PORT=3000
-REDIS_URL=redis://127.0.0.1:6379
 LEGACY_REST_ENABLED=true
 JWT_SECRET=replace-with-a-generated-secret
 STORAGE_SERVICE_TOKEN=replace-with-another-generated-secret
@@ -72,7 +71,7 @@ The two cell IDs must match the worker registered in the portal. Keep an existin
 
 The fixed service roles are gateway `control,router` and storage `cell`. `ARENA_ROLES` does not change those split-service roles. `LEGACY_REST_ENABLED=true` enables the REST business routes used alongside the public RPC APIs.
 
-Leave `NATS_URL` unset for the default local setup. Redis can also be omitted; tenant operational reads have a fallback. Default reports use SQLite and need no DuckDB SDK.
+Operational reads and default reports use tenant SQLite. Request throttling runs in each service process. No DuckDB SDK is required for default reports.
 
 ## Frontend configuration
 
@@ -128,6 +127,15 @@ Do not edit existing applied migration versions. Optional manual control migrati
 pnpm migration run --target control
 pnpm migration info --target control
 ```
+
+Run tenant migrations across all eligible tenants with:
+
+```sh
+pnpm migration run --target tenant
+pnpm migration run --target tenant --timeout-seconds 1200
+```
+
+The command admits all pending tenants to the existing rollout and waits for completion (600 seconds by default). Each owning storage cell must run the current schema version, have a valid lease, and have replication configured for migration backups. Missing leases or backup-ready workers are reported immediately with the affected tenants, rather than waiting for the timeout. Cold tenants must be woken first; unassigned, provisioning, failed and deleted tenants are reported as excluded. Failure or timeout returns a nonzero exit code. Re-running reuses queued work; halted rollouts require diagnosis and an explicit `schema_rollout --resume ROLLOUT_UUID` before retrying. No tenant database is migrated directly from the operator machine.
 
 ## Validation
 

@@ -37,6 +37,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from '../hooks/store';
 import type { Permission } from '../hooks/usePermissions';
 import { clearAdminSession, sessionPermissions, setAdminToken } from '../lib/authSession';
+import { rememberLocation, selectedLocationId } from '../lib/locationSelection';
 import { DENOMINATIONS } from '../services/cash-registers';
 import { closeShift, getExpectedClosing, handoverShift } from '../services/shifts';
 import { getDefaultHomePath } from '../utils/homePath';
@@ -171,6 +172,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
   const completeHandover = () => {
     if (closingInvalid || closingQuery.isError || closingQuery.isLoading) return;
     const requestToken = local.get('accessToken');
+    const operatingLocation = selectedLocationId();
     void run(async () => {
       try {
         const depositInput =
@@ -211,6 +213,7 @@ export default function ShiftHandoverDialog({ open, onClose }: ShiftHandoverDial
 
           if (local.get('accessToken') !== requestToken) return;
           setAdminToken(response.newAccessToken);
+          rememberLocation(operatingLocation);
           dispatch({
             type: 'SetAuthDetail',
             payload: {

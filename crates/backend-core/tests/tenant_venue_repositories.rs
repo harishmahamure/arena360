@@ -282,7 +282,7 @@ async fn session_service_activity_commits_locally_and_failure_rolls_back_the_ses
         )
         .await
         .unwrap();
-    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let cache = gaming_cafe_api::cache::create_cache().await;
     let events = EventService::new(Broadcaster::new(16));
     let devices = DeviceService::new(events.clone(), cache.clone());
     let service = gaming_cafe_api::services::SessionService::new(
@@ -415,11 +415,7 @@ impl gaming_cafe_api::cache::CacheService for UnavailableCache {
     async fn invalidate_prefix(&self, _: &str) -> Result<(), AppError> {
         Err(AppError::Internal("cache unavailable".into()))
     }
-    async fn publish_invalidation(&self, _: &[String]) -> Result<(), AppError> {
-        Err(AppError::Internal("cache unavailable".into()))
-    }
-    async fn consume_ip_token(&self, _: &str, _: u32, _: Duration) -> Result<Option<gaming_cafe_api::cache::RateLimitDecision>, AppError> { Ok(None) }
-    fn is_available(&self) -> bool { true }
+
 }
 
 #[tokio::test]
@@ -671,7 +667,7 @@ async fn unique_open_sessions_and_lease_fencing_are_enforced() {
 #[tokio::test]
 async fn balance_service_tenant_path_does_not_touch_postgres() {
     let fixture = Fixture::new().await;
-    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let cache = gaming_cafe_api::cache::create_cache().await;
     let service = BalanceService::new(cache);
     let balance = service
         .purchase_or_recharge_tenant(
@@ -772,7 +768,7 @@ async fn device_service_refuses_to_delete_device_with_open_tenant_session() {
         .await
         .unwrap();
 
-    let cache = gaming_cafe_api::cache::create_cache(None).await;
+    let cache = gaming_cafe_api::cache::create_cache().await;
     let service = DeviceService::new(EventService::new(Broadcaster::new(16)), cache);
     let result = service.delete_tenant(fixture.db.clone(), device.id).await;
     assert!(matches!(result, Err(AppError::Conflict(_))));

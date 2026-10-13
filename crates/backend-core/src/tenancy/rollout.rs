@@ -56,6 +56,51 @@ pub async fn create(
 pub async fn status(pool: &PgPool, id: Uuid) -> Result<serde_json::Value, AppError> {
     sqlx::query_scalar("SELECT to_jsonb(r)||jsonb_build_object('cohort',CASE phase WHEN 0 THEN 'canary' WHEN 1 THEN '1%' WHEN 2 THEN '10%' WHEN 3 THEN '25%' ELSE '100%' END,'succeeded',(SELECT count(*) FROM schema_rollout_tenants WHERE rollout_id=r.id AND state='SUCCEEDED'),'failed',(SELECT count(*) FROM schema_rollout_tenants WHERE rollout_id=r.id AND state='FAILED')) FROM schema_rollouts r WHERE id=$1").bind(id).fetch_optional(pool).await?.ok_or_else(||AppError::NotFound("Schema rollout not found".into()))
 }
+/// Admit every eligible tenant immediately, without selecting a canary.
+/// Repeated commands reuse the durable rollout; halted work requires explicit resume.
+pub async fn create_all(pool: &PgPool) -> Result<Option<Uuid>, AppError> {
+    let target = super::target_schema_version();
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('schema-rollout-create',0))")
+        .execute(&mut *tx).await?;
+    let existing: Option<(Uuid, String, i64)> = sqlx::query_as(
+        "SELECT id,state,tenant_count FROM schema_rollouts WHERE target_version=$1 FOR UPDATE",
+    ).bind(target).fetch_optional(&mut *tx).await?;
+    if let Some((id, state, _)) = &existing {
+        if state == "HALTED" {
+            return Err(invalid(&format!(
+                "Schema rollout {id} is halted. Diagnose the failure, then run cargo run -p arena360-tools --bin schema_rollout -- --resume {id} before retrying"
+            )));
+        }
+    }
+    let tenants: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM tenants WHERE owner_cell IS NOT NULL AND schema_version<$1 AND state NOT IN ('PROVISIONING','FAILED','DELETED','COLD') ORDER BY id FOR UPDATE",
+    ).bind(target).fetch_all(&mut *tx).await?;
+    if tenants.is_empty() && existing.as_ref().is_none_or(|(_, state, _)| state == "COMPLETE") {
+        tx.commit().await?;
+        return Ok(None);
+    }
+    let (id, mut count) = if let Some((id, _, count)) = existing {
+        (id, count)
+    } else {
+        let id = Uuid::new_v4();
+        let count = tenants.len() as i64;
+        sqlx::query("INSERT INTO schema_rollouts(id,target_version,phase,canary_count,tenant_count,soak_seconds) VALUES($1,$2,4,$3,$3,0)")
+            .bind(id).bind(target).bind(count).execute(&mut *tx).await?;
+        // Rows are inserted below with consecutive ordinals.
+        (id, 0)
+    };
+    for tenant in tenants {
+        let added = sqlx::query(
+            "INSERT INTO schema_rollout_tenants(rollout_id,tenant_id,ordinal) VALUES($1,$2,$3) ON CONFLICT(rollout_id,tenant_id) DO NOTHING",
+        ).bind(id).bind(tenant).bind(count + 1).execute(&mut *tx).await?;
+        count += added.rows_affected() as i64;
+    }
+    sqlx::query("UPDATE schema_rollouts SET phase=4,soak_seconds=0,tenant_count=$2,state='RUNNING',stage_ready_at=NULL,updated_at=clock_timestamp() WHERE id=$1")
+        .bind(id).bind(count).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(Some(id))
+}
 pub async fn resume(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
     let mut tx = pool.begin().await?;
     let changed=sqlx::query("UPDATE schema_rollouts SET state='RUNNING',last_error=NULL,stage_ready_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND state='HALTED'").bind(id).execute(&mut *tx).await?;

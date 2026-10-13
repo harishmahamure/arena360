@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/admin-shift-close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete_admin_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login/admin": {
         parameters: {
             query?: never;
@@ -100,6 +116,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return only the authenticated panel user's public profile. The auth middleware
+         *     checks current account status, role, membership, and token expiry first.
+         */
+        get: operations["current_panel_user"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-issue a panel access token for an active session so working staff are not
+         *     signed out mid-task. Idle timeout is enforced by the client; revoked access fails in middleware.
+         */
+        post: operations["refresh_panel_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -126,6 +182,38 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["register_player"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/staff-shift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resume_staff_shift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["branding"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1396,6 +1484,38 @@ export interface paths {
         patch: operations["mark_read"];
         trace?: never;
     };
+    "/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["progress"];
+        put: operations["save_progress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organizations/{org_id}/configuration-snapshot": {
         parameters: {
             query?: never;
@@ -1421,6 +1541,22 @@ export interface paths {
         };
         get: operations["venue_locations"];
         put?: never;
+        post: operations["create_venue_location"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{org_id}/locations/{location_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_venue_location"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1732,6 +1868,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/current-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["current_prices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products/{id}": {
         parameters: {
             query?: never;
@@ -1746,6 +1898,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_product"];
+        trace?: never;
+    };
+    "/products/{id}/recipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_recipe"];
+        put: operations["save_recipe"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/realtime/rooms": {
@@ -2020,6 +2188,22 @@ export interface paths {
         patch: operations["force_close_shift"];
         trace?: never;
     };
+    "/stats/business": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["business_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stats/dashboard": {
         parameters: {
             query?: never;
@@ -2221,6 +2405,23 @@ export interface paths {
         };
         get: operations["list_users"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set or remove the signed-in panel user's own profile photo (DRAFT-0042). */
+        put: operations["update_own_avatar"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2488,6 +2689,7 @@ export interface components {
             timestamp: string;
         };
         AuthUserDto: {
+            avatarUrl?: string | null;
             email?: string | null;
             firstName?: string | null;
             id: string;
@@ -2571,6 +2773,47 @@ export interface components {
         BalanceValidationResult: {
             reason?: string | null;
             valid: boolean;
+        };
+        /** @description Public white-label identity shown on the login screen and panel shell. */
+        Branding: {
+            logoUrl: string;
+            name: string;
+            primaryColor: string;
+        };
+        BrandingEnvelope: {
+            data: components["schemas"]["Branding"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        BusinessAnalyticsEnvelope: {
+            data: components["schemas"]["BusinessReport"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        BusinessPeriod: {
+            endDate: string;
+            observedUntil: string;
+            previousStartDate: string;
+            startDate: string;
+            timezone: string;
+        };
+        BusinessReport: {
+            customerDetails: components["schemas"]["Customer"][];
+            customers: components["schemas"]["CustomerSummary"];
+            dailySales: components["schemas"]["SalesDay"][];
+            generatedAt: string;
+            hourlyUsage: components["schemas"]["UsageHour"][];
+            period: components["schemas"]["BusinessPeriod"];
+            plans: components["schemas"]["PlanSales"][];
+            pos: components["schemas"]["PosSummary"];
+            products: components["schemas"]["ProductSales"][];
+            staff: components["schemas"]["StaffPerformance"][];
+            stations: components["schemas"]["Station"][];
+            wallets: components["schemas"]["WalletSummary"];
         };
         CashDeposit: {
             /** Format: double */
@@ -2772,6 +3015,10 @@ export interface components {
             closingDenominations?: unknown;
             notes?: string | null;
         };
+        CompleteOnboardingDto: {
+            /** Format: int64 */
+            expectedRevision: number;
+        };
         ConfigFilterDto: {
             category?: string | null;
             key?: string | null;
@@ -2851,6 +3098,8 @@ export interface components {
             deviceType?: string | null;
             localIpAddress?: string | null;
             location?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
             name: string;
             registrationStatus?: string | null;
             serialNumber?: string | null;
@@ -2898,6 +3147,8 @@ export interface components {
             isActive?: boolean | null;
             kind: string;
             name: string;
+            /** Format: uuid */
+            venueLocationId?: string | null;
         };
         CreateKioskOrderDto: {
             lineItems: components["schemas"]["CreateKioskOrderLineItemDto"][];
@@ -2910,6 +3161,8 @@ export interface components {
             quantity: number;
         };
         CreateLineItemDto: {
+            /** @description Chosen product options, for example "Extra patty". */
+            optionIds?: string[];
             /** Format: uuid */
             productId: string;
             /** Format: int32 */
@@ -2941,6 +3194,7 @@ export interface components {
             description?: string | null;
             /** Format: uuid */
             locationId?: string | null;
+            locationIds?: string[];
             name: string;
             policy: components["schemas"]["PricingPolicy"];
         };
@@ -2953,6 +3207,7 @@ export interface components {
             dayPrice?: number | null;
             description?: string | null;
             isActive?: boolean | null;
+            isRawMaterial?: boolean | null;
             name: string;
             /** Format: double */
             nightPrice?: number | null;
@@ -3079,6 +3334,8 @@ export interface components {
             /** Format: date-time */
             transactionDate?: string | null;
             transactionType: string;
+            /** Format: uuid */
+            venueLocationId?: string | null;
         };
         CreateUnitDto: {
             abbreviation: string;
@@ -3329,6 +3586,34 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        Customer: {
+            /** Format: int64 */
+            daysAbsent: number;
+            firstVisit: string;
+            id: string;
+            lastVisit: string;
+            name: string;
+            /** Format: double */
+            spend: number;
+            /** Format: int64 */
+            visits: number;
+        };
+        CustomerSummary: {
+            /** Format: int64 */
+            atRisk: number;
+            /** Format: int64 */
+            frequentVisitors: number;
+            /** Format: int64 */
+            newVisitors: number;
+            /** Format: int64 */
+            priorVisitors: number;
+            /** Format: int64 */
+            repeatVisitors: number;
+            /** Format: int64 */
+            retainedVisitors: number;
+            /** Format: int64 */
+            visitors: number;
+        };
         DashboardStatsDto: {
             devices: components["schemas"]["DeviceStatsDto"];
             period: components["schemas"]["PeriodDto"];
@@ -3356,6 +3641,9 @@ export interface components {
             peakRatio: number;
             peakWindowEnd: string;
             peakWindowStart: string;
+            /** @description Published rules captured for this session, already filtered to its device. */
+            policyRules?: components["schemas"]["PricingRule"][];
+            policyTimezone?: string | null;
         };
         Device: {
             /** Format: date-time */
@@ -3370,7 +3658,11 @@ export interface components {
             id: string;
             localIpAddress?: string | null;
             location?: string | null;
+            /** Format: uuid */
+            locationId: string;
             name: string;
+            /** Format: uuid */
+            organizationId: string;
             registeredKiosk?: string | null;
             registrationStatus: string;
             serialNumber?: string | null;
@@ -3393,6 +3685,8 @@ export interface components {
             /** Format: int64 */
             limit?: number | null;
             location?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
             name?: string | null;
             /** Format: int64 */
             page?: number | null;
@@ -3837,6 +4131,8 @@ export interface components {
             updatedAt: string;
             /** Format: uuid */
             updatedBy?: string | null;
+            /** Format: uuid */
+            venueLocationId: string;
         };
         InventoryLocationEnvelope: {
             data: components["schemas"]["InventoryLocation"];
@@ -3852,6 +4148,8 @@ export interface components {
             limit?: number | null;
             /** Format: int64 */
             page?: number | null;
+            /** Format: uuid */
+            venueLocationId?: string | null;
         };
         InventoryLocationPaginationEnvelope: {
             data: components["schemas"]["InventoryLocationPaginationPage"];
@@ -4038,7 +4336,6 @@ export interface components {
         };
         LiveHealthData: {
             db: string;
-            redis: string;
             status: string;
             timestamp: string;
         };
@@ -4062,6 +4359,8 @@ export interface components {
             search?: string | null;
             sortBy?: string | null;
             sortOrder?: string | null;
+            /** Format: uuid */
+            venueLocationId?: string | null;
         };
         LocationStockPaginationEnvelope: {
             data: components["schemas"]["LocationStockPaginationPage"];
@@ -4145,6 +4444,50 @@ export interface components {
             /** Format: int64 */
             totalPages: number;
         };
+        OnboardingCheck: {
+            actionPath: string;
+            key: string;
+            label: string;
+            ready: boolean;
+        };
+        OnboardingEnvelope: {
+            data: components["schemas"]["OnboardingSnapshot"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        OnboardingLocation: {
+            /** Format: int64 */
+            compatiblePlanCount: number;
+            currency: string;
+            id: string;
+            name: string;
+            operatorReady: boolean;
+            /** Format: int64 */
+            stationCount: number;
+            timezone: string;
+        };
+        OnboardingProgress: {
+            completedAt?: string | null;
+            currentStep: components["schemas"]["OnboardingStep"];
+            /** Format: int64 */
+            revision: number;
+            settingsReviewedAt?: string | null;
+            startedAt?: string | null;
+            updatedAt?: string | null;
+        };
+        OnboardingReadiness: {
+            checks: components["schemas"]["OnboardingCheck"][];
+            locations: components["schemas"]["OnboardingLocation"][];
+            ready: boolean;
+        };
+        OnboardingSnapshot: {
+            progress: components["schemas"]["OnboardingProgress"];
+            readiness: components["schemas"]["OnboardingReadiness"];
+        };
+        /** @enum {string} */
+        OnboardingStep: "venue" | "settings" | "stations" | "review";
         OpenCashRegisterDto: {
             notes?: string | null;
             /** Format: double */
@@ -4191,6 +4534,13 @@ export interface components {
         PanelMfaDto: {
             challengeToken: string;
             code: string;
+        };
+        PanelUserEnvelope: {
+            data: components["schemas"]["AuthUserDto"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
         };
         PeriodDto: {
             endDate: string;
@@ -4449,6 +4799,11 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             createdBy?: string | null;
+            /**
+             * Format: double
+             * @description Live purchase price; the catalog price remains editable independently.
+             */
+            currentPrice?: number | null;
             deductionProfile?: unknown;
             /** Format: date-time */
             deletedAt?: string | null;
@@ -4488,6 +4843,8 @@ export interface components {
             isActive?: number | null;
             /** Format: int64 */
             limit?: number | null;
+            /** Format: uuid */
+            locationId?: string | null;
             /** Format: double */
             maxPrice?: number | null;
             /** Format: double */
@@ -4516,6 +4873,20 @@ export interface components {
             total: number;
             /** Format: int64 */
             totalPages: number;
+        };
+        PlanSales: {
+            /** Format: int64 */
+            buyers: number;
+            /** Format: double */
+            hoursSold: number;
+            id: string;
+            name: string;
+            /** Format: int64 */
+            purchases: number;
+            /** Format: int64 */
+            repeatBuyers: number;
+            /** Format: double */
+            revenue: number;
         };
         PlanStatsDto: {
             plansByType: components["schemas"]["PlanTypeStat"][];
@@ -4775,11 +5146,23 @@ export interface components {
             /** Format: uuid */
             updatedBy?: string | null;
         };
+        PosSummary: {
+            /** Format: int64 */
+            attachedCustomers: number;
+            /** Format: double */
+            revenue: number;
+            /** Format: int64 */
+            transactions: number;
+            /** Format: int64 */
+            visitingCustomers: number;
+        };
         PresignRequest: {
-            /** @description MIME type the client will upload with (e.g. `image/png`, `video/mp4`). */
+            /** @description MIME type the client will upload with (e.g. `image/webp`, `video/webm`). */
             contentType?: string | null;
             /** @description Original file name; used to derive the object key and extension. */
             fileName: string;
+            /** @description `avatar` (own profile photo, WebP), `branding` (requires settings:write), or catalog media. */
+            purpose?: string | null;
         };
         PresignResponse: {
             /** @description Object key in the bucket. */
@@ -4816,6 +5199,7 @@ export interface components {
         };
         PricingRule: {
             action: components["schemas"]["PricingAction"];
+            categories?: string[];
             deviceTypes?: string[];
             endTime?: string | null;
             /** Format: date-time */
@@ -4824,9 +5208,12 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
+            /** @description Product rules only. Empty `product_ids` and `categories` mean every product. */
+            productIds?: string[];
             startTime?: string | null;
             /** Format: date-time */
             startsAt?: string | null;
+            target?: components["schemas"]["PricingTarget"];
             weekdays?: number[];
         };
         PricingRuleSet: {
@@ -4841,6 +5228,7 @@ export interface components {
             id: string;
             /** Format: uuid */
             locationId?: string | null;
+            locationIds?: string[];
             name: string;
             /** Format: uuid */
             organizationId: string;
@@ -4906,9 +5294,16 @@ export interface components {
             /** Format: date-time */
             at: string;
             baseRate?: string | null;
+            category?: string | null;
             deviceType?: string | null;
             /** Format: uuid */
             locationId?: string | null;
+            /**
+             * Format: uuid
+             * @description Setting a product or category simulates a product sale instead of a session.
+             */
+            productId?: string | null;
+            target?: null | components["schemas"]["PricingTarget"];
         };
         PricingSimulationEnvelope: {
             data: components["schemas"]["PricingSimulationResult"];
@@ -4925,6 +5320,11 @@ export interface components {
             timezone: string;
             trace: components["schemas"]["PricingTraceStep"][];
         };
+        /**
+         * @description What a rule prices. Rules saved before product pricing existed default to sessions.
+         * @enum {string}
+         */
+        PricingTarget: "sessions" | "products" | "deduction";
         PricingTraceStep: {
             action: string;
             after: string;
@@ -4946,6 +5346,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             isActive: boolean;
+            /** @description Ingredients are stocked and used in recipes but never sold directly. */
+            isRawMaterial?: boolean;
             name: string;
             /** Format: double */
             nightPrice: number;
@@ -4969,6 +5371,26 @@ export interface components {
             /** Format: uuid */
             updatedBy?: string | null;
         };
+        ProductCurrentPrice: {
+            hasOptions: boolean;
+            /**
+             * Format: int32
+             * @description How many the base recipe can make at the requested location; absent when the
+             *     product is sold from its own stock.
+             */
+            madeToOrderAvailable?: number | null;
+            /** Format: double */
+            price: number;
+            /** Format: uuid */
+            productId: string;
+        };
+        ProductCurrentPriceListEnvelope: {
+            data: components["schemas"]["ProductCurrentPrice"][];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         ProductEnvelope: {
             data: components["schemas"]["Product"];
             /** Format: int32 */
@@ -4980,6 +5402,7 @@ export interface components {
             category?: string | null;
             /** Format: int32 */
             disabled?: number | null;
+            /** @description `true` lists sellable products only; `false` lists raw materials only. */
             forSale?: boolean | null;
             /** Format: int64 */
             limit?: number | null;
@@ -4994,6 +5417,28 @@ export interface components {
             page?: number | null;
             sortBy?: string | null;
             sortOrder?: string | null;
+        };
+        ProductOption: {
+            /**
+             * Format: uuid
+             * @description Omit when adding an option; keep it when editing so past sales stay linked.
+             */
+            id?: string | null;
+            /** @description Added to the base recipe. A negative quantity removes an ingredient. */
+            ingredients?: components["schemas"]["RecipeIngredient"][];
+            name: string;
+            /** Format: double */
+            priceDelta?: number;
+        };
+        ProductOptionGroup: {
+            /** Format: uuid */
+            id?: string | null;
+            /** @description More than one option may be chosen. */
+            multiple?: boolean;
+            name: string;
+            options: components["schemas"]["ProductOption"][];
+            /** @description At least one option must be chosen. */
+            required?: boolean;
         };
         ProductPaginationEnvelope: {
             data: components["schemas"]["ProductPaginationPage"];
@@ -5014,6 +5459,31 @@ export interface components {
             totalPages: number;
         };
         /**
+         * @description With `items`, the product is made to order and a sale deducts these
+         *     ingredients instead of the product's own stock.
+         */
+        ProductRecipe: {
+            items?: components["schemas"]["RecipeIngredient"][];
+            optionGroups?: components["schemas"]["ProductOptionGroup"][];
+        };
+        ProductRecipeEnvelope: {
+            data: components["schemas"]["ProductRecipe"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
+        ProductSales: {
+            id: string;
+            name: string;
+            /** Format: int64 */
+            quantity: number;
+            /** Format: double */
+            revenue: number;
+            /** Format: int64 */
+            transactions: number;
+        };
+        /**
          * @description Admin-authorized device provisioning payload (DRAFT-0023). Sent with an admin
          *     bearer token to `POST /devices/provision`.
          */
@@ -5022,6 +5492,8 @@ export interface components {
             deviceType?: string | null;
             fingerprint: components["schemas"]["DeviceFingerprintDto"];
             location?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
             name: string;
             /** @description Identifies the provisioning client (currently `kiosk`). */
             provisionClient?: string | null;
@@ -5216,6 +5688,13 @@ export interface components {
             /** Format: uuid */
             receiptId: string;
         };
+        /** @description Quantity is a whole number in the ingredient's own unit (pieces, grams, millilitres). */
+        RecipeIngredient: {
+            /** Format: uuid */
+            ingredientId: string;
+            /** Format: int32 */
+            quantity: number;
+        };
         ReconcileCashRegisterDto: {
             reconciliationNotes?: string | null;
         };
@@ -5377,6 +5856,32 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        SalesDay: {
+            /** Format: int64 */
+            buyers: number;
+            date: string;
+            /** Format: double */
+            planRevenue: number;
+            /** Format: double */
+            posRevenue: number;
+            /** Format: double */
+            revenue: number;
+            /** Format: int64 */
+            transactions: number;
+        };
+        SaveOnboardingDto: {
+            currentStep: components["schemas"]["OnboardingStep"];
+            /** Format: int64 */
+            expectedRevision: number;
+            reviewSettings?: boolean;
+        };
+        SaveVenueLocationDto: {
+            currency: string;
+            isActive?: boolean | null;
+            name: string;
+            slug: string;
+            timezone: string;
         };
         SessionBalanceSummary: {
             deductionProfile?: null | components["schemas"]["DeductionProfile"];
@@ -5765,6 +6270,18 @@ export interface components {
             totp?: string | null;
             username: string;
         };
+        StaffPerformance: {
+            id: string;
+            name: string;
+            /** Format: double */
+            revenue: number;
+            /** Format: int64 */
+            sessions: number;
+            /** Format: double */
+            shiftHours: number;
+            /** Format: int64 */
+            transactions: number;
+        };
         StaffPlayerStatsDto: {
             /** Format: int64 */
             activePlayers: number;
@@ -5775,6 +6292,8 @@ export interface components {
             endDate?: string | null;
             shiftStart?: string | null;
             startDate?: string | null;
+            /** Format: uuid */
+            venueLocationId?: string | null;
         };
         StartKioskSessionDto: {
             /**
@@ -5788,12 +6307,26 @@ export interface components {
             /** Format: double */
             openingBalance: number;
             openingDenominations?: unknown;
+            /** Format: uuid */
+            venueLocationId?: string | null;
+        };
+        Station: {
+            /** Format: double */
+            hours: number;
+            id: string;
+            location: string;
+            name: string;
+            /** Format: int64 */
+            sessions: number;
+            status: string;
         };
         StatsQuery: {
             /** @description When false, previous-period metrics are omitted. Defaults to true. */
             compare?: boolean | null;
             endDate?: string | null;
             startDate?: string | null;
+            /** Format: uuid */
+            venueLocationId?: string | null;
         };
         StockAdjustment: {
             /** Format: date-time */
@@ -6286,6 +6819,7 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             id: string;
+            optionNames?: string[];
             /** Format: uuid */
             productId: string;
             productName: string;
@@ -6456,11 +6990,17 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        UpdateAvatarDto: {
+            /** @description Public URL returned by `/uploads/presign` with `purpose: "avatar"`, or null to remove. */
+            avatarUrl?: string | null;
+        };
         UpdateDeviceDto: {
             deviceSubType?: string | null;
             deviceType?: string | null;
             localIpAddress?: string | null;
             location?: string | null;
+            /** Format: uuid */
+            locationId?: string | null;
             name?: string | null;
             registrationStatus?: string | null;
             serialNumber?: string | null;
@@ -6511,6 +7051,8 @@ export interface components {
             isActive?: boolean | null;
             kind?: string | null;
             name?: string | null;
+            /** Format: uuid */
+            venueLocationId?: string | null;
         };
         UpdateKioskOrderDto: {
             status: string;
@@ -6546,6 +7088,7 @@ export interface components {
             dayPrice?: number | null;
             description?: string | null;
             isActive?: boolean | null;
+            isRawMaterial?: boolean | null;
             name?: string | null;
             /** Format: double */
             nightPrice?: number | null;
@@ -6637,6 +7180,17 @@ export interface components {
             reason: string;
             value: unknown;
         };
+        UsageHour: {
+            date: string;
+            /** Format: int32 */
+            hour: number;
+            /** Format: double */
+            hours: number;
+            /** Format: int64 */
+            starts: number;
+            /** Format: int32 */
+            weekday: number;
+        };
         UsageSession: {
             /** Format: uuid */
             balanceId: string;
@@ -6644,6 +7198,7 @@ export interface components {
             createdAt: string;
             /** Format: uuid */
             createdBy?: string | null;
+            deductionProfileSnapshot?: unknown;
             /** Format: date-time */
             deletedAt?: string | null;
             /** Format: uuid */
@@ -6728,6 +7283,7 @@ export interface components {
             timestamp: string;
         };
         User: {
+            avatarUrl?: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -6878,6 +7434,13 @@ export interface components {
             slug: string;
             timezone: string;
         };
+        VenueLocationEnvelope: {
+            data: components["schemas"]["VenueLocation"];
+            /** Format: int32 */
+            statusCode: number;
+            success: boolean;
+            timestamp: string;
+        };
         VenueLocationListEnvelope: {
             data: components["schemas"]["VenueLocation"][];
             /** Format: int32 */
@@ -6887,6 +7450,18 @@ export interface components {
         };
         VerifyTotpSetupDto: {
             code: string;
+        };
+        WalletSummary: {
+            /** Format: int64 */
+            activeWallets: number;
+            /** Format: int64 */
+            expiredWallets: number;
+            /** Format: int64 */
+            expiring7Days: number;
+            /** Format: int64 */
+            holders: number;
+            /** Format: double */
+            remainingHours: number;
         };
         WasteSummaryFilterDto: {
             /** Format: date-time */
@@ -6947,6 +7522,33 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    complete_admin_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponseEnvelope"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7202,6 +7804,82 @@ export interface operations {
             };
         };
     };
+    current_panel_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current panel account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PanelUserEnvelope"];
+                };
+            };
+            /** @description Session expired or account access revoked */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Panel role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    refresh_panel_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Renewed panel token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponseEnvelope"];
+                };
+            };
+            /** @description Session expired or account access revoked */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Panel role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     register: {
         parameters: {
             query?: never;
@@ -7336,6 +8014,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resume_staff_shift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resume the authenticated staff shift */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponseEnvelope"];
+                };
+            };
+            /** @description Shift permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    branding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Venue branding */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandingEnvelope"];
                 };
             };
         };
@@ -12538,6 +13265,95 @@ export interface operations {
             };
         };
     };
+    progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    save_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveOnboardingDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    complete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteOnboardingDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingEnvelope"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     configuration_snapshot: {
         parameters: {
             query?: {
@@ -12579,6 +13395,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VenueLocationListEnvelope"];
+                };
+            };
+        };
+    };
+    create_venue_location: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveVenueLocationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueLocationEnvelope"];
+                };
+            };
+        };
+    };
+    update_venue_location: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveVenueLocationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueLocationEnvelope"];
                 };
             };
         };
@@ -13682,6 +14549,48 @@ export interface operations {
             };
         };
     };
+    current_prices: {
+        parameters: {
+            query?: {
+                /** @description Sale location used for made-to-order availability. */
+                locationId?: string;
+                venueLocationId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sale price of each product right now, after published product pricing rules and before options */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductCurrentPriceListEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_product: {
         parameters: {
             query?: never;
@@ -13814,6 +14723,128 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProductEnvelope"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_recipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recipe ingredients and options */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductRecipeEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    save_recipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductRecipe"];
+            };
+        };
+        responses: {
+            /** @description Recipe replaced */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductRecipeEnvelope"];
                 };
             };
             /** @description Bad request */
@@ -14869,9 +15900,59 @@ export interface operations {
             };
         };
     };
+    business_stats: {
+        parameters: {
+            query?: {
+                venueLocationId?: string | null;
+                /** @description Inclusive tenant calendar date, YYYY-MM-DD. Defaults to the last 30 days. */
+                startDate?: string | null;
+                endDate?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Business analytics from tenant DuckDB */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessAnalyticsEnvelope"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     dashboard_stats: {
         parameters: {
             query?: {
+                venueLocationId?: string | null;
                 startDate?: string | null;
                 endDate?: string | null;
                 /** @description When false, previous-period metrics are omitted. Defaults to true. */
@@ -14933,6 +16014,7 @@ export interface operations {
     finance_deposit_stats: {
         parameters: {
             query?: {
+                venueLocationId?: string | null;
                 startDate?: string | null;
                 endDate?: string | null;
                 /** @description When false, previous-period metrics are omitted. Defaults to true. */
@@ -14994,6 +16076,7 @@ export interface operations {
     finance_reconciliation_stats: {
         parameters: {
             query?: {
+                venueLocationId?: string | null;
                 startDate?: string | null;
                 endDate?: string | null;
                 /** @description When false, previous-period metrics are omitted. Defaults to true. */
@@ -15055,6 +16138,7 @@ export interface operations {
     finance_variance_stats: {
         parameters: {
             query?: {
+                venueLocationId?: string | null;
                 startDate?: string | null;
                 endDate?: string | null;
                 /** @description When false, previous-period metrics are omitted. Defaults to true. */
@@ -15116,6 +16200,7 @@ export interface operations {
     revenue_by_payment_method: {
         parameters: {
             query?: {
+                venueLocationId?: string | null;
                 startDate?: string | null;
                 endDate?: string | null;
                 /** @description When false, previous-period metrics are omitted. Defaults to true. */
@@ -15177,6 +16262,7 @@ export interface operations {
     staff_dashboard_stats: {
         parameters: {
             query?: {
+                venueLocationId?: string | null;
                 startDate?: string | null;
                 endDate?: string | null;
                 shiftStart?: string | null;
@@ -15237,6 +16323,7 @@ export interface operations {
     usage_stats: {
         parameters: {
             query?: {
+                venueLocationId?: string | null;
                 startDate?: string | null;
                 endDate?: string | null;
                 /** @description When false, previous-period metrics are omitted. Defaults to true. */
@@ -15908,6 +16995,48 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_own_avatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAvatarDto"];
+            };
+        };
+        responses: {
+            /** @description Updated profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PanelUserEnvelope"];
+                };
+            };
+            /** @description URL is not an uploaded profile photo */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

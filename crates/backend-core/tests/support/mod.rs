@@ -147,20 +147,7 @@ impl gaming_cafe_api::cache::CacheService for MemoryCache {
             .retain(|key, _| !key.starts_with(prefix));
         Ok(())
     }
-    async fn publish_invalidation(&self, _: &[String]) -> Result<(), AppError> {
-        Ok(())
-    }
-    async fn consume_ip_token(
-        &self,
-        _: &str,
-        _: u32,
-        _: Duration,
-    ) -> Result<Option<gaming_cafe_api::cache::RateLimitDecision>, AppError> {
-        Ok(None)
-    }
-    fn is_available(&self) -> bool {
-        true
-    }
+
 }
 
 pub struct SessionFixture {
@@ -326,8 +313,6 @@ pub fn settings() -> gaming_cafe_api::config::Settings {
         database_acquire_timeout_seconds: 1,
         database_idle_timeout_seconds: 60,
         database_max_lifetime_seconds: 600,
-        nats_url: None,
-        redis_url: None,
         jwt_secret: "arena360-test-secret-at-least-thirty-two-characters".into(),
         jwt_access_expiration: "15m".into(),
         jwt_player_expiration: "24h".into(),

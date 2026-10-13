@@ -13,6 +13,7 @@ pub mod inventory;
 pub mod kiosk;
 pub mod kiosk_orders;
 pub mod notifications;
+pub mod onboarding;
 pub mod plans;
 pub mod player_plans;
 pub mod pricing_rules;

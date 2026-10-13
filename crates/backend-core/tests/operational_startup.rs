@@ -18,6 +18,7 @@ async fn startup_ignores_unreachable_operational_pool_and_reports_missing_role_s
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["status"], "ok");
     assert_eq!(body["data"]["db"], "down");
+    assert!(body["data"].get("redis").is_none());
     assert_eq!(
         request(app, "GET", "/health/ready", None, None, json!({}))
             .await
@@ -34,6 +35,7 @@ async fn cell_readiness_checks_local_storage_without_a_control_pool() {
     let (status, body) = request(app.clone(), "GET", "/health/ready", None, None, json!({})).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["db"], "up");
+    assert!(body["data"].get("redis").is_none());
     // Closed handles are omitted, allowing an idle cell to remain ready.
     f.tenant.db.close().await.unwrap();
     assert_eq!(

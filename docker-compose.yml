@@ -42,37 +42,6 @@ services:
       postgres-init:
         condition: service_completed_successfully
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    command: >
-      redis-server
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
-      --appendonly yes
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  nats:
-    image: nats:2.12-alpine
-    command: ["-js", "-sd", "/data", "-m", "8222"]
-    ports:
-      - "127.0.0.1:4222:4222"
-      - "127.0.0.1:8222:8222"
-    volumes:
-      - natsdata:/data
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   # Local stand-in for Wasabi (S3-compatible; ADR-0043). Development only: S3 auth is disabled.
   object-storage:
     image: chrislusf/seaweedfs:4.48
@@ -105,6 +74,4 @@ services:
 
 volumes:
   pgdata:
-  redisdata:
-  natsdata:
   objectdata:

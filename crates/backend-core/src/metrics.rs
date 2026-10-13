@@ -13,7 +13,6 @@ pub struct Metrics {
     rate_limit_allowed: AtomicU64,
     rate_limit_rejected: AtomicU64,
     rate_limit_fail_open: AtomicU64,
-    redis_failures: AtomicU64,
     active_websockets: AtomicU64,
     slow_consumers_dropped: AtomicU64,
     rpc_requests: AtomicU64,
@@ -23,11 +22,6 @@ pub struct Metrics {
     protobuf_response_bytes: AtomicU64,
     gzip_responses: AtomicU64,
     outbox_lag_millis: AtomicU64,
-    publish_pending: AtomicU64,
-    publish_bytes: AtomicU64,
-    publish_oldest_millis: AtomicU64,
-    publish_failures: AtomicU64,
-    published: AtomicU64,
     replication_spool_bytes: AtomicU64,
     replication_oldest_millis: AtomicU64,
     replication_failures: AtomicU64,
@@ -57,7 +51,6 @@ impl Metrics {
     }
     pub fn rate_fail_open(&self) {
         self.rate_limit_fail_open.fetch_add(1, Ordering::Relaxed);
-        self.redis_failures.fetch_add(1, Ordering::Relaxed);
     }
     pub fn websocket_opened(&self) {
         self.active_websockets.fetch_add(1, Ordering::Relaxed);
@@ -91,18 +84,6 @@ impl Metrics {
     pub fn set_outbox_lag(&self, millis: u64) {
         self.outbox_lag_millis.store(millis, Ordering::Relaxed);
     }
-    pub fn outbox_published(&self) {
-        self.published.fetch_add(1, Ordering::Relaxed);
-    }
-    pub fn outbox_publish_failed(&self) {
-        self.publish_failures.fetch_add(1, Ordering::Relaxed);
-    }
-    pub fn set_publish_backlog(&self, pending: u64, bytes: u64, oldest_millis: u64) {
-        self.publish_pending.store(pending, Ordering::Relaxed);
-        self.publish_bytes.store(bytes, Ordering::Relaxed);
-        self.publish_oldest_millis
-            .store(oldest_millis, Ordering::Relaxed);
-    }
     pub fn analytics_ingested(&self, events: u64) { self.analytics_events.fetch_add(events, Ordering::Relaxed); }
     pub fn analytics_gap(&self) { self.analytics_gaps.fetch_add(1, Ordering::Relaxed); }
     pub fn analytics_retained(&self, rows:u64) { self.analytics_retention_runs.fetch_add(1,Ordering::Relaxed);self.analytics_retention_rows.fetch_add(rows,Ordering::Relaxed); }
@@ -126,8 +107,6 @@ impl Metrics {
                 "arena360_rate_limit_decisions_total{{decision=\"allowed\"}} {}\n",
                 "arena360_rate_limit_decisions_total{{decision=\"rejected\"}} {}\n",
                 "arena360_rate_limit_decisions_total{{decision=\"fail_open\"}} {}\n",
-                "# TYPE arena360_redis_failures_total counter\n",
-                "arena360_redis_failures_total {}\n",
                 "# TYPE arena360_active_websockets gauge\n",
                 "arena360_active_websockets {}\n",
                 "# TYPE arena360_slow_consumers_dropped_total counter\n",
@@ -141,16 +120,6 @@ impl Metrics {
                 "arena360_gzip_responses_total {}\n",
                 "# TYPE arena360_outbox_lag_milliseconds gauge\n",
                 "arena360_outbox_lag_milliseconds {}\n",
-                "# TYPE arena360_outbox_pending_events gauge\n",
-                "arena360_outbox_pending_events {}\n",
-                "# TYPE arena360_outbox_payload_bytes gauge\n",
-                "arena360_outbox_payload_bytes {}\n",
-                "# TYPE arena360_outbox_oldest_age_milliseconds gauge\n",
-                "arena360_outbox_oldest_age_milliseconds {}\n",
-                "# TYPE arena360_outbox_publish_failures_total counter\n",
-                "arena360_outbox_publish_failures_total {}\n",
-                "# TYPE arena360_outbox_published_total counter\n",
-                "arena360_outbox_published_total {}\n",
                 "# TYPE arena360_analytics_ingested_events_total counter\n",
                 "arena360_analytics_ingested_events_total {}\n",
                 "# TYPE arena360_analytics_sequence_gaps_total counter\n",
@@ -171,7 +140,6 @@ impl Metrics {
             self.rate_limit_allowed.load(Ordering::Relaxed),
             self.rate_limit_rejected.load(Ordering::Relaxed),
             self.rate_limit_fail_open.load(Ordering::Relaxed),
-            self.redis_failures.load(Ordering::Relaxed),
             self.active_websockets.load(Ordering::Relaxed),
             self.slow_consumers_dropped.load(Ordering::Relaxed),
             self.rpc_requests.load(Ordering::Relaxed),
@@ -181,11 +149,6 @@ impl Metrics {
             self.protobuf_response_bytes.load(Ordering::Relaxed),
             self.gzip_responses.load(Ordering::Relaxed),
             self.outbox_lag_millis.load(Ordering::Relaxed),
-            self.publish_pending.load(Ordering::Relaxed),
-            self.publish_bytes.load(Ordering::Relaxed),
-            self.publish_oldest_millis.load(Ordering::Relaxed),
-            self.publish_failures.load(Ordering::Relaxed),
-            self.published.load(Ordering::Relaxed),
             self.analytics_events.load(Ordering::Relaxed),
             self.analytics_gaps.load(Ordering::Relaxed),
             self.analytics_failures.load(Ordering::Relaxed),

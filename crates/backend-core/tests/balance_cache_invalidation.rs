@@ -138,26 +138,7 @@ impl CacheService for UnavailableCache {
             "cache unavailable".into(),
         ))
     }
-    async fn publish_invalidation(
-        &self,
-        _: &[String],
-    ) -> Result<(), gaming_cafe_api::error::AppError> {
-        Err(gaming_cafe_api::error::AppError::Internal(
-            "cache unavailable".into(),
-        ))
-    }
-    async fn consume_ip_token(
-        &self,
-        _: &str,
-        _: u32,
-        _: Duration,
-    ) -> Result<Option<gaming_cafe_api::cache::RateLimitDecision>, gaming_cafe_api::error::AppError>
-    {
-        Ok(None)
-    }
-    fn is_available(&self) -> bool {
-        true
-    }
+
 }
 #[tokio::test]
 async fn committed_recharge_succeeds_during_cache_outage() {

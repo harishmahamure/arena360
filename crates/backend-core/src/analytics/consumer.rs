@@ -1,6 +1,6 @@
-//! One fenced transaction per tenant batch; broker ACKs follow the commit.
+//! One fenced transaction per tenant batch from the local SQLite outbox.
 use super::{
-    publisher::TenantEvent,
+    events::TenantEvent,
     session_hours,
     tenant_db::{error, TenantAnalytics},
 };
@@ -301,23 +301,16 @@ use crate::{
     metrics::Metrics,
     tenancy::{TenantDb, TenantDbManager},
 };
-use async_nats::jetstream::{
-    consumer::{pull, AckPolicy, DeliverPolicy, PullConsumer},
-    message::AckKind,
-};
-use futures::StreamExt;
 use std::time::Duration;
-/// One durable filtered consumer per tenant. Buffer lifetime is at most one second;
-/// no SQLite writer is held while waiting for messages or broker acknowledgements.
-pub struct JetStreamConsumer {
+
+/// The derived checkpoint determines the next SQLite event; no external transport
+/// or acknowledgement is needed. Missing retained events request a snapshot rebuild.
+pub struct LocalConsumer {
     db: Arc<TenantDb>,
     analytics: Arc<TenantAnalytics>,
-    consumer: PullConsumer,
-    gap_attempts: usize,
 }
-impl JetStreamConsumer {
+impl LocalConsumer {
     pub async fn connect(
-        context: &async_nats::jetstream::Context,
         db: Arc<TenantDb>,
         analytics: Arc<TenantAnalytics>,
     ) -> Result<Self, AppError> {
@@ -325,72 +318,52 @@ impl JetStreamConsumer {
         if db.tenant_id() != analytics.tenant_id() {
             return Err(invalid("foreign analytics handle"));
         }
-        let stream = context
-            .get_stream(super::publisher::TENANT_EVENT_STREAM)
-            .await
-            .map_err(|_| invalid("replay stream unavailable"))?;
-        let subject = format!("arena.tenant.{}.events.v1", db.tenant_id());
-        let name = format!("analytics_{}", db.tenant_id().simple());
-        let mut consumer = stream
-            .get_or_create_consumer(
-                &name,
-                pull::Config {
-                    durable_name: Some(name.clone()),
-                    filter_subject: subject.clone(),
-                    deliver_policy: DeliverPolicy::All,
-                    ack_policy: AckPolicy::Explicit,
-                    ack_wait: Duration::from_secs(30),
-                    max_ack_pending: 1000,
-                    max_waiting: 1,
-                    max_batch: 1000,
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|_| invalid("consumer setup failed"))?;
-        let config = &consumer
-            .info()
-            .await
-            .map_err(|_| invalid("consumer verification failed"))?
-            .config;
-        if config.filter_subject != subject
-            || config.ack_policy != AckPolicy::Explicit
-            || config.max_ack_pending <= 0
-            || config.max_ack_pending > 1000
-            || config.deliver_policy != DeliverPolicy::All
-        {
-            return Err(invalid("incompatible existing consumer"));
-        }
-        db.ensure_current_owner()?;
-        Ok(Self {
-            db,
-            analytics,
-            consumer,
-            gap_attempts: 0,
-        })
+        Ok(Self { db, analytics })
     }
-    /// Idle polling reads local watermarks without touching tenant activity or
-    /// allocating a pull buffer. A checkpoint ahead of SQLite needs recovery.
-    async fn has_pending_source(&self) -> Result<bool,AppError> {
-        let (source,timezone):(i64,String)=sqlx::query_as("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='outbox_events'),0),timezone FROM tenant_runtime WHERE singleton=1")
-            .fetch_one(&self.db.background_read_pool()?).await?;
-        let (last,status,stored):(i64,String,String)=self.analytics.read(|tx|tx.query_row("SELECT CAST(last_sequence AS BIGINT),status,timezone FROM _ingest_state",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).map_err(error)).await?;
-        if last>source && status=="READY" && super::rebuild::source_watermark(&self.db).await?<last {
-            self.analytics.write(|tx|{tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'").map_err(error)?;Ok(())}).await?;
-            return Ok(true);
-        }
-        Ok(source!=last || status!="READY" || stored!=timezone)
-    }
-    pub async fn poll(&mut self, metrics: &Metrics) -> Result<BatchOutcome, AppError> {
+
+    async fn has_pending_source(&self) -> Result<bool, AppError> {
         self.db.ensure_current_owner()?;
-        if !self.analytics.ensure_timezone().await? {return Ok(BatchOutcome::RebuildRequired);}
-        let (initial_sequence, status, replay_start) = self
+        let (source, timezone): (i64, String) = sqlx::query_as("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='outbox_events'),0),timezone FROM tenant_runtime WHERE singleton=1")
+            .fetch_one(&self.db.background_read_pool()?).await?;
+        let (last, status, stored): (i64, String, String) = self
             .analytics
             .read(|tx| {
                 tx.query_row(
-                    "SELECT CAST(last_sequence AS BIGINT),status,replay_start_sequence FROM _ingest_state",
+                    "SELECT CAST(last_sequence AS BIGINT),status,timezone FROM _ingest_state",
                     [],
-                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_,Option<u64>>(2)?)),
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .map_err(error)
+            })
+            .await?;
+        if last > source
+            && status == "READY"
+            && super::rebuild::source_watermark(&self.db).await? < last
+        {
+            self.analytics
+                .write(|tx| {
+                    tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'")
+                        .map_err(error)?;
+                    Ok(())
+                })
+                .await?;
+            return Ok(true);
+        }
+        Ok(source != last || status != "READY" || stored != timezone)
+    }
+
+    pub async fn poll(&mut self, metrics: &Metrics) -> Result<BatchOutcome, AppError> {
+        self.db.ensure_current_owner()?;
+        if !self.analytics.ensure_timezone().await? {
+            return Ok(BatchOutcome::RebuildRequired);
+        }
+        let (last, status): (i64, String) = self
+            .analytics
+            .read(|tx| {
+                tx.query_row(
+                    "SELECT CAST(last_sequence AS BIGINT),status FROM _ingest_state",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .map_err(error)
             })
@@ -398,103 +371,58 @@ impl JetStreamConsumer {
         if status != "READY" && status != "LAGGING" {
             return Ok(BatchOutcome::RebuildRequired);
         }
-        // Reserve before pulling so queued tenants cannot accumulate 8 MiB each.
-        let _job=match self.db.background_jobs(){Some(jobs)=>Some(jobs.acquire(crate::background::Priority::AnalyticsIngestion).await?),None=>None};
-        static BUFFERS: std::sync::LazyLock<tokio::sync::Semaphore> = std::sync::LazyLock::new(||tokio::sync::Semaphore::new(4));
-        let _buffer_slot=if self.db.background_jobs().is_none(){Some(BUFFERS.acquire().await.map_err(|_|invalid("buffer scheduler closed"))?)}else{None};
-        self.db.ensure_current_owner()?;
-        let mut batch = self
-            .consumer
-            .batch()
-            .max_messages(BATCH_SIZE)
-            .max_bytes(8 * 1024 * 1024)
-            .expires(Duration::from_secs(1))
-            .messages()
-            .await
-            .map_err(|_| invalid("batch fetch failed"))?;
-        let mut messages = Vec::with_capacity(BATCH_SIZE);
-        let mut events = Vec::with_capacity(BATCH_SIZE);
-        let mut covered=0;
-        while let Some(message) = batch.next().await {
-            let message = message.map_err(|_| invalid("message delivery failed"))?;
-            if message.subject.as_str() != format!("arena.tenant.{}.events.v1", self.db.tenant_id())
-            {
-                return Err(invalid("foreign event subject"));
-            }
-            if let Some(start)=replay_start {
-                let info=message.info().map_err(|_|invalid("invalid broker metadata"))?;
-                if info.stream!=super::publisher::TENANT_EVENT_STREAM {return Err(invalid("foreign broker stream"));}
-                if info.stream_sequence<start {
-                    covered+=1;
-                    messages.push(message);
-                    continue;
-                }
-            }
-            events.push(
-                serde_json::from_slice::<TenantEvent>(&message.payload)
-                    .map_err(|_| invalid("invalid event envelope"))?,
-            );
-            messages.push(message);
+        let _job = match self.db.background_jobs() {
+            Some(jobs) => Some(
+                jobs.acquire(crate::background::Priority::AnalyticsIngestion)
+                    .await?,
+            ),
+            None => None,
+        };
+        let source = super::rebuild::source_watermark(&self.db).await?;
+        let events = super::events::read_batch(&self.db, last, source, BATCH_SIZE as i64).await?;
+        if source < last
+            || (events.is_empty() && source > last)
+            || events
+                .first()
+                .is_some_and(|event| event.sequence != last + 1)
+        {
+            metrics.analytics_gap();
+            self.analytics
+                .write(|tx| {
+                    tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'")
+                        .map_err(error)?;
+                    Ok(())
+                })
+                .await?;
+            return Ok(BatchOutcome::RebuildRequired);
         }
-        self.db.ensure_current_owner()?;
-        if messages.is_empty() {
-            return Ok(BatchOutcome::Applied {
-                last_sequence: initial_sequence,
-                events: 0,
-                duplicates: 0,
-            });
+        let result = apply_batch_inner(self.analytics.clone(), events).await?;
+        if let BatchOutcome::Applied { events, .. } = result {
+            metrics.analytics_ingested(events as u64);
         }
-        let mut result = apply_batch_inner(self.analytics.clone(), events).await?;
-        if let BatchOutcome::Applied{duplicates,..}=&mut result {*duplicates+=covered;}
-        match &result {
-            BatchOutcome::Applied { events, .. } => {
-                self.gap_attempts = 0;
-                metrics.analytics_ingested(*events as u64);
-                for message in messages {
-                    self.db.ensure_current_owner()?;
-                    message
-                        .double_ack()
-                        .await
-                        .map_err(|_| invalid("post-commit acknowledgement failed"))?;
-                }
-            }
-            BatchOutcome::Gap { .. } => {
-                self.gap_attempts += 1;
-                metrics.analytics_gap();
-                // Re-fetch unacknowledged deliveries first. Persistent gaps request the
-                // consistent snapshot rebuild.
-                if self.gap_attempts >= 2 {
-                    self.analytics
-                        .write(|tx| {
-                            tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'")
-                                .map_err(error)?;
-                            Ok(())
-                        })
-                        .await?;
-                }
-                for message in messages {
-                    self.db.ensure_current_owner()?;
-                    message
-                        .ack_with(AckKind::Nak(Some(Duration::from_millis(250))))
-                        .await
-                        .map_err(|_| invalid("gap re-fetch request failed"))?;
-                }
-            }
-            BatchOutcome::RebuildRequired => {}
+        if matches!(result, BatchOutcome::Gap { .. }) {
+            metrics.analytics_gap();
+            self.analytics
+                .write(|tx| {
+                    tx.execute_batch("UPDATE _ingest_state SET status='REBUILDING'")
+                        .map_err(error)?;
+                    Ok(())
+                })
+                .await?;
+            return Ok(BatchOutcome::RebuildRequired);
         }
         Ok(result)
     }
 }
-/// Tenant workers are independent so one tenant's one-second buffer does not
-/// delay another tenant. Commits are bounded per cell; idle/fenced workers close.
+
+/// Tenant workers are independent. Commits are bounded per cell; idle or fenced
+/// workers close without delaying other tenants.
 pub fn spawn(
     manager: Arc<TenantDbManager>,
     metrics: Arc<Metrics>,
-    url: String,
     registry: Arc<super::registry::AnalyticsRegistry>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut context = None;
         let mut workers =
             std::collections::HashMap::<Uuid, (i64, tokio::task::JoinHandle<()>)>::new();
         let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -517,26 +445,10 @@ pub fn spawn(
             if handles.is_empty() {
                 continue;
             }
-            if context.is_none() {
-                let client =
-                    match tokio::time::timeout(Duration::from_secs(1), async_nats::connect(&url))
-                        .await
-                    {
-                        Ok(Ok(c)) => c,
-                        _ => {
-                            metrics.analytics_failed();
-                            continue;
-                        }
-                    };
-                let mut c = async_nats::jetstream::new(client);
-                c.set_timeout(Duration::from_secs(1));
-                context = Some(c);
-            }
             for db in handles {
                 if workers.contains_key(&db.tenant_id()) {
                     continue;
                 }
-                let context = context.as_ref().unwrap().clone();
                 let metrics = metrics.clone();
                 let id = db.tenant_id();
                 let generation = db.ownership_generation();
@@ -547,7 +459,7 @@ pub fn spawn(
                         let analytics = registry.get(db.clone()).await?;
                         opened = Some(analytics.clone());
                         let mut consumer =
-                            JetStreamConsumer::connect(&context, db.clone(), analytics).await?;
+                            LocalConsumer::connect(db.clone(), analytics).await?;
                         let mut retention_due=chrono::Utc::now();
                         loop {
                             db.ensure_current_owner()?;
@@ -571,7 +483,7 @@ pub fn spawn(
                                 Ok(BatchOutcome::RebuildRequired) => {
                                     metrics.analytics_rebuild_started();
                                     let started=std::time::Instant::now();
-                                    let result=super::rebuild::rebuild(db.clone(),consumer.analytics.clone(),&context).await;
+                                    let result=super::rebuild::rebuild(db.clone(),consumer.analytics.clone()).await;
                                     metrics.analytics_rebuild_finished(result.is_ok(),started.elapsed().as_millis().min(u64::MAX as u128) as u64);
                                     if let Err(error)=result {
                                         metrics.analytics_failed();

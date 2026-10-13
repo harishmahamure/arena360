@@ -13,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { decodeJwtPayload } from '../../../lib/authSession';
 import {
   createVenueLocation,
@@ -37,10 +37,14 @@ export default function LocationsPanel({
   canWrite,
   onAddAdmin,
   adminsByLocation = {},
+  onEditingChange,
+  onSaved,
 }: {
   canWrite: boolean;
   onAddAdmin?: (location: VenueLocation) => void;
   adminsByLocation?: Record<string, string[]>;
+  onEditingChange?: (editing: boolean) => void;
+  onSaved?: () => void;
 }) {
   const organizationId = currentOrganizationId();
   const client = useQueryClient();
@@ -50,6 +54,9 @@ export default function LocationsPanel({
   });
   const [editing, setEditing] = useState<VenueLocation | null>(null);
   const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    onEditingChange?.(creating || editing !== null);
+  }, [creating, editing, onEditingChange]);
   const [draft, setDraft] = useState<VenueLocationDraft>(empty);
   const save = useMutation({
     mutationFn: () =>
@@ -62,6 +69,7 @@ export default function LocationsPanel({
       setDraft(empty);
       void client.invalidateQueries({ queryKey: ['venue-locations', organizationId] });
       void client.invalidateQueries({ queryKey: ['accessManagement'] });
+      onSaved?.();
     },
   });
   const beginEdit = (location: VenueLocation) => {

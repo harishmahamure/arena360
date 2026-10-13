@@ -102,7 +102,6 @@ env:
   MAX_CONCURRENT_REQUESTS: "256"
   LEGACY_REST_ENABLED: "false"
   TRUSTED_PROXY_CIDRS: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
-  REDIS_URL: "redis://arena360-redis:6379"
   JWT_ACCESS_EXPIRATION: 15m
   JWT_PLAYER_EXPIRATION: 24h
   JWT_DEVICE_EXPIRATION: 365d
@@ -118,13 +117,6 @@ envFromSecrets:
   - envName: ARENA_CELL_ID
     name: arena360-backend-secrets
     key: ARENA_CELL_ID
-  - envName: NATS_URL
-    name: arena360-backend-secrets
-    key: NATS_URL
-  - envName: REDIS_URL
-    name: arena360-redis-secrets
-    key: REDIS_URL
-    optional: true
   - envName: JWT_SECRET
     name: arena360-backend-secrets
     key: JWT_SECRET

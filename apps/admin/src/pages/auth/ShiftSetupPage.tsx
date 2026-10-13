@@ -1,18 +1,17 @@
 import { CurrencyField, FormButton } from '@gaming-cafe/ui';
 import { local, toastUtils } from '@gaming-cafe/utils';
-import { Alert, Box, CircularProgress, MenuItem, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { GuidedForm, GuidedStep } from '../../components/GuidedForm';
+import LocationChoice from '../../components/LocationChoice';
 import { usePermissions } from '../../hooks/usePermissions';
+import { rememberLocation } from '../../lib/locationSelection';
 import { getVenueLocations } from '../../services/config';
 import { getShiftStartContext, startShift } from '../../services/shifts';
 import { formatDisplayDateTime } from '../../utils/date';
 import { currentOrganizationId } from '../dashboard/access/LocationsPanel';
-
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
 
 export default function ShiftSetupPage() {
   const navigate = useNavigate();
@@ -26,7 +25,16 @@ export default function ShiftSetupPage() {
     queryFn: () => getVenueLocations(currentOrganizationId()),
     enabled: Boolean(local.get('accessToken') && isStaff),
   });
-  const venueId = selectedVenueId || venuesQuery.data?.[0]?.id;
+  const venues = venuesQuery.data?.filter((venue) => venue.isActive) ?? [];
+  const venueId =
+    venues.find((venue) => venue.id === selectedVenueId)?.id ||
+    (venues.length === 1 ? venues[0]?.id : undefined);
+  const venue = venues.find((item) => item.id === venueId);
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: venue?.currency ?? 'INR',
+    }).format(value);
 
   const contextQuery = useQuery({
     queryKey: ['shift-start-context', venueId],
@@ -39,15 +47,19 @@ export default function ShiftSetupPage() {
     openingBalance === '' ? (context?.suggestedOpeningBalance ?? 0) : Number(openingBalance);
 
   const startMutation = useMutation({
-    mutationFn: () =>
-      startShift({
+    mutationFn: (locationId: string) => {
+      if (!venues.some((venue) => venue.id === locationId))
+        throw new Error('Choose a location before starting your shift.');
+      return startShift({
         openingBalance: resolvedOpening,
         notes: notes.trim() || undefined,
-        venueLocationId: venueId,
-      }),
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey: ['activeShift'] });
-      void queryClient.invalidateQueries({ queryKey: ['staffDashboardStats'] });
+        venueLocationId: locationId,
+      });
+    },
+    onSuccess: (result, locationId) => {
+      rememberLocation(locationId);
+      // A new operating location must not reuse dashboard or counter data from another venue.
+      queryClient.clear();
       toastUtils.success(result.resumed ? 'Shift resumed' : 'Shift and register started');
       navigate('/', { replace: true });
     },
@@ -67,38 +79,64 @@ export default function ShiftSetupPage() {
     );
   }
 
-  if (venuesQuery.isError || !venueId) {
+  if (venuesQuery.isError || !venues.length) {
     return (
-      <Alert severity="error">
-        No available location for this shift. Ask an administrator to assign one.
+      <Alert
+        severity="error"
+        action={
+          venuesQuery.isError && <Button onClick={() => void venuesQuery.refetch()}>Retry</Button>
+        }
+      >
+        {venuesQuery.isError
+          ? 'Locations could not be loaded. Please try again.'
+          : 'No available location for this shift. Ask an administrator to assign one.'}
       </Alert>
     );
   }
 
+  if (!venueId)
+    return (
+      <LocationChoice
+        locations={venues}
+        onChoose={setSelectedVenueId}
+        title="Choose your shift location"
+        description="Select the venue where you will open or resume your shift. We’ll load the opening cash details for that location."
+        action="Continue to shift setup"
+      />
+    );
+
   const venueSelector = (
-    <TextField
-      select
-      fullWidth
-      label="Shift location"
-      value={venueId}
-      onChange={(event) => setSelectedVenueId(event.target.value)}
-      sx={{ mb: 3 }}
-    >
-      {venuesQuery.data?.map((venue) => (
-        <MenuItem key={venue.id} value={venue.id}>
-          {venue.name}
-        </MenuItem>
-      ))}
-    </TextField>
+    <Box sx={{ mb: 3 }}>
+      <Typography fontWeight={600}>{venue?.name}</Typography>
+      {venues.length > 1 && (
+        <Button
+          disabled={startMutation.isPending}
+          onClick={() => {
+            setSelectedVenueId('');
+            setOpeningBalance('');
+            setNotes('');
+          }}
+        >
+          Choose another location
+        </Button>
+      )}
+    </Box>
   );
 
   if (contextQuery.isError || !context) {
     return (
       <Box>
         {venueSelector}
-        <Alert severity="error">
+        <Alert
+          severity="error"
+          action={
+            <Button disabled={contextQuery.isFetching} onClick={() => void contextQuery.refetch()}>
+              Retry
+            </Button>
+          }
+        >
           We couldn’t prepare your shift at this location. Select another location or contact an
-          administrator.
+          administrator. {contextQuery.error?.message}
         </Alert>
       </Box>
     );
@@ -136,7 +174,7 @@ export default function ShiftSetupPage() {
           disabled={
             startMutation.isPending || !Number.isFinite(resolvedOpening) || resolvedOpening < 0
           }
-          onClick={() => startMutation.mutate()}
+          onClick={() => startMutation.mutate(venueId)}
         >
           {startMutation.isPending
             ? 'Preparing workspace…'
@@ -155,7 +193,7 @@ export default function ShiftSetupPage() {
               disabled={
                 startMutation.isPending || !Number.isFinite(resolvedOpening) || resolvedOpening < 0
               }
-              onClick={() => startMutation.mutate()}
+              onClick={() => startMutation.mutate(venueId)}
             >
               {startMutation.isPending
                 ? 'Preparing workspace…'

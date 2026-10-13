@@ -4,7 +4,7 @@ pub mod business;
 pub mod reports;
 
 pub mod outbox_retention;
-pub mod publisher;
+pub mod events;
 
 #[cfg(feature = "duckdb-analytics")]
 pub mod tenant_db;

@@ -3,9 +3,6 @@
   "info": {
     "title": "Game Zone Management System API",
     "description": "REST API for managing a gaming cafe: users, devices, plans, sessions, transactions, and inventory.",
-    "contact": {
-      "name": "Gaming Cafe Team"
-    },
     "license": {
       "name": ""
     },
@@ -47,6 +44,41 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/auth/admin-shift-close": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "complete_admin_login",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -358,6 +390,98 @@
         }
       }
     },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Return only the authenticated panel user's public profile. The auth middleware\nchecks current account status, role, membership, and token expiry first.",
+        "operationId": "current_panel_user",
+        "responses": {
+          "200": {
+            "description": "Current panel account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelUserEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session expired or account access revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Panel role required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Re-issue a panel access token for an active session so working staff are not\nsigned out mid-task. Idle timeout is enforced by the client; revoked access fails in middleware.",
+        "operationId": "refresh_panel_session",
+        "responses": {
+          "200": {
+            "description": "Renewed panel token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session expired or account access revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Panel role required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/auth/register": {
       "post": {
         "tags": [
@@ -526,6 +650,61 @@
             "bearer_auth": []
           }
         ]
+      }
+    },
+    "/auth/staff-shift": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "resume_staff_shift",
+        "responses": {
+          "200": {
+            "description": "Resume the authenticated staff shift",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Shift permission required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/branding": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "operationId": "branding",
+        "responses": {
+          "200": {
+            "description": "Venue branding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/cash-deposits": {
@@ -7847,6 +8026,129 @@
         ]
       }
     },
+    "/onboarding": {
+      "get": {
+        "tags": [
+          "onboarding"
+        ],
+        "operationId": "progress",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "onboarding"
+        ],
+        "operationId": "save_progress",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveOnboardingDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/onboarding/complete": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "operationId": "complete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteOnboardingDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/organizations/{org_id}/configuration-snapshot": {
       "get": {
         "tags": [
@@ -7931,6 +8233,105 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VenueLocationListEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "create_venue_location",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveVenueLocationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueLocationEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/organizations/{org_id}/locations/{location_id}": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "update_venue_location",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "location_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveVenueLocationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueLocationEnvelope"
                 }
               }
             }
@@ -9624,6 +10025,72 @@
         ]
       }
     },
+    "/products/current-prices": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "operationId": "current_prices",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "description": "Sale location used for made-to-order availability.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sale price of each product right now, after published product pricing rules and before options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCurrentPriceListEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/products/{id}": {
       "get": {
         "tags": [
@@ -9799,6 +10266,168 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProductEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/products/{id}/recipe": {
+      "get": {
+        "tags": [
+          "products"
+        ],
+        "operationId": "get_recipe",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Product ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipe ingredients and options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductRecipeEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "products"
+        ],
+        "operationId": "save_recipe",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Product ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductRecipe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Recipe replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductRecipeEnvelope"
                 }
               }
             }
@@ -11168,6 +11797,98 @@
         ]
       }
     },
+    "/stats/business": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "operationId": "business_stats",
+        "parameters": [
+          {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "description": "Inclusive tenant calendar date, YYYY-MM-DD. Defaults to the last 30 days.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Business analytics from tenant DuckDB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusinessAnalyticsEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/stats/dashboard": {
       "get": {
         "tags": [
@@ -11175,6 +11896,18 @@
         ],
         "operationId": "dashboard_stats",
         "parameters": [
+          {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
           {
             "name": "startDate",
             "in": "query",
@@ -11277,6 +12010,18 @@
         "operationId": "finance_deposit_stats",
         "parameters": [
           {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
             "name": "startDate",
             "in": "query",
             "required": false,
@@ -11377,6 +12122,18 @@
         ],
         "operationId": "finance_reconciliation_stats",
         "parameters": [
+          {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
           {
             "name": "startDate",
             "in": "query",
@@ -11479,6 +12236,18 @@
         "operationId": "finance_variance_stats",
         "parameters": [
           {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
             "name": "startDate",
             "in": "query",
             "required": false,
@@ -11579,6 +12348,18 @@
         ],
         "operationId": "revenue_by_payment_method",
         "parameters": [
+          {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
           {
             "name": "startDate",
             "in": "query",
@@ -11681,6 +12462,18 @@
         "operationId": "staff_dashboard_stats",
         "parameters": [
           {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
             "name": "startDate",
             "in": "query",
             "required": false,
@@ -11780,6 +12573,18 @@
         ],
         "operationId": "usage_stats",
         "parameters": [
+          {
+            "name": "venueLocationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
           {
             "name": "startDate",
             "in": "query",
@@ -12636,6 +13441,62 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/users/me/avatar": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Set or remove the signed-in panel user's own profile photo (DRAFT-0042).",
+        "operationId": "update_own_avatar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAvatarDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelUserEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "URL is not an uploaded profile photo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
@@ -14218,6 +15079,12 @@
           "isActive"
         ],
         "properties": {
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "email": {
             "type": [
               "string",
@@ -14530,6 +15397,179 @@
           },
           "valid": {
             "type": "boolean"
+          }
+        }
+      },
+      "Branding": {
+        "type": "object",
+        "description": "Public white-label identity shown on the login screen and panel shell.",
+        "required": [
+          "name",
+          "logoUrl",
+          "primaryColor"
+        ],
+        "properties": {
+          "logoUrl": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "primaryColor": {
+            "type": "string"
+          }
+        }
+      },
+      "BrandingEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Branding"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "BusinessAnalyticsEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/BusinessReport"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "BusinessPeriod": {
+        "type": "object",
+        "required": [
+          "startDate",
+          "endDate",
+          "previousStartDate",
+          "observedUntil",
+          "timezone"
+        ],
+        "properties": {
+          "endDate": {
+            "type": "string"
+          },
+          "observedUntil": {
+            "type": "string"
+          },
+          "previousStartDate": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        }
+      },
+      "BusinessReport": {
+        "type": "object",
+        "required": [
+          "period",
+          "generatedAt",
+          "dailySales",
+          "hourlyUsage",
+          "stations",
+          "customers",
+          "customerDetails",
+          "plans",
+          "wallets",
+          "products",
+          "pos",
+          "staff"
+        ],
+        "properties": {
+          "customerDetails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Customer"
+            }
+          },
+          "customers": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "dailySales": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SalesDay"
+            }
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "hourlyUsage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageHour"
+            }
+          },
+          "period": {
+            "$ref": "#/components/schemas/BusinessPeriod"
+          },
+          "plans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanSales"
+            }
+          },
+          "pos": {
+            "$ref": "#/components/schemas/PosSummary"
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductSales"
+            }
+          },
+          "staff": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffPerformance"
+            }
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Station"
+            }
+          },
+          "wallets": {
+            "$ref": "#/components/schemas/WalletSummary"
           }
         }
       },
@@ -15230,6 +16270,19 @@
           }
         }
       },
+      "CompleteOnboardingDto": {
+        "type": "object",
+        "required": [
+          "expectedRevision"
+        ],
+        "properties": {
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
       "ConfigFilterDto": {
         "type": "object",
         "properties": {
@@ -15532,6 +16585,13 @@
               "null"
             ]
           },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "name": {
             "type": "string"
           },
@@ -15736,6 +16796,13 @@
           },
           "name": {
             "type": "string"
+          },
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -15783,6 +16850,14 @@
           "quantity"
         ],
         "properties": {
+          "optionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Chosen product options, for example \"Extra patty\"."
+          },
           "productId": {
             "type": "string",
             "format": "uuid"
@@ -15899,6 +16974,13 @@
             ],
             "format": "uuid"
           },
+          "locationIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "name": {
             "type": "string"
           },
@@ -15945,6 +17027,12 @@
             ]
           },
           "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "isRawMaterial": {
             "type": [
               "boolean",
               "null"
@@ -16403,6 +17491,13 @@
           },
           "transactionType": {
             "type": "string"
+          },
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -17253,6 +18348,94 @@
           }
         }
       },
+      "Customer": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "visits",
+          "firstVisit",
+          "lastVisit",
+          "spend",
+          "daysAbsent"
+        ],
+        "properties": {
+          "daysAbsent": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "firstVisit": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastVisit": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "spend": {
+            "type": "number",
+            "format": "double"
+          },
+          "visits": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "CustomerSummary": {
+        "type": "object",
+        "required": [
+          "visitors",
+          "newVisitors",
+          "repeatVisitors",
+          "frequentVisitors",
+          "atRisk",
+          "priorVisitors",
+          "retainedVisitors"
+        ],
+        "properties": {
+          "atRisk": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "frequentVisitors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "newVisitors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "priorVisitors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "repeatVisitors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "retainedVisitors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "visitors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "DashboardStatsDto": {
         "type": "object",
         "required": [
@@ -17354,6 +18537,19 @@
           },
           "peakWindowStart": {
             "type": "string"
+          },
+          "policyRules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRule"
+            },
+            "description": "Published rules captured for this session, already filtered to its device."
+          },
+          "policyTimezone": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -17361,6 +18557,8 @@
         "type": "object",
         "required": [
           "id",
+          "organizationId",
+          "locationId",
           "name",
           "deviceType",
           "deviceSubType",
@@ -17410,8 +18608,16 @@
               "null"
             ]
           },
+          "locationId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "name": {
             "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
           },
           "registeredKiosk": {
             "type": [
@@ -17496,6 +18702,13 @@
               "string",
               "null"
             ]
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "name": {
             "type": [
@@ -18955,6 +20168,7 @@
         "type": "object",
         "required": [
           "id",
+          "venueLocationId",
           "name",
           "kind",
           "isActive",
@@ -19002,6 +20216,10 @@
               "string",
               "null"
             ],
+            "format": "uuid"
+          },
+          "venueLocationId": {
+            "type": "string",
             "format": "uuid"
           }
         }
@@ -19059,6 +20277,13 @@
               "null"
             ],
             "format": "int64"
+          },
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -19664,14 +20889,10 @@
         "required": [
           "status",
           "timestamp",
-          "db",
-          "redis"
+          "db"
         ],
         "properties": {
           "db": {
-            "type": "string"
-          },
-          "redis": {
             "type": "string"
           },
           "status": {
@@ -19761,6 +20982,13 @@
               "string",
               "null"
             ]
+          },
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -20041,6 +21269,180 @@
           }
         }
       },
+      "OnboardingCheck": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "ready",
+          "actionPath"
+        ],
+        "properties": {
+          "actionPath": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OnboardingEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/OnboardingSnapshot"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardingLocation": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "timezone",
+          "currency",
+          "stationCount",
+          "compatiblePlanCount",
+          "operatorReady"
+        ],
+        "properties": {
+          "compatiblePlanCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "operatorReady": {
+            "type": "boolean"
+          },
+          "stationCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardingProgress": {
+        "type": "object",
+        "required": [
+          "currentStep",
+          "revision"
+        ],
+        "properties": {
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currentStep": {
+            "$ref": "#/components/schemas/OnboardingStep"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "settingsReviewedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "OnboardingReadiness": {
+        "type": "object",
+        "required": [
+          "ready",
+          "checks",
+          "locations"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnboardingCheck"
+            }
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnboardingLocation"
+            }
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OnboardingSnapshot": {
+        "type": "object",
+        "required": [
+          "progress",
+          "readiness"
+        ],
+        "properties": {
+          "progress": {
+            "$ref": "#/components/schemas/OnboardingProgress"
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/OnboardingReadiness"
+          }
+        }
+      },
+      "OnboardingStep": {
+        "type": "string",
+        "enum": [
+          "venue",
+          "settings",
+          "stations",
+          "review"
+        ]
+      },
       "OpenCashRegisterDto": {
         "type": "object",
         "required": [
@@ -20200,6 +21602,31 @@
             "type": "string"
           },
           "code": {
+            "type": "string"
+          }
+        }
+      },
+      "PanelUserEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuthUserDto"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
             "type": "string"
           }
         }
@@ -20885,6 +22312,14 @@
             ],
             "format": "uuid"
           },
+          "currentPrice": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Live purchase price; the catalog price remains editable independently."
+          },
           "deductionProfile": {},
           "deletedAt": {
             "type": [
@@ -21018,6 +22453,13 @@
             ],
             "format": "int64"
           },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "maxPrice": {
             "type": [
               "number",
@@ -21121,6 +22563,49 @@
           "totalPages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "PlanSales": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "purchases",
+          "buyers",
+          "repeatBuyers",
+          "revenue",
+          "hoursSold"
+        ],
+        "properties": {
+          "buyers": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "hoursSold": {
+            "type": "number",
+            "format": "double"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "purchases": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "repeatBuyers": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "revenue": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -22023,6 +23508,36 @@
           }
         }
       },
+      "PosSummary": {
+        "type": "object",
+        "required": [
+          "revenue",
+          "transactions",
+          "visitingCustomers",
+          "attachedCustomers"
+        ],
+        "properties": {
+          "attachedCustomers": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "revenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "transactions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "visitingCustomers": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "PresignRequest": {
         "type": "object",
         "required": [
@@ -22034,11 +23549,18 @@
               "string",
               "null"
             ],
-            "description": "MIME type the client will upload with (e.g. `image/png`, `video/mp4`)."
+            "description": "MIME type the client will upload with (e.g. `image/webp`, `video/webm`)."
           },
           "fileName": {
             "type": "string",
             "description": "Original file name; used to derive the object key and extension."
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`avatar` (own profile photo, WebP), `branding` (requires settings:write), or catalog media."
           }
         }
       },
@@ -22176,6 +23698,12 @@
           "action": {
             "$ref": "#/components/schemas/PricingAction"
           },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "deviceTypes": {
             "type": "array",
             "items": {
@@ -22205,6 +23733,14 @@
             "type": "integer",
             "format": "int32"
           },
+          "productIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Product rules only. Empty `product_ids` and `categories` mean every product."
+          },
           "startTime": {
             "type": [
               "string",
@@ -22217,6 +23753,9 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PricingTarget"
           },
           "weekdays": {
             "type": "array",
@@ -22272,6 +23811,13 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "locationIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "name": {
             "type": "string"
@@ -22497,6 +24043,12 @@
               "null"
             ]
           },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "deviceType": {
             "type": [
               "string",
@@ -22509,6 +24061,24 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "productId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Setting a product or category simulates a product sale instead of a session."
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PricingTarget"
+              }
+            ]
           }
         }
       },
@@ -22570,6 +24140,15 @@
             }
           }
         }
+      },
+      "PricingTarget": {
+        "type": "string",
+        "description": "What a rule prices. Rules saved before product pricing existed default to sessions.",
+        "enum": [
+          "sessions",
+          "products",
+          "deduction"
+        ]
       },
       "PricingTraceStep": {
         "type": "object",
@@ -22652,6 +24231,10 @@
           "isActive": {
             "type": "boolean"
           },
+          "isRawMaterial": {
+            "type": "boolean",
+            "description": "Ingredients are stocked and used in recipes but never sold directly."
+          },
           "name": {
             "type": "string"
           },
@@ -22718,6 +24301,63 @@
           }
         }
       },
+      "ProductCurrentPrice": {
+        "type": "object",
+        "required": [
+          "productId",
+          "price",
+          "hasOptions"
+        ],
+        "properties": {
+          "hasOptions": {
+            "type": "boolean"
+          },
+          "madeToOrderAvailable": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many the base recipe can make at the requested location; absent when the\nproduct is sold from its own stock."
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ProductCurrentPriceListEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductCurrentPrice"
+            }
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "ProductEnvelope": {
         "type": "object",
         "required": [
@@ -22763,7 +24403,8 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "`true` lists sellable products only; `false` lists raw materials only."
           },
           "limit": {
             "type": [
@@ -22817,6 +24458,69 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ProductOption": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Omit when adding an option; keep it when editing so past sales stay linked."
+          },
+          "ingredients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeIngredient"
+            },
+            "description": "Added to the base recipe. A negative quantity removes an ingredient."
+          },
+          "name": {
+            "type": "string"
+          },
+          "priceDelta": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "ProductOptionGroup": {
+        "type": "object",
+        "required": [
+          "name",
+          "options"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "multiple": {
+            "type": "boolean",
+            "description": "More than one option may be chosen."
+          },
+          "name": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductOption"
+            }
+          },
+          "required": {
+            "type": "boolean",
+            "description": "At least one option must be chosen."
           }
         }
       },
@@ -22879,6 +24583,80 @@
           }
         }
       },
+      "ProductRecipe": {
+        "type": "object",
+        "description": "With `items`, the product is made to order and a sale deducts these\ningredients instead of the product's own stock.",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeIngredient"
+            }
+          },
+          "optionGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductOptionGroup"
+            }
+          }
+        }
+      },
+      "ProductRecipeEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ProductRecipe"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductSales": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "quantity",
+          "revenue",
+          "transactions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "revenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "transactions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "ProvisionDeviceDto": {
         "type": "object",
         "description": "Admin-authorized device provisioning payload (DRAFT-0023). Sent with an admin\nbearer token to `POST /devices/provision`.",
@@ -22907,6 +24685,13 @@
               "string",
               "null"
             ]
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "name": {
             "type": "string"
@@ -23548,6 +25333,24 @@
           }
         }
       },
+      "RecipeIngredient": {
+        "type": "object",
+        "description": "Quantity is a whole number in the ingredient's own unit (pieces, grams, millilitres).",
+        "required": [
+          "ingredientId",
+          "quantity"
+        ],
+        "properties": {
+          "ingredientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ReconcileCashRegisterDto": {
         "type": "object",
         "properties": {
@@ -24050,6 +25853,94 @@
             "type": "string"
           }
         }
+      },
+      "SalesDay": {
+        "type": "object",
+        "required": [
+          "date",
+          "revenue",
+          "planRevenue",
+          "posRevenue",
+          "transactions",
+          "buyers"
+        ],
+        "properties": {
+          "buyers": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "date": {
+            "type": "string"
+          },
+          "planRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "posRevenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "revenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "transactions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "SaveOnboardingDto": {
+        "type": "object",
+        "required": [
+          "expectedRevision",
+          "currentStep"
+        ],
+        "properties": {
+          "currentStep": {
+            "$ref": "#/components/schemas/OnboardingStep"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reviewSettings": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SaveVenueLocationDto": {
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "timezone",
+          "currency"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "SessionBalanceSummary": {
         "type": "object",
@@ -25480,6 +27371,43 @@
           }
         }
       },
+      "StaffPerformance": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "shiftHours",
+          "revenue",
+          "transactions",
+          "sessions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revenue": {
+            "type": "number",
+            "format": "double"
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "shiftHours": {
+            "type": "number",
+            "format": "double"
+          },
+          "transactions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "StaffPlayerStatsDto": {
         "type": "object",
         "required": [
@@ -25517,6 +27445,13 @@
               "string",
               "null"
             ]
+          },
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -25548,7 +27483,48 @@
             "type": "number",
             "format": "double"
           },
-          "openingDenominations": {}
+          "openingDenominations": {},
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "Station": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "location",
+          "status",
+          "sessions",
+          "hours"
+        ],
+        "properties": {
+          "hours": {
+            "type": "number",
+            "format": "double"
+          },
+          "id": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          }
         }
       },
       "StatsQuery": {
@@ -25572,6 +27548,13 @@
               "string",
               "null"
             ]
+          },
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -27271,6 +29254,12 @@
             "type": "string",
             "format": "uuid"
           },
+          "optionNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "productId": {
             "type": "string",
             "format": "uuid"
@@ -27845,6 +29834,18 @@
           }
         }
       },
+      "UpdateAvatarDto": {
+        "type": "object",
+        "properties": {
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public URL returned by `/uploads/presign` with `purpose: \"avatar\"`, or null to remove."
+          }
+        }
+      },
       "UpdateDeviceDto": {
         "type": "object",
         "properties": {
@@ -27871,6 +29872,13 @@
               "string",
               "null"
             ]
+          },
+          "locationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "name": {
             "type": [
@@ -28096,6 +30104,13 @@
               "string",
               "null"
             ]
+          },
+          "venueLocationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -28229,6 +30244,12 @@
             ]
           },
           "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "isRawMaterial": {
             "type": [
               "boolean",
               "null"
@@ -28601,6 +30622,40 @@
           "value": {}
         }
       },
+      "UsageHour": {
+        "type": "object",
+        "required": [
+          "date",
+          "weekday",
+          "hour",
+          "hours",
+          "starts"
+        ],
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "hour": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "hours": {
+            "type": "number",
+            "format": "double"
+          },
+          "starts": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "weekday": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "UsageSession": {
         "type": "object",
         "required": [
@@ -28627,6 +30682,7 @@
             ],
             "format": "uuid"
           },
+          "deductionProfileSnapshot": {},
           "deletedAt": {
             "type": [
               "string",
@@ -28908,6 +30964,12 @@
           "updatedAt"
         ],
         "properties": {
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -29444,6 +31506,31 @@
           }
         }
       },
+      "VenueLocationEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "statusCode",
+          "timestamp",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueLocation"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "VenueLocationListEnvelope": {
         "type": "object",
         "required": [
@@ -29480,6 +31567,42 @@
         "properties": {
           "code": {
             "type": "string"
+          }
+        }
+      },
+      "WalletSummary": {
+        "type": "object",
+        "required": [
+          "holders",
+          "activeWallets",
+          "expiring7Days",
+          "expiredWallets",
+          "remainingHours"
+        ],
+        "properties": {
+          "activeWallets": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "expiredWallets": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "expiring7Days": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "holders": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "remainingHours": {
+            "type": "number",
+            "format": "double"
           }
         }
       },

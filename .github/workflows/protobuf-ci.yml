@@ -63,13 +63,6 @@ jobs:
         with: { components: rustfmt, clippy }
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: "." }
-      - name: Disposable JetStream runtime
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/nats-io/nats-server/releases/download/v2.12.6/nats-server-v2.12.6-linux-amd64.tar.gz -o /tmp/nats-server.tar.gz
-          echo '77fe7dd69ff5144126026b78355900be0ab0bb4339dc61a7621dcc9b9e9d07a6  /tmp/nats-server.tar.gz' | sha256sum --check
-          tar -xzf /tmp/nats-server.tar.gz -C /tmp
-          echo 'NATS_SERVER_BIN=/tmp/nats-server-v2.12.6-linux-amd64/nats-server' >> "$GITHUB_ENV"
       - run: cargo check --locked --workspace --all-targets
       - run: cargo clippy --locked --workspace --all-targets
       - run: pnpm backend:test:integration
