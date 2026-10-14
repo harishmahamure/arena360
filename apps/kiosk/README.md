@@ -82,8 +82,10 @@ setup do not trigger recovery. Development builds do not register startup, run
 recovery, or close desktop applications.
 
 Each installed kiosk launch closes applications already open in the same Windows
-session. Applications receive a close request and have three seconds to exit
-before termination. Windows services, shell processes, WebView2, the kiosk, and
+session after the kiosk window is built and before the player UI becomes usable.
+Applications receive a close request and have three seconds to exit before
+termination, including their existing hidden child processes. Windows services,
+shell processes, WebView2, the kiosk, and
 its installer/ancestor processes are preserved. Unsaved work in applications
 that refuse to close can be lost.
 
@@ -93,7 +95,14 @@ Ctrl+Esc/Ctrl+Shift+Esc, Alt+Esc, and dedicated app-launch keys. Alt+F4,
 Alt+Space, and context-menu keys are blocked when the kiosk has focus and remain
 available in other applications. Alt+Tab is always allowed, and the background
 guard does not redirect the user's selected window. Normal browser/game
-shortcuts remain available. Staff admin login preserves
+shortcuts remain available. The hook renews itself every second to recover from
+Windows silently removing it after a timeout; shell work runs on a separate
+worker. `HKCU` policies (`DisableTaskMgr`, `NoWinKeys`) also restrict Task Manager
+and shell hotkeys for the actual signed-in kiosk account. Original policy values
+are saved before lockdown, retained across crash recovery, and restored during
+staff setup and normal exit. If a managed account denies policy writes, the kiosk
+logs a warning and the hook plus Task Manager window guard remain active.
+Staff admin login preserves
 `SetupRelaxed`: shortcut protection and foreground enforcement turn off and the
 kiosk can be minimized.
 

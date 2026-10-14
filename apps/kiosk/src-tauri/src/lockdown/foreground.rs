@@ -54,7 +54,10 @@ mod win {
                 && GUARD_GENERATION.load(Ordering::SeqCst) == generation
             {
                 thread::sleep(Duration::from_millis(500));
-                if !crate::lockdown::is_locked() {
+                if !GUARD_RUNNING.load(Ordering::SeqCst)
+                    || GUARD_GENERATION.load(Ordering::SeqCst) != generation
+                    || !crate::lockdown::is_locked()
+                {
                     continue;
                 }
                 if process::has_tracked_processes() {
