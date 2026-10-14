@@ -39,6 +39,13 @@ pub fn run() {
         std::process::exit(1);
     }
 
+    #[cfg(windows)]
+    if let Err(e) = lockdown::init_shortcut_protection() {
+        diagnostics::error(format!("early shortcut protection failed: {e}"));
+        on_app_exit();
+        std::process::exit(1);
+    }
+
     startup::initialize();
 
     let mut builder = tauri::Builder::default()
@@ -77,6 +84,7 @@ pub fn run() {
             #[cfg(windows)]
             if let Err(e) = init_locked_on_startup(app.handle()) {
                 diagnostics::error(format!("lockdown init failed: {e}"));
+                on_app_exit();
                 return Err(e.into());
             }
             #[cfg(not(windows))]
@@ -90,6 +98,8 @@ pub fn run() {
                     }),
                 );
             }
+            #[cfg(all(windows, not(debug_assertions)))]
+            process::close_existing_desktop_apps();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -126,7 +136,10 @@ pub fn run() {
             startup::resume_kiosk_recovery,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
+        .unwrap_or_else(|e| {
+            on_app_exit();
+            panic!("error while building tauri application: {e}");
+        })
         .run(|_app, event| match event {
             RunEvent::ExitRequested {
                 code: None, api, ..

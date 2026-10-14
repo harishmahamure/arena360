@@ -1,5 +1,6 @@
 mod foreground;
 mod keyboard;
+mod policy;
 pub mod shell;
 
 pub use foreground::set_audio_ui_yield;
@@ -42,6 +43,7 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
 
     match state {
         LockdownState::Locked => {
+            init_shortcut_protection()?;
             window.set_closable(false).map_err(|e| e.to_string())?;
             window.set_minimizable(false).map_err(|e| e.to_string())?;
             window.set_maximizable(false).map_err(|e| e.to_string())?;
@@ -51,10 +53,10 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
                 crate::process::apply_kiosk_shell_lockdown(app);
             }
             shell::hide_shell_chrome();
-            keyboard::install_hook()?;
             foreground::start_foreground_guard(app.clone());
         }
         LockdownState::SetupRelaxed => {
+            policy::restore()?;
             foreground::stop_foreground_guard();
             keyboard::remove_hook();
             shell::restore_shell_chrome();
@@ -103,6 +105,16 @@ pub fn register_keyboard_app(app: AppHandle) {
     keyboard::set_app_handle(app);
 }
 
+pub fn init_shortcut_protection() -> Result<(), String> {
+    keyboard::install_hook()?;
+    if let Err(e) = policy::apply_locked() {
+        // Some managed Windows accounts deny writes to their Policies keys.
+        // The hook and Task Manager window guard still protect those stations.
+        crate::diagnostics::warn(format!("Windows kiosk policy could not be applied: {e}"));
+    }
+    Ok(())
+}
+
 pub fn init_locked_on_startup(app: &AppHandle) -> Result<(), String> {
     let _txn = TRANSITION.lock().map_err(|e| e.to_string())?;
     apply_window_mode(app, LockdownState::Locked)?;
@@ -115,6 +127,10 @@ pub fn init_locked_on_startup(app: &AppHandle) -> Result<(), String> {
 
 pub fn on_app_exit() {
     foreground::stop_foreground_guard();
+    keyboard::remove_hook();
+    if let Err(e) = policy::restore() {
+        crate::diagnostics::warn(format!("Windows kiosk policy restore failed: {e}"));
+    }
     shell::restore_shell_chrome();
 }
 

@@ -192,9 +192,8 @@ mod win {
         if let Err(e) = start_recovery() {
             crate::diagnostics::error(format!("kiosk recovery startup failed: {e}"));
         }
-        // Finish closing existing desktop apps before the player UI becomes usable.
-        // Windows services/background agents are outside this cleanup.
-        crate::process::close_existing_desktop_apps();
+        // Desktop cleanup runs in Tauri setup after shortcut protection starts,
+        // capturing apps that launch while the kiosk/webview is being built.
     }
 }
 

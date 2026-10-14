@@ -62,14 +62,15 @@ mod win {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
+        CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW,
+        GetWindowThreadProcessId, KillTimer, SetTimer, SetWindowsHookExW, TranslateMessage,
         UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, MSG, WH_KEYBOARD_LL,
-        WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
     };
 
     static INSTALLED: Mutex<bool> = Mutex::new(false);
     static ENABLED: AtomicBool = AtomicBool::new(false);
-    static ALT_REHIDE_RUNNING: AtomicBool = AtomicBool::new(false);
+    static REHIDE: OnceLock<mpsc::SyncSender<()>> = OnceLock::new();
     static APP: OnceLock<AppHandle> = OnceLock::new();
     thread_local! { static MODIFIERS: RefCell<Modifiers> = RefCell::new(Modifiers::default()); }
 
@@ -80,10 +81,13 @@ mod win {
     // All shell/window work happens off the hook thread. A slow callback can
     // cause Windows to silently remove WH_KEYBOARD_LL.
     fn start_alt_rehide_burst() {
-        if ALT_REHIDE_RUNNING.swap(true, Ordering::SeqCst) {
-            return;
+        if let Some(sender) = REHIDE.get() {
+            let _ = sender.try_send(());
         }
-        thread::spawn(|| {
+    }
+
+    fn rehide_worker(rx: mpsc::Receiver<()>) {
+        while rx.recv().is_ok() {
             let deadline = Instant::now() + Duration::from_secs(3);
             loop {
                 if !ENABLED.load(Ordering::SeqCst) {
@@ -102,8 +106,7 @@ mod win {
                     crate::lockdown::foreground::capture_allowed_foreground(app);
                 }
             }
-            ALT_REHIDE_RUNNING.store(false, Ordering::SeqCst);
-        });
+        }
     }
 
     unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -144,6 +147,14 @@ mod win {
     pub fn install() -> Result<(), String> {
         let mut installed = INSTALLED.lock().map_err(|e| e.to_string())?;
         if !*installed {
+            if REHIDE.get().is_none() {
+                let (tx, rx) = mpsc::sync_channel(1);
+                thread::Builder::new()
+                    .name("kiosk-shell-rehide".into())
+                    .spawn(move || rehide_worker(rx))
+                    .map_err(|e| e.to_string())?;
+                let _ = REHIDE.set(tx);
+            }
             let (tx, rx) = mpsc::sync_channel(1);
             thread::Builder::new()
                 .name("kiosk-keyboard".into())
@@ -156,20 +167,56 @@ mod win {
                         }
                     });
                     let module = GetModuleHandleW(None).unwrap_or_default();
-                    let hook = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), module, 0) {
-                        Ok(hook) => hook,
-                        Err(e) => {
-                            let _ = tx.send(Err(format!("keyboard hook install failed: {e}")));
-                            return;
-                        }
-                    };
+                    let mut hook =
+                        match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), module, 0) {
+                            Ok(hook) => hook,
+                            Err(e) => {
+                                let _ = tx.send(Err(format!("keyboard hook install failed: {e}")));
+                                return;
+                            }
+                        };
+                    let timer = SetTimer(None, 0, 1000, None);
+                    if timer == 0 {
+                        let _ = UnhookWindowsHookEx(hook);
+                        let _ = tx.send(Err("keyboard hook recovery timer failed".into()));
+                        return;
+                    }
                     let _ = tx.send(Ok(()));
                     let mut message = MSG::default();
                     while GetMessageW(&mut message, None, 0, 0).0 > 0 {
+                        if message.message == WM_TIMER && message.wParam.0 == timer {
+                            // Windows silently removes timed-out low-level hooks.
+                            // Install the replacement before releasing the old one
+                            // so periodic recovery introduces no unhooked interval.
+                            match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), module, 0) {
+                                Ok(replacement) => {
+                                    let _ = UnhookWindowsHookEx(hook);
+                                    hook = replacement;
+                                    // Reconcile modifiers after missed releases or
+                                    // desktop switches. Blocked Win presses are not
+                                    // reflected in async state; their keydowns were
+                                    // already swallowed, so Windows cannot use them.
+                                    MODIFIERS.with(|state| {
+                                        let mut state = state.borrow_mut();
+                                        for vk in [0xA2, 0xA3, 0x5B, 0x5C] {
+                                            state.update(vk, GetAsyncKeyState(vk as i32) < 0);
+                                        }
+                                    });
+                                }
+                                Err(e) => crate::diagnostics::error(format!(
+                                    "keyboard hook recovery failed: {e}"
+                                )),
+                            }
+                            continue;
+                        }
                         let _ = TranslateMessage(&message);
                         DispatchMessageW(&message);
                     }
+                    let _ = KillTimer(None, timer);
                     let _ = UnhookWindowsHookEx(hook);
+                    if let Ok(mut installed) = INSTALLED.lock() {
+                        *installed = false;
+                    }
                 })
                 .map_err(|e| e.to_string())?;
             rx.recv().map_err(|e| e.to_string())??;

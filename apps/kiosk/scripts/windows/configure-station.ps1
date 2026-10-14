@@ -355,8 +355,10 @@ function Remove-KioskLogonTask {
 
 function Install-Hardening {
     Ensure-MarkerDir
+    # DisableTaskMgr is a user policy (HKCU), not an HKLM policy. The kiosk
+    # applies it to its own signed-in account while locked and restores the
+    # original value for staff setup/exit. Do not set it under the deploy account.
     $entries = @(
-        @{ hive = 'HKLM'; path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'; name = 'DisableTaskMgr'; value = 1 },
         @{ hive = 'HKLM'; path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'; name = 'DisableLockWorkstation'; value = 1 },
         @{ hive = 'HKLM'; path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'; name = 'DisableChangePassword'; value = 1 },
         @{ hive = 'HKLM'; path = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'; name = 'NoRun'; value = 1 }
@@ -379,7 +381,7 @@ function Install-Hardening {
         $marker.autologon = [ordered]@{ configured = $false; user = $null }
     }
     Write-Marker $marker
-    Write-Info 'Applied HKLM policy hardening (Task Manager, lock workstation, change password, Run dialog).'
+    Write-Info 'Applied HKLM policy hardening (lock workstation, change password, Run dialog). Task Manager is managed by the running kiosk.'
 }
 
 function Remove-HardeningFromMarker {

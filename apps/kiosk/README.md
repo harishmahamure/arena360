@@ -76,8 +76,6 @@ Win+D/R/I/E/Tab/L, Ctrl+Esc, Ctrl+Shift+Esc, and Alt+F4 while locked. Check
 Ctrl+Alt+Delete locally after configuring Keyboard Filter. Finally, sign in as
 staff, minimize the kiosk, and verify that returning to locked mode restores
 protection. Test update failure and successful installation/relaunch as well.
-<<<<<<< HEAD
-=======
 
 Windows application launches use `ShellExecuteExW` with the executable's directory
 as the working directory and visible windows, matching Explorer launch semantics.
@@ -91,4 +89,3 @@ launcher children are discovered from full process snapshots. Launched
 applications retain their own window style and fullscreen settings. The kiosk
 does not take focus back from an Alt+Tab selection while an application finishes
 starting.
->>>>>>> 4cb036a (kiosk major update)

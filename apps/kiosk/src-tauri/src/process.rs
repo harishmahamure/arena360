@@ -1086,6 +1086,26 @@ fn suppress_tracked_overlays() {
 #[cfg(not(windows))]
 fn suppress_tracked_overlays() {}
 
+#[cfg(any(all(windows, not(debug_assertions)), test))]
+fn startup_cleanup_pids(
+    roots: impl IntoIterator<Item = u32>,
+    mut children: impl FnMut(u32) -> Vec<u32>,
+    mut eligible: impl FnMut(u32) -> bool,
+) -> Vec<u32> {
+    let mut queue: Vec<u32> = roots.into_iter().collect();
+    let mut seen = HashSet::new();
+    let mut targets = Vec::new();
+    while let Some(pid) = queue.pop() {
+        if !seen.insert(pid) || !eligible(pid) {
+            continue;
+        }
+        targets.push(pid);
+        queue.extend(children(pid));
+    }
+    targets.sort_unstable();
+    targets
+}
+
 /// Close applications that were already open when the installed kiosk started.
 /// Capture native process handles before asking windows to close, so PID reuse
 /// cannot make the fallback termination target a newly started process.
@@ -1137,47 +1157,86 @@ pub fn close_existing_desktop_apps() {
         crate::diagnostics::warn(format!("startup window enumeration failed: {e}"));
         return;
     }
-    let mut targets = std::collections::HashMap::<u32, HANDLE>::new();
-    for (hwnd, pid) in windows {
+    let eligible = |pid: u32| {
         let Some(process) = system.process(Pid::from_u32(pid)) else {
-            continue;
+            return false;
         };
         let mut process_session = 0;
-        if unsafe { ProcessIdToSessionId(pid, &mut process_session) }.is_err()
-            || process_session != session
-            || ancestors.contains(&pid)
-            || is_session_keep_process(&process.name().to_string_lossy(), kiosk_name.as_deref())
-            || install_dir.is_some_and(|dir| process.exe().is_some_and(|exe| exe.starts_with(dir)))
-        {
-            continue;
-        }
-        if let std::collections::hash_map::Entry::Vacant(entry) = targets.entry(pid) {
-            if let Ok(handle) =
-                unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, false, pid) }
-            {
-                entry.insert(handle);
+        pid > 4
+            && unsafe { ProcessIdToSessionId(pid, &mut process_session) }.is_ok()
+            && process_session == session
+            && !ancestors.contains(&pid)
+            && !is_session_keep_process(&process.name().to_string_lossy(), kiosk_name.as_deref())
+            && !install_dir.is_some_and(|dir| process.exe().is_some_and(|exe| exe.starts_with(dir)))
+    };
+    let pids = startup_cleanup_pids(
+        windows.iter().map(|(_, pid)| *pid),
+        |parent| {
+            system
+                .processes()
+                .iter()
+                .filter_map(|(pid, process)| {
+                    (process.parent().map(|p| p.as_u32()) == Some(parent)).then_some(pid.as_u32())
+                })
+                .collect()
+        },
+        eligible,
+    );
+    let mut targets = std::collections::HashMap::<u32, HANDLE>::new();
+    for pid in &pids {
+        match unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, false, *pid) } {
+            Ok(handle) => {
+                targets.insert(*pid, handle);
+            }
+            Err(e) => {
+                crate::diagnostics::warn(format!("startup cleanup cannot open PID {pid}: {e}"))
             }
         }
-        // Graceful close first. Apps that refuse/hang are terminated after the
-        // shared grace period; no new windows/processes are added to the targets.
-        unsafe {
-            let _ = PostMessageW(hwnd, WM_CLOSE, None, None);
+    }
+    // Capture every native handle before sending close requests. Include hidden
+    // children of visible apps (browser workers / tray launchers), but never
+    // traverse protected Windows or kiosk process trees.
+    let pid_set: HashSet<_> = pids.into_iter().collect();
+    for (hwnd, pid) in windows {
+        if pid_set.contains(&pid) {
+            unsafe {
+                if let Err(e) = PostMessageW(hwnd, WM_CLOSE, None, None) {
+                    crate::diagnostics::warn(format!(
+                        "startup close request PID {pid} failed: {e}"
+                    ));
+                }
+            }
         }
     }
     if !targets.is_empty() {
         thread::sleep(Duration::from_secs(3));
     }
-    let count = targets.len();
-    for handle in targets.into_values() {
+    let mut count = 0;
+    for (pid, handle) in targets {
         unsafe {
             if WaitForSingleObject(handle, 0) == WAIT_TIMEOUT {
-                let _ = TerminateProcess(handle, 1);
+                match TerminateProcess(handle, 1) {
+                    Ok(()) => {
+                        if WaitForSingleObject(handle, 1000) == WAIT_TIMEOUT {
+                            crate::diagnostics::warn(format!(
+                                "startup cleanup PID {pid} did not exit"
+                            ));
+                        } else {
+                            count += 1;
+                        }
+                    }
+                    Err(e) => crate::diagnostics::warn(format!(
+                        "startup termination PID {pid} failed: {e}"
+                    )),
+                }
+            } else {
+                count += 1;
             }
             let _ = CloseHandle(handle);
         }
     }
     crate::diagnostics::info(format!(
-        "startup cleanup closed {count} existing desktop applications"
+        "startup cleanup closed {count} existing desktop app processes"
     ));
 }
 
@@ -1668,7 +1727,8 @@ mod tests {
     use super::{
         all_tree_pids, executable_basename, format_launch_failure, has_tracked_processes,
         is_allowed, is_launcher_executable, is_launcher_login_process, is_overlay_launcher_exe,
-        is_session_keep_process, normalize_path, paths_match, WatchEntry,
+        is_session_keep_process, normalize_path, paths_match, startup_cleanup_pids, tracking_roots,
+        WatchEntry,
     };
 
     #[test]
@@ -1745,6 +1805,24 @@ mod tests {
         ));
         assert!(is_session_keep_process("msedgewebview2.exe", Some("Arena360 Kiosk.exe")));
         assert!(!is_session_keep_process("discord.exe", Some("Arena360 Kiosk.exe")));
+    }
+
+    #[test]
+    fn startup_cleanup_includes_hidden_children_but_stops_at_protected_processes() {
+        let children = |pid| match pid {
+            100 => vec![101, 200], // app worker and protected service
+            101 => vec![102],
+            102 => vec![100], // malformed/cyclic parent data must terminate
+            200 => vec![201], // do not walk a protected process tree
+            300 => vec![301], // another Windows session
+            _ => vec![],
+        };
+        let eligible = |pid| ![200, 300].contains(&pid);
+        assert_eq!(
+            startup_cleanup_pids([100, 100, 300], children, eligible),
+            [100, 101, 102]
+        );
+        assert!(startup_cleanup_pids([], |_| vec![], |_| true).is_empty());
     }
 
     #[test]
