@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   allowListPaths,
+  formatLaunchArguments,
   type LaunchEntry,
   launcherDisplayName,
   launchViaLabel,
@@ -9,10 +10,23 @@ import {
   tokenizeArguments,
 } from './allowList';
 import { isSoftLaunchEntry, launchEntry, launchEntryForTest, launchErrorMessage } from './launch';
+import { detectLaunchProfile, launchAllowed, launchAllowedTest } from './tauriCommands';
+
+vi.mock('./tauriCommands', () => ({
+  detectLaunchProfile: vi.fn(),
+  launchAllowed: vi.fn(),
+  launchAllowedTest: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(detectLaunchProfile).mockResolvedValue(null);
+});
 
 const valorantEntry: LaunchEntry = {
   id: '1',
   name: 'Valorant',
+  launchMode: 'launcher',
   executablePath: 'C:\\Riot Games\\VALORANT\\live\\VALORANT.exe',
   launchVia: {
     executablePath: 'C:\\Riot Games\\Riot Client\\RiotClientServices.exe',
@@ -23,6 +37,12 @@ const valorantEntry: LaunchEntry = {
 describe('tokenizeArguments', () => {
   it('respects quoted tokens', () => {
     expect(tokenizeArguments('--exec="launch D3"')).toEqual(['--exec=launch D3']);
+  });
+
+  it('keeps a detected Battle.net game argument intact when displayed and edited', () => {
+    const display = formatLaunchArguments(['--exec=launch D3']);
+    expect(display).toBe('"--exec=launch D3"');
+    expect(normalizeLaunchArguments(display)).toEqual(['--exec=launch D3']);
   });
 });
 
@@ -71,6 +91,39 @@ describe('resolveLaunch', () => {
       '--launch-product=valorant',
       '--launch-patchline=live',
     ]);
+  });
+
+  it('opens Riot Client for automatic Valorant entries without starting the game', () => {
+    expect(resolveLaunch({ ...valorantEntry, launchMode: 'auto' })).toEqual({
+      executablePath: valorantEntry.launchVia?.executablePath,
+      arguments: undefined,
+      entryPath: valorantEntry.executablePath,
+    });
+  });
+
+  it('opens Riot first for a legacy scan profile without an explicit launch mode', () => {
+    expect(
+      resolveLaunch({ ...valorantEntry, launchMode: undefined, launchViaAuto: true }).arguments,
+    ).toBeUndefined();
+  });
+
+  it('ignores stored launcher profiles when direct launch is explicitly selected', () => {
+    expect(
+      resolveLaunch({ ...valorantEntry, launchMode: 'direct', arguments: '--fullscreen' }),
+    ).toEqual({
+      executablePath: valorantEntry.executablePath,
+      arguments: ['--fullscreen'],
+      entryPath: valorantEntry.executablePath,
+    });
+  });
+
+  it('opens any platform client without game arguments in launcher-only mode', () => {
+    const entry: LaunchEntry = {
+      ...valorantEntry,
+      launchMode: 'launcher-only',
+      launchVia: { executablePath: 'C:\\Steam\\steam.exe', arguments: '-applaunch 730' },
+    };
+    expect(resolveLaunch(entry).arguments).toBeUndefined();
   });
 });
 
@@ -131,6 +184,82 @@ describe('launchEntry validation', () => {
       executablePath: 'C:\\Games\\game.exe',
     };
     await expect(launchEntry(entry, [])).rejects.toThrow(/No applications are configured/);
+  });
+
+  it('detects a legacy Valorant path and launches only Riot in player and setup flows', async () => {
+    const entry: LaunchEntry = {
+      ...valorantEntry,
+      launchMode: 'auto',
+      launchVia: undefined,
+      runAsAdmin: true,
+    };
+    vi.mocked(detectLaunchProfile).mockResolvedValue(valorantEntry.launchVia ?? null);
+    await launchEntry(entry, [entry]);
+    await launchEntryForTest(entry, [entry]);
+    expect(launchAllowed).toHaveBeenCalledExactlyOnceWith(
+      valorantEntry.launchVia?.executablePath,
+      [entry.executablePath, valorantEntry.launchVia?.executablePath],
+      undefined,
+      false,
+      true,
+    );
+    expect(launchAllowedTest).toHaveBeenCalledExactlyOnceWith(
+      valorantEntry.launchVia?.executablePath,
+      [entry.executablePath, valorantEntry.launchVia?.executablePath],
+      undefined,
+      true,
+    );
+  });
+
+  it('does not start the game exe if Riot detection fails', async () => {
+    const entry: LaunchEntry = { ...valorantEntry, launchMode: 'auto', launchVia: undefined };
+    vi.mocked(detectLaunchProfile).mockRejectedValue('Riot Client was not found');
+    await expect(launchEntry(entry, [entry])).rejects.toBe('Riot Client was not found');
+    expect(launchAllowed).not.toHaveBeenCalled();
+  });
+
+  it('does not detect a launcher when direct launch was chosen', async () => {
+    const entry: LaunchEntry = { ...valorantEntry, launchMode: 'direct', launchVia: undefined };
+    await launchEntry(entry, [entry]);
+    expect(detectLaunchProfile).not.toHaveBeenCalled();
+    expect(launchAllowed).toHaveBeenCalledWith(
+      entry.executablePath,
+      [entry.executablePath],
+      undefined,
+      false,
+      undefined,
+    );
+  });
+
+  it('does not launch an unconfigured game or launcher', async () => {
+    await expect(
+      launchEntry(valorantEntry, [
+        { ...valorantEntry, executablePath: 'C:\\Other.exe', launchVia: undefined },
+      ]),
+    ).rejects.toThrow('Executable not in allow-list');
+    await expect(
+      launchEntry(valorantEntry, [{ ...valorantEntry, launchVia: undefined }]),
+    ).rejects.toThrow('Executable not in allow-list');
+    expect(launchAllowed).not.toHaveBeenCalled();
+    expect(detectLaunchProfile).not.toHaveBeenCalled();
+  });
+
+  it('allows a launcher without arguments and rejects a missing manual launcher', async () => {
+    const entry: LaunchEntry = {
+      ...valorantEntry,
+      launchVia: { executablePath: 'C:\\Launcher.exe', arguments: [] },
+    };
+    await launchEntry(entry, [entry]);
+    expect(launchAllowed).toHaveBeenCalledWith(
+      'C:\\Launcher.exe',
+      expect.any(Array),
+      undefined,
+      false,
+      undefined,
+    );
+    await expect(launchEntry({ ...entry, launchVia: undefined }, [entry])).rejects.toThrow(
+      'Launcher path is required',
+    );
   });
 });
 

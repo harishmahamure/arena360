@@ -294,41 +294,36 @@ fn battlenet_product_code(folder: &str) -> Option<&'static str> {
     None
 }
 
-#[cfg(target_os = "windows")]
-fn resolve_riot_profile(norm: &str, riot_exe: &Option<String>) -> Option<LaunchVia> {
-    let riot = riot_exe.as_ref()?;
-    if !norm.contains("/riot games/") {
-        return None;
-    }
-
-    let (product, patchline) = if norm.ends_with("/valorant/live/valorant.exe") {
-        ("valorant", "live")
+pub fn riot_product(executable_path: &str) -> Option<&'static str> {
+    let norm = normalize_path(executable_path);
+    if norm.ends_with("/valorant.exe") || norm.ends_with("/valorant-win64-shipping.exe") {
+        Some("valorant")
     } else if norm.contains("/league of legends/")
         && (norm.ends_with("/leagueclient.exe") || norm.ends_with("/league of legends.exe"))
     {
-        ("league_of_legends", "live")
+        Some("league_of_legends")
     } else if norm.contains("/league of legends/") && norm.ends_with("/leagueclientux.exe") {
-        ("league_of_legends", "live")
+        Some("league_of_legends")
     } else if norm.contains("/teamfight tactics/") {
-        ("league_of_legends", "live")
+        Some("league_of_legends")
     } else if norm.contains("/legendsofruneterra/") || norm.contains("/lor/") {
-        ("lor", "live")
+        Some("lor")
     } else {
-        return None;
-    };
+        None
+    }
+}
+
+fn resolve_riot_profile(norm: &str, riot_exe: &Option<String>) -> Option<LaunchVia> {
+    let riot = riot_exe.as_ref()?;
+    let product = riot_product(norm)?;
 
     Some(LaunchVia::new(
         riot.clone(),
         vec![
             format!("--launch-product={product}"),
-            format!("--launch-patchline={patchline}"),
+            "--launch-patchline=live".to_string(),
         ],
     ))
-}
-
-#[cfg(not(target_os = "windows"))]
-fn resolve_riot_profile(_norm: &str, _riot_exe: &Option<String>) -> Option<LaunchVia> {
-    None
 }
 
 #[cfg(target_os = "windows")]
@@ -1008,19 +1003,15 @@ mod tests {
         assert_eq!(stats.unresolved, 1);
     }
 
-    #[cfg(target_os = "windows")]
     #[test]
     fn riot_valorant_profile() {
         let ctx = LaunchContext::new(LauncherPaths {
             riot: Some("C:\\Riot Games\\Riot Client\\RiotClientServices.exe".to_string()),
             ..Default::default()
         });
-        let profile = resolve_launch_profile(
-            "C:\\Riot Games\\VALORANT\\live\\VALORANT.exe",
-            None,
-            &ctx,
-        )
-        .unwrap();
+        let profile =
+            resolve_launch_profile("C:\\Riot Games\\VALORANT\\live\\VALORANT.exe", None, &ctx)
+                .unwrap();
         assert_eq!(
             profile.arguments,
             vec![
@@ -1030,6 +1021,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn riot_profiles_support_shipping_executable_and_custom_install_roots() {
+        let ctx = LaunchContext::new(LauncherPaths {
+            riot: Some("D:\\Launchers\\RiotClientServices.exe".into()),
+            ..Default::default()
+        });
+        for path in [
+            "D:\\Games\\VALORANT\\live\\VALORANT.exe",
+            "E:\\Games\\VALORANT\\live\\ShooterGame\\Binaries\\Win64\\VALORANT-Win64-Shipping.exe",
+        ] {
+            let profile = resolve_launch_profile(path, None, &ctx).unwrap();
+            assert_eq!(profile.executable_path, ctx.launchers.riot.clone().unwrap());
+            assert_eq!(profile.arguments[0], "--launch-product=valorant");
+        }
+        assert!(resolve_launch_profile("D:\\Games\\game.exe", None, &ctx).is_none());
+        assert!(resolve_launch_profile(
+            "D:\\Games\\VALORANT.exe",
+            None,
+            &LaunchContext::new(LauncherPaths::default())
+        )
+        .is_none());
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn steam_app_id_inline() {
@@ -1037,9 +1051,12 @@ mod tests {
             steam: Some("C:\\Steam\\steam.exe".to_string()),
             ..Default::default()
         });
-        let profile =
-            resolve_launch_profile("C:\\Steam\\steamapps\\common\\CS2\\cs2.exe", Some("730"), &ctx)
-                .unwrap();
+        let profile = resolve_launch_profile(
+            "C:\\Steam\\steamapps\\common\\CS2\\cs2.exe",
+            Some("730"),
+            &ctx,
+        )
+        .unwrap();
         assert_eq!(profile.arguments, vec!["-applaunch", "730"]);
     }
 }

@@ -129,12 +129,12 @@ fn setup_test_launch_permitted() -> bool {
 
 /// Launch visible desktop applications through Windows Shell, as Explorer does.
 #[cfg(windows)]
-fn spawn_process(path: &str, args: Option<&[String]>) -> Result<u32, String> {
-    crate::app_launch::launch(path, args)
+fn spawn_process(path: &str, args: Option<&[String]>, run_as_admin: bool) -> Result<u32, String> {
+    crate::app_launch::launch(path, args, run_as_admin)
 }
 
 #[cfg(not(windows))]
-fn spawn_process(path: &str, args: Option<&[String]>) -> Result<u32, String> {
+fn spawn_process(path: &str, args: Option<&[String]>, _run_as_admin: bool) -> Result<u32, String> {
     let mut cmd = Command::new(path);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1487,6 +1487,7 @@ pub fn launch_allowed(
     allow_list: Vec<String>,
     arguments: Option<Vec<String>>,
     soft_launch: Option<bool>,
+    run_as_admin: Option<bool>,
 ) -> Result<LaunchResult, String> {
     let soft = soft_launch.unwrap_or(false);
     if cleanup_in_progress() {
@@ -1519,6 +1520,7 @@ pub fn launch_allowed(
     let pid = match spawn_process(
         &executable_path,
         normalize_launch_arguments(arguments).as_deref(),
+        run_as_admin.unwrap_or(false),
     ) {
         Ok(pid) => pid,
         Err(e) => {
@@ -1570,6 +1572,7 @@ pub fn launch_allowed_test(
     executable_path: String,
     allow_list: Vec<String>,
     arguments: Option<Vec<String>>,
+    run_as_admin: Option<bool>,
 ) -> Result<LaunchResult, String> {
     if cleanup_in_progress() {
         let err = "Session cleanup in progress".to_string();
@@ -1599,6 +1602,7 @@ pub fn launch_allowed_test(
     let pid = match spawn_process(
         &executable_path,
         normalize_launch_arguments(arguments).as_deref(),
+        run_as_admin.unwrap_or(false),
     ) {
         Ok(pid) => pid,
         Err(e) => {

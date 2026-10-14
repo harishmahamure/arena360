@@ -2,13 +2,23 @@
 
 #[cfg(any(windows, test))]
 fn execute_with_elevation_retry<T, E>(
+    run_as_admin: bool,
     mut execute: impl FnMut(bool) -> Result<T, E>,
     requires_elevation: impl FnOnce(&E) -> bool,
 ) -> Result<T, E> {
+    if run_as_admin {
+        return execute(true);
+    }
     match execute(false) {
         Err(error) if requires_elevation(&error) => execute(true),
         result => result,
     }
+}
+
+#[cfg(any(windows, test))]
+fn elevation_retry_error(code: u32) -> bool {
+    // Shell/compatibility handlers can report access denied instead of 740.
+    matches!(code, 5 | 740)
 }
 
 #[cfg(any(windows, test))]
@@ -42,7 +52,7 @@ fn windows_command_line(args: &[String]) -> Result<String, String> {
 }
 
 #[cfg(windows)]
-pub fn launch(path: &str, args: Option<&[String]>) -> Result<u32, String> {
+pub fn launch(path: &str, args: Option<&[String]>, run_as_admin: bool) -> Result<u32, String> {
     if path.contains('\0') {
         return Err("Executable path contains a NUL character".into());
     }
@@ -51,19 +61,19 @@ pub fn launch(path: &str, args: Option<&[String]>) -> Result<u32, String> {
     let parameters = windows_command_line(args.unwrap_or_default())?;
     std::thread::scope(|scope| {
         scope
-            .spawn(|| launch_on_shell_thread(path, &parameters))
+            .spawn(|| launch_on_shell_thread(path, &parameters, run_as_admin))
             .join()
             .map_err(|_| "Windows shell launch thread failed".to_string())?
     })
 }
 
 #[cfg(windows)]
-fn launch_on_shell_thread(path: &str, parameters: &str) -> Result<u32, String> {
+fn launch_on_shell_thread(path: &str, parameters: &str, run_as_admin: bool) -> Result<u32, String> {
     use std::path::Path;
     use std::time::Duration;
     use sysinfo::{ProcessesToUpdate, System};
     use windows::core::{w, HRESULT, PCWSTR};
-    use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, ERROR_ELEVATION_REQUIRED};
+    use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, ERROR_CANCELLED};
     use windows::Win32::System::Com::{
         CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
     };
@@ -97,9 +107,10 @@ fn launch_on_shell_thread(path: &str, parameters: &str) -> Result<u32, String> {
             .unwrap_or_else(|| Path::new("."))
             .to_string_lossy(),
     );
-    // Retry only an explicit elevation-required failure. The runas verb asks
+    // Retry permission/elevation failures once. The runas verb asks
     // Windows for UAC consent/credentials; denial and cancellation are final.
     let info = execute_with_elevation_retry(
+        run_as_admin,
         |elevated| {
             let mut info = SHELLEXECUTEINFOW {
                 cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -117,13 +128,16 @@ fn launch_on_shell_thread(path: &str, parameters: &str) -> Result<u32, String> {
             Ok(info)
         },
         |error: &windows::core::Error| {
-            error.code() == HRESULT::from_win32(ERROR_ELEVATION_REQUIRED.0)
+            let code = error.code().0 as u32;
+            code & 0xffff0000 == 0x80070000 && elevation_retry_error(code & 0xffff)
         },
     )
     .map_err(|error| {
         if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
             "Launch canceled: administrator approval is required to open this application"
                 .to_string()
+        } else if error.code() == HRESULT::from_win32(ERROR_ACCESS_DENIED.0) {
+            format!("Windows denied access to {path}, including administrator launch. Check this Windows account's file permissions and application restrictions in Setup. ({error})")
         } else {
             format!("Windows shell launch: {error}")
         }
@@ -189,17 +203,18 @@ pub fn matching_process_pids(system: &sysinfo::System, executable_path: &str) ->
 
 #[cfg(test)]
 mod tests {
-    use super::{execute_with_elevation_retry, windows_command_line};
+    use super::{elevation_retry_error, execute_with_elevation_retry, windows_command_line};
 
     #[test]
     fn successful_shell_launch_does_not_request_elevation() {
         let mut attempts = Vec::new();
         let result = execute_with_elevation_retry(
+            false,
             |elevated| {
                 attempts.push(elevated);
                 Ok::<_, u32>(42)
             },
-            |error| *error == 740,
+            |error| elevation_retry_error(*error),
         );
         assert_eq!(result, Ok(42));
         assert_eq!(attempts, [false]);
@@ -209,6 +224,7 @@ mod tests {
     fn elevation_required_retries_and_returns_the_elevated_process() {
         let mut attempts = Vec::new();
         let result = execute_with_elevation_retry(
+            false,
             |elevated| {
                 attempts.push(elevated);
                 if elevated {
@@ -217,7 +233,7 @@ mod tests {
                     Err(740)
                 }
             },
-            |error| *error == 740,
+            |error| elevation_retry_error(*error),
         );
         assert_eq!(result, Ok(42));
         assert_eq!(attempts, [false, true]);
@@ -225,14 +241,15 @@ mod tests {
 
     #[test]
     fn shell_errors_and_cancellation_do_not_trigger_elevation() {
-        for error in [2, 5, 1223] {
+        for error in [2, 3, 1223] {
             let mut attempts = Vec::new();
             let result = execute_with_elevation_retry(
+                false,
                 |elevated| {
                     attempts.push(elevated);
                     Err::<u32, _>(error)
                 },
-                |error| *error == 740,
+                |error| elevation_retry_error(*error),
             );
             assert_eq!(result, Err(error));
             assert_eq!(attempts, [false]);
@@ -244,14 +261,36 @@ mod tests {
         for error in [5, 740, 1223] {
             let mut attempts = Vec::new();
             let result = execute_with_elevation_retry(
+                false,
                 |elevated| {
                     attempts.push(elevated);
                     Err::<u32, _>(if elevated { error } else { 740 })
                 },
-                |error| *error == 740,
+                |error| elevation_retry_error(*error),
             );
             assert_eq!(result, Err(error));
             assert_eq!(attempts, [false, true]);
+        }
+    }
+
+    #[test]
+    fn access_denied_retries_once_and_explicit_admin_skips_normal_launch() {
+        for force in [false, true] {
+            let mut attempts = Vec::new();
+            let result = execute_with_elevation_retry(
+                force,
+                |elevated| {
+                    attempts.push(elevated);
+                    if elevated {
+                        Ok(42)
+                    } else {
+                        Err(5)
+                    }
+                },
+                |error| elevation_retry_error(*error),
+            );
+            assert_eq!(result, Ok(42));
+            assert_eq!(attempts, if force { vec![true] } else { vec![false, true] });
         }
     }
 

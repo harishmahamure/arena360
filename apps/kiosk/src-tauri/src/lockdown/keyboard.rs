@@ -29,6 +29,19 @@ struct Modifiers {
 
 #[cfg(any(windows, test))]
 impl Modifiers {
+    fn reconcile(&mut self, mut held: impl FnMut(u32) -> bool) {
+        for vk in [0xA2, 0xA3] {
+            self.update(vk, held(vk));
+        }
+        // Swallowed Windows keydowns never reach Windows' async state. Keep
+        // those bits until their actual keyup, including across hook renewal.
+        for vk in [0x5B, 0x5C] {
+            if held(vk) {
+                self.update(vk, true);
+            }
+        }
+    }
+
     fn update(&mut self, vk: u32, down: bool) {
         let (state, bit) = match vk {
             0x11 | 0xA2 => (&mut self.ctrl, 1),
@@ -174,7 +187,7 @@ mod win {
                                 return;
                             }
                         };
-                    let timer = SetTimer(None, 0, 1000, None);
+                    let timer = SetTimer(None, 0, 250, None);
                     if timer == 0 {
                         let _ = UnhookWindowsHookEx(hook);
                         let _ = tx.send(Err("keyboard hook recovery timer failed".into()));
@@ -191,15 +204,11 @@ mod win {
                                 Ok(replacement) => {
                                     let _ = UnhookWindowsHookEx(hook);
                                     hook = replacement;
-                                    // Reconcile modifiers after missed releases or
-                                    // desktop switches. Blocked Win presses are not
-                                    // reflected in async state; their keydowns were
-                                    // already swallowed, so Windows cannot use them.
+                                    // Never erase a swallowed Win press while held:
+                                    // Win+D must remain blocked across renewal.
                                     MODIFIERS.with(|state| {
                                         let mut state = state.borrow_mut();
-                                        for vk in [0xA2, 0xA3, 0x5B, 0x5C] {
-                                            state.update(vk, GetAsyncKeyState(vk as i32) < 0);
-                                        }
+                                        state.reconcile(|vk| GetAsyncKeyState(vk as i32) < 0);
                                     });
                                 }
                                 Err(e) => crate::diagnostics::error(format!(
@@ -302,6 +311,26 @@ mod tests {
             assert!(state.ctrl != 0 || state.win != 0);
             state.update(right, false);
             assert_eq!((state.ctrl, state.win), (0, 0));
+        }
+    }
+
+    #[test]
+    fn swallowed_windows_key_stays_blocked_across_hook_recovery() {
+        for win_key in [0x5B, 0x5C] {
+            let mut state = Modifiers::default();
+            state.update(win_key, true);
+            state.reconcile(|_| false); // OS never observed the swallowed press.
+            for foreground in [false, true] {
+                assert!(blocks_shortcut(
+                    0x44,
+                    false,
+                    false,
+                    state.win != 0,
+                    foreground
+                ));
+            }
+            state.update(win_key, false);
+            assert!(!blocks_shortcut(0x44, false, false, state.win != 0, false));
         }
     }
 }

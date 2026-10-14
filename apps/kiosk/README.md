@@ -95,9 +95,12 @@ Ctrl+Esc/Ctrl+Shift+Esc, Alt+Esc, and dedicated app-launch keys. Alt+F4,
 Alt+Space, and context-menu keys are blocked when the kiosk has focus and remain
 available in other applications. Alt+Tab is always allowed, and the background
 guard does not redirect the user's selected window. Normal browser/game
-shortcuts remain available. The hook renews itself every second to recover from
+shortcuts remain available. The hook renews itself every 250 ms to recover from
 Windows silently removing it after a timeout; shell work runs on a separate
-worker. `HKCU` policies (`DisableTaskMgr`, `NoWinKeys`) also restrict Task Manager
+worker. Swallowed Windows-key presses remain tracked until key release, including
+across renewal. If Show Desktop gets through, the foreground guard restores the
+last kiosk or tracked application window; it leaves application Alt+Tab targets
+alone. `HKCU` policies (`DisableTaskMgr`, `NoWinKeys`) also restrict Task Manager
 and shell hotkeys for the actual signed-in kiosk account. Original policy values
 are saved before lockdown, retained across crash recovery, and restored during
 staff setup and normal exit. If a managed account denies policy writes, the kiosk
@@ -140,11 +143,35 @@ Windows application launches use `ShellExecuteExW` with the executable's directo
 as the working directory and visible windows, matching Explorer launch semantics.
 Arguments retain spaces, quotes, and empty values. Windows handles compatibility
 settings and any required elevation prompt. If the normal shell launch returns
-error 740 (elevation required), the kiosk retries once with `runas`, asking for
-Windows administrator approval. Canceling that prompt reports a launch error;
-other errors do not trigger elevation. The allow-list and active-session checks
+error 5 (access denied, including `0x80070005`) or 740 (elevation required), the
+kiosk retries once with `runas`, asking for Windows administrator approval.
+Canceling that prompt reports a launch error; other errors do not trigger
+elevation. A persistent denial reports the executable path and asks staff to
+check Windows permissions and application restrictions. The allow-list and active-session checks
 still apply. Launching an existing application instance keeps it tracked, and new
 launcher children are discovered from full process snapshots. Launched
 applications retain their own window style and fullscreen settings. The kiosk
 does not take focus back from an Alt+Tab selection while an application finishes
 starting.
+
+In each station's staff Setup panel, Allowed software searches installed apps on
+entry and offers **Auto search installed apps** for another scan. Select a game
+and use **Auto-detect launcher** to discover its platform client, including Riot's
+custom-drive installation metadata. Both Valorant bootstrap and shipping
+executables resolve to Riot Client. Older entries without a saved launcher profile
+also resolve at launch time; a missing Riot Client reports a setup error instead
+of starting Valorant directly.
+
+The **Launch option** selector supports:
+
+- **Automatic**: detected launch profiles; Riot opens the client for sign-in and
+  Play, while other platform profiles retain their game launch arguments.
+- **Start game through platform launcher**: starts the client with the configured
+  game arguments, such as Riot's product/patchline or Steam's app ID.
+- **Open platform launcher only**: opens the client without game arguments.
+- **Launch game executable directly**: explicitly bypasses the saved profile.
+
+Launcher arguments may be empty. Manual launcher settings, direct-launch choices,
+and the **Run as Windows administrator** option persist across scans and JSON
+export/import. Administrator launch uses Windows approval for the selected game
+or client. **Test launch** uses the same route in Setup without a player session.

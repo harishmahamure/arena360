@@ -15,6 +15,14 @@ export const TRUSTED_SCAN_SOURCES = ['known', 'steam', 'manifest'] as const;
 /** Player-home section an entry is grouped under. */
 export type LaunchCategory = 'game' | 'launcher' | 'util';
 
+export type LaunchMode = 'auto' | 'direct' | 'launcher' | 'launcher-only';
+
+export function entryLaunchMode(entry: LaunchEntry): LaunchMode {
+  return (
+    entry.launchMode ?? (entry.launchVia && entry.launchViaAuto !== true ? 'launcher' : 'auto')
+  );
+}
+
 /** Launch through a platform launcher (Riot Client, Steam, etc.). */
 export interface LaunchVia {
   executablePath: string;
@@ -54,7 +62,9 @@ export function normalizeLaunchArguments(args?: string | string[]): string[] | u
 
 /** Serialize launch arguments for storage / display in a single text field. */
 export function formatLaunchArguments(args: string | string[]): string {
-  return Array.isArray(args) ? args.join(' ') : args;
+  return Array.isArray(args)
+    ? args.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(' ')
+    : args;
 }
 
 export interface LaunchEntry {
@@ -66,9 +76,13 @@ export interface LaunchEntry {
   executablePath: string;
   /** Optional launch arguments (direct launch only). */
   arguments?: string;
+  /** Missing means automatic detection, including legacy station entries. */
+  launchMode?: LaunchMode;
+  /** Ask Windows for administrator approval when starting this entry. */
+  runAsAdmin?: boolean;
   /** When set, launch goes through the launcher executable + args. */
   launchVia?: LaunchVia;
-  /** True when launchVia was last set by scan merge (cleared on re-scan if unresolved). */
+  /** True when launchVia was last set by detection; manual profiles survive scans. */
   launchViaAuto?: boolean;
   /** Whether the executable was present at last scan (UI hint only). */
   present?: boolean;
@@ -257,10 +271,14 @@ export interface ResolvedLaunch {
 
 /** Resolve direct vs launcher-mediated launch for an entry. */
 export function resolveLaunch(entry: LaunchEntry): ResolvedLaunch {
-  if (entry.launchVia) {
+  const mode = entryLaunchMode(entry);
+  if (entry.launchVia && mode !== 'direct') {
+    const clientOnly =
+      mode === 'launcher-only' ||
+      (mode === 'auto' && /riotclientservices\.exe$/i.test(entry.launchVia.executablePath));
     return {
       executablePath: entry.launchVia.executablePath,
-      arguments: normalizeLaunchArguments(entry.launchVia.arguments),
+      arguments: clientOnly ? undefined : normalizeLaunchArguments(entry.launchVia.arguments),
       entryPath: entry.executablePath,
     };
   }
@@ -370,10 +388,10 @@ export function mergeScanCandidates(
     } else {
       const patch: Partial<LaunchEntry> = {};
       if (existing.present !== true) patch.present = true;
-      if (candidate.launchProfileFromScan === false && existing.launchViaAuto) {
-        patch.launchVia = undefined;
-        patch.launchViaAuto = false;
-      } else if (candidate.launchVia) {
+      const automatic = entryLaunchMode(existing) === 'auto';
+      // Keep the last detected launcher if discovery is temporarily unavailable.
+      // A required platform game must never silently fall back to its game exe.
+      if (automatic && candidate.launchVia) {
         const nextVia = {
           executablePath: candidate.launchVia.executablePath,
           arguments: candidate.launchVia.arguments,

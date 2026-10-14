@@ -141,7 +141,7 @@ describe('mergeScanCandidates', () => {
     expect(loadLaunchEntries().find((e) => e.id === 'steam-direct')?.launchViaAuto).toBe(true);
   });
 
-  it('clears auto launchVia when trusted scan reports unresolved profile', () => {
+  it('retains last known launcher when a scan temporarily cannot resolve it', () => {
     saveLaunchEntries([
       {
         id: 'ow',
@@ -167,13 +167,15 @@ describe('mergeScanCandidates', () => {
 
     const result = mergeScanCandidates([unresolved]);
 
-    expect(result.updated).toBe(1);
+    expect(result.updated).toBe(0);
     const entry = loadLaunchEntries().find((e) => e.id === 'ow');
-    expect(entry?.launchVia).toBeUndefined();
-    expect(entry?.launchViaAuto).toBe(false);
+    expect(entry?.launchVia?.executablePath).toBe(
+      'C:\\Program Files (x86)\\Battle.net\\Battle.net.exe',
+    );
+    expect(entry?.launchViaAuto).toBe(true);
   });
 
-  it('overwrites operator-edited launchVia when trusted scan provides a profile', () => {
+  it('preserves operator-edited launchVia when trusted scan provides a profile', () => {
     saveLaunchEntries([
       {
         id: 'existing',
@@ -190,9 +192,29 @@ describe('mergeScanCandidates', () => {
 
     const result = mergeScanCandidates([valorantCandidate]);
 
-    expect(result.updated).toBe(1);
-    expect(loadLaunchEntries().find((e) => e.id === 'existing')?.launchVia).toEqual(
-      valorantCandidate.launchVia,
-    );
+    expect(result.updated).toBe(0);
+    expect(loadLaunchEntries().find((e) => e.id === 'existing')?.launchVia?.arguments).toEqual([
+      '--launch-product=valorant',
+      '--launch-patchline=pbe',
+    ]);
+  });
+
+  it('preserves an explicit direct-launch choice during scan', () => {
+    saveLaunchEntries([
+      {
+        id: 'direct',
+        name: 'VALORANT',
+        executablePath: valorantExe,
+        launchMode: 'direct',
+        runAsAdmin: true,
+        present: true,
+      },
+    ]);
+    mergeScanCandidates([valorantCandidate]);
+    expect(loadLaunchEntries().find((e) => e.id === 'direct')).toMatchObject({
+      launchMode: 'direct',
+      runAsAdmin: true,
+    });
+    expect(loadLaunchEntries().find((e) => e.id === 'direct')?.launchVia).toBeUndefined();
   });
 });

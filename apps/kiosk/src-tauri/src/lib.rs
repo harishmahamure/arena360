@@ -117,6 +117,7 @@ pub fn run() {
             audio::open_audio_settings,
             fingerprint::collect_fingerprint,
             scan::scan_installed_software,
+            scan::detect_launch_profile,
             lockdown::set_lockdown_state,
             lockdown::get_lockdown_state,
             power::sleep_station,

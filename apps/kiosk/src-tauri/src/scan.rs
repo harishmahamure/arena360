@@ -242,9 +242,8 @@ fn scan_windows(app: &AppHandle) -> Result<Vec<ScanCandidate>, String> {
 
     let launch_ctx = build_launch_context();
     for candidate in &mut out {
-        if !should_attach_launch_profile(&candidate.source) {
-            continue;
-        }
+        // Untrusted candidates still need the correct route when explicitly added
+        // by staff. Profile detection does not make them eligible for auto-import.
         candidate.launch_via = resolve_launch_profile(
             &candidate.executable_path,
             candidate.steam_app_id.as_deref(),
@@ -334,7 +333,7 @@ fn build_launch_context() -> LaunchContext {
     let ea_helper = resolve_ea_helper_path();
     LaunchContext::new(LauncherPaths {
         steam: known_app_path_by_name("Steam"),
-        riot: known_app_path_by_name("Riot Client"),
+        riot: resolve_riot_client_path(),
         epic: known_app_path_by_name("Epic Games Launcher"),
         battlenet: known_app_path_by_name("Battle.net").or_else(|| resolve_battlenet_exe()),
         ea_helper,
@@ -354,8 +353,60 @@ fn build_launch_context() -> LaunchContext {
 fn known_app_path_by_name(name: &str) -> Option<String> {
     KNOWN_APPS
         .iter()
-        .find(|a| a.name == name)
-        .and_then(known_app_path)
+        .filter(|a| a.name == name)
+        .find_map(known_app_path)
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_riot_client_path() -> Option<String> {
+    // Riot records custom-drive installs here even if no known path exists.
+    if let Ok(base) = std::env::var("ProgramData") {
+        let path = PathBuf::from(base).join("Riot Games/RiotClientInstalls.json");
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                for key in ["rc_default", "rc_live", "rc_beta"] {
+                    if let Some(path) = value.get(key).and_then(|v| v.as_str()) {
+                        if Path::new(path).is_file() {
+                            return Some(path.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    known_app_path_by_name("Riot Client").or_else(|| {
+        fixed_drive_roots().into_iter().find_map(|drive| {
+            let path = drive.join("Riot Games/Riot Client/RiotClientServices.exe");
+            path.is_file().then(|| path.to_string_lossy().to_string())
+        })
+    })
+}
+
+/// Resolve a local entry when staff auto-detects or a legacy game is launched.
+#[tauri::command]
+pub fn detect_launch_profile(executable_path: String) -> Result<Option<LaunchVia>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let ctx = build_launch_context();
+        let steam_id = if normalize_path(&executable_path).contains("/steamapps/") {
+            scan_steam_libraries()
+                .into_iter()
+                .find(|c| normalize_path(&c.executable_path) == normalize_path(&executable_path))
+                .and_then(|c| c.steam_app_id)
+        } else {
+            None
+        };
+        let profile = resolve_launch_profile(&executable_path, steam_id.as_deref(), &ctx);
+        if profile.is_none() && crate::launch_profile::riot_product(&executable_path).is_some() {
+            return Err("Riot Client was not found. In Setup, auto-detect or select RiotClientServices.exe before launching this game.".into());
+        }
+        Ok(profile)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = executable_path;
+        Ok(None)
+    }
 }
 
 #[cfg(target_os = "windows")]

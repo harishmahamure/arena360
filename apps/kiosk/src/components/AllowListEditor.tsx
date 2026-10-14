@@ -6,20 +6,20 @@ import {
   candidateToEntry,
   categorizeByName,
   entryCategory,
+  entryLaunchMode,
   exportAllowListJson,
   formatLaunchArguments,
   importAllowListJson,
   isTrustedScanSource,
   type LaunchCategory,
   type LaunchEntry,
+  type LaunchMode,
   type LaunchVia,
   launchViaLabel,
   loadLaunchEntries,
   mergeScanCandidates,
-  normalizeLaunchArguments,
   removeLaunchEntry,
   saveLaunchEntries,
-  tokenizeArguments,
   updateLaunchEntry,
 } from '../lib/allowList';
 import type { GalleryItem } from '../lib/gallery';
@@ -31,7 +31,12 @@ import {
   syncGameBoostToNative,
 } from '../lib/gameBoost';
 import { integerInputProps } from '../lib/inputHints';
-import { pickExecutable, type ScanCandidate, scanInstalledSoftware } from '../lib/tauriCommands';
+import {
+  detectLaunchProfile,
+  pickExecutable,
+  type ScanCandidate,
+  scanInstalledSoftware,
+} from '../lib/tauriCommands';
 import { GalleryPicker } from './GalleryPicker';
 
 interface ScanProgress {
@@ -67,6 +72,7 @@ export function AllowListEditor({
   const [candidates, setCandidates] = useState<ScanCandidate[]>([]);
   const [scanning, setScanning] = useState(false);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
+  const [detectingId, setDetectingId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ScanProgress | null>(null);
   const [manualName, setManualName] = useState('');
   const [manualPath, setManualPath] = useState('');
@@ -81,27 +87,39 @@ export function AllowListEditor({
 
   const selected = entries.find((e) => e.id === selectedId) ?? null;
 
-  const matchGalleryForAllowList = useCallback(async (forceGallery = false): Promise<number> => {
-    if (forceGallery) galleryItemsRef.current = null;
-    const cached = galleryItemsRef.current;
-    let items = cached;
-    if (!items) {
-      try {
-        items = await refreshGallery();
-        galleryItemsRef.current = items;
-      } catch {
-        return 0;
+  const syncEntries = useCallback(
+    (next: LaunchEntry[]) => {
+      setEntries(next);
+      onEntriesChange?.(next.length);
+      setSelectedId((id) => (id && !next.some((e) => e.id === id) ? null : id));
+    },
+    [onEntriesChange],
+  );
+
+  const matchGalleryForAllowList = useCallback(
+    async (forceGallery = false): Promise<number> => {
+      if (forceGallery) galleryItemsRef.current = null;
+      const cached = galleryItemsRef.current;
+      let items = cached;
+      if (!items) {
+        try {
+          items = await refreshGallery();
+          galleryItemsRef.current = items;
+        } catch {
+          return 0;
+        }
       }
-    }
-    if (items.length === 0) return 0;
-    const current = loadLaunchEntries();
-    const { entries: next, matched } = applyGalleryMediaToEntries(current, items);
-    if (matched > 0) {
-      saveLaunchEntries(next);
-      syncEntries(next);
-    }
-    return matched;
-  }, []);
+      if (items.length === 0) return 0;
+      const current = loadLaunchEntries();
+      const { entries: next, matched } = applyGalleryMediaToEntries(current, items);
+      if (matched > 0) {
+        saveLaunchEntries(next);
+        syncEntries(next);
+      }
+      return matched;
+    },
+    [syncEntries],
+  );
 
   useEffect(() => {
     void syncGameBoostToNative();
@@ -154,20 +172,14 @@ export function AllowListEditor({
     } finally {
       setScanning(false);
     }
-  }, [matchGalleryForAllowList]);
+  }, [matchGalleryForAllowList, syncEntries]);
 
   const initialScanDone = useRef(false);
   useEffect(() => {
-    if (initialScanDone.current || entries.length > 0) return;
+    if (initialScanDone.current) return;
     initialScanDone.current = true;
     void runScan();
-  }, [entries.length, runScan]);
-
-  function syncEntries(next: LaunchEntry[]) {
-    setEntries(next);
-    onEntriesChange?.(next.length);
-    if (selectedId && !next.some((e) => e.id === selectedId)) setSelectedId(null);
-  }
+  }, [runScan]);
 
   function addCandidate(c: ScanCandidate) {
     const next = addLaunchEntry(candidateToEntry(c));
@@ -239,8 +251,36 @@ export function AllowListEditor({
     if (!path || !selected?.launchVia) return;
     patchSelected({
       launchVia: { ...selected.launchVia, executablePath: path },
+      launchMode: selected.launchMode === 'launcher-only' ? 'launcher-only' : 'launcher',
       launchViaAuto: false,
     });
+  }
+
+  async function autoDetectLauncher(entry: LaunchEntry) {
+    if (detectingId) return;
+    setDetectingId(entry.id);
+    try {
+      const launchVia = await detectLaunchProfile(entry.executablePath);
+      if (!launchVia) {
+        setStatus(
+          `No platform profile found for ${entry.name}. Select a launcher manually if this game requires one.`,
+        );
+        return;
+      }
+      // Update this entry by id even if selection changes while detection runs.
+      syncEntries(
+        updateLaunchEntry(entry.id, {
+          launchVia,
+          launchViaAuto: true,
+          launchMode: 'auto',
+        }),
+      );
+      setStatus(`Detected ${launchViaLabel({ ...entry, launchVia })} for ${entry.name}`);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDetectingId(null);
+    }
   }
 
   const alreadyAdded = (path: string) =>
@@ -257,7 +297,7 @@ export function AllowListEditor({
           <h2>Allowed software ({entries.length})</h2>
           <div className="allow-list-header-actions">
             <button type="button" onClick={() => void runScan()} disabled={scanning}>
-              {scanning ? 'Scanning…' : 'Scan'}
+              {scanning ? 'Searching…' : 'Auto search installed apps'}
             </button>
             <button
               type="button"
@@ -321,6 +361,7 @@ export function AllowListEditor({
                 <button
                   type="button"
                   className="catalog-row"
+                  aria-label={entry.name}
                   onClick={() => setSelectedId(entry.id)}
                 >
                   <span className="catalog-art">
@@ -466,9 +507,8 @@ export function AllowListEditor({
                     launchingId !== null ||
                     selected.present === false ||
                     !selected.executablePath.trim() ||
-                    (selected.launchVia
-                      ? !selected.launchVia.executablePath.trim() ||
-                        !(normalizeLaunchArguments(selected.launchVia.arguments)?.length ?? 0)
+                    (selected.launchMode !== 'direct' && selected.launchVia
+                      ? !selected.launchVia.executablePath.trim()
                       : false)
                   }
                   onClick={() => void testLaunch(selected)}
@@ -512,40 +552,61 @@ export function AllowListEditor({
               </label>
 
               <label className="catalog-field">
-                {selected.launchVia ? 'Game executable (presence)' : 'Executable path'}
+                {selected.launchVia && selected.launchMode !== 'direct'
+                  ? 'Game executable (presence)'
+                  : 'Executable path'}
                 <input value={selected.executablePath} readOnly />
               </label>
 
               {entryCategory(selected) === 'game' ? (
-                <label className="allow-list-boost-toggle catalog-field--wide">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(selected.launchVia)}
+                <label className="catalog-field catalog-field--wide">
+                  Launch option
+                  <select
+                    value={entryLaunchMode(selected)}
                     onChange={(e) => {
-                      if (e.target.checked) {
-                        patchSelected({
-                          launchVia: {
-                            executablePath: '',
-                            arguments: '',
-                          },
-                          arguments: undefined,
-                          launchViaAuto: false,
-                        });
-                      } else {
-                        patchSelected({ launchVia: undefined, launchViaAuto: false });
-                      }
+                      const launchMode = e.target.value as LaunchMode;
+                      patchSelected({
+                        launchMode,
+                        ...(launchMode === 'launcher' || launchMode === 'launcher-only'
+                          ? {
+                              launchVia: selected.launchVia ?? {
+                                executablePath: '',
+                                arguments: '',
+                              },
+                              launchViaAuto: false,
+                            }
+                          : {}),
+                        ...(launchMode === 'auto' ? { launchViaAuto: true } : {}),
+                      });
                     }}
-                  />
-                  Launch via platform launcher
+                  >
+                    <option value="auto">Automatic (Riot opens the client first)</option>
+                    <option value="launcher">Start game through platform launcher</option>
+                    <option value="launcher-only">Open platform launcher only</option>
+                    <option value="direct">Launch game executable directly</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={detectingId !== null || scanning}
+                    onClick={() => void autoDetectLauncher(selected)}
+                  >
+                    {detectingId === selected.id ? 'Detecting…' : 'Auto-detect launcher'}
+                  </button>
                 </label>
               ) : null}
 
-              {selected.launchVia ? (
+              {selected.launchVia && selected.launchMode !== 'direct' ? (
                 <LaunchViaFields
                   launchVia={selected.launchVia}
                   onBrowseLauncher={() => void browseLauncherExe()}
                   onChange={(launchVia) =>
-                    patchSelected({ launchVia, arguments: undefined, launchViaAuto: false })
+                    patchSelected({
+                      launchVia,
+                      launchMode:
+                        selected.launchMode === 'launcher-only' ? 'launcher-only' : 'launcher',
+                      launchViaAuto: false,
+                    })
                   }
                 />
               ) : (
@@ -559,12 +620,22 @@ export function AllowListEditor({
                 </label>
               )}
 
-              {selected.launchVia ? (
+              {selected.launchVia && selected.launchMode !== 'direct' ? (
                 <p className="hint">
-                  Re-scan updates launcher profiles from trusted sources. Edit fields here to
-                  override.
+                  Automatic mode detects the platform client. Riot games open Riot Client for
+                  sign-in and Play. Launcher-only mode ignores launcher arguments. Manual launch
+                  settings are preserved on re-scan.
                 </p>
               ) : null}
+
+              <label className="allow-list-boost-toggle catalog-field--wide">
+                <input
+                  type="checkbox"
+                  checked={selected.runAsAdmin ?? false}
+                  onChange={(e) => patchSelected({ runAsAdmin: e.target.checked })}
+                />
+                Run as Windows administrator (Windows approval required)
+              </label>
 
               <label className="catalog-field">
                 Section
@@ -672,10 +743,10 @@ function LaunchViaFields({ launchVia, onChange, onBrowseLauncher }: LaunchViaFie
           onChange={(e) =>
             onChange({
               ...launchVia,
-              arguments: tokenizeArguments(e.target.value),
+              arguments: e.target.value,
             })
           }
-          placeholder="e.g. --launch-product=valorant --launch-patchline=live"
+          placeholder="Optional, e.g. --launch-product=valorant --launch-patchline=live"
         />
       </label>
     </>

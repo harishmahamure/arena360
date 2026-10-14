@@ -111,6 +111,10 @@ export async function scanInstalledSoftware(): Promise<ScanCandidate[]> {
   return invokeLogged<ScanCandidate[]>('scan_installed_software');
 }
 
+export async function detectLaunchProfile(executablePath: string): Promise<ScanLaunchVia | null> {
+  return invokeLogged<ScanLaunchVia | null>('detect_launch_profile', { executablePath });
+}
+
 /**
  * Open the native OS file picker so an admin can browse for an executable to
  * add to the allow-list. Returns the absolute path, or `null` when the user
@@ -170,6 +174,7 @@ export async function launchAllowed(
   allowList: string[],
   args?: string[],
   softLaunch?: boolean,
+  runAsAdmin?: boolean,
 ): Promise<{ pid: number }> {
   // Rust `launch_allowed` logs stage-specific failures; avoid duplicate entries.
   return invoke('launch_allowed', {
@@ -177,6 +182,7 @@ export async function launchAllowed(
     arguments: args,
     allowList,
     softLaunch: softLaunch ?? false,
+    runAsAdmin: runAsAdmin ?? false,
   });
 }
 
@@ -185,11 +191,13 @@ export async function launchAllowedTest(
   executablePath: string,
   allowList: string[],
   args?: string[],
+  runAsAdmin?: boolean,
 ): Promise<{ pid: number }> {
   return invoke('launch_allowed_test', {
     executablePath,
     arguments: args,
     allowList,
+    runAsAdmin: runAsAdmin ?? false,
   });
 }
 

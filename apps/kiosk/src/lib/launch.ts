@@ -1,12 +1,11 @@
 import {
   allowListPaths,
+  entryLaunchMode,
   type LaunchEntry,
-  launchViaLabel,
   loadLaunchEntries,
-  normalizeLaunchArguments,
   resolveLaunch,
 } from './allowList';
-import { launchAllowed, launchAllowedTest } from './tauriCommands';
+import { detectLaunchProfile, launchAllowed, launchAllowedTest } from './tauriCommands';
 
 /** Extract a user-visible message from a launch failure (Tauri rejects with strings). */
 export function launchErrorMessage(e: unknown, fallback: string): string {
@@ -20,20 +19,38 @@ export function installedEntries(): LaunchEntry[] {
 }
 
 function validateLaunchEntry(entry: LaunchEntry): void {
+  if (entry.launchMode === 'direct') return;
+  if (
+    (entry.launchMode === 'launcher' || entry.launchMode === 'launcher-only') &&
+    !entry.launchVia
+  ) {
+    throw new Error(`Launcher path is required to launch ${entry.name}`);
+  }
   if (!entry.launchVia) return;
   if (!entry.launchVia.executablePath.trim()) {
     throw new Error(`Launcher path is required to launch ${entry.name}`);
   }
-  const args = normalizeLaunchArguments(entry.launchVia.arguments);
-  if (!args?.length) {
-    throw new Error(`Launcher arguments are required to launch ${entry.name}`);
-  }
 }
 
-function prepareLaunch(
+async function prepareLaunch(
   entry: LaunchEntry,
   entries: LaunchEntry[],
-): { executablePath: string; allowList: string[]; arguments?: string[] } {
+): Promise<{ executablePath: string; allowList: string[]; arguments?: string[] }> {
+  if (entries.length === 0) {
+    throw new Error('No applications are configured on this station');
+  }
+  if (!entries.some((e) => e.executablePath.toLowerCase() === entry.executablePath.toLowerCase())) {
+    throw new Error('Executable not in allow-list');
+  }
+  let detectedLauncher = false;
+  // Resolve legacy/manual game paths at launch time too, without requiring a re-scan.
+  if (entryLaunchMode(entry) === 'auto' && !entry.launchVia && !isSoftLaunchEntry(entry)) {
+    const launchVia = await detectLaunchProfile(entry.executablePath);
+    if (launchVia) {
+      entry = { ...entry, launchVia, launchViaAuto: true };
+      detectedLauncher = true;
+    }
+  }
   validateLaunchEntry(entry);
   const allowList = allowListPaths(entries);
   if (allowList.length === 0) {
@@ -41,13 +58,11 @@ function prepareLaunch(
   }
   const resolved = resolveLaunch(entry);
 
-  if (
-    entry.launchVia &&
-    !allowList.some((p) => p.toLowerCase() === entry.launchVia?.executablePath.toLowerCase())
-  ) {
-    throw new Error(
-      `${launchViaLabel(entry) ?? 'Launcher'} must be on the allow-list before launching ${entry.name}`,
-    );
+  if (detectedLauncher && entry.launchVia && !allowList.includes(entry.launchVia.executablePath)) {
+    allowList.push(entry.launchVia.executablePath);
+  }
+  if (!allowList.some((path) => path.toLowerCase() === resolved.executablePath.toLowerCase())) {
+    throw new Error('Executable not in allow-list');
   }
 
   return {
@@ -64,12 +79,13 @@ export function isSoftLaunchEntry(entry: LaunchEntry): boolean {
 
 /** Launch an allow-list entry through the native guard (ADR-0019/0020). */
 export async function launchEntry(entry: LaunchEntry, entries: LaunchEntry[]): Promise<void> {
-  const prepared = prepareLaunch(entry, entries);
+  const prepared = await prepareLaunch(entry, entries);
   await launchAllowed(
     prepared.executablePath,
     prepared.allowList,
     prepared.arguments,
     isSoftLaunchEntry(entry),
+    entry.runAsAdmin,
   );
 }
 
@@ -81,6 +97,11 @@ export async function launchEntryForTest(
   if (entry.present === false) {
     throw new Error(`Executable not found for ${entry.name}`);
   }
-  const prepared = prepareLaunch(entry, entries);
-  await launchAllowedTest(prepared.executablePath, prepared.allowList, prepared.arguments);
+  const prepared = await prepareLaunch(entry, entries);
+  await launchAllowedTest(
+    prepared.executablePath,
+    prepared.allowList,
+    prepared.arguments,
+    entry.runAsAdmin,
+  );
 }

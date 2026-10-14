@@ -11,6 +11,9 @@ describe('allowList import/export', () => {
           name: 'Test Game',
           executablePath: 'C:\\Games\\test.exe',
           category: 'game',
+          launchMode: 'launcher-only',
+          runAsAdmin: true,
+          launchVia: { executablePath: 'C:\\Launcher.exe', arguments: [] },
         },
       ]),
     );
@@ -21,6 +24,11 @@ describe('allowList import/export', () => {
 
     expect(imported).toHaveLength(1);
     expect(imported[0]?.name).toBe('Test Game');
+    expect(imported[0]).toMatchObject({
+      launchMode: 'launcher-only',
+      runAsAdmin: true,
+      launchVia: { executablePath: 'C:\\Launcher.exe', arguments: [] },
+    });
     expect(loadLaunchEntries()).toHaveLength(1);
   });
 

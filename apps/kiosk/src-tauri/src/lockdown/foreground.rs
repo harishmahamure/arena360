@@ -7,9 +7,17 @@ static GUARD_RUNNING: AtomicBool = AtomicBool::new(false);
 static GUARD_GENERATION: AtomicU64 = AtomicU64::new(0);
 static AUDIO_UI_YIELD: AtomicBool = AtomicBool::new(false);
 
+#[cfg(any(windows, test))]
+fn is_shell_desktop_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+    )
+}
+
 #[cfg(target_os = "windows")]
 mod win {
-    use super::{GUARD_GENERATION, GUARD_RUNNING};
+    use super::{is_shell_desktop_class, GUARD_GENERATION, GUARD_RUNNING};
     use crate::process;
     use std::sync::atomic::Ordering;
     use std::thread;
@@ -17,11 +25,30 @@ mod win {
     use tauri::AppHandle;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
+        GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
     };
 
     fn hwnd_raw(hwnd: HWND) -> isize {
         hwnd.0 as isize
+    }
+
+    // Recover if Show Desktop gets through a hook timeout or desktop switch.
+    // Restrict recovery to the shell desktop, preserving application Alt+Tab.
+    fn recover_from_shell_desktop(app: &AppHandle) {
+        unsafe {
+            let mut class = [0u16; 128];
+            let len = GetClassNameW(GetForegroundWindow(), &mut class);
+            if len <= 0
+                || !is_shell_desktop_class(&String::from_utf16_lossy(&class[..len as usize]))
+            {
+                return;
+            }
+        }
+        if let Some(hwnd) = process::last_allowed_foreground_hwnd(app) {
+            process::bring_hwnd_to_foreground(hwnd);
+        } else {
+            let _ = process::focus_kiosk_window(app);
+        }
     }
 
     /// Remember kiosk / tracked-game HWNDs when the user Alt+Tabs to them.
@@ -53,7 +80,7 @@ mod win {
             while GUARD_RUNNING.load(Ordering::SeqCst)
                 && GUARD_GENERATION.load(Ordering::SeqCst) == generation
             {
-                thread::sleep(Duration::from_millis(500));
+                thread::sleep(Duration::from_millis(250));
                 if !GUARD_RUNNING.load(Ordering::SeqCst)
                     || GUARD_GENERATION.load(Ordering::SeqCst) != generation
                     || !crate::lockdown::is_locked()
@@ -64,6 +91,7 @@ mod win {
                     process::refresh_tracked_state();
                 }
                 crate::lockdown::shell::hide_shell_chrome();
+                recover_from_shell_desktop(&app);
                 capture_session_foreground(&app);
             }
         });
@@ -101,4 +129,30 @@ pub fn capture_allowed_foreground(_app: &AppHandle) {}
 
 pub fn set_audio_ui_yield(active: bool) {
     AUDIO_UI_YIELD.store(active, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_shell_desktop_class;
+
+    #[test]
+    fn desktop_recovery_preserves_application_alt_tab_targets() {
+        for class in [
+            "Progman",
+            "WorkerW",
+            "Shell_TrayWnd",
+            "Shell_SecondaryTrayWnd",
+        ] {
+            assert!(is_shell_desktop_class(class));
+        }
+        for class in [
+            "Chrome_WidgetWin_1",
+            "Notepad",
+            "UnrealWindow",
+            "CabinetWClass",
+            "#32770",
+        ] {
+            assert!(!is_shell_desktop_class(class));
+        }
+    }
 }
