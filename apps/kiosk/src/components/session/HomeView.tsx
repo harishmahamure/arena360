@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { fetchGames } from '../../lib/allowList';
 import { LOGIN_BACKGROUND_VIDEO_URL } from '../../lib/config';
+import { DecorativeVideo } from '../DecorativeVideo';
 import { HeroGameCarousel } from './HeroGameCarousel';
 import type { SessionView } from './SessionNav';
 import { useAllowList } from './useAllowList';
@@ -14,10 +15,6 @@ interface HomeViewProps {
   onNavigate: (view: SessionView) => void;
   onSearchLibrary?: (query: string) => void;
   onLaunched?: () => void;
-}
-
-function tryAutoplay(video: HTMLVideoElement) {
-  void Promise.resolve(video.play()).catch(() => {});
 }
 
 export const HomeView = memo(function HomeView({
@@ -55,16 +52,10 @@ export const HomeView = memo(function HomeView({
     <div className="a360-home">
       <section className="a360-hero a360-hero--cinematic">
         <div className="a360-hero-media" aria-hidden="true">
-          <video
+          <DecorativeVideo
             key={background}
             src={background}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
             poster={featured?.thumbnailUrl ?? undefined}
-            onLoadedData={(e) => tryAutoplay(e.currentTarget)}
           />
         </div>
         <div className="a360-hero-scrim a360-hero-scrim--cinematic" />

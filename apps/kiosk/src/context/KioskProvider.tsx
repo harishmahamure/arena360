@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useSignedOutCleanup } from '../hooks/useSignedOutCleanup';
 import { saveLaunchEntries } from '../lib/allowList';
 import { probeApiHealth } from '../lib/apiHealth';
 import { SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
@@ -59,6 +60,7 @@ import {
   killTrackedProcesses,
   setLockdownState,
   setSessionLaunchEnabled,
+  setSignedOutCleanupEnabled,
 } from '../lib/tauriCommands';
 import { walletMinutesFromResponse } from '../lib/walletMinutesFromResponse';
 
@@ -340,6 +342,9 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       // Non-Tauri dev builds.
     });
   }, [phase, activeSession, reauthRequired]);
+
+  const [signingIn, setSigningIn] = useState(false);
+  useSignedOutCleanup(phase, Boolean(activeSession), signingIn);
 
   const connectWs = useCallback(
     (id: string, playerId?: string) => {
@@ -903,55 +908,62 @@ export function KioskProvider({ children }: { children: ReactNode }) {
 
   const playerLogin = useCallback(
     async (username: string, password: string) => {
-      setError(null);
-      if (!(await assertSessionCleanupIdle(setError))) {
-        throw new Error('cleanup in progress');
-      }
-      if (!online) {
-        setError('This station is offline. Please wait for the connection to return.');
-        throw new Error('offline');
-      }
-      const http = getHttpClient();
+      setSigningIn(true);
       try {
-        const res = await http.post<{
-          accessToken: string;
-          user: { id: string; username: string; role: string };
-          activeSession?: LoginActiveSessionResponse | null;
-        }>('/auth/login/player', { username, password });
-
-        await persistPlayerToken(res.accessToken);
-        setPlayerName(res.user.username);
-        setPlayerRole(res.user.role);
-        storePlayerName(res.user.username);
-
-        if (res.activeSession) {
-          setActiveSession(activeSessionFromLogin(res.activeSession));
-        } else {
-          // Start the session in the same turn as login so X-Player-Token is
-          // guaranteed to be in tokenCache before POST /kiosk/sessions (ADR-0017).
-          const sessionRes = await http.post<KioskSessionResponse>('/kiosk/sessions', {});
-          setActiveSession(sessionFromResponse(sessionRes));
-          setConflictDevice(null);
+        // Cancel the native sweep before authentication/session creation starts.
+        await setSignedOutCleanupEnabled(false).catch(() => {});
+        setError(null);
+        if (!(await assertSessionCleanupIdle(setError))) {
+          throw new Error('cleanup in progress');
         }
+        if (!online) {
+          setError('This station is offline. Please wait for the connection to return.');
+          throw new Error('offline');
+        }
+        const http = getHttpClient();
+        try {
+          const res = await http.post<{
+            accessToken: string;
+            user: { id: string; username: string; role: string };
+            activeSession?: LoginActiveSessionResponse | null;
+          }>('/auth/login/player', { username, password });
 
-        prepareSessionSounds();
-        setPhase('session');
-        await setLockdownState('Locked');
-        if (deviceId) connectWs(deviceId, res.user.id);
-      } catch (e) {
-        if (e instanceof ApiError && e.code === 'PLAYER_ALREADY_IN_SESSION') {
-          const details = e.details as { deviceName?: string } | undefined;
-          setConflictDevice(details?.deviceName ?? 'another station');
-          setPhase('already-in-session');
-          return;
+          await persistPlayerToken(res.accessToken);
+          setPlayerName(res.user.username);
+          setPlayerRole(res.user.role);
+          storePlayerName(res.user.username);
+
+          if (res.activeSession) {
+            setActiveSession(activeSessionFromLogin(res.activeSession));
+          } else {
+            // Start the session in the same turn as login so X-Player-Token is
+            // guaranteed to be in tokenCache before POST /kiosk/sessions (ADR-0017).
+            const sessionRes = await http.post<KioskSessionResponse>('/kiosk/sessions', {});
+            setActiveSession(sessionFromResponse(sessionRes));
+            setConflictDevice(null);
+          }
+
+          prepareSessionSounds();
+          setPhase('session');
+          await setLockdownState('Locked');
+          if (deviceId) connectWs(deviceId, res.user.id);
+        } catch (e) {
+          if (e instanceof ApiError && e.code === 'PLAYER_ALREADY_IN_SESSION') {
+            const details = e.details as { deviceName?: string } | undefined;
+            setConflictDevice(details?.deviceName ?? 'another station');
+            setPhase('already-in-session');
+            return;
+          }
+          await clearPlayerSession();
+          if (e instanceof ApiError) {
+            setError(formatPlayerLoginError(e.message));
+          } else {
+            setError('Login failed');
+          }
+          throw e;
         }
-        await clearPlayerSession();
-        if (e instanceof ApiError) {
-          setError(formatPlayerLoginError(e.message));
-        } else {
-          setError('Login failed');
-        }
-        throw e;
+      } finally {
+        setSigningIn(false);
       }
     },
     [connectWs, deviceId, online],
@@ -1001,35 +1013,41 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   }, [connectWs, deviceId]);
 
   const startSession = useCallback(async () => {
-    setError(null);
-    if (!(await assertSessionCleanupIdle(setError))) {
-      return;
-    }
-    if (!tokenCache.player) {
-      await loadTokensIntoCache();
-    }
-    if (!tokenCache.player) {
-      setError('Please sign in again.');
-      setPhase('login');
-      return;
-    }
-    const http = getHttpClient();
+    setSigningIn(true);
     try {
-      const res = await http.post<KioskSessionResponse>('/kiosk/sessions', {});
-      setActiveSession(sessionFromResponse(res));
-      prepareSessionSounds();
-      setConflictDevice(null);
-      setPhase('session');
-      await setLockdownState('Locked');
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'PLAYER_ALREADY_IN_SESSION') {
-        const details = e.details as { deviceName?: string } | undefined;
-        setConflictDevice(details?.deviceName ?? 'another station');
-        setPhase('already-in-session');
+      await setSignedOutCleanupEnabled(false).catch(() => {});
+      setError(null);
+      if (!(await assertSessionCleanupIdle(setError))) {
         return;
       }
-      setError(toErrorMessage(e, 'Could not start the session'));
-      throw e;
+      if (!tokenCache.player) {
+        await loadTokensIntoCache();
+      }
+      if (!tokenCache.player) {
+        setError('Please sign in again.');
+        setPhase('login');
+        return;
+      }
+      const http = getHttpClient();
+      try {
+        const res = await http.post<KioskSessionResponse>('/kiosk/sessions', {});
+        setActiveSession(sessionFromResponse(res));
+        prepareSessionSounds();
+        setConflictDevice(null);
+        setPhase('session');
+        await setLockdownState('Locked');
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'PLAYER_ALREADY_IN_SESSION') {
+          const details = e.details as { deviceName?: string } | undefined;
+          setConflictDevice(details?.deviceName ?? 'another station');
+          setPhase('already-in-session');
+          return;
+        }
+        setError(toErrorMessage(e, 'Could not start the session'));
+        throw e;
+      }
+    } finally {
+      setSigningIn(false);
     }
   }, []);
 

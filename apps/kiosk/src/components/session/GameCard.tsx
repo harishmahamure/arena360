@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import type { LaunchEntry } from '../../lib/allowList';
+import { DecorativeVideo } from '../DecorativeVideo';
 
 interface GameCardProps {
   entry: LaunchEntry;
@@ -8,12 +10,10 @@ interface GameCardProps {
   onLaunch: () => void;
 }
 
-/** A 3:4 glass game poster with thumbnail background and autoplay video overlay. */
-function tryAutoplay(video: HTMLVideoElement) {
-  void Promise.resolve(video.play()).catch(() => {});
-}
-
+/** A 3:4 glass game poster; load its preview only while hovered or focused. */
 export function GameCard({ entry, launchable, launching, disabled, onLaunch }: GameCardProps) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
   const clickable = launchable && !disabled;
   const statusLabel = launchable ? 'Ready to launch' : 'Executable missing';
 
@@ -23,6 +23,10 @@ export function GameCard({ entry, launchable, launching, disabled, onLaunch }: G
       className="a360-game-card"
       disabled={!clickable || launching}
       onClick={onLaunch}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       aria-label={`${entry.name}. ${statusLabel}`}
       title={launchable ? entry.name : `${entry.name} (executable missing)`}
     >
@@ -34,17 +38,12 @@ export function GameCard({ entry, launchable, launching, disabled, onLaunch }: G
         </span>
       )}
 
-      {entry.videoUrl ? (
-        <video
+      {entry.videoUrl && (hovered || focused) && clickable && !launching ? (
+        <DecorativeVideo
           key={entry.videoUrl}
           className="a360-game-card-video"
           src={entry.videoUrl}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-          onLoadedData={(e) => tryAutoplay(e.currentTarget)}
+          poster={entry.thumbnailUrl ?? undefined}
         />
       ) : null}
 

@@ -36,7 +36,7 @@ fn run_on_main_thread_sync(app: &AppHandle, f: impl FnOnce() + Send + 'static) {
 }
 
 #[cfg(windows)]
-use sysinfo::{Pid, ProcessesToUpdate, System};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -115,7 +115,14 @@ fn is_allowed(path: &str, allow_list: &[String]) -> bool {
 }
 
 pub fn set_session_launch_enabled(enabled: bool) {
+    if enabled {
+        crate::idle_cleanup::pause();
+    }
     SESSION_LAUNCH_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub(crate) fn session_launch_active() -> bool {
+    SESSION_LAUNCH_ENABLED.load(Ordering::SeqCst)
 }
 
 fn session_launch_permitted() -> bool {
@@ -217,7 +224,13 @@ fn process_tree_pids(root: u32) -> Vec<u32> {
 
 #[cfg(windows)]
 fn refresh_system_processes(system: &mut System) {
-    system.refresh_processes(ProcessesToUpdate::All, true);
+    // Tracking needs identities, executable paths and parents, not resource
+    // counters. Retain a complete snapshot to discover launcher handoffs.
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet),
+    );
 }
 
 #[cfg(windows)]
@@ -323,6 +336,52 @@ pub fn is_session_keep_process(name: &str, kiosk_exe_name: Option<&str>) -> bool
         }
     }
     false
+}
+
+#[cfg(any(windows, test))]
+fn is_idle_keep_process(name: &str, kiosk_exe_name: Option<&str>) -> bool {
+    is_session_keep_process(name, kiosk_exe_name)
+        || matches!(
+            name.to_lowercase().as_str(),
+            "msmpeng.exe"
+                | "nissrv.exe"
+                | "securityhealthhost.exe"
+                | "smartscreen.exe"
+                | "vgc.exe"
+                | "vgtray.exe"
+                | "easyanticheat.exe"
+                | "easyanticheat_eos.exe"
+                | "beservice.exe"
+                | "beservice_x64.exe"
+                | "faceitservice.exe"
+                | "nvcontainer.exe"
+                | "nvdisplay.container.exe"
+                | "atieclxx.exe"
+                | "atiesrxx.exe"
+                | "rtkauduservice64.exe"
+                | "nahimicsvc32.exe"
+                | "nahimicsvc64.exe"
+                | "lghub_agent.exe"
+                | "lghub_updater.exe"
+        )
+}
+
+#[cfg(any(windows, test))]
+fn is_idle_app_root(name: &str, executable: Option<&str>, configured: &HashSet<String>) -> bool {
+    // Include tray-only clients and configured game exes even without a visible
+    // window. Unrelated background processes are never blanket-terminated.
+    executable.is_some_and(|path| configured.contains(&normalize_path(path)))
+        || is_launcher_executable(executable.unwrap_or(name))
+        || matches!(
+            name,
+            "chrome.exe"
+                | "msedge.exe"
+                | "firefox.exe"
+                | "brave.exe"
+                | "opera.exe"
+                | "discord.exe"
+                | "spotify.exe"
+        )
 }
 
 fn kiosk_install_dir() -> Option<String> {
@@ -531,14 +590,31 @@ fn primary_monitor_area() -> i32 {
 }
 
 #[cfg(target_os = "windows")]
-fn process_exe_name(pid: u32) -> Option<String> {
-    use sysinfo::{Pid, ProcessesToUpdate, System};
+pub(crate) fn process_exe_name(pid: u32) -> Option<String> {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
 
-    let mut system = System::new();
-    system.refresh_processes(ProcessesToUpdate::All, true);
-    system
-        .process(Pid::from_u32(pid))
-        .map(|p| p.name().to_string_lossy().to_lowercase())
+    // A window-name check must not take another machine-wide process snapshot.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut path = vec![0u16; 32768];
+        let mut len = path.len() as u32;
+        let result = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            PWSTR(path.as_mut_ptr()),
+            &mut len,
+        );
+        let _ = CloseHandle(handle);
+        result.ok()?;
+        Some(executable_basename(&String::from_utf16_lossy(
+            &path[..len as usize],
+        )))
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -741,7 +817,6 @@ fn maybe_foreground_tracked_app(entry: &mut WatchEntry) {
     if entry.app_foregrounded {
         return;
     }
-    refresh_entry_window_handle(entry);
     let Some(hwnd) = entry.window_handle else {
         return;
     };
@@ -752,22 +827,6 @@ fn maybe_foreground_tracked_app(entry: &mut WatchEntry) {
     set_last_allowed_hwnd(hwnd);
     entry.app_foregrounded = true;
 }
-
-#[cfg(target_os = "windows")]
-pub fn refresh_tracked_state() {
-    let Ok(mut tracked) = TRACKED.lock() else {
-        return;
-    };
-    let mut system = System::new();
-    refresh_system_processes(&mut system);
-    for entry in tracked.iter_mut() {
-        refresh_watch_entry(entry, &system);
-        refresh_entry_window_handle(entry);
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn refresh_tracked_state() {}
 
 #[cfg(target_os = "windows")]
 pub fn bring_hwnd_to_foreground(hwnd: isize) {
@@ -1086,7 +1145,7 @@ fn suppress_tracked_overlays() {
 #[cfg(not(windows))]
 fn suppress_tracked_overlays() {}
 
-#[cfg(any(all(windows, not(debug_assertions)), test))]
+#[cfg(any(windows, test))]
 fn startup_cleanup_pids(
     roots: impl IntoIterator<Item = u32>,
     mut children: impl FnMut(u32) -> Vec<u32>,
@@ -1106,11 +1165,11 @@ fn startup_cleanup_pids(
     targets
 }
 
-/// Close applications that were already open when the installed kiosk started.
+/// Close desktop apps while the station is confirmed signed out and locked.
 /// Capture native process handles before asking windows to close, so PID reuse
 /// cannot make the fallback termination target a newly started process.
-#[cfg(all(windows, not(debug_assertions)))]
-pub fn close_existing_desktop_apps() {
+#[cfg(windows)]
+pub(crate) fn close_signed_out_desktop_apps(lease: &crate::idle_cleanup::CleanupLease<'_>) {
     use windows::Win32::Foundation::{CloseHandle, BOOL, HANDLE, HWND, LPARAM, WAIT_TIMEOUT};
     use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
     use windows::Win32::System::Threading::{
@@ -1119,6 +1178,21 @@ pub fn close_existing_desktop_apps() {
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
     };
+
+    if !lease.is_active()
+        || CLEANUP_IN_PROGRESS
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+    {
+        return;
+    }
+    struct Cleanup;
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            CLEANUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+        }
+    }
+    let _cleanup = Cleanup;
 
     unsafe extern "system" fn collect(hwnd: HWND, data: LPARAM) -> BOOL {
         if IsWindowVisible(hwnd).as_bool() {
@@ -1132,11 +1206,15 @@ pub fn close_existing_desktop_apps() {
     let current_pid = std::process::id();
     let mut session = 0;
     if unsafe { ProcessIdToSessionId(current_pid, &mut session) }.is_err() || session == 0 {
-        crate::diagnostics::warn("startup cleanup skipped: no interactive Windows session");
+        crate::diagnostics::warn("signed-out cleanup skipped: no interactive Windows session");
         return;
     }
     let mut system = System::new();
-    system.refresh_processes(ProcessesToUpdate::All, true);
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::OnlyIfNotSet),
+    );
     // Preserve the installer and the whole ancestor chain (including launchers).
     let mut ancestors = HashSet::new();
     let mut ancestor = Some(Pid::from_u32(current_pid));
@@ -1154,7 +1232,7 @@ pub fn close_existing_desktop_apps() {
         .map(|name| name.to_string_lossy());
     let mut windows = Vec::<(HWND, u32)>::new();
     if let Err(e) = unsafe { EnumWindows(Some(collect), LPARAM(&mut windows as *mut _ as isize)) } {
-        crate::diagnostics::warn(format!("startup window enumeration failed: {e}"));
+        crate::diagnostics::warn(format!("signed-out window enumeration failed: {e}"));
         return;
     }
     let eligible = |pid: u32| {
@@ -1166,20 +1244,32 @@ pub fn close_existing_desktop_apps() {
             && unsafe { ProcessIdToSessionId(pid, &mut process_session) }.is_ok()
             && process_session == session
             && !ancestors.contains(&pid)
-            && !is_session_keep_process(&process.name().to_string_lossy(), kiosk_name.as_deref())
+            && !is_idle_keep_process(&process.name().to_string_lossy(), kiosk_name.as_deref())
             && !install_dir.is_some_and(|dir| process.exe().is_some_and(|exe| exe.starts_with(dir)))
     };
+    let configured: HashSet<_> = lease
+        .app_paths
+        .iter()
+        .map(|path| normalize_path(path))
+        .collect();
+    let mut roots: Vec<_> = windows.iter().map(|(_, pid)| *pid).collect();
+    let mut children = std::collections::HashMap::<u32, Vec<u32>>::new();
+    for (pid, process) in system.processes() {
+        if let Some(parent) = process.parent() {
+            children
+                .entry(parent.as_u32())
+                .or_default()
+                .push(pid.as_u32());
+        }
+        let name = process.name().to_string_lossy().to_lowercase();
+        let path = process.exe().map(|path| path.to_string_lossy());
+        if is_idle_app_root(&name, path.as_deref(), &configured) {
+            roots.push(pid.as_u32());
+        }
+    }
     let pids = startup_cleanup_pids(
-        windows.iter().map(|(_, pid)| *pid),
-        |parent| {
-            system
-                .processes()
-                .iter()
-                .filter_map(|(pid, process)| {
-                    (process.parent().map(|p| p.as_u32()) == Some(parent)).then_some(pid.as_u32())
-                })
-                .collect()
-        },
+        roots,
+        |parent| children.get(&parent).cloned().unwrap_or_default(),
         eligible,
     );
     let mut targets = std::collections::HashMap::<u32, HANDLE>::new();
@@ -1189,7 +1279,7 @@ pub fn close_existing_desktop_apps() {
                 targets.insert(*pid, handle);
             }
             Err(e) => {
-                crate::diagnostics::warn(format!("startup cleanup cannot open PID {pid}: {e}"))
+                crate::diagnostics::warn(format!("signed-out cleanup cannot open PID {pid}: {e}"))
             }
         }
     }
@@ -1199,35 +1289,39 @@ pub fn close_existing_desktop_apps() {
     let pid_set: HashSet<_> = pids.into_iter().collect();
     for (hwnd, pid) in windows {
         if pid_set.contains(&pid) {
-            unsafe {
+            let _ = lease.with_active(|| unsafe {
                 if let Err(e) = PostMessageW(hwnd, WM_CLOSE, None, None) {
                     crate::diagnostics::warn(format!(
-                        "startup close request PID {pid} failed: {e}"
+                        "signed-out close request PID {pid} failed: {e}"
                     ));
                 }
-            }
+            });
         }
     }
     if !targets.is_empty() {
-        thread::sleep(Duration::from_secs(3));
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline && lease.is_active() {
+            thread::sleep(Duration::from_millis(100));
+        }
     }
     let mut count = 0;
     for (pid, handle) in targets {
         unsafe {
             if WaitForSingleObject(handle, 0) == WAIT_TIMEOUT {
-                match TerminateProcess(handle, 1) {
-                    Ok(()) => {
+                match lease.with_active(|| TerminateProcess(handle, 1)) {
+                    Some(Ok(())) => {
                         if WaitForSingleObject(handle, 1000) == WAIT_TIMEOUT {
                             crate::diagnostics::warn(format!(
-                                "startup cleanup PID {pid} did not exit"
+                                "signed-out cleanup PID {pid} did not exit"
                             ));
                         } else {
                             count += 1;
                         }
                     }
-                    Err(e) => crate::diagnostics::warn(format!(
-                        "startup termination PID {pid} failed: {e}"
+                    Some(Err(e)) => crate::diagnostics::warn(format!(
+                        "signed-out termination PID {pid} failed: {e}"
                     )),
+                    None => {}
                 }
             } else {
                 count += 1;
@@ -1235,9 +1329,11 @@ pub fn close_existing_desktop_apps() {
             let _ = CloseHandle(handle);
         }
     }
-    crate::diagnostics::info(format!(
-        "startup cleanup closed {count} existing desktop app processes"
-    ));
+    if count > 0 {
+        crate::diagnostics::info(format!(
+            "signed-out cleanup closed {count} desktop app processes"
+        ));
+    }
 }
 
 #[cfg(windows)]
@@ -1435,6 +1531,7 @@ fn start_monitor_if_needed(app: AppHandle) {
                     refresh_pids_for_monitor(&mut system, &tracked);
                     for entry in tracked.iter_mut() {
                         refresh_watch_entry(entry, &system);
+                        refresh_entry_window_handle(entry);
                         maybe_foreground_tracked_app(entry);
                     }
                     tracked.retain(|entry| entry_has_live_process(entry, &system));
@@ -1724,11 +1821,20 @@ fn clear_tracked_processes_internal() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+<<<<<<< HEAD
+=======
+    #[cfg(windows)]
+    use super::{process_exe_name, refresh_system_processes};
+    #[cfg(windows)]
+    use sysinfo::{Pid, System};
+    use std::time::Instant;
+>>>>>>> 8ebd746 (background checking)
     use super::{
         all_tree_pids, executable_basename, format_launch_failure, has_tracked_processes,
         is_allowed, is_launcher_executable, is_launcher_login_process, is_overlay_launcher_exe,
         is_session_keep_process, normalize_path, paths_match, startup_cleanup_pids, tracking_roots,
         WatchEntry,
+        is_idle_app_root, is_idle_keep_process,
     };
 
     #[test]
@@ -1826,6 +1932,55 @@ mod tests {
     }
 
     #[test]
+    fn signed_out_cleanup_targets_tray_apps_and_configured_games() {
+        let configured = std::collections::HashSet::from([normalize_path("D:\\Games\\MyGame.exe")]);
+        assert!(is_idle_app_root(
+            "mygame.exe",
+            Some("d:/games/MYGAME.exe"),
+            &configured
+        ));
+        assert!(is_idle_app_root(
+            "riotclientservices.exe",
+            None,
+            &configured
+        ));
+        assert!(is_idle_app_root("steam.exe", None, &configured));
+        assert!(is_idle_app_root("discord.exe", None, &configured));
+        assert!(is_idle_app_root("chrome.exe", None, &configured));
+        assert!(!is_idle_app_root(
+            "unrelated-worker.exe",
+            Some("D:/Other/MyGame.exe"),
+            &configured
+        ));
+    }
+
+    #[test]
+    fn signed_out_cleanup_preserves_system_security_drivers_and_anticheat() {
+        for name in [
+            "explorer.exe",
+            "MsMpEng.exe",
+            "NVContainer.exe",
+            "RtkAudUService64.exe",
+            "vgc.exe",
+            "EasyAntiCheat_EOS.exe",
+            "lghub_agent.exe",
+            "kiosk.exe",
+            "msedgewebview2.exe",
+        ] {
+            assert!(is_idle_keep_process(name, Some("kiosk.exe")), "{name}");
+        }
+        for name in [
+            "steam.exe",
+            "riotclientservices.exe",
+            "discord.exe",
+            "valorant.exe",
+            "chrome.exe",
+        ] {
+            assert!(!is_idle_keep_process(name, Some("kiosk.exe")), "{name}");
+        }
+    }
+
+    #[test]
     fn is_launcher_login_process_detects_riot_ux_and_root_launcher() {
         let riot_entry = WatchEntry {
             executable_path: "C:\\Riot Games\\Riot Client\\RiotClientServices.exe".to_string(),
@@ -1874,6 +2029,43 @@ mod tests {
         assert!(pids.contains(&201));
     }
 
+<<<<<<< HEAD
+=======
+    #[test]
+    fn tracking_keeps_bootstrap_children_and_existing_instance_handoffs() {
+        let roots = tracking_roots(100, &[101, 102], &[200, 200], |pid| {
+            [102, 200].contains(&pid)
+        });
+        assert_eq!(roots, [100, 102, 200]);
+        assert_eq!(tracking_roots(100, &[], &[], |_| false), [100]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn targeted_process_name_matches_current_executable() {
+        let path = std::env::current_exe().unwrap();
+        assert_eq!(
+            process_exe_name(std::process::id()),
+            Some(executable_basename(&path.to_string_lossy()))
+        );
+        assert_eq!(process_exe_name(0), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn lightweight_snapshot_keeps_tracking_fields() {
+        let mut system = System::new();
+        refresh_system_processes(&mut system);
+        let process = system.process(Pid::from_u32(std::process::id())).unwrap();
+        assert!(!process.name().is_empty());
+        assert!(process.parent().is_some());
+        assert_eq!(
+            process.exe(),
+            Some(std::env::current_exe().unwrap().as_path())
+        );
+    }
+
+>>>>>>> 8ebd746 (background checking)
     fn clear_tracked_for_test() {
         let _ = super::clear_tracked_processes_internal();
     }

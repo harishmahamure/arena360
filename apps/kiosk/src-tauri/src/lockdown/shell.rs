@@ -1,16 +1,36 @@
 //! Hide / restore Windows shell chrome (taskbar, Start menu) during lockdown.
 
+#[cfg(any(windows, test))]
+#[derive(Debug, PartialEq, Eq)]
+enum WindowAction {
+    Ignore,
+    Hide,
+    Close,
+}
+
+#[cfg(any(windows, test))]
+fn window_action(class: &str, executable: Option<&str>) -> WindowAction {
+    if matches!(class, "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+        return WindowAction::Hide;
+    }
+    match executable {
+        Some(name) if name.eq_ignore_ascii_case("startmenuexperiencehost.exe") => {
+            WindowAction::Hide
+        }
+        Some(name) if name.eq_ignore_ascii_case("taskmgr.exe") => WindowAction::Close,
+        _ => WindowAction::Ignore,
+    }
+}
+
 #[cfg(target_os = "windows")]
 mod win {
+    use super::{window_action, WindowAction};
     use std::collections::HashSet;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use sysinfo::{Pid, ProcessesToUpdate, System};
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, FindWindowW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
-        ShowWindow, SW_HIDE, SW_SHOW, WM_CLOSE,
+        EnumWindows, FindWindowW, GetAncestor, GetClassNameW, GetWindowThreadProcessId,
+        IsWindowVisible, PostMessageW, ShowWindow, GA_ROOT, SW_HIDE, SW_SHOW, WM_CLOSE,
     };
 
     fn shell_tray_hwnds() -> Vec<HWND> {
@@ -49,42 +69,63 @@ mod win {
         hwnds
     }
 
-    static LAST_START_MENU_ENUM_MS: AtomicU64 = AtomicU64::new(0);
-    const START_MENU_ENUM_INTERVAL_MS: u64 = 500;
-
-    fn maybe_enum_start_menu_hwnds() -> Vec<HWND> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let last = LAST_START_MENU_ENUM_MS.load(Ordering::Relaxed);
-        if now.saturating_sub(last) < START_MENU_ENUM_INTERVAL_MS {
-            return Vec::new();
+    fn action_for_window(
+        hwnd: HWND,
+        names: &mut std::collections::HashMap<u32, Option<String>>,
+    ) -> WindowAction {
+        unsafe {
+            if hwnd.0.is_null()
+                || !IsWindowVisible(hwnd).as_bool()
+                || GetAncestor(hwnd, GA_ROOT) != hwnd
+            {
+                return WindowAction::Ignore;
+            }
+            let mut class = [0u16; 128];
+            let len = GetClassNameW(hwnd, &mut class);
+            let class = String::from_utf16_lossy(&class[..len.max(0) as usize]);
+            let action = window_action(&class, None);
+            if action != WindowAction::Ignore {
+                return action;
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            // Restrict top-level windows by identity even if staff accidentally
+            // added a restricted executable to the launch allow-list.
+            if pid == std::process::id() {
+                return WindowAction::Ignore;
+            }
+            let name = names
+                .entry(pid)
+                .or_insert_with(|| crate::process::process_exe_name(pid));
+            window_action(&class, name.as_deref())
         }
-        LAST_START_MENU_ENUM_MS.store(now, Ordering::Relaxed);
-        enum_start_menu_hwnds()
+    }
+
+    pub fn hide_window(raw: isize) {
+        let hwnd = HWND(raw as *mut _);
+        let action = action_for_window(hwnd, &mut std::collections::HashMap::new());
+        if action != WindowAction::Ignore {
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+                if action == WindowAction::Close {
+                    let _ = PostMessageW(hwnd, WM_CLOSE, None, None);
+                }
+            }
+        }
     }
 
     fn enum_start_menu_hwnds() -> Vec<HWND> {
         struct Search {
             hwnds: Vec<HWND>,
-            system: System,
+            names: std::collections::HashMap<u32, Option<String>>,
         }
 
         unsafe extern "system" fn enum_windows(hwnd: HWND, lparam: LPARAM) -> BOOL {
             let search = &mut *(lparam.0 as *mut Search);
-            if !IsWindowVisible(hwnd).as_bool() {
-                return BOOL(1);
-            }
-            let mut pid = 0u32;
-            GetWindowThreadProcessId(hwnd, Some(&mut pid));
-            let Some(process) = search.system.process(Pid::from_u32(pid)) else {
-                return BOOL(1);
-            };
-            let name = process.name().to_string_lossy().to_ascii_lowercase();
-            if name == "startmenuexperiencehost.exe" || name == "taskmgr.exe" {
+            let action = action_for_window(hwnd, &mut search.names);
+            if action != WindowAction::Ignore {
                 search.hwnds.push(hwnd);
-                if name == "taskmgr.exe" {
+                if action == WindowAction::Close {
                     // Also covers an existing instance and stations whose IT
                     // policy prevents our per-user registry restriction.
                     let _ = ShowWindow(hwnd, SW_HIDE);
@@ -94,11 +135,9 @@ mod win {
             BOOL(1)
         }
 
-        let mut system = System::new();
-        system.refresh_processes(ProcessesToUpdate::All, true);
         let mut search = Search {
             hwnds: Vec::new(),
-            system,
+            names: std::collections::HashMap::new(),
         };
         unsafe {
             let _ = EnumWindows(
@@ -126,7 +165,7 @@ mod win {
             shell_tray_hwnds()
                 .into_iter()
                 .chain(known_start_menu_hwnds())
-                .chain(maybe_enum_start_menu_hwnds()),
+                .chain(enum_start_menu_hwnds()),
         );
     }
 
@@ -145,6 +184,11 @@ pub fn hide_shell_chrome() {
 }
 
 #[cfg(target_os = "windows")]
+pub fn hide_restricted_window(hwnd: isize) {
+    win::hide_window(hwnd);
+}
+
+#[cfg(target_os = "windows")]
 pub fn restore_shell_chrome() {
     win::restore();
 }
@@ -157,10 +201,37 @@ pub fn restore_shell_chrome() {}
 
 #[cfg(test)]
 mod tests {
+    use super::{window_action, WindowAction};
     #[test]
-    fn start_menu_process_names_are_lowercase() {
-        for name in ["startmenuexperiencehost.exe", "StartMenuExperienceHost.exe"] {
-            assert_eq!(name.to_ascii_lowercase(), "startmenuexperiencehost.exe");
+    fn restricts_shell_and_task_manager_without_hiding_game_or_other_app_windows() {
+        for class in ["Shell_TrayWnd", "Shell_SecondaryTrayWnd"] {
+            assert_eq!(window_action(class, None), WindowAction::Hide);
         }
+        assert_eq!(
+            window_action(
+                "Windows.UI.Core.CoreWindow",
+                Some("StartMenuExperienceHost.exe")
+            ),
+            WindowAction::Hide
+        );
+        assert_eq!(
+            window_action("TaskManagerWindow", Some("Taskmgr.EXE")),
+            WindowAction::Close
+        );
+        for name in [
+            "valorant.exe",
+            "steam.exe",
+            "notepad.exe",
+            "msedgewebview2.exe",
+        ] {
+            assert_eq!(
+                window_action("ApplicationWindow", Some(name)),
+                WindowAction::Ignore
+            );
+        }
+        assert_eq!(
+            window_action("ApplicationWindow", None),
+            WindowAction::Ignore
+        );
     }
 }

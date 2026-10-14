@@ -3,6 +3,7 @@ mod boost;
 mod cache;
 mod diagnostics;
 mod fingerprint;
+mod idle_cleanup;
 mod instance_mutex;
 mod launch_profile;
 mod lockdown;
@@ -15,7 +16,7 @@ mod update;
 mod webview2;
 
 use instance_mutex::ensure_single_instance;
-use lockdown::{init_locked_on_startup, is_locked, on_app_exit, register_keyboard_app};
+use lockdown::{init_locked_on_startup, is_locked, on_app_exit};
 use tauri::{Emitter, Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -80,7 +81,6 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            register_keyboard_app(app.handle().clone());
             #[cfg(windows)]
             if let Err(e) = init_locked_on_startup(app.handle()) {
                 diagnostics::error(format!("lockdown init failed: {e}"));
@@ -98,8 +98,8 @@ pub fn run() {
                     }),
                 );
             }
-            #[cfg(all(windows, not(debug_assertions)))]
-            process::close_existing_desktop_apps();
+            // Wait for frontend session restoration before allowing app cleanup.
+            idle_cleanup::start()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -129,6 +129,7 @@ pub fn run() {
             process::is_cleanup_in_progress_cmd,
             process::close_tracked_apps,
             process::set_session_launch_enabled_cmd,
+            idle_cleanup::set_signed_out_cleanup_enabled_cmd,
             boost::set_game_boost_config,
             boost::get_game_boost_config,
             cache::cache_asset,

@@ -205,6 +205,20 @@ export async function isCleanupInProgress(): Promise<boolean> {
   return invokeLogged<boolean>('is_cleanup_in_progress_cmd');
 }
 
+let signedOutCleanupSync: Promise<void> = Promise.resolve();
+
+/** Serialize state updates so an older enable cannot arrive after login pauses cleanup. */
+export function setSignedOutCleanupEnabled(
+  enabled: boolean,
+  appPaths: string[] = [],
+): Promise<void> {
+  const next = signedOutCleanupSync
+    .catch(() => {})
+    .then(() => invokeLogged<void>('set_signed_out_cleanup_enabled_cmd', { enabled, appPaths }));
+  signedOutCleanupSync = next;
+  return next;
+}
+
 export async function closeTrackedApps(): Promise<{ killed: number; restored: boolean }> {
   return invokeLogged('close_tracked_apps');
 }
