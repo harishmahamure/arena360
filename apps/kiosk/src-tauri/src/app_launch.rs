@@ -1,6 +1,17 @@
 //! Windows shell launch semantics, matching an executable opened from Explorer.
 
 #[cfg(any(windows, test))]
+fn execute_with_elevation_retry<T, E>(
+    mut execute: impl FnMut(bool) -> Result<T, E>,
+    requires_elevation: impl FnOnce(&E) -> bool,
+) -> Result<T, E> {
+    match execute(false) {
+        Err(error) if requires_elevation(&error) => execute(true),
+        result => result,
+    }
+}
+
+#[cfg(any(windows, test))]
 fn windows_command_line(args: &[String]) -> Result<String, String> {
     let mut quoted = Vec::with_capacity(args.len());
     for arg in args {
@@ -51,8 +62,8 @@ fn launch_on_shell_thread(path: &str, parameters: &str) -> Result<u32, String> {
     use std::path::Path;
     use std::time::Duration;
     use sysinfo::{ProcessesToUpdate, System};
-    use windows::core::{w, PCWSTR};
-    use windows::Win32::Foundation::CloseHandle;
+    use windows::core::{w, HRESULT, PCWSTR};
+    use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, ERROR_ELEVATION_REQUIRED};
     use windows::Win32::System::Com::{
         CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
     };
@@ -86,21 +97,37 @@ fn launch_on_shell_thread(path: &str, parameters: &str) -> Result<u32, String> {
             .unwrap_or_else(|| Path::new("."))
             .to_string_lossy(),
     );
-    let mut info = SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI,
-        lpVerb: w!("open"),
-        lpFile: PCWSTR(file.as_ptr()),
-        lpParameters: PCWSTR(parameters.as_ptr()),
-        lpDirectory: PCWSTR(directory.as_ptr()),
-        nShow: SW_SHOWNORMAL.0,
-        ..Default::default()
-    };
-    // Shell execution honors Windows compatibility/elevation settings. Security
-    // prompts remain enabled; cancellation is returned as a normal launch error.
-    unsafe {
-        ShellExecuteExW(&mut info).map_err(|e| format!("Windows shell launch: {e}"))?;
-    }
+    // Retry only an explicit elevation-required failure. The runas verb asks
+    // Windows for UAC consent/credentials; denial and cancellation are final.
+    let info = execute_with_elevation_retry(
+        |elevated| {
+            let mut info = SHELLEXECUTEINFOW {
+                cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+                fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI,
+                lpVerb: if elevated { w!("runas") } else { w!("open") },
+                lpFile: PCWSTR(file.as_ptr()),
+                lpParameters: PCWSTR(parameters.as_ptr()),
+                lpDirectory: PCWSTR(directory.as_ptr()),
+                nShow: SW_SHOWNORMAL.0,
+                ..Default::default()
+            };
+            unsafe {
+                ShellExecuteExW(&mut info)?;
+            }
+            Ok(info)
+        },
+        |error: &windows::core::Error| {
+            error.code() == HRESULT::from_win32(ERROR_ELEVATION_REQUIRED.0)
+        },
+    )
+    .map_err(|error| {
+        if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
+            "Launch canceled: administrator approval is required to open this application"
+                .to_string()
+        } else {
+            format!("Windows shell launch: {error}")
+        }
+    })?;
     if !info.hProcess.is_invalid() {
         let pid = unsafe { GetProcessId(info.hProcess) };
         unsafe {
@@ -162,7 +189,71 @@ pub fn matching_process_pids(system: &sysinfo::System, executable_path: &str) ->
 
 #[cfg(test)]
 mod tests {
-    use super::windows_command_line;
+    use super::{execute_with_elevation_retry, windows_command_line};
+
+    #[test]
+    fn successful_shell_launch_does_not_request_elevation() {
+        let mut attempts = Vec::new();
+        let result = execute_with_elevation_retry(
+            |elevated| {
+                attempts.push(elevated);
+                Ok::<_, u32>(42)
+            },
+            |error| *error == 740,
+        );
+        assert_eq!(result, Ok(42));
+        assert_eq!(attempts, [false]);
+    }
+
+    #[test]
+    fn elevation_required_retries_and_returns_the_elevated_process() {
+        let mut attempts = Vec::new();
+        let result = execute_with_elevation_retry(
+            |elevated| {
+                attempts.push(elevated);
+                if elevated {
+                    Ok(42)
+                } else {
+                    Err(740)
+                }
+            },
+            |error| *error == 740,
+        );
+        assert_eq!(result, Ok(42));
+        assert_eq!(attempts, [false, true]);
+    }
+
+    #[test]
+    fn shell_errors_and_cancellation_do_not_trigger_elevation() {
+        for error in [2, 5, 1223] {
+            let mut attempts = Vec::new();
+            let result = execute_with_elevation_retry(
+                |elevated| {
+                    attempts.push(elevated);
+                    Err::<u32, _>(error)
+                },
+                |error| *error == 740,
+            );
+            assert_eq!(result, Err(error));
+            assert_eq!(attempts, [false]);
+        }
+    }
+
+    #[test]
+    fn elevated_launch_failure_is_returned_without_another_retry() {
+        for error in [5, 740, 1223] {
+            let mut attempts = Vec::new();
+            let result = execute_with_elevation_retry(
+                |elevated| {
+                    attempts.push(elevated);
+                    Err::<u32, _>(if elevated { error } else { 740 })
+                },
+                |error| *error == 740,
+            );
+            assert_eq!(result, Err(error));
+            assert_eq!(attempts, [false, true]);
+        }
+    }
 
     #[test]
     fn shell_arguments_preserve_empty_values_spaces_quotes_and_trailing_slashes() {

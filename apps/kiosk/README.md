@@ -130,9 +130,12 @@ protection. Test update failure and successful installation/relaunch as well.
 Windows application launches use `ShellExecuteExW` with the executable's directory
 as the working directory and visible windows, matching Explorer launch semantics.
 Arguments retain spaces, quotes, and empty values. Windows handles compatibility
-settings and any required elevation prompt; canceling that prompt reports a
-launch error. The allow-list and active-session checks still apply. Launching
-an existing application instance keeps it tracked, and new launcher children are
-discovered from full process snapshots. Launched applications retain their own
-window style and fullscreen settings. The kiosk does not take focus back from an
-Alt+Tab selection while an application finishes starting.
+settings and any required elevation prompt. If the normal shell launch returns
+error 740 (elevation required), the kiosk retries once with `runas`, asking for
+Windows administrator approval. Canceling that prompt reports a launch error;
+other errors do not trigger elevation. The allow-list and active-session checks
+still apply. Launching an existing application instance keeps it tracked, and new
+launcher children are discovered from full process snapshots. Launched
+applications retain their own window style and fullscreen settings. The kiosk
+does not take focus back from an Alt+Tab selection while an application finishes
+starting.
