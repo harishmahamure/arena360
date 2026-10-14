@@ -81,13 +81,22 @@ recovery; a failed or canceled update restores it. Intentional exits from staff
 setup do not trigger recovery. Development builds do not register startup, run
 recovery, or close desktop applications.
 
-Each installed kiosk launch closes applications already open in the same Windows
-session after the kiosk window is built and before the player UI becomes usable.
-Applications receive a close request and have three seconds to exit before
-termination, including their existing hidden child processes. Windows services,
-shell processes, WebView2, the kiosk, and
-its installer/ancestor processes are preserved. Unsaved work in applications
-that refuse to close can be lost.
+Once startup session restoration confirms the station is signed out, installed
+Windows builds close open desktop applications immediately and check again every
+30 seconds while locked and signed out. The check reads process metadata only;
+it does not scan drives or refresh CPU/memory statistics. Tray launchers, browsers,
+and configured game executables are included along with their existing children.
+Applications receive a close request and have three seconds to exit before forced
+termination. Windows services, shell processes, WebView2, the kiosk, its
+installer/ancestor processes, and known security, driver, and anti-cheat processes
+are preserved. Unrelated background processes are left alone.
+
+The worker sleeps while disabled during player sessions, sign-in, staff Setup,
+startup restoration, and boot errors. Restored offline sessions are preserved.
+Returning to the login screen re-enables an immediate check; there is no cleanup
+on startup until that signed-out state is confirmed. Login/Setup cancels pending
+close and terminate actions, including during the three-second grace period.
+Unsaved work in applications that refuse to close can be lost.
 
 While locked, the native keyboard hook blocks both Windows keys and all Win+key
 combinations (including desktop, Settings, Run, Explorer, and Task View),
@@ -96,9 +105,14 @@ Alt+Space, and context-menu keys are blocked when the kiosk has focus and remain
 available in other applications. Alt+Tab is always allowed, and the background
 guard does not redirect the user's selected window. Normal browser/game
 shortcuts remain available. The hook renews itself every 250 ms to recover from
-Windows silently removing it after a timeout; shell work runs on a separate
-worker. Swallowed Windows-key presses remain tracked until key release, including
-across renewal. If Show Desktop gets through, the foreground guard restores the
+Windows silently removing it after a timeout. Shell enforcement uses Windows
+foreground/window-show events, with a two-second fallback instead of fast polling.
+While a tracked game or launcher has focus, the guard skips full window scans;
+newly shown restricted windows are handled individually. Alt+Tab queues a check
+without a polling burst. Window work is dispatched to the Tauri main thread, and
+staff setup cancels queued checks before restoring the shell. Swallowed Windows-key
+presses remain tracked until key release, including across renewal.
+If Show Desktop gets through, the foreground guard restores the
 last kiosk or tracked application window; it leaves application Alt+Tab targets
 alone. `HKCU` policies (`DisableTaskMgr`, `NoWinKeys`) also restrict Task Manager
 and shell hotkeys for the actual signed-in kiosk account. Original policy values

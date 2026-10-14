@@ -63,13 +63,11 @@ mod win {
     use super::{blocks_shortcut, Modifiers};
     use std::cell::RefCell;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{mpsc, Mutex, OnceLock};
+    use std::sync::{mpsc, Mutex};
     use std::thread;
-    use std::time::{Duration, Instant};
-    use tauri::AppHandle;
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW,
         GetWindowThreadProcessId, KillTimer, SetTimer, SetWindowsHookExW, TranslateMessage,
@@ -79,44 +77,7 @@ mod win {
 
     static INSTALLED: Mutex<bool> = Mutex::new(false);
     static ENABLED: AtomicBool = AtomicBool::new(false);
-    static REHIDE: OnceLock<mpsc::SyncSender<()>> = OnceLock::new();
-    static APP: OnceLock<AppHandle> = OnceLock::new();
     thread_local! { static MODIFIERS: RefCell<Modifiers> = RefCell::new(Modifiers::default()); }
-
-    pub fn set_app_handle(app: AppHandle) {
-        let _ = APP.set(app);
-    }
-
-    // All shell/window work happens off the hook thread. A slow callback can
-    // cause Windows to silently remove WH_KEYBOARD_LL.
-    fn start_alt_rehide_burst() {
-        if let Some(sender) = REHIDE.get() {
-            let _ = sender.try_send(());
-        }
-    }
-
-    fn rehide_worker(rx: mpsc::Receiver<()>) {
-        while rx.recv().is_ok() {
-            let deadline = Instant::now() + Duration::from_secs(3);
-            loop {
-                if !ENABLED.load(Ordering::SeqCst) {
-                    break;
-                }
-                crate::lockdown::shell::hide_shell_chrome();
-                let alt_held = unsafe { GetAsyncKeyState(VK_MENU.0 as i32) < 0 };
-                if !alt_held || Instant::now() >= deadline {
-                    break;
-                }
-                thread::sleep(Duration::from_millis(75));
-            }
-            if ENABLED.load(Ordering::SeqCst) {
-                crate::lockdown::shell::hide_shell_chrome();
-                if let Some(app) = APP.get() {
-                    crate::lockdown::foreground::capture_allowed_foreground(app);
-                }
-            }
-        }
-    }
 
     unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 {
@@ -144,7 +105,9 @@ mod win {
                     if (down && kb.vkCode == 0x09 && alt)
                         || (up && matches!(kb.vkCode, 0x12 | 0xA4 | 0xA5))
                     {
-                        start_alt_rehide_burst();
+                        // Queue one check; window events handle subsequent
+                        // focus changes without an Alt+Tab polling burst.
+                        crate::lockdown::foreground::request_check();
                     }
                 }
             }
@@ -159,14 +122,6 @@ mod win {
     pub fn install() -> Result<(), String> {
         let mut installed = INSTALLED.lock().map_err(|e| e.to_string())?;
         if !*installed {
-            if REHIDE.get().is_none() {
-                let (tx, rx) = mpsc::sync_channel(1);
-                thread::Builder::new()
-                    .name("kiosk-shell-rehide".into())
-                    .spawn(move || rehide_worker(rx))
-                    .map_err(|e| e.to_string())?;
-                let _ = REHIDE.set(tx);
-            }
             let (tx, rx) = mpsc::sync_channel(1);
             thread::Builder::new()
                 .name("kiosk-keyboard".into())
@@ -235,12 +190,6 @@ mod win {
     }
 }
 
-#[cfg(target_os = "windows")]
-pub fn set_app_handle(app: tauri::AppHandle) {
-    win::set_app_handle(app);
-}
-#[cfg(not(target_os = "windows"))]
-pub fn set_app_handle(_app: tauri::AppHandle) {}
 #[cfg(target_os = "windows")]
 pub fn install_hook() -> Result<(), String> {
     win::install()

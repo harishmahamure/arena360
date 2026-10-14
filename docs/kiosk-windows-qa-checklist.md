@@ -62,6 +62,17 @@ Requires NSIS install with autostart (default). Run installer logged in as the k
 | 20 | Uninstall kiosk | `Arena360 Kiosk` task removed (legacy `Arena360 Watchdog` too) | |
 | 21 | Run `verify-station-startup.ps1` from repo after configure | Reports no issues; `-Repair` fixes user/path mismatch | |
 
+## Resource usage
+
+- [ ] Compare the same Windows station before/after, with Game Boost unchanged: login idle, library with several video-enabled games, and 5 minutes of gameplay. Record kiosk + its WebView2 CPU, GPU, and memory; use a staff/admin monitoring session because lockdown closes Task Manager.
+- [ ] Library posters remain static until hover or keyboard focus; only the selected preview plays.
+- [ ] Alt+Tab to a game pauses kiosk background/preview videos; returning resumes playback. Repeat with minimize/restore.
+- [ ] Launcher sign-in, existing-instance handoff, new child game processes, closing the last game, and session-end cleanup still work with the two-second process monitor.
+- [ ] Taskbar, Start menu, and Task Manager remain blocked during lockdown; staff setup restores access.
+- [ ] During gameplay, verify no periodic `EnumWindows` calls from the foreground guard; only foreground PID checks run on the two-second fallback. The independent game process monitor remains active.
+- [ ] Alt+Tab back to kiosk, close/minimize the game, expose the desktop, and restart Explorer: window events restore shell restrictions without waiting for fast polling. Verify newly shown Task Manager/Start/taskbar windows are restricted even while the game keeps focus.
+- [ ] Rapidly enter/exit staff Setup and repeat Alt+Tab: queued checks from the previous guard must not re-hide the taskbar or pull focus after setup relaxation; event hooks stop and restart cleanly.
+
 ## Sign-off
 
 | Role | Name | Date | Notes |

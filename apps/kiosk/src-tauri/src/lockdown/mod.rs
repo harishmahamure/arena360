@@ -75,6 +75,9 @@ fn apply_window_mode(app: &AppHandle, state: LockdownState) -> Result<(), String
 #[tauri::command]
 pub fn set_lockdown_state(app: AppHandle, state: String) -> Result<(), String> {
     let state = parse_state(&state)?;
+    if state == LockdownState::SetupRelaxed {
+        crate::idle_cleanup::pause();
+    }
     let _txn = TRANSITION.lock().map_err(|e| e.to_string())?;
     apply_window_mode(&app, state).map_err(|e| {
         crate::diagnostics::error(format!("set_lockdown_state apply_window_mode: {e}"));
@@ -101,10 +104,6 @@ pub fn is_locked() -> bool {
         .unwrap_or(true)
 }
 
-pub fn register_keyboard_app(app: AppHandle) {
-    keyboard::set_app_handle(app);
-}
-
 pub fn init_shortcut_protection() -> Result<(), String> {
     keyboard::install_hook()?;
     if let Err(e) = policy::apply_locked() {
@@ -126,6 +125,7 @@ pub fn init_locked_on_startup(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn on_app_exit() {
+    crate::idle_cleanup::pause();
     foreground::stop_foreground_guard();
     keyboard::remove_hook();
     if let Err(e) = policy::restore() {

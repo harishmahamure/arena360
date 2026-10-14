@@ -1,5 +1,6 @@
 import { ApiError, normalizeUsername, sanitizeUsernameInput, trimValue } from '@gaming-cafe/utils';
 import { useEffect, useRef, useState } from 'react';
+import { DecorativeVideo } from '../components/DecorativeVideo';
 import { StationControls } from '../components/StationControls';
 import { useKiosk } from '../context/KioskProvider';
 import { SESSION_EXPIRED_DISMISS_MS, SESSION_EXPIRED_MESSAGE } from '../lib/authMessages';
@@ -109,12 +110,6 @@ export function LoginHomePage() {
 
   const blocked = maintenance || !online || lockout.locked;
 
-  function tryAutoplay(video: HTMLVideoElement) {
-    void Promise.resolve(video.play()).catch(() => {
-      // Autoplay may be blocked until user interaction; muted + playsInline usually succeeds.
-    });
-  }
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (blocked) return;
@@ -185,16 +180,7 @@ export function LoginHomePage() {
     <div className="a360-login login-home">
       {videoSrc ? (
         <div className="a360-login-media" aria-hidden="true">
-          <video
-            src={videoSrc}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-            onLoadedData={(e) => tryAutoplay(e.currentTarget)}
-            onError={onVideoError}
-          />
+          <DecorativeVideo src={videoSrc} onError={onVideoError} />
         </div>
       ) : null}
       <div className="a360-radial-overlay" />
