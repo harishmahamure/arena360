@@ -1,3 +1,15 @@
+# Project agent setup
+
+- Use Codex CLI as the primary coding agent.
+- For coding tasks, read and apply the project-local
+  [Ponytail skill](.agents/skills/ponytail/SKILL.md) at `full` level by default.
+  Honor explicit requests to change the level or stop Ponytail.
+- Install additional Agent Skills in `.agents/skills/` when needed.
+- Keep the existing Code Review Graph MCP and follow the graph-first workflow below.
+- Graphify and browser automation MCP are optional; use browser automation when
+  a UI task needs it.
+- See [README.md](README.md#coding-agent-setup) for setup and verification.
+
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
