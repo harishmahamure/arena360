@@ -6,7 +6,7 @@
 <title>BMad Method Brainstorming Selection</title>
 <script>
 /* set the theme before first paint so there's no light-mode flash */
-(function(){ try {
+(()=> { try {
   var t = localStorage.getItem('bmad-theme');
   if (!t) { t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
   document.documentElement.setAttribute('data-theme', t);
@@ -152,12 +152,12 @@
 </main>
 <footer>BMad Method &middot; Brainstorming</footer>
 <script>
-(function(){
-  var $ = function(id){ return document.getElementById(id); };
+(()=> {
+  var $ = (id)=> document.getElementById(id);
   var all = Array.prototype.slice;
   var boxes = all.call(document.querySelectorAll('input[type=checkbox]'));
-  var techBoxes = boxes.filter(function(b){ return b.dataset.name; });      // real technique cards
-  var inventBoxes = boxes.filter(function(b){ return b.dataset.invent; });  // per-category "invent in the spirit of" cards
+  var techBoxes = boxes.filter((b)=> b.dataset.name);      // real technique cards
+  var inventBoxes = boxes.filter((b)=> b.dataset.invent);  // per-category "invent in the spirit of" cards
   var header = document.querySelector('header');
   var sections = all.call(document.querySelectorAll('section'));
   var state = { mode: 'Facilitator', rand: 0, inv: 0, ai: 0 };
@@ -170,24 +170,24 @@
 
   var themeBtn = $('theme');
   function setThemeIcon(){ themeBtn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀' : '☾'; }
-  themeBtn.addEventListener('click', function(){
+  themeBtn.addEventListener('click', ()=> {
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     try { localStorage.setItem('bmad-theme', next); } catch(e){}
     setThemeIcon();
   });
 
-  all.call(document.querySelectorAll('.mode')).forEach(function(b){
-    b.addEventListener('click', function(){
-      all.call(document.querySelectorAll('.mode')).forEach(function(m){ m.classList.remove('on'); });
+  all.call(document.querySelectorAll('.mode')).forEach((b)=> {
+    b.addEventListener('click', ()=> {
+      all.call(document.querySelectorAll('.mode')).forEach((m)=> { m.classList.remove('on'); });
       b.classList.add('on');
       state.mode = b.dataset.mode;
       setHint();
     });
   });
 
-  all.call(document.querySelectorAll('[data-step]')).forEach(function(btn){
-    btn.addEventListener('click', function(){
+  all.call(document.querySelectorAll('[data-step]')).forEach((btn)=> {
+    btn.addEventListener('click', ()=> {
       var k = btn.dataset.step, d = parseInt(btn.dataset.d, 10);
       state[k] = Math.max(0, state[k] + d);
       update();
@@ -196,8 +196,8 @@
 
   // Category chips are jump-nav: click one to smooth-scroll its section into view,
   // offsetting by the sticky header's height so the heading isn't hidden beneath it.
-  all.call(document.querySelectorAll('.chip')).forEach(function(chip){
-    chip.addEventListener('click', function(){
+  all.call(document.querySelectorAll('.chip')).forEach((chip)=> {
+    chip.addEventListener('click', ()=> {
       var sec = null;
       for (var i = 0; i < sections.length; i++){ if (sections[i].dataset.cat === chip.dataset.cat){ sec = sections[i]; break; } }
       if (!sec){ return; }
@@ -206,20 +206,20 @@
     });
   });
 
-  boxes.forEach(function(b){ b.addEventListener('change', update); });
+  boxes.forEach((b)=> { b.addEventListener('change', update); });
 
   // A `classic` technique appears twice (lead "Proven & Professional" group + its home
   // category), so de-dupe checked picks by name; the lead copy carries data-lead.
   function checkedTech(){
     var seen = {}, out = [];
-    techBoxes.forEach(function(b){
+    techBoxes.forEach((b)=> {
       if (!b.checked || seen[b.dataset.name]) { return; }
       seen[b.dataset.name] = 1;
       out.push(b);
     });
     return out;
   }
-  function checkedInvent(){ return inventBoxes.filter(function(b){ return b.checked; }); }
+  function checkedInvent(){ return inventBoxes.filter((b)=> b.checked); }
 
   function update(){
     // rand can't exceed what the pool can supply — keep the counter honest with the draw
@@ -236,24 +236,24 @@
 
   // "Great for" goal filter: clicking a goal narrows visible cards to those tagged with it.
   var goalBtns = all.call(document.querySelectorAll('.goal'));
-  function activeGoals(){ return goalBtns.filter(function(b){ return b.classList.contains('on'); }).map(function(b){ return b.dataset.goal; }); }
+  function activeGoals(){ return goalBtns.filter((b)=> b.classList.contains('on')).map((b)=> b.dataset.goal); }
   function applyFilter(){
     var act = activeGoals();
-    all.call(document.querySelectorAll('label.tech')).forEach(function(lab){
+    all.call(document.querySelectorAll('label.tech')).forEach((lab)=> {
       var inp = lab.querySelector('input');
       if (inp.dataset.invent){ return; }  // invent cards aren't goal-tagged — always visible
       var good = (inp.dataset.good || '').split('|');
-      var show = !act.length || act.some(function(g){ return good.indexOf(g) >= 0; });
+      var show = !act.length || act.some((g)=> good.indexOf(g) >= 0);
       lab.classList.toggle('hidden', !show);
     });
   }
-  goalBtns.forEach(function(b){ b.addEventListener('click', function(){ b.classList.toggle('on'); applyFilter(); }); });
+  goalBtns.forEach((b)=> { b.addEventListener('click', ()=> { b.classList.toggle('on'); applyFilter(); }); });
 
   function randomPool(){
     var picked = {};
-    checkedTech().forEach(function(b){ picked[b.dataset.name] = 1; });
+    checkedTech().forEach((b)=> { picked[b.dataset.name] = 1; });
     // draw from unchecked, non-lead copies, skipping anything already picked
-    return techBoxes.filter(function(b){ return !b.checked && !b.dataset.lead && !picked[b.dataset.name]; });
+    return techBoxes.filter((b)=> !b.checked && !b.dataset.lead && !picked[b.dataset.name]);
   }
 
   function sample(arr, n){
@@ -263,20 +263,20 @@
   }
 
   function compose(){
-    var picks = checkedTech().map(function(b){ return { n: b.dataset.name, c: b.dataset.cat, d: b.dataset.desc, r: false }; });
-    var rnd = sample(randomPool(), state.rand).map(function(b){ return { n: b.dataset.name, c: b.dataset.cat, d: b.dataset.desc, r: true }; });
+    var picks = checkedTech().map((b)=> ({ n: b.dataset.name, c: b.dataset.cat, d: b.dataset.desc, r: false }));
+    var rnd = sample(randomPool(), state.rand).map((b)=> ({ n: b.dataset.name, c: b.dataset.cat, d: b.dataset.desc, r: true }));
     var techs = picks.concat(rnd);
     var L = ["Let's run my brainstorming session.", "", 'Facilitation mode: ' + state.mode + '.'];
     if (techs.length){
       L.push("", 'Techniques to use:');
-      techs.forEach(function(t, i){
+      techs.forEach((t, i)=> {
         L.push((i + 1) + '.' + (t.r ? ' (random pick)' : '') + ' ' + t.n + '  ·  ' + t.c);
         L.push('   ' + t.d);
       });
     }
     var extra = [];
     if (state.inv > 0){ extra.push('invent ' + state.inv + ' brand-new technique' + (state.inv > 1 ? 's' : '') + ' on the fly'); }
-    checkedInvent().forEach(function(b){ extra.push('invent 1 new technique in the spirit of ' + b.dataset.invent); });
+    checkedInvent().forEach((b)=> { extra.push('invent 1 new technique in the spirit of ' + b.dataset.invent); });
     if (state.ai > 0){ extra.push('you choose ' + state.ai + ' more technique' + (state.ai > 1 ? 's' : '') + ' that fit my goal'); }
     if (extra.length){ L.push("", 'Then: ' + extra.join('; and ') + '.'); }
     if (!techs.length && !extra.length){
@@ -304,17 +304,17 @@
       ? '✓ Copied! Now paste it into the chat to start your session.'
       : '⚠ Couldn’t reach the clipboard — copy the text in the box, then paste it into the chat.';
     b.classList.add('show');
-    setTimeout(function(){ b.classList.remove('show'); }, 4500);
+    setTimeout(()=> { b.classList.remove('show'); }, 4500);
     // Last resort on a hard failure: a prefilled, selectable prompt so the text is never lost.
     if (!ok){ window.prompt('Copy this, then paste it into the chat:', text); }
   }
 
-  $('copy').addEventListener('click', function(){
+  $('copy').addEventListener('click', ()=> {
     var text = compose();
     if (navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text).then(
-        function(){ flash(true, text); },
-        function(){ flash(fallbackCopy(text), text); }
+        ()=> { flash(true, text); },
+        ()=> { flash(fallbackCopy(text), text); }
       );
     } else { flash(fallbackCopy(text), text); }
   });
