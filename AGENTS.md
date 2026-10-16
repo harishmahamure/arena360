@@ -1,3 +1,14 @@
+## Ponytail — ultra (default)
+
+Use the `ponytail:ponytail` skill in **ultra** mode for work in this repository unless the user requests another mode.
+
+- Question unnecessary scope before building; choose the smallest change that fully solves the task.
+- Reuse existing code and conventions; avoid speculative abstractions, options, and dependencies.
+- Read the affected implementation, callers, and relevant tests before editing; finish all required updates.
+- Preserve validation, error handling, security, accessibility, and user data.
+- Verify non-trivial logic with a focused test or assert-based self-check; trivial edits need no new tests.
+- End replies with one or two lines stating what was skipped or not checked and any material risk.
+
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
@@ -43,3 +54,11 @@ gives you structural context (callers, dependents, test coverage) that file sear
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern="tests_for" to check coverage.
 <!-- /code-review-graph MCP tools -->
+
+## Living product and technical vision
+
+- [VISION.md](VISION.md) is the maintained product and technical overview. Read its relevant sections before changing capabilities, workflows, architecture, security boundaries, deployment, or launch readiness.
+- Update affected sections in the same change when their meaning changes. Keep implemented behavior, accepted plans, and proposed strategy distinct; verify claims against source and link supporting files.
+- Update the review date and append a concise maintenance-history entry when the vision changes. Do not rewrite unchanged sections or claim checks/deployments that were not performed.
+- Detailed ADRs and build plans retain their decision and task history. Reconcile their current status into VISION.md instead of maintaining another competing vision document.
+- The existing pre-commit hook runs `scripts/check-vision.sh` as a non-blocking reminder for relevant staged changes. A reminder alone does not maintain or validate the document; no document edit is needed when it remains accurate.
