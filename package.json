@@ -48,6 +48,9 @@
     "report:fixtures": "node apps/backend/scripts/capture-report-fixtures.mjs",
     "bench:venue-day": "node apps/backend/scripts/bench-venue-day.mjs"
   },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec biome lint . && pnpm typecheck && pnpm backend:clippy"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
     "@changesets/cli": "^2.27.10",
