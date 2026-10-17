@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "clean": "rimraf dist .turbo"
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

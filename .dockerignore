@@ -12,7 +12,6 @@ dist/
 build/
 out/
 .next/
-.turbo/
 *.tsbuildinfo
 
 # Rust backend (not needed for staff frontend image)

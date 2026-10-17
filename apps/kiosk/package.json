@@ -13,7 +13,7 @@
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "clean": "rimraf dist .turbo"
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "@gaming-cafe/api-types": "workspace:*",

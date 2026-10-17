@@ -14,14 +14,14 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
-    "clean": "turbo run clean && rimraf node_modules .turbo",
+    "typecheck": "pnpm -r --filter \"./packages/**\" build && pnpm -r typecheck",
+    "test": "pnpm -r --filter \"./packages/**\" build && pnpm -r test",
+    "clean": "pnpm -r clean && rimraf node_modules",
     "gen:api-types": "tsx scripts/gen-api-types.ts",
     "gen:bruno": "tsx scripts/gen-bruno-collection.ts",
     "migration": "tsx scripts/migration.ts",
@@ -55,7 +55,6 @@
     "rimraf": "^6.0.1",
     "simple-git-hooks": "^2.11.1",
     "tsx": "^4.19.2",
-    "turbo": "^2.3.3",
     "typescript": "~5.6.3"
   },
   "simple-git-hooks": {

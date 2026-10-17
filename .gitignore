@@ -9,7 +9,6 @@ dist/
 build/
 out/
 .next/
-.turbo/
 *.tsbuildinfo
 
 # Rust / Cargo
@@ -83,9 +82,6 @@ tmp/
 temp/
 *.tmp
 *.bak
-
-# ADR event log (per-developer; DRAFT ADRs are committed)
-docs/adr/.events.jsonl
 
 # Bruno local env overrides (generated collection is tracked)
 bruno/**/environments/Local.bru
