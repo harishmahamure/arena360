@@ -47,14 +47,28 @@ fn read_store(app: &AppHandle) -> Result<TokenStore, String> {
     if !path.exists() {
         return Ok(TokenStore::default());
     }
-    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&raw).map_err(|e| e.to_string())
+    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    match serde_json::from_str(&raw) {
+        Ok(store) => Ok(store),
+        Err(e) => {
+            // An empty or truncated file (e.g. power loss mid-write on an older
+            // build) must not brick boot. Keep a copy for diagnosis and start
+            // fresh; the device re-registers if its token is gone.
+            eprintln!("tokens.json is corrupt ({e}); resetting token store");
+            let _ = fs::rename(&path, path.with_extension("json.corrupt"));
+            Ok(TokenStore::default())
+        }
+    }
 }
 
 fn write_store(app: &AppHandle, store: &TokenStore) -> Result<(), String> {
     let path = store_path(app)?;
     let raw = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
-    fs::write(path, raw).map_err(|e| e.to_string())
+    // Write to a temp file and rename over the original so a crash or power
+    // loss mid-write never leaves a truncated tokens.json behind.
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, raw).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
